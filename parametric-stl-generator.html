@@ -1,0 +1,2895 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STL-генератор · параметрические тела</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+<style>
+  :root{
+    --paper:#EAE4D3;
+    --paper-line:#C9BFA3;
+    --ink:#1C3A52;
+    --ink-soft:#4A6276;
+    --blueprint:#0F3A5F;
+    --blueprint-deep:#0A2238;
+    --blueprint-line:#6FB7DB;
+    --redline:#C13B2E;
+    --redline-dark:#9C2E22;
+    --ok:#3E7A4F;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--blueprint-deep);overflow:hidden;}
+  body{
+    font-family:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color:var(--ink);
+    display:flex;
+    flex-direction:row;
+    height:100vh;
+    width:100vw;
+  }
+  .mono{font-family:'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;}
+
+  /* ---------- panel (paper / spec sheet) ---------- */
+  #panel{
+    width:360px;
+    min-width:360px;
+    background:var(--paper);
+    border-right:2px solid var(--ink);
+    overflow-y:auto;
+    padding:14px 16px 28px;
+  }
+  #panel::-webkit-scrollbar{width:8px;}
+  #panel::-webkit-scrollbar-thumb{background:var(--paper-line);border-radius:4px;}
+
+  .titleblock{
+    border:1.5px solid var(--ink);
+    padding:10px 12px;
+    margin-bottom:14px;
+    position:relative;
+  }
+  .titleblock h1{
+    margin:0;
+    font-size:16px;
+    letter-spacing:0.06em;
+    font-weight:700;
+    color:var(--ink);
+  }
+  .titleblock .sub{
+    margin-top:3px;
+    font-size:11px;
+    color:var(--ink-soft);
+    letter-spacing:0.03em;
+  }
+  .titleblock .tag{
+    position:absolute; top:8px; right:10px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    color:var(--ink-soft);
+  }
+
+  .section-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-soft);
+    margin:18px 0 8px;
+    border-bottom:1px solid var(--paper-line);
+    padding-bottom:5px;
+  }
+  .section-label:first-of-type{margin-top:0;}
+
+  .param-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:11px;
+  }
+  .param-label{ font-size:12.5px; color:var(--ink); line-height:1.3; }
+  .num-field{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    flex:0 0 auto;
+  }
+  input.param-number{
+    width:72px;
+    padding:5px 7px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    background:#fff;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--redline-dark);
+    text-align:right;
+  }
+  input.param-number:focus{ outline:none; border-color:var(--redline); }
+  .num-unit{
+    font-size:11px;
+    color:var(--ink-soft);
+    min-width:20px;
+  }
+
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12.5px;
+    color:var(--ink);
+    margin-bottom:10px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .toggle-row input[type=checkbox]{
+    width:16px; height:16px;
+    accent-color:var(--redline);
+    cursor:pointer;
+  }
+
+  .shading-toggle{
+    display:flex;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    overflow:hidden;
+    margin-bottom:12px;
+  }
+  .shading-toggle button{
+    flex:1;
+    padding:7px 4px;
+    border:none;
+    background:transparent;
+    color:var(--ink-soft);
+    font-family:inherit;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .shading-toggle button.active{ background:var(--ink); color:var(--paper); }
+
+  .color-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .color-row input[type=color]{
+    width:34px; height:26px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    padding:0;
+    background:none;
+    cursor:pointer;
+  }
+  .color-row label{ font-size:12.5px; }
+
+  .stats-box{
+    border:1px solid var(--paper-line);
+    background:rgba(255,255,255,0.35);
+    padding:9px 11px;
+    font-size:12px;
+  }
+  .stats-row{ display:flex; justify-content:space-between; padding:2px 0; }
+  .stats-row .k{ color:var(--ink-soft); }
+  .stats-row .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--ink); }
+  .stats-row .v.ok{ color:var(--ok); }
+  .stats-row .v.warn{ color:var(--redline-dark); }
+
+  #filename{
+    width:100%;
+    padding:7px 9px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    background:#fff;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    color:var(--ink);
+    margin-bottom:9px;
+  }
+  #export-format{
+    width:100%;
+    padding:7px 9px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    background:#fff;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:12.5px;
+    color:var(--ink);
+    margin-bottom:11px;
+  }
+  #btn-export{
+    width:100%;
+    padding:11px 0;
+    background:var(--redline);
+    border:none;
+    border-radius:2px;
+    color:#fff;
+    font-family:inherit;
+    font-size:14px;
+    font-weight:700;
+    letter-spacing:0.04em;
+    cursor:pointer;
+    transition:background 0.12s;
+  }
+  #btn-export:hover{ background:var(--redline-dark); }
+  .export-note{
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:8px;
+    line-height:1.4;
+  }
+
+  /* ---------- logo / relief cards ---------- */
+  #btn-add-logo{
+    width:100%;
+    padding:9px 0;
+    background:transparent;
+    border:1.5px dashed var(--ink-soft);
+    border-radius:2px;
+    color:var(--ink-soft);
+    font-family:inherit;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    margin-bottom:10px;
+  }
+  #btn-add-logo:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-logo:disabled{ opacity:0.4; cursor:not-allowed; }
+  .logo-card{
+    border:1px solid var(--ink-soft);
+    border-radius:2px;
+    background:rgba(255,255,255,0.4);
+    padding:9px;
+    margin-bottom:10px;
+  }
+  .logo-card-head{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .logo-thumb{
+    width:30px; height:30px;
+    object-fit:cover;
+    border:1px solid var(--ink-soft);
+    background:#fff;
+    flex:0 0 auto;
+  }
+  .logo-face-select{
+    flex:1;
+    padding:5px 6px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    background:#fff;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:12px;
+    color:var(--ink);
+  }
+  .btn-remove-logo{
+    flex:0 0 auto;
+    width:24px; height:24px;
+    border:1.5px solid var(--redline);
+    background:transparent;
+    color:var(--redline);
+    border-radius:2px;
+    font-size:13px;
+    line-height:1;
+    cursor:pointer;
+  }
+  .btn-remove-logo:hover{ background:var(--redline); color:#fff; }
+  .logo-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px 10px;
+  }
+  .logo-field{ display:flex; align-items:center; justify-content:space-between; gap:5px; }
+  .logo-field label{ font-size:11px; color:var(--ink-soft); flex:1; }
+  .logo-field input[type=number]{
+    width:62px;
+    padding:4px 6px;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    background:#fff;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--redline-dark);
+    text-align:right;
+  }
+  .logo-invert-row{
+    display:flex; align-items:center; gap:6px;
+    margin-top:7px;
+    font-size:11px; color:var(--ink);
+  }
+  .logo-invert-row input{ width:14px; height:14px; accent-color:var(--redline); }
+
+  /* ---------- viewport (blueprint) ---------- */
+  #viewport-wrap{
+    flex:1;
+    position:relative;
+    background:var(--blueprint);
+  }
+  #viewport{ position:absolute; inset:0; }
+  #viewport canvas{ display:block; }
+
+  .dim-label{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    background:rgba(10,34,56,0.78);
+    color:var(--blueprint-line);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:2px 6px;
+    border:1px solid var(--blueprint-line);
+    border-radius:2px;
+    pointer-events:none;
+    white-space:nowrap;
+  }
+
+  .viewport-hint{
+    position:absolute;
+    bottom:12px; left:14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    color:rgba(160,210,235,0.55);
+    pointer-events:none;
+  }
+
+  .busy-indicator{
+    position:absolute;
+    top:12px; left:14px;
+    display:none;
+    align-items:center;
+    gap:7px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.03em;
+    color:var(--blueprint-line);
+    background:rgba(10,34,56,0.78);
+    border:1px solid var(--blueprint-line);
+    padding:5px 10px;
+    border-radius:2px;
+    pointer-events:none;
+  }
+  .busy-indicator .busy-dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--blueprint-line);
+    animation:busy-pulse 0.9s ease-in-out infinite;
+  }
+  @keyframes busy-pulse{ 0%,100%{opacity:0.25;} 50%{opacity:1;} }
+
+  #btn-reset-view{
+    position:absolute;
+    top:12px; right:14px;
+    background:rgba(10,34,56,0.7);
+    border:1px solid var(--blueprint-line);
+    color:var(--blueprint-line);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:11.5px;
+    padding:6px 10px;
+    border-radius:2px;
+    cursor:pointer;
+  }
+  #btn-reset-view:hover{ background:rgba(111,183,219,0.18); }
+
+  /* ---------- responsive: stack on narrow screens ---------- */
+  @media (max-width: 860px){
+    body{ flex-direction:column; }
+    #panel{
+      width:100%; min-width:0;
+      order:2;
+      border-right:none;
+      border-top:2px solid var(--ink);
+      max-height:54vh;
+    }
+    #viewport-wrap{ order:1; height:46vh; flex:none; }
+  }
+</style>
+</head>
+<body>
+
+  <div id="viewport-wrap">
+    <div id="viewport"></div>
+    <div id="busy-indicator" class="busy-indicator"><span class="busy-dot"></span>ГЕНЕРАЦИЯ…</div>
+    <button id="btn-reset-view">⤾ сбросить вид</button>
+    <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
+  </div>
+
+  <div id="panel">
+    <div class="titleblock">
+      <span class="tag">ЛИСТ 1 ИЗ 1</span>
+      <h1>STL-ГЕНЕРАТОР</h1>
+      <div class="sub">параметрические тела → экспорт STL · форма: <span id="active-shape-name" class="mono">—</span></div>
+    </div>
+
+    <div class="section-label">Параметры</div>
+    <div id="params-box" class="param-group" data-shape="box"></div>
+    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх).</div></div>
+    <div id="logo-section" class="param-group" data-shape="box">
+      <div class="section-label">Логотипы (рельеф на гранях)</div>
+      <div class="param-row">
+        <label class="param-label">Детализация (сплошной куб)</label>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
+      </div>
+      <div class="param-row">
+        <label class="param-label">Детализация (полый контейнер)</label>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="150" step="1" value="50"><span class="num-unit"></span></div>
+      </div>
+      <button id="btn-add-logo">+ Добавить логотип</button>
+      <input type="file" id="logo-file-input" accept="image/*" style="display:none">
+      <div id="logo-cards"></div>
+      <div class="export-note" id="logo-note">До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. У сплошного куба сетка сгущается зонально вокруг каждого логотипа, а не по всей грани, поэтому её детализацию можно поднимать высоко без взрыва числа треугольников. У полого контейнера и у борта/лотка зональной сетки пока нет — детализация там задаёт плотность сразу всей оболочки/полости (общая настройка «Детализация (полый контейнер)» на оба режима), поэтому её предел ниже и своя настройка отдельно от сплошного куба. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+    </div>
+
+    <div class="section-label">Поворот (для печати)</div>
+    <div class="param-row">
+      <label class="param-label">Вокруг X</label>
+      <div class="num-field"><input type="number" class="param-number" id="rx" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
+    </div>
+    <div class="param-row">
+      <label class="param-label">Вокруг Y</label>
+      <div class="num-field"><input type="number" class="param-number" id="ry" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
+    </div>
+    <div class="param-row">
+      <label class="param-label">Вокруг Z</label>
+      <div class="num-field"><input type="number" class="param-number" id="rz" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
+    </div>
+
+    <div class="section-label">Отображение</div>
+    <div class="shading-toggle">
+      <button id="shade-flat" class="active" data-mode="flat">Плоское</button>
+      <button id="shade-smooth" data-mode="smooth">Гладкое</button>
+    </div>
+    <label class="toggle-row"><input type="checkbox" id="toggle-wire"><span>Каркас (рёбра)</span></label>
+    <label class="toggle-row"><input type="checkbox" id="toggle-dims" checked><span>Размерные линии</span></label>
+    <div class="color-row">
+      <input type="color" id="color-picker" value="#b9c5cd">
+      <label for="color-picker">Цвет модели (только превью)</label>
+    </div>
+
+    <div class="section-label">Сводка</div>
+    <div class="stats-box">
+      <div class="stats-row"><span class="k">Треугольники</span><span class="v mono" id="stat-tris">—</span></div>
+      <div class="stats-row"><span class="k">Вершины</span><span class="v mono" id="stat-verts">—</span></div>
+      <div class="stats-row"><span class="k">Габариты (Ш×В×Г)</span><span class="v mono" id="stat-size">—</span></div>
+      <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
+    </div>
+
+    <div class="section-label">Экспорт</div>
+    <input type="text" id="filename" value="model" spellcheck="false">
+    <select id="export-format">
+      <option value="binary">Binary STL (компактный)</option>
+      <option value="ascii">ASCII STL (текстовый)</option>
+    </select>
+    <button id="btn-export">⬇ СКАЧАТЬ STL</button>
+    <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
+  </div>
+
+<script>
+/* =========================================================
+   GEOMETRY CORE (vector helpers + generators)
+   ========================================================= */
+function sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function cross(a, b) {
+  return [ a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0] ];
+}
+function vlength(a) { return Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]); }
+function normalize(a) { const l = vlength(a) || 1; return [a[0]/l, a[1]/l, a[2]/l]; }
+function faceNormal(tri) { return normalize(cross(sub(tri[1], tri[0]), sub(tri[2], tri[0]))); }
+function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function snap(p) { return p.map(c => Math.abs(c) < 1e-9 ? 0 : c); }
+function orient(tri, outward) {
+  const n = faceNormal(tri);
+  if (dot(n, outward) < 0) return [tri[0], tri[2], tri[1]];
+  return tri;
+}
+
+// Reusable, pure per-point taper transform (same math as taperBoxTris's internal
+// taperPoint, extracted so it can be evaluated per-vertex during face construction instead
+// of only as a post-process over an already-built triangle soup). Being a pure function of
+// (x,y,z) and the fixed box/taper parameters guarantees that two faces sharing a boundary
+// point in flat space still share it after tapering — stitching is automatic by
+// construction, not just empirically.
+function makeTaperPointFn(angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX, angYPlusZ, angYMinusX, angYMinusZ, hw, hh, hd) {
+  const height = 2*hh;
+  function clampedTan(deg, halfDim, budget) {
+    if (!deg) return 0;
+    const maxAngle = Math.atan((halfDim*budget)/height);
+    const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
+    return Math.tan(theta);
+  }
+  const tXP = clampedTan(angXPlus, hw, 0.85), tXM = clampedTan(angXMinus, hw, 0.85);
+  const tZP = clampedTan(angZPlus, hd, 0.85), tZM = clampedTan(angZMinus, hd, 0.85);
+  function clampedTanY(deg) {
+    if (!deg) return 0;
+    const maxAngle = Math.atan(0.5);
+    const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
+    return Math.tan(theta);
+  }
+  const tYPX = clampedTanY(angYPlusX), tYPZ = clampedTanY(angYPlusZ);
+  const tYMX = clampedTanY(angYMinusX), tYMZ = clampedTanY(angYMinusZ);
+  return function taperPoint(p) {
+    const hOff = p[1]+hh;
+    const wallXPlus = hw - hOff*tXP, wallXMinus = -hw + hOff*tXM;
+    const wallZPlus = hd - hOff*tZP, wallZMinus = -hd + hOff*tZM;
+    const ux = (p[0]+hw)/(2*hw), uz = (p[2]+hd)/(2*hd);
+    const x1 = wallXMinus + ux*(wallXPlus-wallXMinus);
+    const z1 = wallZMinus + uz*(wallZPlus-wallZMinus);
+    const bottomPlane = -hh + x1*tYMX + z1*tYMZ;
+    const topPlane = hh + x1*tYPX + z1*tYPZ;
+    const uy = (p[1]+hh)/(2*hh);
+    const y1 = bottomPlane + uy*(topPlane-bottomPlane);
+    return [x1, y1, z1];
+  };
+}
+
+// Breakpoint-aware grid helper for the SOLID box + logos: builds a 1D array of positions
+// along one axis where each requested logo "zone" gets `innerRes` fine subdivisions (so the
+// logo's own relief stays crisp) while everything OUTSIDE all zones collapses to a single
+// flat segment (no interior points) — instead of the old buildFaceUniformTapered behaviour
+// of spreading one fixed resolution across the ENTIRE face regardless of its size, which is
+// what made small logos on large faces come out as blocky pixels (e.g. a 16mm logo on a
+// 466mm face only got ~5 of the face's 50 total cells). Overlapping/adjacent zones are
+// merged first so they're never double-subdivided.
+//
+// AXIS_POINT_BUDGET is a defense-in-depth cap: this axis may receive a zone from EVERY logo
+// that touches it (across up to 4 different faces), so zoneCount*innerRes could otherwise
+// grow large enough to multiply into a huge per-face grid (nu*vu) even with a modest-looking
+// resolution value. When that product would exceed the budget, every zone's resolution is
+// scaled down together (never below a small usable floor) rather than left to grow
+// unbounded. It prevents OOM outright, but a build can still take multiple seconds well
+// below it — 300 was chosen from measured timings (see logo-resolution's UI max, which is
+// capped to match) to keep even adversarial cases under ~1s rather than just non-crashing.
+const AXIS_POINT_BUDGET = 300;
+function buildLogoAwareAxisPositions(halfLen, zones, innerRes) {
+  innerRes = Math.max(1, innerRes|0);
+  const clipped = zones
+    .map(([a,b]) => [Math.max(-halfLen, Math.min(a,b)), Math.min(halfLen, Math.max(a,b))])
+    .filter(([lo,hi]) => hi > lo + 1e-9)
+    .sort((p,q) => p[0]-q[0]);
+  const merged = [];
+  for (const z of clipped) {
+    const last = merged[merged.length-1];
+    if (last && z[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], z[1]);
+    else merged.push([z[0], z[1]]);
+  }
+  let effRes = innerRes;
+  if (merged.length >= 1 && merged.length * innerRes > AXIS_POINT_BUDGET) {
+    effRes = Math.max(4, Math.floor(AXIS_POINT_BUDGET / merged.length));
+  }
+  const positions = [-halfLen];
+  let cursor = -halfLen;
+  for (const [lo, hi] of merged) {
+    if (lo > cursor + 1e-9) positions.push(lo);
+    for (let i = 1; i <= effRes; i++) positions.push(lo + (hi-lo)*i/effRes);
+    cursor = hi;
+  }
+  if (cursor < halfLen - 1e-9) positions.push(halfLen);
+  const out = [positions[0]];
+  for (let i = 1; i < positions.length; i++) if (positions[i] > out[out.length-1] + 1e-9) out.push(positions[i]);
+  return out;
+}
+
+// Like buildFaceFromPositions, but applies taperFn per vertex and computes the LOCAL surface
+// normal via finite differences (not a fixed face normal) so relief still rises
+// perpendicular to a tilted/warped surface — the same displacement-map technique
+// buildFaceUniformTapered used, just decoupled from a fixed uniform resolution so it can
+// consume the non-uniform, zone-aware position arrays from buildLogoAwareAxisPositions.
+function buildFaceFromPositionsTapered(uAxis, vAxis, nAxis, nOffset, uPositions, vPositions, outward, dispFn, taperFn) {
+  const nu = uPositions.length, nv = vPositions.length;
+  const baseGrid = [];
+  for (let j = 0; j < nv; j++) {
+    const vv = vPositions[j];
+    const row = [];
+    for (let i = 0; i < nu; i++) {
+      const p = [0,0,0]; p[uAxis]=uPositions[i]; p[vAxis]=vv; p[nAxis]=nOffset;
+      row.push(taperFn(p));
+    }
+    baseGrid.push(row);
+  }
+  function localNormalAt(i, j) {
+    const left = baseGrid[j][Math.max(0,i-1)], right = baseGrid[j][Math.min(nu-1,i+1)];
+    const down = baseGrid[Math.max(0,j-1)][i], up = baseGrid[Math.min(nv-1,j+1)][i];
+    let n = cross(sub(right,left), sub(up,down));
+    if (vlength(n) < 1e-9) return outward;
+    n = normalize(n);
+    return dot(n, outward) < 0 ? [-n[0],-n[1],-n[2]] : n;
+  }
+  const grid = [];
+  for (let j = 0; j < nv; j++) {
+    const row = [];
+    for (let i = 0; i < nu; i++) {
+      const base = baseGrid[j][i];
+      const disp = dispFn ? dispFn(uPositions[i], vPositions[j], base) : 0;
+      let p = base;
+      if (disp) {
+        const n = localNormalAt(i,j);
+        p = [base[0]+n[0]*disp, base[1]+n[1]*disp, base[2]+n[2]*disp];
+      }
+      row.push(snap(p));
+    }
+    grid.push(row);
+  }
+  const tris = [];
+  for (let j = 0; j < nv-1; j++) {
+    for (let i = 0; i < nu-1; i++) {
+      const a=grid[j][i], b=grid[j][i+1], c=grid[j+1][i+1], dd=grid[j+1][i];
+      const refN = localNormalAt(i,j);
+      const n = cross(sub(b,a),sub(dd,a));
+      const flip = dot(n,refN) < 0;
+      if (!flip) { tris.push([a,b,c]); tris.push([a,c,dd]); }
+      else { tris.push([a,c,b]); tris.push([a,dd,c]); }
+    }
+  }
+  return tris;
+}
+
+// Sharp box assembled from 6 buildFaceFromPositionsTapered calls, all sharing the SAME
+// taperFn (so adjacent faces' boundary points always match exactly — see
+// makeTaperPointFn's stitching guarantee) AND the same 3 per-world-axis position arrays
+// (posByAxis) — every face pulls its u/v grid from whichever of those matches its own
+// uAxis/vAxis, so two faces meeting at an edge always agree on where that edge's sample
+// points fall. zonesByAxis (see computeLogoZonesByAxis) supplies, per world axis, the
+// flat-space intervals that need fine resolution for logo relief; everywhere else on the
+// box collapses to a single flat cell — see buildLogoAwareAxisPositions.
+function buildBoxWithLogos(w, h, d, resolution, logoDispFns, taperFn, zonesByAxis) {
+  const hw=w/2, hh=h/2, hd=d/2;
+  const halfByAxis = [hw, hh, hd];
+  const posByAxis = [0,1,2].map(ax => buildLogoAwareAxisPositions(halfByAxis[ax], (zonesByAxis && zonesByAxis[ax]) || [], resolution));
+  const faces = [
+    {name:'+X', uAxis:1,vAxis:2,nAxis:0,nOffset:hw,  outward:[1,0,0]},
+    {name:'-X', uAxis:1,vAxis:2,nAxis:0,nOffset:-hw, outward:[-1,0,0]},
+    {name:'+Y', uAxis:0,vAxis:2,nAxis:1,nOffset:hh,  outward:[0,1,0]},
+    {name:'-Y', uAxis:0,vAxis:2,nAxis:1,nOffset:-hh, outward:[0,-1,0]},
+    {name:'+Z', uAxis:0,vAxis:1,nAxis:2,nOffset:hd,  outward:[0,0,1]},
+    {name:'-Z', uAxis:0,vAxis:1,nAxis:2,nOffset:-hd, outward:[0,0,-1]},
+  ];
+  let tris = [];
+  for (const f of faces) {
+    const dispFn = logoDispFns && logoDispFns[f.name];
+    tris = tris.concat(buildFaceFromPositionsTapered(f.uAxis,f.vAxis,f.nAxis,f.nOffset, posByAxis[f.uAxis], posByAxis[f.vAxis], f.outward, dispFn, taperFn));
+  }
+  return tris;
+}
+
+// face-local (u,v) extents for each of the 6 box faces, used by the logo UI/clamping
+const BOX_FACE_DIMS = {
+  '+X': (p)=>({uLen:p.height, vLen:p.depth}),  '-X': (p)=>({uLen:p.height, vLen:p.depth}),
+  '+Y': (p)=>({uLen:p.width,  vLen:p.depth}),  '-Y': (p)=>({uLen:p.width,  vLen:p.depth}),
+  '+Z': (p)=>({uLen:p.width,  vLen:p.height}), '-Z': (p)=>({uLen:p.width,  vLen:p.height}),
+  // Inner floor of a hollow container's bottom, OR the pocket floor of "борт"/tray mode —
+  // same X/Z plane as '-Y' either way, but inset by the wall thickness on all four sides
+  // since the visible floor is the cavity/pocket's footprint, not the outer one. Only
+  // meaningful when hollow or rim mode is on (see buildHollowBox / buildRimBox).
+  '-Y-inner': (p)=>{ const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness); return { uLen: Math.max(2, p.width - 2*t), vLen: Math.max(2, p.depth - 2*t) }; },
+};
+// Same clamp buildHollowBox itself applies to wallThickness — shared so a logo's clamp
+// bounds and the actual built geometry can never disagree about where the inner floor is.
+function clampWallThickness(width, height, depth, wallThickness) {
+  const hw=width/2, hh=height/2, hd=depth/2;
+  const maxT = Math.min(hw, hd, hh) * 0.9;
+  return Math.max(0.1, Math.min(wallThickness||2, maxT));
+}
+// Same clamp buildRimBox applies to rimHeight — leaves at least 15% of the total height as a
+// solid base so "борт" always stays a shallow tray, never a full hollow-out.
+function clampRimHeight(height, rimHeight) {
+  return Math.max(0.5, Math.min(rimHeight||8, height*0.85));
+}
+// (uAxis,vAxis,nAxis,nOffset) per face name — same convention as buildBoxWithLogos/
+// buildHollowBox's own face lists, shared here so logo-frame construction and clamping
+// always agree with how the geometry is actually built.
+const FACE_AXES = {
+  '+X': (p)=>[1,2,0, p.width/2],  '-X': (p)=>[1,2,0,-p.width/2],
+  '+Y': (p)=>[0,2,1, p.height/2],'-Y': (p)=>[0,2,1,-p.height/2],
+  '+Z': (p)=>[0,1,2, p.depth/2], '-Z': (p)=>[0,1,2,-p.depth/2],
+  // Outward = +Y here (up, into whichever pocket is active) — nOffset depends on which mode
+  // is on: hollow mode's floor sits one wall-thickness above the outer BOTTOM; rim/tray
+  // mode's floor sits one rim-height below the outer TOP (see buildHollowBox / buildRimBox —
+  // this must exactly match whichever one actually builds the floor, or the logo would
+  // render floating above/sunk below it). Hollow wins if both are somehow on at once,
+  // matching buildTrisForShape's own priority.
+  '-Y-inner': (p)=> p.hollow
+    ? [0,2,1, -(p.height/2 - clampWallThickness(p.width, p.height, p.depth, p.wallThickness))]
+    : [0,2,1, p.height/2 - clampRimHeight(p.height, p.rimHeight)],
+};
+
+// ---- breakpoint-aware grid helpers (used by the hollow-container outer shell, so its
+// walls/bottom can carry logos while still stitching to the rim frame's fixed seams) ----
+function buildAxisPositions(halfLen, required, targetRes) {
+  const reqs = Array.from(new Set([-halfLen, halfLen, ...required.filter(v=>v>-halfLen+1e-9 && v<halfLen-1e-9)])).sort((a,b)=>a-b);
+  const total = 2*halfLen;
+  const positions = [reqs[0]];
+  for (let s = 0; s < reqs.length-1; s++) {
+    const segStart = reqs[s], segEnd = reqs[s+1];
+    const segLen = segEnd-segStart;
+    // Segments touching the absolute outer boundary are kept un-subdivided ONLY when there
+    // are genuine interior required breakpoints (reqs.length > 2) creating a real
+    // corner-band-vs-middle-band distinction. With no required breakpoints at all, the
+    // single full-range segment must subdivide normally.
+    const isOuterBoundarySegment = reqs.length > 2 && (s === 0 || s === reqs.length-2);
+    const segSubdivisions = isOuterBoundarySegment ? 1 : Math.max(1, Math.round(targetRes * segLen/total));
+    for (let i = 1; i <= segSubdivisions; i++) positions.push(segStart + segLen*i/segSubdivisions);
+  }
+  return positions;
+}
+function buildFaceFromPositions(uAxis, vAxis, nAxis, nOffset, uPositions, vPositions, outward, dispFn) {
+  const grid = [];
+  for (let j = 0; j < vPositions.length; j++) {
+    const vv = vPositions[j];
+    const row = [];
+    for (let i = 0; i < uPositions.length; i++) {
+      const uu = uPositions[i];
+      const p = [0,0,0]; p[uAxis]=uu; p[vAxis]=vv; p[nAxis]=nOffset;
+      const disp = dispFn ? dispFn(uu, vv, p) : 0;
+      p[0]+=outward[0]*disp; p[1]+=outward[1]*disp; p[2]+=outward[2]*disp;
+      row.push(snap(p));
+    }
+    grid.push(row);
+  }
+  const tris = [];
+  for (let j = 0; j < vPositions.length-1; j++) {
+    for (let i = 0; i < uPositions.length-1; i++) {
+      const a=grid[j][i], b=grid[j][i+1], c=grid[j+1][i+1], dd=grid[j+1][i];
+      const n = cross(sub(b,a),sub(dd,a));
+      const flip = dot(n,outward) < 0;
+      if (!flip) { tris.push([a,b,c]); tris.push([a,c,dd]); }
+      else { tris.push([a,c,b]); tris.push([a,dd,c]); }
+    }
+  }
+  return tris;
+}
+function midSlice(positions, lo, hi) { return positions.filter(v => v > lo-1e-7 && v < hi+1e-7); }
+
+function genBox(w, h, d, segW, segH, segD) {
+  segW = Math.max(1, segW|0); segH = Math.max(1, segH|0); segD = Math.max(1, segD|0);
+  const tris = [];
+  function buildFace(uAxis, vAxis, nAxis, nOffset, uLen, vLen, segU, segV, outward) {
+    for (let i = 0; i < segU; i++) {
+      for (let j = 0; j < segV; j++) {
+        const u0 = -uLen/2 + uLen*i/segU, u1 = -uLen/2 + uLen*(i+1)/segU;
+        const v0 = -vLen/2 + vLen*j/segV, v1 = -vLen/2 + vLen*(j+1)/segV;
+        const mk = (uu, vv) => { const p = [0,0,0]; p[uAxis]=uu; p[vAxis]=vv; p[nAxis]=nOffset; return p; };
+        const a = mk(u0,v0), b = mk(u1,v0), c = mk(u1,v1), dd = mk(u0,v1);
+        tris.push(orient([a,b,c], outward));
+        tris.push(orient([a,c,dd], outward));
+      }
+    }
+  }
+  buildFace(1,2,0,  w/2, h, d, segH, segD, [1,0,0]);
+  buildFace(1,2,0, -w/2, h, d, segH, segD, [-1,0,0]);
+  buildFace(0,2,1,  h/2, w, d, segW, segD, [0,1,0]);
+  buildFace(0,2,1, -h/2, w, d, segW, segD, [0,-1,0]);
+  buildFace(0,1,2,  d/2, w, h, segW, segH, [0,0,1]);
+  buildFace(0,1,2, -d/2, w, h, segW, segH, [0,0,-1]);
+  return tris;
+}
+
+function genRoundedBox(w, h, d, r, segW, segH, segD, filletSeg) {
+  const hw=w/2, hh=h/2, hd=d/2;
+  const minDim = Math.min(hw, hh, hd);
+  const maxR = minDim - Math.max(0.02, minDim*0.0025); // keep all inner extents strictly positive
+  r = Math.max(0, Math.min(r, maxR));
+  if (r < 1e-6) return genBox(w,h,d,segW,segH,segD);
+  filletSeg = Math.max(1, filletSeg|0);
+  segW = Math.max(1, segW|0); segH = Math.max(1, segH|0); segD = Math.max(1, segD|0);
+
+  const inExt = [hw-r, hh-r, hd-r];
+  const segOf = [segW, segH, segD];
+  const tris = [];
+
+  function buildFace(uAxis, vAxis, nAxis, nOffset, uLen, vLen, segU, segV, outward) {
+    for (let i = 0; i < segU; i++) {
+      for (let j = 0; j < segV; j++) {
+        const u0 = -uLen/2 + uLen*i/segU, u1 = -uLen/2 + uLen*(i+1)/segU;
+        const v0 = -vLen/2 + vLen*j/segV, v1 = -vLen/2 + vLen*(j+1)/segV;
+        const mk = (uu, vv) => { const p=[0,0,0]; p[uAxis]=uu; p[vAxis]=vv; p[nAxis]=nOffset; return p; };
+        const a=mk(u0,v0), b=mk(u1,v0), c=mk(u1,v1), dd=mk(u0,v1);
+        tris.push(orient([a,b,c], outward));
+        tris.push(orient([a,c,dd], outward));
+      }
+    }
+  }
+  buildFace(1,2,0,  hw, 2*inExt[1], 2*inExt[2], segH, segD, [1,0,0]);
+  buildFace(1,2,0, -hw, 2*inExt[1], 2*inExt[2], segH, segD, [-1,0,0]);
+  buildFace(0,2,1,  hh, 2*inExt[0], 2*inExt[2], segW, segD, [0,1,0]);
+  buildFace(0,2,1, -hh, 2*inExt[0], 2*inExt[2], segW, segD, [0,-1,0]);
+  buildFace(0,1,2,  hd, 2*inExt[0], 2*inExt[1], segW, segH, [0,0,1]);
+  buildFace(0,1,2, -hd, 2*inExt[0], 2*inExt[1], segW, segH, [0,0,-1]);
+
+  function buildEdgeCylinder(axisA, axisB, axisC, sb, sc) {
+    const inA = inExt[axisA], inB = inExt[axisB], inC = inExt[axisC];
+    const lenSeg = segOf[axisA];
+    const grid = [];
+    for (let i = 0; i <= lenSeg; i++) {
+      const a = -inA + 2*inA*i/lenSeg;
+      const row = [];
+      for (let j = 0; j <= filletSeg; j++) {
+        const theta = (Math.PI/2)*j/filletSeg;
+        const b = sb*(inB + r*Math.cos(theta));
+        const c = sc*(inC + r*Math.sin(theta));
+        const p=[0,0,0]; p[axisA]=a; p[axisB]=b; p[axisC]=c;
+        row.push(snap(p));
+      }
+      grid.push(row);
+    }
+    for (let i = 0; i < lenSeg; i++) {
+      for (let j = 0; j < filletSeg; j++) {
+        const p00=grid[i][j], p01=grid[i][j+1], p10=grid[i+1][j], p11=grid[i+1][j+1];
+        const thetaMid = (Math.PI/2)*(j+0.5)/filletSeg;
+        const outward=[0,0,0]; outward[axisB]=sb*Math.cos(thetaMid); outward[axisC]=sc*Math.sin(thetaMid);
+        tris.push(orient([p00,p10,p11], outward));
+        tris.push(orient([p00,p11,p01], outward));
+      }
+    }
+  }
+  for (const sy of [-1,1]) for (const sz of [-1,1]) buildEdgeCylinder(0,1,2, sy, sz);
+  for (const sz of [-1,1]) for (const sx of [-1,1]) buildEdgeCylinder(1,2,0, sz, sx);
+  for (const sx of [-1,1]) for (const sy of [-1,1]) buildEdgeCylinder(2,0,1, sx, sy);
+
+  function buildCornerOctant(sx, sy, sz) {
+    const center = [sx*inExt[0], sy*inExt[1], sz*inExt[2]];
+    const seg = filletSeg;
+    const grid = [];
+    for (let iv = 0; iv <= seg; iv++) {
+      const v = (Math.PI/2)*iv/seg;
+      const row = [];
+      for (let iu = 0; iu <= seg; iu++) {
+        const u = (Math.PI/2)*iu/seg;
+        const dx = Math.cos(u)*Math.cos(v), dy = Math.sin(u)*Math.cos(v), dz = Math.sin(v);
+        const dir = [sx*dx, sy*dy, sz*dz];
+        const p = [center[0]+r*dir[0], center[1]+r*dir[1], center[2]+r*dir[2]];
+        row.push({p: snap(p), dir});
+      }
+      grid.push(row);
+    }
+    for (let iv = 0; iv < seg; iv++) {
+      for (let iu = 0; iu < seg; iu++) {
+        const a=grid[iv][iu+1], b=grid[iv+1][iu+1], c=grid[iv+1][iu], dd=grid[iv][iu];
+        tris.push(orient([dd.p,b.p,a.p], dd.dir));
+        if (iv !== seg-1) tris.push(orient([dd.p,c.p,b.p], dd.dir));
+      }
+    }
+  }
+  for (const sx of [-1,1]) for (const sy of [-1,1]) for (const sz of [-1,1]) buildCornerOctant(sx,sy,sz);
+
+  return tris;
+}
+
+// Tapers a box (or rounded box): the 4 side walls (X+/X-/Z+/Z-) lean inward/outward along
+// height (existing behaviour), and additionally the top/bottom walls (Y+/Y-) can tilt along
+// X and/or Z, turning them from flat horizontal faces into slanted planes (wedge/lectern-
+// style cuts). Applied as a post-transform on the already-built triangle soup.
+//
+// Implemented as two SEQUENTIAL stages (not two independent, simultaneous formulas): stage 1
+// computes the X/Z taper exactly as before; stage 2 then tilts Y using the stage-1 output.
+// This keeps the combined Jacobian a simple product of two independently-positive factors
+// (proven analytically, also verified empirically) rather than a chain of cross-terms that
+// could otherwise risk flipping a triangle's winding when several tilts combine. Each wall
+// stays planar, so the result is always convex; watertightness is automatic since this is a
+// deterministic function (identical inputs always map to identical outputs).
+function taperBoxTris(tris, angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX, angYPlusZ, angYMinusX, angYMinusZ, hw, hh, hd) {
+  if (!angXPlus && !angXMinus && !angZPlus && !angZMinus && !angYPlusX && !angYPlusZ && !angYMinusX && !angYMinusZ) return tris;
+  const height = 2*hh;
+  function clampedTan(deg, halfDim, budget) {
+    if (!deg) return 0;
+    const maxAngle = Math.atan((halfDim*budget)/height);
+    const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
+    return Math.tan(theta);
+  }
+  // side walls: each may move in by up to 85% of its half-dimension over the full height
+  const tXP = clampedTan(angXPlus, hw, 0.85), tXM = clampedTan(angXMinus, hw, 0.85);
+  const tZP = clampedTan(angZPlus, hd, 0.85), tZM = clampedTan(angZMinus, hd, 0.85);
+  // top/bottom tilt: more conservative budget since a flared side-taper can push the
+  // stage-1 x/z beyond the original hw/hd, and this stage acts on that stage-1 output.
+  function clampedTanY(deg, halfDim) {
+    if (!deg) return 0;
+    const maxAngle = Math.atan(0.5); // tilt plane moves at most halfDim per halfDim of run, well clear of vertical
+    const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
+    return Math.tan(theta);
+  }
+  const tYPX = clampedTanY(angYPlusX, hw), tYPZ = clampedTanY(angYPlusZ, hd);
+  const tYMX = clampedTanY(angYMinusX, hw), tYMZ = clampedTanY(angYMinusZ, hd);
+
+  function taperPoint(p) {
+    // stage 1: X/Z side-wall taper (uses the ORIGINAL y)
+    const hOff = p[1]+hh;
+    const wallXPlus = hw - hOff*tXP, wallXMinus = -hw + hOff*tXM;
+    const wallZPlus = hd - hOff*tZP, wallZMinus = -hd + hOff*tZM;
+    const ux = (p[0]+hw)/(2*hw), uz = (p[2]+hd)/(2*hd);
+    const x1 = wallXMinus + ux*(wallXPlus-wallXMinus);
+    const z1 = wallZMinus + uz*(wallZPlus-wallZMinus);
+    // stage 2: top/bottom tilt (uses the STAGE-1 x1,z1 as the tilt basis)
+    const bottomPlane = -hh + x1*tYMX + z1*tYMZ;
+    const topPlane = hh + x1*tYPX + z1*tYPZ;
+    const uy = (p[1]+hh)/(2*hh);
+    const y1 = bottomPlane + uy*(topPlane-bottomPlane);
+    return [x1, y1, z1];
+  }
+  return tris.map(tri => tri.map(taperPoint));
+}
+
+function addQuad(tris, uAxis,vAxis,nAxis,nOffset,u0,u1,v0,v1,outward,taperFn) {
+  const mk=(uu,vv)=>{const p=[0,0,0];p[uAxis]=uu;p[vAxis]=vv;p[nAxis]=nOffset;return p;};
+  let a=mk(u0,v0),b=mk(u1,v0),c=mk(u1,v1),dd=mk(u0,v1);
+  if (taperFn) { a=taperFn(a); b=taperFn(b); c=taperFn(c); dd=taperFn(dd); }
+  tris.push(orient([a,b,c],outward));
+  tris.push(orient([a,c,dd],outward));
+}
+
+// Open-top hollow box: outer shell (5 faces, no outer top — bottom + 4 walls, each able to
+// carry logo relief) + inner cavity (4 walls + inner bottom, normals facing INTO the
+// cavity) + a flat "rim" frame at y=+hh connecting the outer top edge to the inner top
+// edge (the opening). Every piece that shares a seam (wall-to-bottom, wall-to-rim,
+// rim-to-cavity) reuses the SAME explicit position array for that shared axis — built once
+// via buildAxisPositions — so edges match by construction rather than by two independent
+// proportional calculations coincidentally agreeing. taperFn (identity when no taper is
+// set) is applied to every piece via buildFaceFromPositionsTapered/addQuad's tapered
+// corners — since inner-cavity points use the SAME taperFn on their own (wall-thickness-
+// inset) flat coordinates, the inner surface follows the outer one proportionally as it
+// tapers rather than at a fixed perpendicular offset, but every shared seam still matches
+// exactly (same flat input -> same taperFn output, everywhere).
+/* =========================================================
+   ASYMMETRIC ROUNDED BOX — independent edge radii, watertight.
+   Exposed in the UI as 3 groups (top / bottom / vertical) that build the full
+   12-radius R structure. Reuses the vec helpers above (sub/cross/dot/normalize/
+   orient). Derivation + Node manifold tests: asym-12-radius.js / NOTES.md.
+   ========================================================= */
+function idx(s) { return s > 0 ? 1 : 0; }
+function cornerMinR(sx, sy, sz, R) {
+  const ix=idx(sx), iy=idx(sy), iz=idx(sz);
+  return Math.min(R.rX[iy+','+iz], R.rY[ix+','+iz], R.rZ[ix+','+iy]);
+}
+function rhoAt(t, alongHalf, ownR, rMinus, rPlus) {
+  const distToMinus = t - (-alongHalf), distToPlus = alongHalf - t;
+  return Math.min(ownR, distToMinus, distToPlus);
+}
+function buildFilletAxisPositions(halfLen, edgeSpecs, resolution, allRadiusValues) {
+  const breakpoints = new Set([-halfLen, halfLen]);
+  for (const {ownR, rMinus, rPlus} of edgeSpecs) {
+    breakpoints.add(-halfLen + rMinus);
+    breakpoints.add(-halfLen + ownR);
+    breakpoints.add(halfLen - ownR);
+    breakpoints.add(halfLen - rPlus);
+  }
+  for (const v of allRadiusValues) {
+    breakpoints.add(halfLen - v);
+    breakpoints.add(-(halfLen - v));
+  }
+  const sorted = [...breakpoints].filter(v => v >= -halfLen-1e-9 && v <= halfLen+1e-9).sort((a,b)=>a-b);
+  const total = 2*halfLen;
+  const positions = [sorted[0]];
+  for (let s = 0; s < sorted.length-1; s++) {
+    const segStart = sorted[s], segEnd = sorted[s+1], segLen = segEnd-segStart;
+    if (segLen < 1e-9) continue;
+    const subdivisions = Math.max(1, Math.round(resolution * segLen/total));
+    for (let i = 1; i <= subdivisions; i++) positions.push(segStart + segLen*i/subdivisions);
+  }
+  const out = [positions[0]];
+  for (let i = 1; i < positions.length; i++) if (positions[i] > out[out.length-1]+1e-9) out.push(positions[i]);
+  return out;
+}
+function buildEdgeCylinderFromAxis(axis, s1, s2, hw, hh, hd, R, alongPositions, segs) {
+  segs = segs || 12;
+  let along, alongHalf, bAxis,bSign,bHalf, cAxis,cSign,cHalf, ownR, cornerAt;
+  if (axis === 'X') {
+    along=0; alongHalf=hw; bAxis=1;bSign=s1;bHalf=hh; cAxis=2;cSign=s2;cHalf=hd;
+    ownR = R.rX[idx(s1)+','+idx(s2)]; cornerAt = (sx) => cornerMinR(sx, s1, s2, R);
+  } else if (axis === 'Y') {
+    along=1; alongHalf=hh; bAxis=0;bSign=s1;bHalf=hw; cAxis=2;cSign=s2;cHalf=hd;
+    ownR = R.rY[idx(s1)+','+idx(s2)]; cornerAt = (sy) => cornerMinR(s1, sy, s2, R);
+  } else {
+    along=2; alongHalf=hd; bAxis=0;bSign=s1;bHalf=hw; cAxis=1;cSign=s2;cHalf=hh;
+    ownR = R.rZ[idx(s1)+','+idx(s2)]; cornerAt = (sz) => cornerMinR(s1, s2, sz, R);
+  }
+  const rMinus = cornerAt(-1), rPlus = cornerAt(1);
+  if (ownR < 1e-6) return [];
+  const aStart = -alongHalf + rMinus, aEnd = alongHalf - rPlus;
+  const ts = alongPositions.filter(v => v >= aStart-1e-7 && v <= aEnd+1e-7);
+  const grid = [];
+  for (const t of ts) {
+    const rho = rhoAt(t, alongHalf, ownR, rMinus, rPlus);
+    const row = [];
+    for (let j = 0; j <= segs; j++) {
+      const beta = (Math.PI/2)*j/segs;
+      const p = [0,0,0];
+      p[along] = t;
+      p[bAxis] = bSign*(bHalf - rho*(1-Math.cos(beta)));
+      p[cAxis] = cSign*(cHalf - rho*(1-Math.sin(beta)));
+      row.push(p);
+    }
+    grid.push(row);
+  }
+  const outwardMid = [0,0,0]; outwardMid[bAxis]=bSign*0.7071; outwardMid[cAxis]=cSign*0.7071;
+  const tris = [];
+  // Sharp adjacent edge (cornerMin=0): rim tapers to a single corner point, so the last row
+  // collapses. Skipping zero-area triangles fans that tip cleanly (a degenerate quad would
+  // double-count the tip edges -> a spurious non-manifold "bad" edge).
+  const pushTri = (tri) => {
+    const n = cross(sub(tri[1],tri[0]), sub(tri[2],tri[0]));
+    if (n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-14) return;
+    tris.push(orient(tri, outwardMid));
+  };
+  for (let i = 0; i < ts.length-1; i++) {
+    for (let j = 0; j < segs; j++) {
+      const a=grid[i][j], b=grid[i][j+1], c=grid[i+1][j+1], d=grid[i+1][j];
+      pushTri([a,b,c]);
+      pushTri([a,c,d]);
+    }
+  }
+  return tris;
+}
+function buildCornerSphere(sx, sy, sz, hw, hh, hd, R, segs) {
+  segs = segs || 12;
+  const r = cornerMinR(sx, sy, sz, R);
+  if (r < 1e-6) return [];
+  const cx = sx*(hw-r), cy = sy*(hh-r), cz = sz*(hd-r);
+  const grid = [];
+  for (let i = 0; i <= segs; i++) {
+    const theta = (Math.PI/2)*i/segs;
+    const row = [];
+    for (let j = 0; j <= segs; j++) {
+      const phi = (Math.PI/2)*j/segs;
+      const dx = Math.sin(theta)*Math.cos(phi), dy=Math.cos(theta), dz=Math.sin(theta)*Math.sin(phi);
+      row.push([cx+sx*r*dx, cy+sy*r*dy, cz+sz*r*dz]);
+    }
+    grid.push(row);
+  }
+  const outward = normalize([sx,sy,sz]);
+  const tris = [];
+  const pole = grid[0][0];
+  for (let j = 0; j < segs; j++) {
+    tris.push(orient([pole, grid[1][j+1], grid[1][j]], outward));
+  }
+  for (let i = 1; i < segs; i++) for (let j = 0; j < segs; j++) {
+    const a=grid[i][j], b=grid[i][j+1], c=grid[i+1][j+1], d=grid[i+1][j];
+    tris.push(orient([a,b,c], outward));
+    tris.push(orient([a,c,d], outward));
+  }
+  return tris;
+}
+// Flat face = grid over the SHARED per-axis arrays, each cell clipped to the region that
+// stays outside all four tapered edge cylinders. The clip boundary per edge is IDENTICAL to
+// the cylinder's tangent rim u = uHalf - min(ownR, distToCorner+, distToCorner-), so face and
+// cylinders share one limit curve by construction. Within a cell each min() is one linear
+// piece (switches lie on grid lines), so Sutherland-Hodgman clips it exactly and adjacent
+// cells agree on shared edges -> interior watertight.
+function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outward, insetU, insetV, uPositionsFull, vPositionsFull, dispFn) {
+  const EPS = 1e-7;
+  const mk = (uu, vv) => { const p=[0,0,0]; p[uAxis]=uu; p[vAxis]=vv; p[nAxis]=nOffset; return p; };
+  // Logo relief: displace each vertex along the (flat, constant) face normal by the heightmap value at
+  // its (u,v). Winding is fixed from the FLAT triangle (orient below) BEFORE displacing, so the relief's
+  // vertical walls inherit a consistent winding. A shared grid vertex gets the same displacement in every
+  // cell (dispFn is a pure function of u,v) -> the relief stays watertight. dispFn must be 0 near the face
+  // edges (logos are clamped into the flat interior) so the seam with the edge cylinders is untouched.
+  const disp = dispFn ? (p => { const d = dispFn(p[uAxis], p[vAxis], p); return d ? [p[0]+outward[0]*d, p[1]+outward[1]*d, p[2]+outward[2]*d] : p; }) : (p => p);
+  const marginUp = (u,v) => (uHalf - Math.min(insetU.plus,  vHalf - v, vHalf + v)) - u;
+  const marginUm = (u,v) => u + (uHalf - Math.min(insetU.minus, vHalf - v, vHalf + v));
+  const marginVp = (u,v) => (vHalf - Math.min(insetV.plus,  uHalf - u, uHalf + u)) - v;
+  const marginVm = (u,v) => v + (vHalf - Math.min(insetV.minus, uHalf - u, uHalf + u));
+  const sides = [marginUp, marginUm, marginVp, marginVm];
+  const inF = (u,v) => sides.every(f => f(u,v) >= -EPS);
+  const dedup = a => a.slice().sort((x,y)=>x-y).filter((x,i,arr)=> i===0 || x > arr[i-1]+1e-9);
+  const uPos = dedup(uPositionsFull), vPos = dedup(vPositionsFull);
+  function clip(poly, f) {
+    const out = [];
+    for (let i=0;i<poly.length;i++){
+      const A=poly[i], C=poly[(i+1)%poly.length];
+      const da=f(A[0],A[1]), db=f(C[0],C[1]);
+      const ain = da >= -EPS, bin = db >= -EPS;
+      if (ain) out.push(A);
+      if (ain !== bin) { const t=da/(da-db); out.push([A[0]+(C[0]-A[0])*t, A[1]+(C[1]-A[1])*t]); }
+    }
+    return out;
+  }
+  const dedupPoly = poly => {
+    const out=[];
+    for (let i=0;i<poly.length;i++){ const p=poly[i], q=poly[(i+1)%poly.length];
+      if (Math.abs(p[0]-q[0])>1e-9 || Math.abs(p[1]-q[1])>1e-9) out.push(p); }
+    return out;
+  };
+  const tris = [];
+  for (let j=0;j<vPos.length-1;j++){
+    for (let i=0;i<uPos.length-1;i++){
+      const u0=uPos[i],u1=uPos[i+1],v0=vPos[j],v1=vPos[j+1];
+      let poly=[[u0,v0],[u1,v0],[u1,v1],[u0,v1]];
+      const nin=poly.filter(c=>inF(c[0],c[1])).length;
+      if (nin===0) continue;
+      if (nin!==4) { for (const f of sides){ poly=clip(poly,f); if (poly.length<3) break; } }
+      poly=dedupPoly(poly);
+      if (poly.length<3) continue;
+      for (let k=1;k<poly.length-1;k++){
+        const area=Math.abs((poly[k][0]-poly[0][0])*(poly[k+1][1]-poly[0][1])-(poly[k+1][0]-poly[0][0])*(poly[k][1]-poly[0][1]));
+        if (area<1e-9) continue;
+        tris.push(orient([mk(poly[0][0],poly[0][1]), mk(poly[k][0],poly[k][1]), mk(poly[k+1][0],poly[k+1][1])], outward).map(disp));
+      }
+    }
+  }
+  return tris;
+}
+function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesByAxis, logoRes) {
+  const hw=w/2, hh=h/2, hd=d/2;
+  resolution = resolution || 10;
+  logoRes = logoRes || resolution;
+  let tris = [];
+  function edgeSpec(axis, s1, s2) {
+    let alongHalf, ownR, cornerAt;
+    if (axis==='X') { alongHalf=hw; ownR=R.rX[idx(s1)+','+idx(s2)]; cornerAt=(sx)=>cornerMinR(sx,s1,s2,R); }
+    else if (axis==='Y') { alongHalf=hh; ownR=R.rY[idx(s1)+','+idx(s2)]; cornerAt=(sy)=>cornerMinR(s1,sy,s2,R); }
+    else { alongHalf=hd; ownR=R.rZ[idx(s1)+','+idx(s2)]; cornerAt=(sz)=>cornerMinR(s1,s2,sz,R); }
+    return { ownR, rMinus:cornerAt(-1), rPlus:cornerAt(1) };
+  }
+  const xSpecs = [[1,1],[1,-1],[-1,1],[-1,-1]].map(([sy,sz])=>edgeSpec('X',sy,sz));
+  const ySpecs = [[1,1],[1,-1],[-1,1],[-1,-1]].map(([sx,sz])=>edgeSpec('Y',sx,sz));
+  const zSpecs = [[1,1],[1,-1],[-1,1],[-1,-1]].map(([sx,sy])=>edgeSpec('Z',sx,sy));
+  const allRadiusValues = [
+    R.rX['0,0'],R.rX['0,1'],R.rX['1,0'],R.rX['1,1'],
+    R.rY['0,0'],R.rY['0,1'],R.rY['1,0'],R.rY['1,1'],
+    R.rZ['0,0'],R.rZ['0,1'],R.rZ['1,0'],R.rZ['1,1'],
+  ];
+  let xPositions = buildFilletAxisPositions(hw, xSpecs, resolution, allRadiusValues);
+  let yPositions = buildFilletAxisPositions(hh, ySpecs, resolution, allRadiusValues);
+  let zPositions = buildFilletAxisPositions(hd, zSpecs, resolution, allRadiusValues);
+  // Logo relief needs a fine grid where a logo sits. Add logoRes subdivisions across each logo zone
+  // (flat u/v footprint per world axis) to the shared position arrays — same idea as the sharp-box
+  // buildLogoAwareAxisPositions, but merged into the fillet grid. Extra interior points are harmless to
+  // the edge cylinders (more rim subdivisions) and the diagonal sync runs afterwards over the result.
+  if (zonesByAxis) {
+    addLogoZonesToAxis(xPositions, hw, zonesByAxis[0], logoRes);
+    addLogoZonesToAxis(yPositions, hh, zonesByAxis[1], logoRes);
+    addLogoZonesToAxis(zPositions, hd, zonesByAxis[2], logoRes);
+    xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
+  }
+  // A corner's chamfer diagonal is the 45deg line signV*v - signU*u = vHalf - uHalf (radius-
+  // independent). The flat face lands a vertex where it crosses a grid line of EITHER axis;
+  // each cylinder subdivides its rim only along its OWN axis. So every crossing must be a
+  // breakpoint on BOTH axes or the face gets a vertex the cylinder's long edge spans (a
+  // T-junction). Map each near-corner breakpoint to its partner axis; iterate to a fixed
+  // point because the three axis-pairs feed each other.
+  function syncDiagonal(uArr, vArr, uHalf, vHalf, iU, iV, signU, signV) {
+    const hi = Math.max(iU, iV) + 1e-7;
+    const lineConst = vHalf - uHalf;
+    const addTo = (arr, halfLen, val) => { const c=Math.max(-halfLen,Math.min(halfLen,val)); if (!arr.some(x=>Math.abs(x-c)<1e-7)) { arr.push(c); return true; } return false; };
+    let changed = false;
+    for (const u of uArr.slice()) {
+      const dist = uHalf - signU*u;
+      if (dist < -1e-7 || dist > hi) continue;
+      if (addTo(vArr, vHalf, signV*(signU*u + lineConst))) changed = true;
+    }
+    for (const v of vArr.slice()) {
+      const dist = vHalf - signV*v;
+      if (dist < -1e-7 || dist > hi) continue;
+      if (addTo(uArr, uHalf, signU*(signV*v - lineConst))) changed = true;
+    }
+    return changed;
+  }
+  let syncGuard = 0, syncChanged = true;
+  while (syncChanged && syncGuard++ < 30) {
+    syncChanged = false;
+    for (const sy of [1,-1]) for (const sz of [1,-1]) for (const sx of [1,-1]) {
+      if (syncDiagonal(xPositions, zPositions, hw, hd, R.rZ[idx(sx)+','+idx(sy)], R.rX[idx(sy)+','+idx(sz)], sx, sz)) syncChanged = true;
+      if (syncDiagonal(xPositions, yPositions, hw, hh, R.rY[idx(sx)+','+idx(sz)], R.rZ[idx(sx)+','+idx(sy)], sx, sy)) syncChanged = true;
+      if (syncDiagonal(yPositions, zPositions, hh, hd, R.rX[idx(sy)+','+idx(sz)], R.rY[idx(sx)+','+idx(sz)], sy, sz)) syncChanged = true;
+    }
+  }
+  xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
+  const faceDefs = [
+    { name:'+X', uAxis:1,vAxis:2,nAxis:0,nOffset:hw, uHalf:hh,vHalf:hd, outward:[1,0,0], uPos:yPositions, vPos:zPositions,
+      insetU:{plus:R.rZ['1,1'], minus:R.rZ['1,0']}, insetV:{plus:R.rY['1,1'], minus:R.rY['1,0']} },
+    { name:'-X', uAxis:1,vAxis:2,nAxis:0,nOffset:-hw, uHalf:hh,vHalf:hd, outward:[-1,0,0], uPos:yPositions, vPos:zPositions,
+      insetU:{plus:R.rZ['0,1'], minus:R.rZ['0,0']}, insetV:{plus:R.rY['0,1'], minus:R.rY['0,0']} },
+    { name:'+Y', uAxis:0,vAxis:2,nAxis:1,nOffset:hh, uHalf:hw,vHalf:hd, outward:[0,1,0], uPos:xPositions, vPos:zPositions,
+      insetU:{plus:R.rZ['1,1'], minus:R.rZ['0,1']}, insetV:{plus:R.rX['1,1'], minus:R.rX['1,0']} },
+    { name:'-Y', uAxis:0,vAxis:2,nAxis:1,nOffset:-hh, uHalf:hw,vHalf:hd, outward:[0,-1,0], uPos:xPositions, vPos:zPositions,
+      insetU:{plus:R.rZ['1,0'], minus:R.rZ['0,0']}, insetV:{plus:R.rX['0,1'], minus:R.rX['0,0']} },
+    { name:'+Z', uAxis:0,vAxis:1,nAxis:2,nOffset:hd, uHalf:hw,vHalf:hh, outward:[0,0,1], uPos:xPositions, vPos:yPositions,
+      insetU:{plus:R.rY['1,1'], minus:R.rY['0,1']}, insetV:{plus:R.rX['1,1'], minus:R.rX['0,1']} },
+    { name:'-Z', uAxis:0,vAxis:1,nAxis:2,nOffset:-hd, uHalf:hw,vHalf:hh, outward:[0,0,-1], uPos:xPositions, vPos:yPositions,
+      insetU:{plus:R.rY['1,0'], minus:R.rY['0,0']}, insetV:{plus:R.rX['1,0'], minus:R.rX['0,0']} },
+  ];
+  for (const f of faceDefs) {
+    const dfn = dispFnsByFace && dispFnsByFace[f.name];
+    tris = tris.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn));
+  }
+  for (const [s1,s2] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    tris = tris.concat(buildEdgeCylinderFromAxis('X', s1, s2, hw,hh,hd, R, xPositions, segs));
+    tris = tris.concat(buildEdgeCylinderFromAxis('Y', s1, s2, hw,hh,hd, R, yPositions, segs));
+    tris = tris.concat(buildEdgeCylinderFromAxis('Z', s1, s2, hw,hh,hd, R, zPositions, segs));
+  }
+  for (const sx of [1,-1]) for (const sy of [1,-1]) for (const sz of [1,-1]) {
+    tris = tris.concat(buildCornerSphere(sx,sy,sz, hw,hh,hd, R, segs));
+  }
+  return tris;
+}
+// Build the 12-radius R from the 3 UI groups (top / bottom / vertical), clamped so no edge
+// radius exceeds the room available on its two perpendicular half-dimensions (else insets
+// would cross and the mesh self-intersects). rX[iy,iz], rY[ix,iz], rZ[ix,iy]; iy=1 -> top.
+function asymRadiiFromGroups(rTop, rBottom, rVert, hw, hh, hd) {
+  const K = 0.98; // stay just under the geometric limit — AT the limit a flat face collapses to a knife edge (non-manifold)
+  const limH = Math.min(hw, hh, hd) * K; // top/bottom edges curve into Y too, so also bounded by half-height
+  const limV = Math.min(hw, hd) * K;     // vertical edges span Y, bounded only by half-width/-depth
+  rTop = Math.max(0, Math.min(rTop, limH));
+  rBottom = Math.max(0, Math.min(rBottom, limH));
+  rVert = Math.max(0, Math.min(rVert, limV));
+  const RSNAP = 0.1; // a sub-0.1 fillet is a numerically fragile sliver (UI step is 0.5); snap it to a sharp edge
+  if (rTop < RSNAP) rTop = 0;
+  if (rBottom < RSNAP) rBottom = 0;
+  if (rVert < RSNAP) rVert = 0;
+  return {
+    rX: {'1,0':rTop, '1,1':rTop, '0,0':rBottom, '0,1':rBottom},
+    rZ: {'1,1':rTop, '0,1':rTop, '1,0':rBottom, '0,0':rBottom},
+    rY: {'0,0':rVert, '0,1':rVert, '1,0':rVert, '1,1':rVert},
+  };
+}
+
+/* =========================================================
+   ROUNDED HOLLOW CONTAINER — watertight, built by composing the asym primitives above.
+   Outer shell (rounded bottom + vertical edges, open sharp-rim top) and an inner cavity
+   shell (rounded floor + vertical edges, inward normals, floor at -hh+t) share ONE set of
+   x/z position arrays (+ per-shell y arrays), so every seam matches. A flat rim frame at
+   y=hh joins the two. Top edges are kept sharp (flat rim) in this version. Prototype +
+   Node manifold stress: scratchpad asym-hollow-v2.js (2000/2000 watertight).
+   ========================================================= */
+function asymSyncDiagonalPair(uArr, vArr, uHalf, vHalf, iU, iV, sU, sV) {
+  const hi = Math.max(iU, iV) + 1e-7, lc = vHalf - uHalf;
+  const addTo = (arr, hl, val) => { const c=Math.max(-hl,Math.min(hl,val)); if (!arr.some(x=>Math.abs(x-c)<1e-7)) { arr.push(c); return true; } return false; };
+  let ch=false;
+  for (const u of uArr.slice()) { const dist=uHalf-sU*u; if (dist<-1e-7||dist>hi) continue; if (addTo(vArr,vHalf,sV*(sU*u+lc))) ch=true; }
+  for (const v of vArr.slice()) { const dist=vHalf-sV*v; if (dist<-1e-7||dist>hi) continue; if (addTo(uArr,uHalf,sU*(sV*v-lc))) ch=true; }
+  return ch;
+}
+function asymAllRadii(R){ return [R.rX['0,0'],R.rX['0,1'],R.rX['1,0'],R.rX['1,1'],R.rY['0,0'],R.rY['0,1'],R.rY['1,0'],R.rY['1,1'],R.rZ['0,0'],R.rZ['0,1'],R.rZ['1,0'],R.rZ['1,1']]; }
+function asymEdgeSpecs(R){
+  const es=(axis,s1,s2)=>{ let ownR,cornerAt;
+    if(axis==='X'){ownR=R.rX[idx(s1)+','+idx(s2)];cornerAt=(sx)=>cornerMinR(sx,s1,s2,R);}
+    else if(axis==='Y'){ownR=R.rY[idx(s1)+','+idx(s2)];cornerAt=(sy)=>cornerMinR(s1,sy,s2,R);}
+    else{ownR=R.rZ[idx(s1)+','+idx(s2)];cornerAt=(sz)=>cornerMinR(s1,s2,sz,R);}
+    return {ownR,rMinus:cornerAt(-1),rPlus:cornerAt(1)}; };
+  return { X:[[1,1],[1,-1],[-1,1],[-1,-1]].map(([a,b])=>es('X',a,b)),
+           Y:[[1,1],[1,-1],[-1,1],[-1,-1]].map(([a,b])=>es('Y',a,b)),
+           Z:[[1,1],[1,-1],[-1,1],[-1,-1]].map(([a,b])=>es('Z',a,b)) };
+}
+// Add logoRes subdivisions across each logo zone [lo,hi] on an axis position array (in place, deduped).
+function addLogoZonesToAxis(arr, half, zones, logoRes) {
+  for (const z of (zones||[])) {
+    const lo=Math.max(-half,Math.min(z[0],z[1])), hi=Math.min(half,Math.max(z[0],z[1]));
+    if (hi<=lo+1e-9) continue;
+    for (let i=0;i<=logoRes;i++){ const val=lo+(hi-lo)*i/logoRes; if(!arr.some(x=>Math.abs(x-val)<1e-7)) arr.push(val); }
+  }
+}
+// dispFnsByFace: per-face logo relief for the shell's flat faces. flip=true (inner cavity plug) negates
+// the displacement so a positive logo depth stands PROUD into the cavity (matching outer-wall behaviour),
+// not sunk into the surrounding material.
+function buildAsymBoxSurfaces(xP, yP, zP, hw, hh, hd, R, segs, skip, flip, yOffset, dispFnsByFace) {
+  skip = new Set(skip||[]); yOffset = yOffset||0;
+  const F = [
+    { name:'+X', uAxis:1,vAxis:2,nAxis:0,nOffset:hw, uHalf:hh,vHalf:hd, outward:[1,0,0], uPos:yP, vPos:zP, insetU:{plus:R.rZ['1,1'], minus:R.rZ['1,0']}, insetV:{plus:R.rY['1,1'], minus:R.rY['1,0']} },
+    { name:'-X', uAxis:1,vAxis:2,nAxis:0,nOffset:-hw, uHalf:hh,vHalf:hd, outward:[-1,0,0], uPos:yP, vPos:zP, insetU:{plus:R.rZ['0,1'], minus:R.rZ['0,0']}, insetV:{plus:R.rY['0,1'], minus:R.rY['0,0']} },
+    { name:'+Y', uAxis:0,vAxis:2,nAxis:1,nOffset:hh, uHalf:hw,vHalf:hd, outward:[0,1,0], uPos:xP, vPos:zP, insetU:{plus:R.rZ['1,1'], minus:R.rZ['0,1']}, insetV:{plus:R.rX['1,1'], minus:R.rX['1,0']} },
+    { name:'-Y', uAxis:0,vAxis:2,nAxis:1,nOffset:-hh, uHalf:hw,vHalf:hd, outward:[0,-1,0], uPos:xP, vPos:zP, insetU:{plus:R.rZ['1,0'], minus:R.rZ['0,0']}, insetV:{plus:R.rX['0,1'], minus:R.rX['0,0']} },
+    { name:'+Z', uAxis:0,vAxis:1,nAxis:2,nOffset:hd, uHalf:hw,vHalf:hh, outward:[0,0,1], uPos:xP, vPos:yP, insetU:{plus:R.rY['1,1'], minus:R.rY['0,1']}, insetV:{plus:R.rX['1,1'], minus:R.rX['0,1']} },
+    { name:'-Z', uAxis:0,vAxis:1,nAxis:2,nOffset:-hd, uHalf:hw,vHalf:hh, outward:[0,0,-1], uPos:xP, vPos:yP, insetU:{plus:R.rY['1,0'], minus:R.rY['0,0']}, insetV:{plus:R.rX['1,0'], minus:R.rX['0,0']} },
+  ];
+  let out = [];
+  for (const f of F) { if (skip.has(f.name)) continue;
+    const raw = dispFnsByFace && dispFnsByFace[f.name];
+    // Faces are built in LOCAL coords (yOffset applied afterwards), but a logo's frame lives in world
+    // coords -> shift the vertex Y by yOffset before the frame projection. flip negates so +depth stands
+    // proud into the cavity. The displacement direction (outward) is a pure direction, unaffected by the
+    // Y shift, so magnitude/sense stay correct.
+    const dfn = raw ? ((u,v,p)=>{ const d = raw(u, v, [p[0], p[1]+yOffset, p[2]]); return flip ? -d : d; }) : null;
+    out = out.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn)); }
+  for (const [s1,s2] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    out = out.concat(buildEdgeCylinderFromAxis('X', s1, s2, hw,hh,hd, R, xP, segs));
+    out = out.concat(buildEdgeCylinderFromAxis('Y', s1, s2, hw,hh,hd, R, yP, segs));
+    out = out.concat(buildEdgeCylinderFromAxis('Z', s1, s2, hw,hh,hd, R, zP, segs));
+  }
+  for (const sx of [1,-1]) for (const sy of [1,-1]) for (const sz of [1,-1]) out = out.concat(buildCornerSphere(sx,sy,sz, hw,hh,hd, R, segs));
+  if (yOffset) out = out.map(t=>t.map(p=>[p[0],p[1]+yOffset,p[2]]));
+  if (flip) out = out.map(t=>[t[0],t[2],t[1]]);
+  return out;
+}
+// The 4 top-face inset margins for a box of half-size (hw,hd) with top insets insetU (X-side)
+// and insetV (Z-side). >=0 means the point is inside that box's top opening (rounded rect).
+function asymTopMargins(hw, hd, insetU, insetV) {
+  return [
+    (u,v)=> (hw - Math.min(insetU.plus,  hd - v, hd + v)) - u,
+    (u,v)=> u + (hw - Math.min(insetU.minus, hd - v, hd + v)),
+    (u,v)=> (hd - Math.min(insetV.plus,  hw - u, hw + u)) - v,
+    (u,v)=> v + (hd - Math.min(insetV.minus, hw - u, hw + u)),
+  ];
+}
+// Rim = the outer box's +Y (top) face (its rounded outer boundary matches the outer top-edge
+// cylinders) MINUS the triangles whose centroid falls inside the INNER opening. Because the
+// shared arrays are synced for BOTH shells, the inner opening's boundary (straight edges +
+// corner chevrons) lies on this face's triangle edges, so the centroid test cuts cleanly along
+// it and the resulting inner rim edge matches the inner walls' (rounded) top edge exactly.
+function buildAsymRimAnnulus(xP, zP, hw, hd, insetU, insetV, ihw, ihd, iInsetU, iInsetV, yRim) {
+  const innerM = asymTopMargins(ihw, ihd, iInsetU, iInsetV);
+  const innerMin = (u,v)=> Math.min(innerM[0](u,v), innerM[1](u,v), innerM[2](u,v), innerM[3](u,v));
+  const face = buildFaceAsymFromAxis(0, 2, 1, yRim, hw, hd, [0,1,0], insetU, insetV, xP, zP);
+  const out = [];
+  for (const tri of face) {
+    const cu=(tri[0][0]+tri[1][0]+tri[2][0])/3, cv=(tri[0][2]+tri[1][2]+tri[2][2])/3;
+    if (innerMin(cu,cv) > 1e-6) continue; // centroid strictly inside the inner opening -> cavity hole
+    out.push(tri);
+  }
+  return out;
+}
+// pocketDepth: when >0, builds a "rim/tray" — a SOLID box with a shallow pocket of that depth
+// carved into the top (inner cavity floor at hh-pocketDepth, solid below). When omitted, builds
+// a full hollow container (inner floor at -hh+t). Topologically identical either way: outer
+// open-top shell + inner cavity (flipped) + rim; only the inner box's height/position differ.
+/* =========================================================
+   SHARP FLAT RIM cavity (buildSharpRimHollow) — used when the inner lip = 0. The pocket/cavity gets
+   rounded vertical corners and a rounded floor, but a SHARP flat top opening (no rolled inner lip, no
+   cone spike). The chamfer machinery can't make a sharp-top-with-rounded-verticals opening, so instead:
+   the inner cavity is a fully-rounded box whose top is RAISED by the vertical radius (the top fillet
+   lives above the opening plane y=hh), then every triangle above y=hh is truncated — the cut leaves the
+   vertical corners as constant-radius arcs and the walls straight -> opening = rounded rectangle(vertR).
+   The rim is an explicit flat annulus between the outer shell's top boundary loop and this inner opening
+   loop; both are real extracted boundary edges, so their vertices are shared and the seams stay
+   watertight. Prototype + Node manifold stress: scratchpad/asym-sharp-rim-v8.js (2000/2000 watertight,
+   1998/2000 also orientation-consistent; the 2 are pathological thin-wall+huge-radius extremes).
+   ========================================================= */
+// Edges on plane y=yPlane used by exactly one triangle = the open top rim. Chain into ordered loop(s).
+function sharpTopBoundaryLoops(tris, yPlane, tol) {
+  tol = tol || 1e-5;
+  const K = (x,z)=> x.toFixed(5)+','+z.toFixed(5);
+  const pts = new Map(), edges = new Map();
+  for (const t of tris) for (let e=0;e<3;e++) {
+    const A=t[e], B=t[(e+1)%3];
+    if (Math.abs(A[1]-yPlane)>tol || Math.abs(B[1]-yPlane)>tol) continue;
+    const ka=K(A[0],A[2]), kb=K(B[0],B[2]); if (ka===kb) continue;
+    pts.set(ka,[A[0],A[2]]); pts.set(kb,[B[0],B[2]]);
+    const ek = ka<kb ? ka+'|'+kb : kb+'|'+ka;
+    const r = edges.get(ek) || {ka,kb,c:0}; r.c++; edges.set(ek,r);
+  }
+  const adj = new Map();
+  for (const {ka,kb,c} of edges.values()) { if (c!==1) continue;
+    (adj.get(ka)||adj.set(ka,[]).get(ka)).push(kb); (adj.get(kb)||adj.set(kb,[]).get(kb)).push(ka); }
+  const visited = new Set(), loops=[];
+  for (const start of adj.keys()) { if (visited.has(start)) continue;
+    const loop=[]; let cur=start, prev=null;
+    while (cur && !visited.has(cur)) { visited.add(cur); loop.push(pts.get(cur));
+      const nbrs = adj.get(cur)||[]; let nxt = nbrs.find(n=>n!==prev && !visited.has(n));
+      if (nxt===undefined) nxt = nbrs.find(n=>n!==prev); prev=cur; cur=nxt; }
+    if (loop.length>=3) loops.push(loop);
+  }
+  return loops;
+}
+function sharpMkXZ(pt,y){ const q=[0,0,0]; q[0]=pt[0]; q[2]=pt[1]; q[1]=y; return q; }
+// Annulus by angular sweep (best when the two loops have similar vertex density).
+function sharpAnnulusSweep(loopO, loopI, y, up) {
+  const ang=p=>Math.atan2(p[1],p[0]);
+  const items=loopO.map(p=>({p,r:0,a:ang(p)})).concat(loopI.map(p=>({p,r:1,a:ang(p)}))).sort((x,z)=>x.a-z.a);
+  let lastO=null,lastI=null,mO=-Infinity,mI=-Infinity;
+  for(const p of loopO){const a=ang(p);if(a>mO){mO=a;lastO=p;}}
+  for(const p of loopI){const a=ang(p);if(a>mI){mI=a;lastI=p;}}
+  const t=[];
+  for(const it of items){ if(it.r===0){t.push(orient([sharpMkXZ(lastO,y),sharpMkXZ(it.p,y),sharpMkXZ(lastI,y)],up));lastO=it.p;}
+    else{t.push(orient([sharpMkXZ(lastI,y),sharpMkXZ(it.p,y),sharpMkXZ(lastO,y)],up));lastI=it.p;} }
+  return t;
+}
+// Annulus by shorter-diagonal loft, outer started at index o0 (best when densities differ a lot).
+function sharpAnnulusLoft(loopO, loopI, y, up, o0) {
+  const ring=L=>{let s=0;for(let i=0;i<L.length;i++){const a=L[i],b=L[(i+1)%L.length];s+=a[0]*b[1]-b[0]*a[1];}return s;};
+  const d2=(a,b)=>{const dx=a[0]-b[0],dz=a[1]-b[1];return dx*dx+dz*dz;};
+  let O=loopO.slice(),I=loopI.slice(); if(ring(O)<0)O.reverse(); if(ring(I)<0)I.reverse();
+  const nO=O.length,nI=I.length; o0=((o0||0)%nO+nO)%nO;
+  let j0=0,bd=Infinity; for(let k=0;k<nI;k++){const dd=d2(I[k],O[o0]);if(dd<bd){bd=dd;j0=k;}}
+  const op=k=>O[(o0+k)%nO], ip=k=>I[(j0+k)%nI];
+  const t=[]; let i=0,j=0;
+  while(i<nO||j<nI){ const advO=(j>=nI)||(i<nO&&d2(op(i+1),ip(j))<=d2(op(i),ip(j+1)));
+    if(advO){t.push(orient([sharpMkXZ(op(i),y),sharpMkXZ(op(i+1),y),sharpMkXZ(ip(j),y)],up));i++;}
+    else{t.push(orient([sharpMkXZ(op(i),y),sharpMkXZ(ip(j+1),y),sharpMkXZ(ip(j),y)],up));j++;} }
+  return t;
+}
+// A directed edge (a>b) appearing twice = two rim triangles wound the same way on it = self-overlap.
+function sharpRimConsistent(tris){
+  const K=p=>p[0].toFixed(4)+','+p[1].toFixed(4)+','+p[2].toFixed(4); const seen=new Set();
+  for(const t of tris){const k=[K(t[0]),K(t[1]),K(t[2])]; for(let e=0;e<3;e++){const f=k[e]+'>'+k[(e+1)%3]; if(seen.has(f))return false; seen.add(f);}}
+  return true;
+}
+// Both methods always seal (they reuse loop vertices — no bridge); they differ only in whether the flat
+// annulus self-overlaps, and their overlap cases differ. Try sweep, then lofts from several starts.
+function sharpBuildAnnulus(loopO, loopI, yPlane, up) {
+  const A=sharpAnnulusSweep(loopO, loopI, yPlane, up);
+  if(sharpRimConsistent(A)) return A;
+  const nO=loopO.length;
+  for(const frac of [0, 0.5, 0.25, 0.75, 0.125, 0.375, 0.625, 0.875]){
+    const B=sharpAnnulusLoft(loopO, loopI, yPlane, up, Math.round(frac*nO));
+    if(sharpRimConsistent(B)) return B;
+  }
+  return A; // give up gracefully — still watertight, at worst a couple of rim facets wound inconsistently
+}
+function buildSharpRimHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes) {
+  logoRes = logoRes || resolution;
+  // BOTH shells get a sharp flat top (raise-by-vert + truncate): outer vertical edges keep their full
+  // radius up to the rim (no "horns" pinching down to a small rolled lip) and the inner opening is a
+  // sharp arc-cornered rectangle. Rim = flat annulus between the two arc openings.
+  const hw=w/2, hh=h/2, hd=d/2, ihw=hw-t, ihd=hd-t;
+  const isTray = pocketDepth > 0;
+  const floorYi = isTray ? (hh-pocketDepth) : (-hh+t); // inner cavity floor
+  const floorYo = -hh;                                  // outer bottom
+  // inner: top edges = vertical radius. Raised inner box half-height is (iv+cavityDepth)/2, so the
+  // vertical fillet radius iv must fit within the cavity depth (the caller clamps iFloor by the pocket
+  // depth but not iVert -> clamp it here, else a shallow tray degenerates).
+  const cavH = isTray ? pocketDepth : (h - t);
+  const iR = { rX:{...Rin.rX}, rZ:{...Rin.rZ}, rY:{...Rin.rY} };
+  let iv = Math.min(iR.rY['1,1'], iR.rY['0,1'], iR.rY['1,0'], iR.rY['0,0']);
+  iv = Math.min(iv, cavH*0.95);
+  iR.rY['1,1']=iv; iR.rY['0,1']=iv; iR.rY['1,0']=iv; iR.rY['0,0']=iv;
+  iR.rX['1,0']=iv; iR.rX['1,1']=iv; iR.rZ['1,1']=iv; iR.rZ['0,1']=iv;
+  // outer: top edges = vertical radius. The outer top corner is rounded by the full outer vertical
+  // radius; if that far exceeds inner_vert+wall it cuts past the inner opening (wall eaten at corners).
+  // Clamp the outer VERTICAL to iv+t so the rim keeps positive width at the corners. Matched radii = no-op.
+  const oR = { rX:{...Rout.rX}, rZ:{...Rout.rZ}, rY:{...Rout.rY} };
+  let ov = Math.min(oR.rY['1,1'], oR.rY['0,1'], oR.rY['1,0'], oR.rY['0,0']);
+  ov = Math.min(ov, iv+t);
+  oR.rY['1,1']=ov; oR.rY['0,1']=ov; oR.rY['1,0']=ov; oR.rY['0,0']=ov;
+  oR.rX['1,0']=ov; oR.rX['1,1']=ov; oR.rZ['1,1']=ov; oR.rZ['0,1']=ov;
+  const oSpec = asymEdgeSpecs(oR), iSpec = asymEdgeSpecs(iR);
+  const allR = asymAllRadii(oR).concat(asymAllRadii(iR));
+  let xP = buildFilletAxisPositions(hw, oSpec.X, resolution, allR);
+  let zP = buildFilletAxisPositions(hd, oSpec.Z, resolution, allR);
+  for (const v of [ihw,-ihw]) if(!xP.some(x=>Math.abs(x-v)<1e-7)) xP.push(v);
+  for (const v of [ihd,-ihd]) if(!zP.some(z=>Math.abs(z-v)<1e-7)) zP.push(v);
+  // raised boxes: floor at floorYo/floorYi, opening at hh, raised top at hh+vert (top fillet truncated).
+  const topRO=hh+ov, ciyO=(floorYo+topRO)/2, HiO=(topRO-floorYo)/2, localHHo=hh-ciyO;
+  const topRI=hh+iv, ciyI=(floorYi+topRI)/2, HiI=(topRI-floorYi)/2, localHHi=hh-ciyI;
+  let yPo = buildFilletAxisPositions(HiO, oSpec.Y, resolution, asymAllRadii(oR));
+  if(!yPo.some(y=>Math.abs(y-localHHo)<1e-7)) yPo.push(localHHo); yPo.sort((a,b)=>a-b);
+  let yPi = buildFilletAxisPositions(HiI, iSpec.Y, resolution, asymAllRadii(iR));
+  if(!yPi.some(y=>Math.abs(y-localHHi)<1e-7)) yPi.push(localHHi); yPi.sort((a,b)=>a-b);
+  // Logo-zone densification. X/Z zones are world-space and shared. The outer wall's Y zones (world) map
+  // to yPo's LOCAL coords by subtracting ciyO (the raised box's centre). yPi (inner) carries no Y logo
+  // (the cavity-floor logo lives on the X/Z plane) so it needs no Y densification.
+  if (zonesByAxis) {
+    addLogoZonesToAxis(xP, hw, zonesByAxis[0], logoRes);
+    addLogoZonesToAxis(zP, hd, zonesByAxis[2], logoRes);
+    const yZonesLocal = (zonesByAxis[1]||[]).map(z=>[z[0]-ciyO, z[1]-ciyO]);
+    addLogoZonesToAxis(yPo, HiO, yZonesLocal, logoRes);
+    xP.sort((a,b)=>a-b); zP.sort((a,b)=>a-b); yPo.sort((a,b)=>a-b);
+  }
+  const syncPass = (R, xh, yh, zh, xA, yA, zA) => { let ch=false;
+    for (const sy of [1,-1]) for (const sz of [1,-1]) for (const sx of [1,-1]) {
+      if (asymSyncDiagonalPair(xA, zA, xh, zh, R.rZ[idx(sx)+','+idx(sy)], R.rX[idx(sy)+','+idx(sz)], sx, sz)) ch=true;
+      if (asymSyncDiagonalPair(xA, yA, xh, yh, R.rY[idx(sx)+','+idx(sz)], R.rZ[idx(sx)+','+idx(sy)], sx, sy)) ch=true;
+      if (asymSyncDiagonalPair(yA, zA, yh, zh, R.rX[idx(sy)+','+idx(sz)], R.rY[idx(sx)+','+idx(sz)], sy, sz)) ch=true;
+    } return ch; };
+  let sg=0, sch=true;
+  while (sch && sg++<40) { sch=false;
+    if (syncPass(oR, hw, HiO, hd, xP, yPo, zP)) sch=true;
+    if (syncPass(iR, ihw, HiI, ihd, xP, yPi, zP)) sch=true; }
+  xP.sort((a,b)=>a-b); zP.sort((a,b)=>a-b); yPo.sort((a,b)=>a-b); yPi.sort((a,b)=>a-b);
+  const xInner = xP.filter(x=>x>=-ihw-1e-9&&x<=ihw+1e-9);
+  const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
+  const trunc = tris => tris.filter(tri => Math.min(tri[0][1],tri[1][1],tri[2][1]) < hh - 1e-6);
+  const outer = trunc(buildAsymBoxSurfaces(xP, yPo, zP, hw, HiO, hd, oR, segs, [], false, ciyO, dispFnsOuter));   // outward
+  const inner = trunc(buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, HiI, ihd, iR, segs, [], true, ciyI, dispFnsInner)); // inward
+  const loopsO = sharpTopBoundaryLoops(outer, hh).sort((a,b)=>b.length-a.length);
+  const loopsI = sharpTopBoundaryLoops(inner, hh).sort((a,b)=>b.length-a.length);
+  const rim = (loopsO[0] && loopsI[0]) ? sharpBuildAnnulus(loopsO[0], loopsI[0], hh, [0,1,0]) : [];
+  return outer.concat(inner).concat(rim);
+}
+function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes) {
+  logoRes = logoRes || resolution;
+  const hw=w/2, hh=h/2, hd=d/2, ihw=hw-t, ihd=hd-t;
+  const isTray = pocketDepth > 0;
+  const ih = isTray ? pocketDepth : (h - t);            // inner cavity height
+  const iyOffset = isTray ? (hh - pocketDepth/2) : (t/2); // places its floor at hh-pocketDepth (tray) or -hh+t (hollow)
+  const oR = { rX:{...Rout.rX}, rZ:{...Rout.rZ}, rY:{...Rout.rY} }; // outer KEEPS its top radii (rolled lip)
+  // Rolled outer lip must fit within the wall: rTopOut < t, else the top fillet overhangs the
+  // cavity (hw-rTopOut < ihw) and no flat rim remains between them. Clamp the top-edge radii to 0.9*t.
+  const lipMax = 0.9 * t;
+  oR.rX['1,0'] = Math.min(oR.rX['1,0'], lipMax); oR.rX['1,1'] = Math.min(oR.rX['1,1'], lipMax);
+  oR.rZ['1,1'] = Math.min(oR.rZ['1,1'], lipMax); oR.rZ['0,1'] = Math.min(oR.rZ['0,1'], lipMax);
+  const iR = { rX:{...Rin.rX}, rZ:{...Rin.rZ}, rY:{...Rin.rY} }; // inner KEEPS its top radii -> rounded inner lip
+  // Inner top lip must not exceed the inner vertical radius, else the top corner is governed by
+  // the (smaller) vertical fillet while the rim reads the (larger) lip inset -> corner mismatch.
+  // A ZERO lip with a rounded inner vertical is the spike case: the vertical cylinder tapers to a
+  // point at the sharp top corner (cornerMin=0) -> a cone spike in the pocket. So a 0 lip falls back
+  // to the inner vertical radius (a rolled inner lip mirroring the rolled OUTER lip), clamped to the
+  // pocket half-depth so the lip fillet never runs deeper than the cavity. Guarded by LIP_EPS: a
+  // sub-0.1 fallback would be a fragile sliver, so leave such a (vanishing) lip sharp instead.
+  const iv = Math.min(iR.rY['1,1'], iR.rY['0,1'], iR.rY['1,0'], iR.rY['0,0']);
+  const LIP_EPS = 0.1, halfDepth = (ih/2) * 0.98;
+  const lipFallback = (iv > LIP_EPS && halfDepth > LIP_EPS) ? Math.min(iv, halfDepth) : 0;
+  const lipR = (r) => r > 1e-6 ? Math.min(r, iv) : lipFallback;
+  iR.rX['1,0'] = lipR(iR.rX['1,0']); iR.rX['1,1'] = lipR(iR.rX['1,1']);
+  iR.rZ['1,1'] = lipR(iR.rZ['1,1']); iR.rZ['0,1'] = lipR(iR.rZ['0,1']);
+  const oSpec = asymEdgeSpecs(oR), iSpec = asymEdgeSpecs(iR);
+  const allR = asymAllRadii(oR).concat(asymAllRadii(iR));
+  let xP = buildFilletAxisPositions(hw, oSpec.X, resolution, allR);
+  let zP = buildFilletAxisPositions(hd, oSpec.Z, resolution, allR);
+  for (const v of [ihw,-ihw]) if(!xP.some(x=>Math.abs(x-v)<1e-7)) xP.push(v);
+  for (const v of [ihd,-ihd]) if(!zP.some(z=>Math.abs(z-v)<1e-7)) zP.push(v);
+  let yPo = buildFilletAxisPositions(hh, oSpec.Y, resolution, asymAllRadii(oR));
+  let yPi = buildFilletAxisPositions(ih/2, iSpec.Y, resolution, asymAllRadii(iR));
+  // Logo-zone densification. The outer shell is NOT raised here (yOffset 0), so yPo is world-space:
+  // densify it with the world Y zones directly. X/Z zones are shared world-space. The inner cavity's
+  // only logo (the floor) sits on the X/Z plane, so yPi needs no Y densification.
+  if (zonesByAxis) {
+    addLogoZonesToAxis(xP, hw, zonesByAxis[0], logoRes);
+    addLogoZonesToAxis(zP, hd, zonesByAxis[2], logoRes);
+    addLogoZonesToAxis(yPo, hh, zonesByAxis[1], logoRes);
+    xP.sort((a,b)=>a-b); zP.sort((a,b)=>a-b); yPo.sort((a,b)=>a-b);
+  }
+  const syncPass = (R, xh, yh, zh, xA, yA, zA) => {
+    let ch = false;
+    for (const sy of [1,-1]) for (const sz of [1,-1]) for (const sx of [1,-1]) {
+      if (asymSyncDiagonalPair(xA, zA, xh, zh, R.rZ[idx(sx)+','+idx(sy)], R.rX[idx(sy)+','+idx(sz)], sx, sz)) ch=true;
+      if (asymSyncDiagonalPair(xA, yA, xh, yh, R.rY[idx(sx)+','+idx(sz)], R.rZ[idx(sx)+','+idx(sy)], sx, sy)) ch=true;
+      if (asymSyncDiagonalPair(yA, zA, yh, zh, R.rX[idx(sy)+','+idx(sz)], R.rY[idx(sx)+','+idx(sz)], sy, sz)) ch=true;
+    }
+    return ch;
+  };
+  let sg=0, sch=true;
+  while (sch && sg++<40) { sch=false;
+    if (syncPass(oR, hw, hh, hd, xP, yPo, zP)) sch=true;
+    if (syncPass(iR, ihw, ih/2, ihd, xP, yPi, zP)) sch=true;
+  }
+  xP.sort((a,b)=>a-b); zP.sort((a,b)=>a-b); yPo.sort((a,b)=>a-b); yPi.sort((a,b)=>a-b);
+  const xInner = xP.filter(x=>x>=-ihw-1e-9&&x<=ihw+1e-9);
+  const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
+  const outer = buildAsymBoxSurfaces(xP, yPo, zP, hw, hh, hd, oR, segs, ['+Y'], false, 0, dispFnsOuter);
+  const inner = buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, ih/2, ihd, iR, segs, ['+Y'], true, iyOffset, dispFnsInner);
+  const rim = buildAsymRimAnnulus(xP, zP, hw, hd,
+     {plus:oR.rZ['1,1'], minus:oR.rZ['0,1']}, {plus:oR.rX['1,1'], minus:oR.rX['1,0']},
+     ihw, ihd, {plus:iR.rZ['1,1'], minus:iR.rZ['0,1']}, {plus:iR.rX['1,1'], minus:iR.rX['1,0']}, hh);
+  return outer.concat(inner).concat(rim);
+}
+
+// TRUE DIAGONAL NET floor (садовая решётка) for the FLAT hollow container: pure ±45° ribs with
+// diamond holes, flat profile. Replaces the flat outer-bottom-inner + cavity floor with a
+// perforated net, plus a solid outer-bottom RING. Built on the SAME fine xMid×zMid grid the
+// cavity floor/walls already use (midSlice() includes its endpoints, so xMid = xPositions ∩
+// [-(hw-t),hw-t]), so every seam matches the walls/ring with no subdivision conflict.
+//
+// Voxel-style: each fine cell is SOLID (part of a rib) or a HOLE. Rib membership is tested in
+// rotated coords (uu=(X+Z)/pitch, vv=(X-Z)/pitch): a cell is solid if within `rib`/2 (world) of
+// an integer uu- or vv-line — i.e. it sits on one of the two ±45° rib families. Because ribs run
+// at 45° and the grid is axis-aligned, edges fall on cell boundaries; a finer build resolution
+// gives smoother diagonals. `pitch` (=cellWorld) sets diamond spacing, `rib` the strut width —
+// both in mm, INDEPENDENT of resolution (so cell size never coarsens the walls/logos). Border
+// cells stay solid = a solid rim so holes never touch the walls; out-of-region counts as solid
+// so the container itself closes the boundary (no perimeter wall). A pinch-removal pass fills
+// 2×2 checkerboards (thin ribs touching only at a corner) — those are non-manifold; filling one
+// hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
+// then taperFn'd, so seams match after taper. Proven watertight in Node across
+// sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
+function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf) {
+  tf = tf || ((p)=>p);
+  const pitch = Math.max(1e-3, cellWorld);
+  const UP=[0,1,0], DN=[0,-1,0];
+  const xi0=xMid[0], xi1=xMid[xMid.length-1], zi0=zMid[0], zi1=zMid[zMid.length-1];
+  const tri=(a,b,c,ref)=>tris.push(orient([a,b,c],ref).map(tf));
+  const quad=(a,b,c,dd,ref)=>{ tri(a,b,c,ref); tri(a,c,dd,ref); };
+  // outer-bottom RING: every xP×zP cell whose centre is OUTSIDE the inner rectangle
+  for (let i=0;i<xP.length-1;i++) for (let j=0;j<zP.length-1;j++) {
+    const cx=(xP[i]+xP[i+1])/2, cz=(zP[j]+zP[j+1])/2;
+    if (cx>xi0-1e-9 && cx<xi1+1e-9 && cz>zi0-1e-9 && cz<zi1+1e-9) continue; // inner -> net
+    addQuad(tris, 0,2,1, yb, xP[i],xP[i+1], zP[j],zP[j+1], DN, tf);
+  }
+  const nx=xMid.length-1, nz=zMid.length-1;
+  // at least 1 solid rim cell — a hole touching the inner boundary would leave the ring/cavity
+  // edge unmatched (open). Higher = wider solid margin.
+  const b=Math.min(Math.max(1,borderCells|0), Math.floor(nx/2), Math.floor(nz/2));
+  const rh=(rib/2)*Math.SQRT2/pitch;  // rib half-width, in uu/vv units
+  const solid=Array.from({length:nx},()=>new Array(nz).fill(false));
+  for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
+    if (i<b||i>=nx-b||j<b||j>=nz-b) { solid[i][j]=true; continue; } // rim
+    const cx=(xMid[i]+xMid[i+1])/2 - xi0, cz=(zMid[j]+zMid[j+1])/2 - zi0;
+    const uu=(cx+cz)/pitch, vv=(cx-cz)/pitch;
+    solid[i][j] = Math.abs(uu-Math.round(uu))<rh || Math.abs(vv-Math.round(vv))<rh;
+  }
+  // pinch removal: fill one hole of each 2×2 checkerboard (non-manifold corner touch). Monotone.
+  let changed=true;
+  while (changed) { changed=false;
+    for (let i=0;i<nx-1;i++) for (let j=0;j<nz-1;j++) {
+      const a=solid[i][j], c1=solid[i+1][j], c2=solid[i][j+1], d=solid[i+1][j+1];
+      if (a&&d&&!c1&&!c2) { solid[i+1][j]=true; changed=true; }
+      else if (c1&&c2&&!a&&!d) { solid[i][j]=true; changed=true; }
+    }
+  }
+  const V=(i,j,y)=>[xMid[i], y, zMid[j]];
+  const S=(i,j)=> (i<0||j<0||i>=nx||j>=nz) ? true : solid[i][j]; // outside = solid (container closes it)
+  for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
+    if (!solid[i][j]) continue;
+    quad(V(i,j,yt),V(i+1,j,yt),V(i+1,j+1,yt),V(i,j+1,yt),UP);   // cavity floor (top)
+    quad(V(i,j,yb),V(i+1,j,yb),V(i+1,j+1,yb),V(i,j+1,yb),DN);   // outer bottom (inner region)
+    // vertical rib walls where the neighbour is a hole (normal points into the hole)
+    if (!S(i-1,j)) quad(V(i,j,yt),V(i,j+1,yt),V(i,j+1,yb),V(i,j,yb),[-1,0,0]);
+    if (!S(i+1,j)) quad(V(i+1,j,yt),V(i+1,j+1,yt),V(i+1,j+1,yb),V(i+1,j,yb),[1,0,0]);
+    if (!S(i,j-1)) quad(V(i,j,yt),V(i+1,j,yt),V(i+1,j,yb),V(i,j,yb),[0,0,-1]);
+    if (!S(i,j+1)) quad(V(i,j+1,yt),V(i+1,j+1,yt),V(i+1,j+1,yb),V(i,j+1,yb),[0,0,1]);
+  }
+}
+
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts) {
+  const hw=w/2, hh=h/2, hd=d/2;
+  const t = clampWallThickness(w, h, d, wallThickness);
+  const res = Math.max(1, resolution||1);
+  let tris = [];
+  const dfn = logoDispFnsByFace || {};
+  const tf = taperFn || ((p)=>p);
+  const lat = (latticeOpts && latticeOpts.enabled) ? latticeOpts : null;
+
+  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
+  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
+  const yPositions = buildAxisPositions(hh, [], res);
+
+  // NOTE: concat, not push(...array) — spreading a large face's triangles as individual
+  // push() arguments blows the call stack once a face gets big enough (confirmed crash
+  // around a few hundred thousand triangles). concat has no such limit.
+  // Lattice mode emits the outer bottom itself (as a RING around the perforated inner region),
+  // so skip the flat full-footprint outer bottom here.
+  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1,-hh, xPositions, zPositions, [0,-1,0], dfn['-Y'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0,-hw, yPositions, zPositions, [-1,0,0], dfn['-X'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, hw, yPositions, zPositions, [1,0,0], dfn['+X'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2,-hd, xPositions, yPositions, [0,0,-1], dfn['-Z'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, hd, xPositions, yPositions, [0,0,1], dfn['+Z'], tf));
+
+  const xMid = midSlice(xPositions, -(hw-t), hw-t);
+  const zMid = midSlice(zPositions, -(hd-t), hd-t);
+  const cavityYPositions = [-(hh-t), hh];
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], null, tf));
+  // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
+  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
+
+  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), hd-t,hd, [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, hw-t,hw, hd-t,hd, [0,1,0], tf);
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [-hd,-(hd-t)], [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [hd-t,hd], [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [-hw,-(hw-t)], zMid, [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [hw-t,hw], zMid, [0,1,0], null, tf));
+
+  // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
+  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf);
+
+  return tris;
+}
+
+// "Борт" / tray-platter mode: a fully solid box below, with a shallow thin-walled pocket
+// carved into the TOP (open to the sky) — unlike buildHollowBox (thin walls the FULL
+// height, deep cavity near the bottom), here the box stays completely solid below the rim
+// height; only the top `rimHeight` slice has any wall structure. The outer side walls and
+// bottom are therefore identical in shape to a plain solid box's own faces (full height,
+// flat) — only the pocket (floor + 4 short walls) and the rim frame connecting the pocket's
+// top edge to the outer top edge are new pieces, built the same "shared position array"
+// way as buildHollowBox's cavity+opening so every seam matches exactly.
+function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsByFace, taperFn) {
+  const hw=w/2, hh=h/2, hd=d/2;
+  const t = clampWallThickness(w, h, d, wallThickness);
+  const rh = clampRimHeight(h, rimHeight);
+  const res = Math.max(1, resolution||1);
+  let tris = [];
+  const dfn = logoDispFnsByFace || {};
+  const tf = taperFn || ((p)=>p);
+
+  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
+  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
+  const yPositions = buildAxisPositions(hh, [], res);
+
+  // Solid outer shell: full-height sides + bottom, exactly like a plain solid box's faces.
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1,-hh, xPositions, zPositions, [0,-1,0], dfn['-Y'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0,-hw, yPositions, zPositions, [-1,0,0], dfn['-X'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, hw, yPositions, zPositions, [1,0,0], dfn['+X'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2,-hd, xPositions, yPositions, [0,0,-1], dfn['-Z'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, hd, xPositions, yPositions, [0,0,1], dfn['+Z'], tf));
+
+  // Pocket: floor sitting `rh` below the top, inset by wall thickness on X/Z, plus 4 short
+  // walls connecting that floor up to the rim frame (only the top `rh` slice, not full
+  // height — everything below the floor is solid, no separate face needed there).
+  const xMid = midSlice(xPositions, -(hw-t), hw-t);
+  const zMid = midSlice(zPositions, -(hd-t), hd-t);
+  const pocketYPositions = [hh-rh, hh];
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), pocketYPositions, zMid, [1,0,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), pocketYPositions, zMid, [-1,0,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, pocketYPositions, [0,0,1], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, pocketYPositions, [0,0,-1], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh-rh, xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
+
+  // Rim frame at y=hh: flat annular border from the outer top edge to the pocket's top edge
+  // — the visible "top of the wall" you'd see looking straight down at the tray.
+  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), hd-t,hd, [0,1,0], tf);
+  addQuad(tris, 0,2,1, hh, hw-t,hw, hd-t,hd, [0,1,0], tf);
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [-hd,-(hd-t)], [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [hd-t,hd], [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [-hw,-(hw-t)], zMid, [0,1,0], null, tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [hw-t,hw], zMid, [0,1,0], null, tf));
+
+  return tris;
+}
+
+function manifoldCheck(tris, decimals) {
+  decimals = decimals == null ? 5 : decimals;
+  const key = (p) => p[0].toFixed(decimals)+','+p[1].toFixed(decimals)+','+p[2].toFixed(decimals);
+  const edges = new Map();
+  for (const tri of tris) {
+    const k = [key(tri[0]), key(tri[1]), key(tri[2])];
+    for (let e = 0; e < 3; e++) {
+      const ka = k[e], kb = k[(e+1)%3];
+      if (ka === kb) continue;
+      const ek = ka < kb ? ka+'|'+kb : kb+'|'+ka;
+      edges.set(ek, (edges.get(ek)||0)+1);
+    }
+  }
+  let open = 0, bad = 0;
+  for (const c of edges.values()) { if (c === 1) open++; else if (c !== 2) bad++; }
+  return { triangleCount: tris.length, openEdges: open, badEdges: bad, watertight: open===0 && bad===0 };
+}
+
+function rotateTris(tris, rxDeg, ryDeg, rzDeg) {
+  if (!rxDeg && !ryDeg && !rzDeg) return tris;
+  const rx = rxDeg*Math.PI/180, ry = ryDeg*Math.PI/180, rz = rzDeg*Math.PI/180;
+  const cx=Math.cos(rx), sx=Math.sin(rx), cy=Math.cos(ry), sy=Math.sin(ry), cz=Math.cos(rz), sz=Math.sin(rz);
+  function rot(p) {
+    let x=p[0], y=p[1], z=p[2];
+    let y1=y*cx-z*sx, z1=y*sx+z*cx; y=y1; z=z1;
+    let x2=x*cy+z*sy, z2=-x*sy+z*cy; x=x2; z=z2;
+    let x3=x*cz-y*sz, y3=x*sz+y*cz; x=x3; y=y3;
+    return [x,y,z];
+  }
+  return tris.map(tri => tri.map(rot));
+}
+
+function computeBBox(tris) {
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+  for (const tri of tris) for (const p of tri) {
+    if(p[0]<minX)minX=p[0]; if(p[0]>maxX)maxX=p[0];
+    if(p[1]<minY)minY=p[1]; if(p[1]>maxY)maxY=p[1];
+    if(p[2]<minZ)minZ=p[2]; if(p[2]>maxZ)maxZ=p[2];
+  }
+  return {minX,maxX,minY,maxY,minZ,maxZ};
+}
+
+function trisToPositions(tris) {
+  const positions = new Float32Array(tris.length*9);
+  let idx=0;
+  for (const tri of tris) for (const p of tri) { positions[idx++]=p[0]; positions[idx++]=p[1]; positions[idx++]=p[2]; }
+  return positions;
+}
+
+function computeWeldedNormals(tris) {
+  const key = p => Math.round(p[0]*1000)+','+Math.round(p[1]*1000)+','+Math.round(p[2]*1000);
+  const acc = new Map();
+  for (const tri of tris) {
+    const n = faceNormal(tri);
+    for (const p of tri) {
+      const k = key(p);
+      let a = acc.get(k);
+      if (!a) { a = [0,0,0,0]; acc.set(k, a); }
+      a[0]+=n[0]; a[1]+=n[1]; a[2]+=n[2]; a[3]++;
+    }
+  }
+  const normals = new Float32Array(tris.length*9);
+  let idx=0;
+  for (const tri of tris) {
+    for (const p of tri) {
+      const a = acc.get(key(p));
+      let nx=a[0]/a[3], ny=a[1]/a[3], nz=a[2]/a[3];
+      const len = Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+      normals[idx++]=nx/len; normals[idx++]=ny/len; normals[idx++]=nz/len;
+    }
+  }
+  return normals;
+}
+
+function trisToBinarySTL(tris) {
+  const n = tris.length;
+  const buffer = new ArrayBuffer(84 + n*50);
+  const view = new DataView(buffer);
+  const header = 'Generated by parametric STL generator';
+  for (let i=0;i<80;i++) view.setUint8(i, i<header.length ? header.charCodeAt(i) : 0);
+  view.setUint32(80, n, true);
+  let off = 84;
+  for (const tri of tris) {
+    const nrm = faceNormal(tri);
+    view.setFloat32(off, nrm[0], true); view.setFloat32(off+4, nrm[1], true); view.setFloat32(off+8, nrm[2], true);
+    off+=12;
+    for (const p of tri) { view.setFloat32(off,p[0],true); view.setFloat32(off+4,p[1],true); view.setFloat32(off+8,p[2],true); off+=12; }
+    view.setUint16(off, 0, true); off+=2;
+  }
+  return new Blob([buffer], {type:'application/sla'});
+}
+
+function trisToAsciiSTL(tris, name) {
+  name = (name||'model').replace(/\s+/g,'_');
+  const lines = ['solid '+name];
+  for (const tri of tris) {
+    const n = faceNormal(tri);
+    lines.push('facet normal '+n[0].toExponential(6)+' '+n[1].toExponential(6)+' '+n[2].toExponential(6));
+    lines.push('outer loop');
+    for (const p of tri) lines.push('vertex '+p[0].toExponential(6)+' '+p[1].toExponential(6)+' '+p[2].toExponential(6));
+    lines.push('endloop');
+    lines.push('endfacet');
+  }
+  lines.push('endsolid '+name);
+  return new Blob([lines.join('\n')], {type:'text/plain'});
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
+/* =========================================================
+   LOGO / RELIEF IMAGE HANDLING
+   ========================================================= */
+const LOGO_HM_SIZE = 256; // fixed sampling resolution for the stored heightmap
+
+// Decides whether to read the logo's shape from the alpha channel or from luminance, and
+// (for the luminance case) suggests a sensible default `invert` so the icon itself — not
+// whichever of icon/background happens to be the brighter majority — ends up as the
+// relief. Without this, a dark icon on a transparent or light background can read as
+// uniformly low everywhere (icon and background both near 0), so the threshold never
+// triggers and the logo produces no visible relief at all.
+function analyzeLogoImageData(data, size) {
+  const lum = new Float32Array(size*size);
+  const alpha = new Float32Array(size*size);
+  let minA = 255, maxA = 0, sumLum = 0, countOpaque = 0;
+  for (let i = 0; i < size*size; i++) {
+    const r=data[i*4], g=data[i*4+1], b=data[i*4+2], a=data[i*4+3];
+    alpha[i] = a/255;
+    lum[i] = (0.299*r + 0.587*g + 0.114*b)/255;
+    if (a < minA) minA = a;
+    if (a > maxA) maxA = a;
+    if (a >= 10) { sumLum += lum[i]; countOpaque++; }
+  }
+  const hasTransparency = (maxA - minA) > 40;
+  if (hasTransparency) return { heightmap: alpha, suggestedInvert: false };
+  const avgLum = countOpaque ? sumLum/countOpaque : 0.5;
+  return { heightmap: lum, suggestedInvert: avgLum > 0.5 };
+}
+
+// Loads an image file into a heightmap (Float32Array, 0..1, row-major) plus a suggested
+// `invert` default. Calls cb({heightmap, previewUrl, suggestedInvert}) when ready, or
+// cb(null) on failure.
+function loadLogoImageFile(file, cb) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    const img = new Image();
+    img.onload = () => {
+      const size = LOGO_HM_SIZE;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size); // stretch to fit; logo W/H controls handle aspect on the model
+      const data = ctx.getImageData(0, 0, size, size).data;
+      const { heightmap, suggestedInvert } = analyzeLogoImageData(data, size);
+      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert });
+    };
+    img.onerror = () => cb(null);
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function sampleHeightmap(hm, u01, v01) {
+  const size = LOGO_HM_SIZE;
+  const x = Math.min(size-1, Math.max(0, Math.floor(u01*size)));
+  const y = Math.min(size-1, Math.max(0, Math.floor(v01*size)));
+  return hm[y*size+x];
+}
+
+// Precomputes a logo's tapered center position and LOCAL tangent-plane basis: TuHat/TvHat
+// are unit vectors (direction only), magU/magV are the local real-mm-per-flat-mm scale
+// factors at the logo's position — i.e. exactly how compressed or expanded the surrounding
+// face currently is there, under the box's current taper state. Computed ONCE per logo
+// (not per grid vertex) via finite differences of the (exact, non-linearized) taper
+// transform.
+function makeLogoFrame(logo, taperFn) {
+  const eps = 0.5; // mm
+  const mk = (uu,vv) => { const p=[0,0,0]; p[logo.uAxis]=uu; p[logo.vAxis]=vv; p[logo.nAxis]=logo.nOffset; return p; };
+  const center = taperFn(mk(logo.u0, logo.v0));
+  const TuRaw = sub(taperFn(mk(logo.u0+eps, logo.v0)), taperFn(mk(logo.u0-eps, logo.v0))).map(c=>c/(2*eps));
+  const TvRaw = sub(taperFn(mk(logo.u0, logo.v0+eps)), taperFn(mk(logo.u0, logo.v0-eps))).map(c=>c/(2*eps));
+  return { center, TuHat: normalize(TuRaw), TvHat: normalize(TvRaw), magU: vlength(TuRaw), magV: vlength(TvRaw) };
+}
+
+// Builds the dispFn for one logo. `taperedPos` (3rd arg, the grid vertex's ALREADY-COMPUTED
+// tapered 3D position) is projected onto the logo's local tangent-plane basis (`frame`) to
+// get its TRUE real-mm offset from the logo's center — this is what the bounds-check and
+// image sampling use, not the flat (pre-taper) coordinate offset. Since this real-mm
+// offset is computed via the full, exact taper transform (for both the vertex and the
+// center, via the already-computed grid positions), the logo's rendered size and shape are
+// decoupled from however much the surrounding face happens to be locally compressed or
+// expanded by taper — fixing the "logo stretches when the box is tapered" problem, with
+// zero changes to grid topology or vertex positions for the rest of the face.
+function makeLogoDispFn(logo, frame) {
+  if (!logo.heightmap) return null;
+  const rad = (logo.rotation||0) * Math.PI/180;
+  const cosR = Math.cos(-rad), sinR = Math.sin(-rad); // inverse rotation: world -> logo-local
+  return (u, v, taperedPos) => {
+    const offset3D = sub(taperedPos, frame.center);
+    const realDu = dot(offset3D, frame.TuHat);
+    const realDv = dot(offset3D, frame.TvHat);
+    const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
+    if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
+    let u01 = (ldu + logo.w/2) / logo.w;
+    let v01 = 1 - (ldv + logo.h/2) / logo.h; // image is top-down; v is face-up
+    let val = sampleHeightmap(logo.heightmap, u01, v01);
+    if (logo.invert) val = 1 - val;
+    return val > logo.threshold ? logo.depth : 0;
+  };
+}
+
+// Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
+// (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
+// the extra room its corners sweep into, not just its unrotated w/h.
+function rotatedHalfExtents(w, h, rotationDeg) {
+  const rad = (rotationDeg||0) * Math.PI/180;
+  const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+  return { halfX: (w/2)*c + (h/2)*s, halfY: (w/2)*s + (h/2)*c };
+}
+
+// Keeps a logo's (rotated, real-mm) footprint strictly inside its face, with a safety
+// margin. Since logo.w/h are now TRUE real-mm sizes (decoupled from taper compression by
+// the projection-based dispFn above), the clamp must convert that real-mm footprint into
+// the FLAT-space room it would actually require at the logo's current position — using the
+// same local tangent magnitudes (magU/magV) as the renderer — and ensure that fits within
+// the face's flat extent. A logo that reached the face edge would create a step the
+// neighboring face doesn't know about, breaking the seam between them.
+// On a filleted SOLID box the flat region shrinks by the adjacent edge radius (the logo relief lives
+// only in the flat middle; reaching into a fillet would displace clipped cells and break the seam with
+// the edge cylinders). Return the per-axis inset a logo must stay clear of on each face. Hollow/rim
+// don't support fillet+logo yet (they drop the fillet when a logo is present), so no inset there.
+// Box params whose change can move a logo out of the flat region -> re-clamp all logos when they edit.
+const LOGO_CLAMP_KEYS = ['width','height','depth','filletRadius','filletTop','filletBottom','filletVert',
+  'filletInnerFloor','filletInnerVert','filletInnerLip','wallThickness','rimHeight'];
+function faceFilletInsets(face, p) {
+  const uni = p.filletRadius||0;
+  if (p.hollow || p.rim) {
+    // Rounded hollow/tray: outer walls inset by the outer edge radii (+ the top rim inset), the cavity
+    // floor ('-Y-inner') by the inner floor/vertical radii. Matches faceFilletInsets' solid-box role.
+    const oBot = p.filletBottom>0?p.filletBottom:uni, oVert = p.filletVert>0?p.filletVert:uni, oLip = p.filletTop>0?p.filletTop:uni;
+    const iFloor = p.filletInnerFloor||0, iVert = p.filletInnerVert||0, iLip = p.filletInnerLip||0;
+    if (!(oLip>0||oBot>0||oVert>0||iFloor>0||iVert>0||iLip>0)) return {u:0, v:0}; // flat hollow -> no fillet+logo, no inset
+    const hw=p.width/2, hh=p.height/2, hd=p.depth/2;
+    const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness);
+    const Ro = asymRadiiFromGroups(oLip, oBot, oVert, hw, hh, hd);
+    const cBot=Ro.rX['0,0'], cVert=Ro.rY['0,0'], cLip=Ro.rX['1,1'];
+    const rh = p.rim ? clampRimHeight(p.height, p.rimHeight) : 0;
+    const cavH = p.rim ? rh : (p.height - tW);
+    const innerHalfH = p.rim ? rh/2 : (p.height - tW)/2;
+    const Ri = asymRadiiFromGroups(iLip, iFloor, iVert, hw-tW, innerHalfH, hd-tW);
+    const ivEff = Math.min(Ri.rY['0,0'], cavH*0.95);
+    // Outer wall top: rolled lip (min(cLip,0.9t)) when iLip>0, else the sharp rim reaches y=hh -> tiny margin.
+    const topInset = iLip>0 ? Math.min(cLip, 0.9*tW) : 2;
+    switch (face) {
+      case '+X': case '-X': return {u:Math.max(cBot,topInset), v:cVert}; // U=Y, V=Z
+      case '+Z': case '-Z': return {u:cVert, v:Math.max(cBot,topInset)}; // U=X, V=Y
+      case '-Y': return {u:cBot, v:cBot};
+      case '-Y-inner': { const f=Math.max(Ri.rX['0,0'], ivEff); return {u:f, v:f}; }
+      default: return {u:0, v:0}; // +Y open top (a logo there renders nothing on hollow/tray)
+    }
+  }
+  const rTop = p.filletTop>0?p.filletTop:uni, rBot = p.filletBottom>0?p.filletBottom:uni, rVert = p.filletVert>0?p.filletVert:uni;
+  if (!(rTop>0 || rBot>0 || rVert>0)) return {u:0, v:0};
+  const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2); // clamped group radii
+  const cTop=R.rX['1,1'], cBot=R.rX['0,0'], cVert=R.rY['0,0'];
+  switch (face) {
+    case '+X': case '-X': return {u:Math.max(cTop,cBot), v:cVert}; // U=Y (top/bottom edges), V=Z (vertical)
+    case '+Y': return {u:cTop, v:cTop};
+    case '-Y': return {u:cBot, v:cBot};
+    case '+Z': case '-Z': return {u:cVert, v:Math.max(cTop,cBot)}; // U=X (vertical), V=Y (top/bottom)
+    default: return {u:0, v:0};
+  }
+}
+function clampLogoToFace(logo) {
+  const dims = BOX_FACE_DIMS[logo.face](paramState.box);
+  const margin = 1.5;
+  const ins = faceFilletInsets(logo.face, paramState.box);
+  const maxHalfW = Math.max(1, dims.uLen/2 - margin - ins.u);
+  const maxHalfH = Math.max(1, dims.vLen/2 - margin - ins.v);
+
+  const p = paramState.box;
+  // Hollow mode now applies taper the same as the solid box (buildHollowBox) — clamp with
+  // the same live values so bounds always match what's actually drawn.
+  const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+    p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+  const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+
+  // First, a coarse unrotated-size clamp in REAL mm (cheap upper bound regardless of angle
+  // or local compression — never larger than the face's own nominal flat extent).
+  logo.w = Math.min(logo.w, maxHalfW*2);
+  logo.h = Math.min(logo.h, maxHalfH*2);
+
+  // Position clamp uses the local tangent magnitudes at the CURRENT u0,v0 (an estimate —
+  // magU/magV can themselves shift slightly as u0/v0 move, but this is a safety clamp, not
+  // the render path, so a position-local estimate is sufficient).
+  for (let iter = 0; iter < 2; iter++) {
+    const { magU, magV } = makeLogoFrame({...logo, uAxis,vAxis,nAxis,nOffset}, taperFn);
+    const safeMagU = Math.max(1e-3, magU), safeMagV = Math.max(1e-3, magV);
+
+    let ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+    let flatHalfW = ext.halfX/safeMagU, flatHalfH = ext.halfY/safeMagV;
+    if (flatHalfW > maxHalfW || flatHalfH > maxHalfH) {
+      const scale = Math.min(maxHalfW/flatHalfW, maxHalfH/flatHalfH);
+      logo.w *= scale; logo.h *= scale;
+      ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+      flatHalfW = ext.halfX/safeMagU; flatHalfH = ext.halfY/safeMagV;
+    }
+    const uRange = Math.max(0, maxHalfW - flatHalfW);
+    const vRange = Math.max(0, maxHalfH - flatHalfH);
+    logo.u0 = Math.max(-uRange, Math.min(uRange, logo.u0));
+    logo.v0 = Math.max(-vRange, Math.min(vRange, logo.v0));
+  }
+}
+
+
+const SHAPE_LABELS = { box:'куб' };
+
+const SHAPE_PARAMS = {
+  box: [
+    {key:'width',  label:'Ширина (X)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {key:'height', label:'Высота (Y)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {key:'depth',  label:'Глубина (Z)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {key:'segW', label:'Сегменты X', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {key:'segH', label:'Сегменты Y', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
+    {key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletInnerFloor', label:'Полый/борт: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletInnerVert', label:'Полый/борт: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'filletInnerLip', label:'Полый/борт: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'taperXPlus', label:'Наклон стенки +X', min:-75, max:75, step:1, default:0, unit:'°'},
+    {key:'taperXMinus', label:'Наклон стенки −X', min:-75, max:75, step:1, default:0, unit:'°'},
+    {key:'taperZPlus', label:'Наклон стенки +Z', min:-75, max:75, step:1, default:0, unit:'°'},
+    {key:'taperZMinus', label:'Наклон стенки −Z', min:-75, max:75, step:1, default:0, unit:'°'},
+    {key:'taperYPlusX', label:'Наклон верха по X', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'taperYPlusZ', label:'Наклон верха по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'taperYMinusX', label:'Наклон низа по X', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'taperYMinusZ', label:'Наклон низа по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
+    {key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
+    {key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
+    {key:'rimHeight', label:'Высота борта', min:0.5, max:1000000, step:0.5, default:8, unit:'мм'},
+    {key:'latticeFloor', label:'Полый: сетчатое ромбовидное дно (сквозное)', type:'bool', default:false},
+    {key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
+    {key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
+    {key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
+  ],
+};
+
+const paramState = {};
+for (const shape in SHAPE_PARAMS) {
+  paramState[shape] = {};
+  for (const p of SHAPE_PARAMS[shape]) paramState[shape][p.key] = p.default;
+}
+const transformState = { rx:0, ry:0, rz:0 };
+const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
+let nextLogoId = 1;
+let logoResolution = 50;
+let logoResolutionHollow = 50; // separate, lower-ceiling control: buildHollowBox has no
+  // zonal grid, so this drives the density of the WHOLE shell/cavity, not just logo zones
+
+// Combines however many logos share a face into one dispFn per face (first matching
+// non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
+// taperFn is needed to precompute each logo's tangent-plane frame (see makeLogoFrame).
+function buildCombinedLogoDispFns(taperFn) {
+  const p = paramState.box;
+  const fnsByFace = {};
+  for (const logo of logos) {
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
+    const frame = makeLogoFrame(fullLogo, taperFn);
+    const fn = makeLogoDispFn(fullLogo, frame);
+    if (!fnsByFace[logo.face]) fnsByFace[logo.face] = [];
+    fnsByFace[logo.face].push(fn);
+  }
+  const dispFns = {};
+  for (const face in fnsByFace) {
+    const fns = fnsByFace[face];
+    dispFns[face] = (u,v,base) => { for (const fn of fns) { const d = fn(u,v,base); if (d !== 0) return d; } return 0; };
+  }
+  return dispFns;
+}
+
+// For each of the 3 world axes, computes the flat-space intervals ("zones") that need fine
+// grid resolution so logo relief on any face touching that axis stays crisp — one zone per
+// logo per axis role (u and/or v) it uses, in the SAME real-mm-footprint terms as
+// clampLogoToFace (rotated half-extents converted through the local tangent magnitude, so a
+// rotated or taper-compressed logo still gets a correctly-sized zone). Shared per axis (not
+// per face) because the SAME position array ends up feeding every face that uses that axis,
+// whichever role — see buildBoxWithLogos.
+function computeLogoZonesByAxis(taperFn) {
+  const p = paramState.box;
+  const zonesByAxis = {0:[], 1:[], 2:[]};
+  const margin = 2; // extra flat-space mm around each logo's exact footprint, so the
+                     // fine-to-coarse transition isn't an abrupt jump right at the edge
+  for (const logo of logos) {
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
+    const frame = makeLogoFrame(fullLogo, taperFn);
+    const ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+    const flatHalfU = ext.halfX / Math.max(1e-3, frame.magU) + margin;
+    const flatHalfV = ext.halfY / Math.max(1e-3, frame.magV) + margin;
+    zonesByAxis[uAxis].push([logo.u0 - flatHalfU, logo.u0 + flatHalfU]);
+    zonesByAxis[vAxis].push([logo.v0 - flatHalfV, logo.v0 + flatHalfV]);
+  }
+  return zonesByAxis;
+}
+
+// Split the logos into the rounded hollow/tray's two shells: outer-wall faces (+X/-X/+Z/-Z/-Y) go to
+// the OUTER shell, the cavity floor ('-Y-inner') to the INNER shell as its '-Y' face. Frames are built
+// in FLAT space (identity taper) since taper is applied afterwards to the whole mesh. Zones likewise.
+function splitHollowLogoDispFns() {
+  if (logos.length === 0) return { dOuter:null, dInner:null, zones:null };
+  const idT = q => q;
+  const all = buildCombinedLogoDispFns(idT);
+  let dOuter = null, dInner = null;
+  for (const f of ['+X','-X','+Z','-Z','-Y']) if (all[f]) { dOuter = dOuter || {}; dOuter[f] = all[f]; }
+  if (all['-Y-inner']) dInner = { '-Y': all['-Y-inner'] };
+  return { dOuter, dInner, zones: computeLogoZonesByAxis(idT) };
+}
+
+// Lattice-floor options from the box params. Hole size (`cell`) is DECOUPLED from wall/logo
+// detail: the hollow build keeps its normal resolution (logoResolutionHollow), and
+// emitLatticeFloor groups that fine grid into ~cell-sized diamond blocks. So changing the cell
+// size no longer coarsens the walls / logo relief. rib = axial gap between holes;
+// borderCells = solid fine cells kept as a rim so holes never reach the walls.
+function makeLatticeOpts(p) {
+  return {
+    enabled: true,
+    rib: Math.max(0.1, p.latticeRib||2),
+    cell: Math.max(1, p.latticeCell||8),
+    borderCells: Math.max(0, Math.round(p.latticeBorder||0)),
+  };
+}
+
+function buildTrisForShape(shape, p) {
+  if (shape === 'box') {
+    const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+      p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+
+    if (p.hollow) {
+      const uni = p.filletRadius||0;
+      const oBot = p.filletBottom>0 ? p.filletBottom : uni, oVert = p.filletVert>0 ? p.filletVert : uni;
+      const iFloor = p.filletInnerFloor||0, iVert = p.filletInnerVert||0, iLip = p.filletInnerLip||0;
+      const oLip = p.filletTop>0 ? p.filletTop : uni; // outer top edge = rolled lip (clamped <t inside)
+      // Rounded hollow: when any fillet is asked. Logos ride on the outer walls (+ cavity floor) as
+      // relief (buildAsymBoxSurfaces takes per-face dispFns; frame is flat since taper runs afterwards).
+      if (oLip>0 || oBot>0 || oVert>0 || iFloor>0 || iVert>0 || iLip>0) {
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const hw=p.width/2, hh=p.height/2, hd=p.depth/2;
+        const Rout = asymRadiiFromGroups(oLip, oBot, oVert, hw, hh, hd);
+        const Rin  = asymRadiiFromGroups(iLip, iFloor, iVert, hw-tW, (p.height-tW)/2, hd-tW);
+        const seg = p.filletSeg||4;
+        const { dOuter, dInner, zones } = splitHollowLogoDispFns();
+        const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, zones, logoResolution);
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
+      // Flat hollow. Optional diamond-lattice (through-hole) floor. Wall resolution stays at
+      // logoResolutionHollow (hole size is decoupled — emitLatticeFloor groups the fine grid),
+      // so lattice + wall logos keep full relief detail. Lattice can't carry relief itself, so
+      // -Y / -Y-inner logos are simply not rendered on it (wall logos are unaffected).
+      const lat = p.latticeFloor ? makeLatticeOpts(p) : null;
+      const dispFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat);
+    }
+
+    if (p.rim) {
+      const uni = p.filletRadius||0;
+      const oBot = p.filletBottom>0 ? p.filletBottom : uni, oVert = p.filletVert>0 ? p.filletVert : uni;
+      const iFloor = p.filletInnerFloor||0, iVert = p.filletInnerVert||0, iLip = p.filletInnerLip||0;
+      const oLip = p.filletTop>0 ? p.filletTop : uni;
+      // Rounded tray: a solid box with a shallow rounded pocket. Same builder as rounded hollow, inner
+      // cavity made shallow (pocketDepth = rim height). Logos ride on the outer walls (+ pocket floor).
+      if (oLip>0 || oBot>0 || oVert>0 || iFloor>0 || iVert>0 || iLip>0) {
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const rh = clampRimHeight(p.height, p.rimHeight||8);
+        const hw=p.width/2, hh=p.height/2, hd=p.depth/2;
+        const Rout = asymRadiiFromGroups(oLip, oBot, oVert, hw, hh, hd);
+        const Rin  = asymRadiiFromGroups(iLip, iFloor, iVert, hw-tW, rh/2, hd-tW);
+        const seg = p.filletSeg||4;
+        const { dOuter, dInner, zones } = splitHollowLogoDispFns();
+        const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, zones, logoResolution);
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
+      // Same non-zonal cost model as hollow (no logo-zone grid), so it reuses
+      // logoResolutionHollow rather than adding a third detail slider.
+      const dispFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn);
+    }
+
+    // Per-group fillet: each group (top/bottom/vertical) overrides the shared filletRadius when > 0.
+    const uni = p.filletRadius||0;
+    const rTop  = p.filletTop>0    ? p.filletTop    : uni;
+    const rBot  = p.filletBottom>0 ? p.filletBottom : uni;
+    const rVert = p.filletVert>0   ? p.filletVert   : uni;
+    const hasFillet = rTop>0 || rBot>0 || rVert>0;
+
+    if (logos.length > 0 && !hasFillet) {
+      // Flat-box logo path: taper is applied INSIDE buildBoxWithLogos (per-vertex, via taperFn), while
+      // each logo's placement uses the projection-based dispFn (makeLogoDispFn/makeLogoFrame) so its
+      // real-world size stays fixed under taper. The grid is zone-aware (computeLogoZonesByAxis/
+      // buildLogoAwareAxisPositions): fine resolution only where a logo sits.
+      const dispFns = buildCombinedLogoDispFns(taperFn);
+      const zonesByAxis = computeLogoZonesByAxis(taperFn);
+      return buildBoxWithLogos(p.width, p.height, p.depth, logoResolution, dispFns, taperFn, zonesByAxis);
+    }
+
+    // Fillet path (optionally with logo relief). If all three groups resolve equal AND there are no
+    // logos -> cheap uniform genRoundedBox. Otherwise the watertight 12-radius asym generator, which
+    // also carries the logo relief on its flat faces (logo frame is built in FLAT space with identity
+    // taper, since taper is applied afterwards to the whole mesh; the flat face grid is densified in
+    // each logo zone). Logos are clamped into the flat region (faceFilletInsets) so the relief never
+    // reaches the edge cylinders. Taper stretch of the relief is accepted for the rare fillet+taper+logo
+    // combo; with no taper it is exact.
+    let tris;
+    if (rTop !== rBot || rTop !== rVert || logos.length > 0) {
+      let dispFnsFlat = null, zonesFlat = null;
+      if (logos.length > 0) { const idT = q => q; dispFnsFlat = buildCombinedLogoDispFns(idT); zonesFlat = computeLogoZonesByAxis(idT); }
+      const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2);
+      tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, Math.max(8, (p.filletSeg||4)*2), p.filletSeg||4, dispFnsFlat, zonesFlat, logoResolution);
+    } else {
+      tris = genRoundedBox(p.width, p.height, p.depth, rTop, p.segW, p.segH, p.segD, p.filletSeg||4);
+    }
+    return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+      p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+  }
+  return [];
+}
+
+/* =========================================================
+   UI GENERATION
+   ========================================================= */
+function clampParam(param, val) {
+  if (Number.isNaN(val)) val = param.default;
+  val = Math.max(param.min, Math.min(param.max, val));
+  if (Number.isInteger(param.step)) val = Math.round(val);
+  return val;
+}
+
+function buildAllParamUI() {
+  for (const shapeKey in SHAPE_PARAMS) {
+    const container = document.getElementById('params-'+shapeKey);
+    for (const param of SHAPE_PARAMS[shapeKey]) {
+      if (param.type === 'bool') {
+        const row = document.createElement('label');
+        row.className = 'toggle-row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.dataset.shape = shapeKey; cb.dataset.key = param.key; cb.checked = !!param.default;
+        const span = document.createElement('span'); span.textContent = param.label;
+        row.appendChild(cb); row.appendChild(span);
+        container.appendChild(row);
+      } else {
+        const row = document.createElement('div');
+        row.className = 'param-row';
+        row.innerHTML =
+          '<label class="param-label">'+param.label+'</label>'+
+          '<div class="num-field">'+
+          '<input type="number" class="param-number" data-shape="'+shapeKey+'" data-key="'+param.key+'" '+
+          'min="'+param.min+'" max="'+param.max+'" step="'+param.step+'" value="'+param.default+'">'+
+          '<span class="num-unit">'+(param.unit||'')+'</span>'+
+          '</div>';
+        container.appendChild(row);
+      }
+    }
+  }
+}
+
+function attachEventListeners() {
+  document.getElementById('panel').addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.matches('.param-number') && t.dataset.shape) {
+      const shape = t.dataset.shape, key = t.dataset.key;
+      const val = parseFloat(t.value);
+      if (Number.isNaN(val)) return; // mid-edit (e.g. field cleared) — wait for a usable value
+      paramState[shape][key] = val;
+      if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (shape === currentShape) regenerateDebounced();
+    } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
+      paramState[t.dataset.shape][t.dataset.key] = t.checked;
+      if (t.dataset.shape === 'box' && (t.dataset.key === 'hollow' || t.dataset.key === 'rim') && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (t.dataset.shape === currentShape) regenerateSoon();
+    }
+  });
+  // on blur/Enter, snap the field to a valid clamped value
+  document.getElementById('panel').addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('.param-number') && t.dataset.shape) {
+      const shape = t.dataset.shape, key = t.dataset.key;
+      const paramDef = SHAPE_PARAMS[shape].find(p => p.key === key);
+      const val = clampParam(paramDef, parseFloat(t.value));
+      t.value = val;
+      paramState[shape][key] = val;
+      if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (shape === currentShape) regenerateSoon();
+    }
+  });
+
+  ['rx','ry','rz'].forEach(axis => {
+    const el = document.getElementById(axis);
+    el.addEventListener('input', () => {
+      const val = parseFloat(el.value);
+      if (Number.isNaN(val)) return;
+      transformState[axis] = val;
+      rotateOnlyDebounced();
+    });
+    el.addEventListener('change', () => {
+      let val = parseFloat(el.value);
+      if (Number.isNaN(val)) val = 0;
+      val = Math.max(-180, Math.min(180, Math.round(val)));
+      el.value = val;
+      transformState[axis] = val;
+      rotateOnlySoon();
+    });
+  });
+
+  document.getElementById('shade-flat').addEventListener('click', () => setShading(false));
+  document.getElementById('shade-smooth').addEventListener('click', () => setShading(true));
+
+  document.getElementById('toggle-wire').addEventListener('change', (e) => { if (scene3DReady) wireMesh.visible = e.target.checked; });
+  document.getElementById('toggle-dims').addEventListener('change', (e) => {
+    dimsVisible = e.target.checked;
+    if (!scene3DReady) return;
+    dimLines.visible = dimsVisible;
+    for (const k in dimLabelEls) dimLabelEls[k].style.display = dimsVisible ? '' : 'none';
+  });
+  document.getElementById('color-picker').addEventListener('input', (e) => { if (scene3DReady) mesh.material.color.set(e.target.value); });
+
+  document.getElementById('btn-export').addEventListener('click', () => {
+    flushPendingRegenerate(); // never export geometry left over from a still-pending edit
+    const nameRaw = document.getElementById('filename').value.trim() || 'model';
+    const format = document.getElementById('export-format').value;
+    const blob = format === 'ascii' ? trisToAsciiSTL(currentTris, nameRaw) : trisToBinarySTL(currentTris);
+    downloadBlob(blob, nameRaw.replace(/\.stl$/i,'') + '.stl');
+  });
+
+  document.getElementById('btn-reset-view').addEventListener('click', () => {
+    flushPendingRegenerate();
+    if (scene3DReady) frameCamera(computeBBox(currentTris));
+  });
+}
+
+const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};
+const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'] };
+const ALL_FACES = ['+Z','+X','-X','+Y','-Y','-Y-inner','-Z'];
+
+function renderLogoCards() {
+  const container = document.getElementById('logo-cards');
+  container.innerHTML = '';
+  for (const logo of logos) {
+    const axisLabels = FACE_AXIS_LABELS[logo.face];
+    const card = document.createElement('div');
+    card.className = 'logo-card';
+    card.dataset.logoId = logo.id;
+    card.innerHTML =
+      '<div class="logo-card-head">'+
+        '<img class="logo-thumb" src="'+(logo.previewUrl||'')+'" alt="лого">'+
+        '<select class="logo-face-select" data-field="face">'+
+          ALL_FACES.map(f=>'<option value="'+f+'" '+(f===logo.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('')+
+        '</select>'+
+        '<button class="btn-remove-logo" data-action="remove" title="Удалить">✕</button>'+
+      '</div>'+
+      '<div class="logo-grid">'+
+        '<div class="logo-field"><label>Смещ. '+axisLabels[0]+'</label><input type="number" data-field="u0" step="0.5" value="'+logo.u0+'"></div>'+
+        '<div class="logo-field"><label>Смещ. '+axisLabels[1]+'</label><input type="number" data-field="v0" step="0.5" value="'+logo.v0+'"></div>'+
+        '<div class="logo-field"><label>Ширина</label><input type="number" data-field="w" step="0.5" min="1" value="'+logo.w+'"></div>'+
+        '<div class="logo-field"><label>Высота</label><input type="number" data-field="h" step="0.5" min="1" value="'+logo.h+'"></div>'+
+        '<div class="logo-field"><label>Глубина мм</label><input type="number" data-field="depth" step="0.1" value="'+logo.depth+'"></div>'+
+        '<div class="logo-field"><label>Порог %</label><input type="number" data-field="thresholdPct" step="1" min="1" max="99" value="'+Math.round(logo.threshold*100)+'"></div>'+
+        '<div class="logo-field"><label>Поворот °</label><input type="number" data-field="rotation" step="1" min="-180" max="180" value="'+(logo.rotation||0)+'"></div>'+
+      '</div>'+
+      '<label class="logo-invert-row"><input type="checkbox" data-field="invert" '+(logo.invert?'checked':'')+'> Инвертировать (фон выпуклый, а не сам рисунок)</label>';
+    container.appendChild(card);
+  }
+  document.getElementById('btn-add-logo').disabled = logos.length >= 18;
+}
+
+function attachLogoEventListeners() {
+  document.getElementById('btn-add-logo').addEventListener('click', () => {
+    if (logos.length >= 18) return;
+    document.getElementById('logo-file-input').click();
+  });
+
+  document.getElementById('logo-file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    loadLogoImageFile(file, (result) => {
+      if (!result) { alert('Не удалось загрузить изображение.'); return; }
+      const { heightmap, previewUrl, suggestedInvert } = result;
+      const usedFaces = new Set(logos.map(l => l.face));
+      const face = ALL_FACES.find(f => !usedFaces.has(f)) || '+Z';
+      const dims = BOX_FACE_DIMS[face](paramState.box);
+      const logo = {
+        id: nextLogoId++, face, u0: 0, v0: 0,
+        w: Math.max(2, Math.min(dims.uLen*0.4, dims.uLen-3)),
+        h: Math.max(2, Math.min(dims.vLen*0.4, dims.vLen-3)),
+        depth: 2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
+      };
+      clampLogoToFace(logo);
+      logos.push(logo);
+      renderLogoCards();
+      if (currentShape === 'box') regenerateSoon();
+    });
+  });
+
+  document.getElementById('logo-cards').addEventListener('input', (e) => {
+    const card = e.target.closest('.logo-card');
+    const field = e.target.dataset.field;
+    if (!card || !field) return;
+    const logo = logos.find(l => l.id === Number(card.dataset.logoId));
+    if (!logo) return;
+    if (field === 'face') logo.face = e.target.value;
+    else if (field === 'invert') logo.invert = e.target.checked;
+    else if (field === 'thresholdPct') { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo.threshold = Math.max(0.01, Math.min(0.99, v/100)); }
+    else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo[field] = v; }
+    if (currentShape === 'box') regenerateDebounced();
+  });
+
+  document.getElementById('logo-cards').addEventListener('change', (e) => {
+    const card = e.target.closest('.logo-card');
+    const field = e.target.dataset.field;
+    if (!card || !field) return;
+    const logo = logos.find(l => l.id === Number(card.dataset.logoId));
+    if (!logo) return;
+    if (['face','u0','v0','w','h','rotation'].includes(field)) {
+      clampLogoToFace(logo);
+      renderLogoCards();
+      if (currentShape === 'box') regenerateSoon();
+    }
+  });
+
+  document.getElementById('logo-cards').addEventListener('click', (e) => {
+    if (e.target.dataset.action !== 'remove') return;
+    const card = e.target.closest('.logo-card');
+    const id = Number(card.dataset.logoId);
+    const idx = logos.findIndex(l => l.id === id);
+    if (idx >= 0) logos.splice(idx, 1);
+    renderLogoCards();
+    if (currentShape === 'box') regenerateSoon();
+  });
+
+  const resInput = document.getElementById('logo-resolution');
+  resInput.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+  });
+  resInput.addEventListener('change', (e) => {
+    let v = parseInt(e.target.value, 10);
+    if (Number.isNaN(v)) v = 50;
+    v = Math.max(10, Math.min(300, v));
+    e.target.value = v;
+    logoResolution = v;
+    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateSoon();
+  });
+
+  const resInputHollow = document.getElementById('logo-resolution-hollow');
+  resInputHollow.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+  });
+  resInputHollow.addEventListener('change', (e) => {
+    let v = parseInt(e.target.value, 10);
+    if (Number.isNaN(v)) v = 50;
+    v = Math.max(10, Math.min(150, v));
+    e.target.value = v;
+    logoResolutionHollow = v;
+    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateSoon();
+  });
+}
+
+function setShading(smooth) {
+  if (!scene3DReady) return;
+  mesh.material.flatShading = smooth ? false : true;
+  mesh.material.needsUpdate = true;
+  document.getElementById('shade-flat').classList.toggle('active', !smooth);
+  document.getElementById('shade-smooth').classList.toggle('active', smooth);
+}
+
+function switchShape(shapeKey) {
+  currentShape = shapeKey;
+  document.querySelectorAll('.param-group').forEach(g => g.style.display = (g.dataset.shape === shapeKey) ? '' : 'none');
+  document.getElementById('active-shape-name').textContent = SHAPE_LABELS[shapeKey];
+  regenerate();
+  if (scene3DReady) frameCamera(computeBBox(currentTris));
+}
+
+/* =========================================================
+   THREE.JS SCENE / CUSTOM ORBIT CONTROLS
+   ========================================================= */
+let scene, camera, renderer, mesh, wireMesh, gridHelper, controls;
+let dimLines, dimAnchors = {}, dimLabelEls = {};
+let currentShape = 'box';
+let currentTris = [];
+let dimsVisible = true;
+let scene3DReady = false;
+
+class SimpleOrbit {
+  constructor(camera, dom) {
+    this.camera = camera; this.dom = dom;
+    this.theta = Math.PI*0.28; this.phi = Math.PI*0.36;
+    this.distance = 150; this.minDistance = 0.2; this.maxDistance = 200000;
+    this.target = new THREE.Vector3(0,0,0);
+    this.pointers = new Map(); this._lastPinch = null;
+    this._bind();
+    this.update();
+  }
+  _bind() {
+    const dom = this.dom;
+    dom.style.touchAction = 'none';
+    dom.addEventListener('pointerdown', (e) => {
+      dom.setPointerCapture(e.pointerId);
+      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    });
+    dom.addEventListener('pointermove', (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      const prev = this.pointers.get(e.pointerId);
+      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if (this.pointers.size === 1) {
+        this.theta -= dx*0.0065;
+        this.phi -= dy*0.0065;
+        this.phi = Math.max(0.06, Math.min(Math.PI-0.06, this.phi));
+        this.update();
+      } else if (this.pointers.size === 2) {
+        const pts = [...this.pointers.values()];
+        const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+        if (this._lastPinch != null) {
+          const delta = this._lastPinch - dist;
+          this.distance *= (1 + delta*0.0035);
+          this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, this.distance));
+          this.update();
+        }
+        this._lastPinch = dist;
+      }
+    });
+    const endPointer = (e) => { this.pointers.delete(e.pointerId); this._lastPinch = null; };
+    dom.addEventListener('pointerup', endPointer);
+    dom.addEventListener('pointercancel', endPointer);
+    dom.addEventListener('pointerleave', endPointer);
+    dom.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.distance *= (1 + e.deltaY*0.001);
+      this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, this.distance));
+      this.update();
+    }, {passive:false});
+  }
+  update() {
+    const sinPhi = Math.sin(this.phi);
+    const x = this.distance*sinPhi*Math.sin(this.theta);
+    const y = this.distance*Math.cos(this.phi);
+    const z = this.distance*sinPhi*Math.cos(this.theta);
+    this.camera.position.set(this.target.x+x, this.target.y+y, this.target.z+z);
+    this.camera.lookAt(this.target);
+  }
+}
+
+function frameCamera(bbox) {
+  const sizeX = bbox.maxX-bbox.minX, sizeY = bbox.maxY-bbox.minY, sizeZ = bbox.maxZ-bbox.minZ;
+  const radius = Math.sqrt(sizeX*sizeX+sizeY*sizeY+sizeZ*sizeZ)/2 || 10;
+  controls.distance = Math.max(controls.minDistance, Math.min(controls.maxDistance, radius*2.5 + 12));
+  controls.theta = Math.PI*0.28; controls.phi = Math.PI*0.36;
+  controls.update();
+}
+
+function initDimensionOverlay() {
+  dimLines = new THREE.Group();
+  const mat = new THREE.LineBasicMaterial({color:0x6fb7db, transparent:true, opacity:0.85});
+  ['w','h','d'].forEach(axis => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const line = new THREE.Line(geo, mat);
+    line.name = 'dim-'+axis;
+    dimLines.add(line);
+  });
+  scene.add(dimLines);
+  const wrap = document.getElementById('viewport');
+  ['w','h','d'].forEach(axis => {
+    const el = document.createElement('div');
+    el.className = 'dim-label';
+    wrap.appendChild(el);
+    dimLabelEls[axis] = el;
+  });
+}
+
+function updateDimensionOverlay(bbox) {
+  const maxSize = Math.max(bbox.maxX-bbox.minX, bbox.maxY-bbox.minY, bbox.maxZ-bbox.minZ);
+  const pad = maxSize*0.1 + 3;
+  function setLine(name, p0, p1) {
+    const line = dimLines.getObjectByName(name);
+    const arr = line.geometry.attributes.position.array;
+    arr[0]=p0[0]; arr[1]=p0[1]; arr[2]=p0[2];
+    arr[3]=p1[0]; arr[4]=p1[1]; arr[5]=p1[2];
+    line.geometry.attributes.position.needsUpdate = true;
+    return [(p0[0]+p1[0])/2, (p0[1]+p1[1])/2, (p0[2]+p1[2])/2];
+  }
+  const midW = setLine('dim-w', [bbox.minX, bbox.minY-pad, bbox.maxZ+pad], [bbox.maxX, bbox.minY-pad, bbox.maxZ+pad]);
+  const midH = setLine('dim-h', [bbox.maxX+pad, bbox.minY, bbox.maxZ+pad], [bbox.maxX+pad, bbox.maxY, bbox.maxZ+pad]);
+  const midD = setLine('dim-d', [bbox.maxX+pad, bbox.minY-pad, bbox.minZ], [bbox.maxX+pad, bbox.minY-pad, bbox.maxZ]);
+  dimAnchors = {
+    w: {pos:midW, value: bbox.maxX-bbox.minX},
+    h: {pos:midH, value: bbox.maxY-bbox.minY},
+    d: {pos:midD, value: bbox.maxZ-bbox.minZ},
+  };
+}
+
+// Above this triangle count, skip the O(n) watertightness check in the stats panel — it
+// walks every triangle edge into a Map and can cost MORE than generating the geometry itself
+// (measured ~6s on 1.4M triangles vs ~1.7s to generate them), and it's a diagnostic display,
+// not something the model needs correct to render or export.
+const MANIFOLD_CHECK_TRI_LIMIT = 120000;
+function updateStatsPanel(tris, bbox) {
+  document.getElementById('stat-tris').textContent = tris.length;
+  document.getElementById('stat-verts').textContent = tris.length*3;
+  document.getElementById('stat-size').textContent =
+    (bbox.maxX-bbox.minX).toFixed(1)+' × '+(bbox.maxY-bbox.minY).toFixed(1)+' × '+(bbox.maxZ-bbox.minZ).toFixed(1)+' мм';
+  const el = document.getElementById('stat-watertight');
+  if (tris.length > MANIFOLD_CHECK_TRI_LIMIT) {
+    el.textContent = 'не проверено (>'+Math.round(MANIFOLD_CHECK_TRI_LIMIT/1000)+'k треугольников)';
+    el.className = 'v mono';
+  } else {
+    const mc = manifoldCheck(tris);
+    if (mc.watertight) { el.textContent = 'замкнутый ✓'; el.className = 'v mono ok'; }
+    else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
+  }
+}
+
+// Triangles as buildTrisForShape returned them, BEFORE the whole-model rotation is applied —
+// lets rotation re-use this instead of rebuilding the (potentially expensive) box/logo
+// geometry from scratch just because rx/ry/rz changed. Set inside computeGeometry().
+let cachedRawTris = [];
+function computeGeometry() {
+  const raw = buildTrisForShape(currentShape, paramState[currentShape]);
+  cachedRawTris = raw;
+  const tris = rotateTris(raw, transformState.rx, transformState.ry, transformState.rz);
+  currentTris = tris;
+  const bbox = computeBBox(tris);
+  updateStatsPanel(tris, bbox);
+  return bbox;
+}
+
+function updateScene3D(tris, bbox) {
+  const positions = trisToPositions(tris);
+  const normals = computeWeldedNormals(tris);
+  const newGeo = new THREE.BufferGeometry();
+  newGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  newGeo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+
+  if (mesh.geometry) mesh.geometry.dispose();
+  mesh.geometry = newGeo;
+  if (wireMesh.geometry) wireMesh.geometry.dispose();
+  wireMesh.geometry = new THREE.WireframeGeometry(newGeo);
+
+  gridHelper.position.y = bbox.minY - 0.01;
+  const maxDim = Math.max(bbox.maxX-bbox.minX, bbox.maxY-bbox.minY, bbox.maxZ-bbox.minZ, 1e-6);
+  const gridScale = (maxDim*3) / 500;
+  gridHelper.scale.set(gridScale, 1, gridScale);
+  updateDimensionOverlay(bbox);
+}
+
+function regenerate() {
+  const bbox = computeGeometry();
+  if (scene3DReady) updateScene3D(currentTris, bbox);
+}
+
+/* =========================================================
+   PERFORMANCE: debounced / non-blocking-feel regeneration
+   ---------------------------------------------------------
+   regenerate() itself stays fully synchronous — switchShape()/init() rely on it having
+   completed by the time they read currentTris. Every INTERACTIVE trigger point (typing in
+   a field, dragging, clicking add/remove) goes through the wrappers below instead of calling
+   regenerate() directly:
+     - regenerateSoon(): flips on a "Генерация…" indicator and waits two animation frames
+       (one rAF fires just before a paint, so the indicator needs a further deferred frame to
+       actually be ON SCREEN before the heavy synchronous work starts) before running
+       regenerate(). A generation token skips the run if a newer request has since superseded
+       it — cheap insurance against redundant work when several inputs fire in a burst.
+     - regenerateDebounced(): the same, but only ~200ms after the last call — used on 'input'
+       handlers so rapid typing/dragging doesn't queue up a full rebuild per keystroke, which
+       is what turned "set a high logo-resolution" into a multi-second hard freeze.
+   Rotating the finished model doesn't need the box/logo geometry rebuilt at all — only
+   re-rotate cachedRawTris — so rx/ry/rz go through their own, much cheaper pair of wrappers.
+   ========================================================= */
+let regenGeneration = 0;
+function setBusy(isBusy) {
+  document.getElementById('busy-indicator').style.display = isBusy ? 'flex' : 'none';
+}
+function debounce(fn, waitMs) {
+  let timer = null;
+  const debounced = function(...args) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; fn.apply(null, args); }, waitMs);
+  };
+  debounced.cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  return debounced;
+}
+function regenerateSoon() {
+  const myGen = ++regenGeneration;
+  setBusy(true);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (myGen !== regenGeneration) return; // superseded by a newer request — skip stale work
+      regenerate();
+      setBusy(false);
+    });
+  });
+}
+const regenerateDebounced = debounce(regenerateSoon, 200);
+
+function applyRotationOnly() {
+  const tris = rotateTris(cachedRawTris, transformState.rx, transformState.ry, transformState.rz);
+  currentTris = tris;
+  const bbox = computeBBox(tris);
+  updateStatsPanel(tris, bbox);
+  if (scene3DReady) updateScene3D(tris, bbox);
+}
+function rotateOnlySoon() {
+  const myGen = ++regenGeneration;
+  setBusy(true);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (myGen !== regenGeneration) return;
+      applyRotationOnly();
+      setBusy(false);
+    });
+  });
+}
+const rotateOnlyDebounced = debounce(rotateOnlySoon, 80);
+
+// If a debounced regeneration is still waiting when the user hits Export or resets the
+// camera, run it immediately (synchronously — bypassing the busy-indicator/rAF deferral)
+// so neither ships against stale geometry.
+function flushPendingRegenerate() {
+  regenerateDebounced.cancel();
+  rotateOnlyDebounced.cancel();
+  regenGeneration++; // invalidate any in-flight rAF-deferred call too
+  regenerate();
+}
+
+
+function projectToScreen(pos3, rect) {
+  const v = new THREE.Vector3(pos3[0], pos3[1], pos3[2]);
+  v.project(camera);
+  return { x:(v.x*0.5+0.5)*rect.width, y:(-v.y*0.5+0.5)*rect.height, behind: v.z > 1 };
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+  if (dimsVisible) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const wrapRect = document.getElementById('viewport').getBoundingClientRect();
+    const offX = rect.left - wrapRect.left, offY = rect.top - wrapRect.top;
+    for (const k in dimAnchors) {
+      const a = dimAnchors[k];
+      const s = projectToScreen(a.pos, rect);
+      const el = dimLabelEls[k];
+      if (s.behind) { el.style.display = 'none'; continue; }
+      el.style.display = '';
+      el.style.left = (s.x+offX)+'px';
+      el.style.top = (s.y+offY)+'px';
+      el.textContent = a.value.toFixed(1)+' мм';
+    }
+  }
+}
+
+function onResize() {
+  const wrap = document.getElementById('viewport');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+
+function showViewportError(message) {
+  document.getElementById('viewport').innerHTML =
+    '<div style="color:#f0c9c0;font-family:\'IBM Plex Mono\',monospace;font-size:13px;padding:24px;line-height:1.6;">'+
+    message+'</div>';
+}
+
+function isWebGLAvailable() {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+  } catch (e) { return false; }
+}
+
+function init() {
+  // UI + geometry math have no WebGL dependency — always set these up first,
+  // so parameter editing and STL export keep working even if the 3D preview can't start.
+  buildAllParamUI();
+  attachEventListeners();
+  attachLogoEventListeners();
+  switchShape('box'); // computes geometry + stats; 3D update inside is a no-op until scene3DReady
+
+  if (typeof THREE === 'undefined') {
+    showViewportError(
+      'Не удалось загрузить библиотеку Three.js с CDN (cdnjs.cloudflare.com).<br><br>'+
+      'Проверьте подключение к интернету и обновите страницу. Если проблема повторяется — возможно, сеть блокирует cdnjs.cloudflare.com.<br><br>'+
+      'Параметры и экспорт STL ниже работают независимо от этого.'
+    );
+    return;
+  }
+  if (!isWebGLAvailable()) {
+    showViewportError(
+      'В этом окне браузера недоступен WebGL, поэтому 3D-предпросмотр не может работать.<br><br>'+
+      'Попробуйте открыть файл в обычном браузере (Chrome/Safari) вместо встроенного просмотрщика, либо включите аппаратное ускорение графики в настройках браузера/устройства.<br><br>'+
+      'Параметры и экспорт STL ниже работают независимо от этого.'
+    );
+    return;
+  }
+  try {
+    initScene3D();
+    scene3DReady = true;
+    const bbox = computeBBox(currentTris);
+    updateScene3D(currentTris, bbox);
+    frameCamera(bbox);
+    window.addEventListener('resize', onResize);
+    animate();
+  } catch (e) {
+    console.error(e);
+    showViewportError(
+      'Ошибка при инициализации 3D-сцены: '+(e && e.message ? e.message : e)+
+      '<br><br>Параметры и экспорт STL ниже работают независимо от этого. Попробуйте обновить страницу или открыть файл в другом браузере.'
+    );
+  }
+}
+
+function initScene3D() {
+  const wrap = document.getElementById('viewport');
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, wrap.clientWidth/wrap.clientHeight, 0.05, 400000);
+  renderer = new THREE.WebGLRenderer({antialias:true, failIfMajorPerformanceCaveat:false});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  renderer.setClearColor(0x0f3a5f, 1);
+  wrap.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0x9fd0ea, 0x0a2238, 0.75));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  key.position.set(60, 90, 60);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0x6fb7db, 0.25);
+  fill.position.set(-80, 30, -60);
+  scene.add(fill);
+
+  gridHelper = new THREE.GridHelper(500, 50, 0x6fb7db, 0x1d4f74);
+  gridHelper.material.transparent = true;
+  gridHelper.material.opacity = 0.35;
+  scene.add(gridHelper);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#b9c5cd'), metalness:0.15, roughness:0.55, flatShading:true, side:THREE.DoubleSide
+  });
+  mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+  scene.add(mesh);
+
+  wireMesh = new THREE.LineSegments(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({color:0x9fd9f5, transparent:true, opacity:0.55})
+  );
+  wireMesh.visible = false;
+  scene.add(wireMesh);
+
+  initDimensionOverlay();
+  controls = new SimpleOrbit(camera, renderer.domElement);
+}
+
+init();
+</script>
+</body>
+</html>

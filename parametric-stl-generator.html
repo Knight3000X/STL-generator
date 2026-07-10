@@ -2339,7 +2339,15 @@ function attachEventListeners() {
   document.getElementById('shade-flat').addEventListener('click', () => setShading(false));
   document.getElementById('shade-smooth').addEventListener('click', () => setShading(true));
 
-  document.getElementById('toggle-wire').addEventListener('change', (e) => { if (scene3DReady) wireMesh.visible = e.target.checked; });
+  document.getElementById('toggle-wire').addEventListener('change', (e) => {
+    if (!scene3DReady) return;
+    wireMesh.visible = e.target.checked;
+    if (e.target.checked && wireGeoDirty && mesh.geometry) { // build the wire we skipped while hidden
+      if (wireMesh.geometry) wireMesh.geometry.dispose();
+      wireMesh.geometry = new THREE.WireframeGeometry(mesh.geometry);
+      wireGeoDirty = false;
+    }
+  });
   document.getElementById('toggle-dims').addEventListener('change', (e) => {
     dimsVisible = e.target.checked;
     if (!scene3DReady) return;
@@ -2631,26 +2639,41 @@ function updateDimensionOverlay(bbox) {
 // (measured ~6s on 1.4M triangles vs ~1.7s to generate them), and it's a diagnostic display,
 // not something the model needs correct to render or export.
 const MANIFOLD_CHECK_TRI_LIMIT = 120000;
+let statCheckGen = 0; // token so a superseded (newer rebuild) deferred watertight check is skipped
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;
   document.getElementById('stat-verts').textContent = tris.length*3;
   document.getElementById('stat-size').textContent =
     (bbox.maxX-bbox.minX).toFixed(1)+' × '+(bbox.maxY-bbox.minY).toFixed(1)+' × '+(bbox.maxZ-bbox.minZ).toFixed(1)+' мм';
   const el = document.getElementById('stat-watertight');
+  const myGen = ++statCheckGen;
   if (tris.length > MANIFOLD_CHECK_TRI_LIMIT) {
     el.textContent = 'не проверено (>'+Math.round(MANIFOLD_CHECK_TRI_LIMIT/1000)+'k треугольников)';
     el.className = 'v mono';
-  } else {
+    return;
+  }
+  // The watertight check is an O(n) diagnostic (~0.7s on 120k tris). Running it inline made every
+  // size/fillet edit block the main thread on it — the mobile freeze. Defer it past the paint so the
+  // model updates immediately; the token skips it if a newer rebuild has already superseded this one.
+  el.textContent = 'проверка…';
+  el.className = 'v mono';
+  setTimeout(() => {
+    if (myGen !== statCheckGen) return;
     const mc = manifoldCheck(tris);
+    if (myGen !== statCheckGen) return;
     if (mc.watertight) { el.textContent = 'замкнутый ✓'; el.className = 'v mono ok'; }
     else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
-  }
+  }, 0);
 }
 
 // Triangles as buildTrisForShape returned them, BEFORE the whole-model rotation is applied —
 // lets rotation re-use this instead of rebuilding the (potentially expensive) box/logo
 // geometry from scratch just because rx/ry/rz changed. Set inside computeGeometry().
 let cachedRawTris = [];
+// The wireframe overlay is off by default. Building a full edge-dedup WireframeGeometry for a
+// 100k-triangle mesh on every rebuild is a large, invisible cost — set when the overlay is hidden
+// so the toggle handler can rebuild the wire lazily the first time it's actually shown.
+let wireGeoDirty = false;
 function computeGeometry() {
   const raw = buildTrisForShape(currentShape, paramState[currentShape]);
   cachedRawTris = raw;
@@ -2670,8 +2693,15 @@ function updateScene3D(tris, bbox) {
 
   if (mesh.geometry) mesh.geometry.dispose();
   mesh.geometry = newGeo;
-  if (wireMesh.geometry) wireMesh.geometry.dispose();
-  wireMesh.geometry = new THREE.WireframeGeometry(newGeo);
+  // Only pay for the wireframe when the overlay is actually shown; otherwise defer it (see toggle
+  // handler). This was a major cause of the mobile freeze when resizing a fully-filleted hollow box.
+  if (wireMesh.visible) {
+    if (wireMesh.geometry) wireMesh.geometry.dispose();
+    wireMesh.geometry = new THREE.WireframeGeometry(newGeo);
+    wireGeoDirty = false;
+  } else {
+    wireGeoDirty = true;
+  }
 
   gridHelper.position.y = bbox.minY - 0.01;
   const maxDim = Math.max(bbox.maxX-bbox.minX, bbox.maxY-bbox.minY, bbox.maxZ-bbox.minZ, 1e-6);

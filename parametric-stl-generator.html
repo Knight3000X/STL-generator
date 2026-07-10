@@ -412,7 +412,7 @@
       </div>
       <div class="param-row">
         <label class="param-label">Детализация (полый контейнер)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="150" step="1" value="50"><span class="num-unit"></span></div>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
@@ -2075,8 +2075,8 @@ const transformState = { rx:0, ry:0, rz:0 };
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
 let logoResolution = 50;
-let logoResolutionHollow = 50; // separate, lower-ceiling control: buildHollowBox has no
-  // zonal grid, so this drives the density of the WHOLE shell/cavity, not just logo zones
+let logoResolutionHollow = 50; // separate control (max 300): buildHollowBox has no zonal grid,
+  // so this drives the density of the WHOLE shell/cavity (and lattice net grid), not just logo zones
 
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
@@ -2484,7 +2484,7 @@ function attachLogoEventListeners() {
   resInputHollow.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
     if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(150, v));
+    v = Math.max(10, Math.min(300, v));
     e.target.value = v;
     logoResolutionHollow = v;
     if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateSoon();

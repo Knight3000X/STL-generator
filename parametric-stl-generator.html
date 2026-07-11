@@ -440,7 +440,7 @@
 
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх).</div></div>
+    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани) и с наклоном. Пока только на СПЛОШНОМ кубе и в приоритете над скруглением углов (одновременно с ним не сочетается — в разработке); детализация купола берётся из «Детализация (сплошной куб)».</div></div>
     <div id="logo-section" class="param-group" data-shape="box">
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
@@ -2092,6 +2092,12 @@ const SHAPE_PARAMS = {
     {key:'taperYPlusZ', label:'Наклон верха по Z', min:-60, max:60, step:1, default:0, unit:'°'},
     {key:'taperYMinusX', label:'Наклон низа по X', min:-60, max:60, step:1, default:0, unit:'°'},
     {key:'taperYMinusZ', label:'Наклон низа по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'bulgeXPlus',  label:'Скругление стенки +X (+нар/−внутр)', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeXMinus', label:'Скругление стенки −X', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeZPlus',  label:'Скругление стенки +Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeZMinus', label:'Скругление стенки −Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeYPlus',  label:'Скругление верха +Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeYMinus', label:'Скругление дна −Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
     {key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
     {key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
     {key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
@@ -2118,6 +2124,66 @@ let logoResolutionHollow = 50; // separate control (max 300): buildHollowBox has
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
 // taperFn is needed to precompute each logo's tangent-plane frame (see makeLogoFrame).
+/* =========================================================
+   WALL BULGE (скругление стенок): each flat face can bow OUT (+, convex "бочка") or IN
+   (-, concave "подушка") by a signed amount in mm, per face. Implemented as a full-face
+   displacement that peaks at the face centre and falls to 0 along EVERY face edge (a separable
+   raised-cosine dome), so all seams with neighbouring faces stay closed — the very same
+   displacement-map machinery logo relief rides on, which is why a face's bulge and its logo
+   simply ADD. Solid cube only for this pass; takes precedence over corner rounding (they don't
+   combine yet). Taper composes for free (displacement is along the post-taper local normal).
+   ========================================================= */
+const WALL_BULGE_FACES = { // face -> [uAxis, vAxis, normalAxis]
+  '+X':[1,2,0], '-X':[1,2,0], '+Y':[0,2,1], '-Y':[0,2,1], '+Z':[0,1,2], '-Z':[0,1,2],
+};
+const WALL_BULGE_KEYS = { '+X':'bulgeXPlus','-X':'bulgeXMinus','+Z':'bulgeZPlus','-Z':'bulgeZMinus','+Y':'bulgeYPlus','-Y':'bulgeYMinus' };
+function wallBulgeProfile(x){ const t = x < -1 ? -1 : x > 1 ? 1 : x; return (1 + Math.cos(Math.PI*t)) / 2; } // 1 at centre, 0 at ±1
+// Signed, clamped bulge per face. Concave (negative) is capped so opposite walls can't cross
+// (< 45% of the box dimension along that face's normal); convex is bounded by the input max.
+function wallBulgeAmounts(p){
+  const half=[p.width/2, p.height/2, p.depth/2], out={};
+  for (const face in WALL_BULGE_KEYS){
+    let amp = p[WALL_BULGE_KEYS[face]] || 0;
+    if (!amp) continue;
+    if (amp < 0) amp = Math.max(amp, -0.45 * 2*half[WALL_BULGE_FACES[face][2]]);
+    out[face] = amp;
+  }
+  return out;
+}
+function hasWallBulge(p){ for (const face in WALL_BULGE_KEYS) if (p[WALL_BULGE_KEYS[face]]) return true; return false; }
+// Per-face dome dispFn in flat (u,v) position-array space — 0 on every edge, peak amp at centre.
+function buildWallBulgeDispFns(p){
+  const half=[p.width/2, p.height/2, p.depth/2], amps = wallBulgeAmounts(p), fns={};
+  for (const face in amps){
+    const [uAxis,vAxis] = WALL_BULGE_FACES[face], uH=half[uAxis], vH=half[vAxis], amp=amps[face];
+    fns[face] = (u,v)=> amp * wallBulgeProfile(u/uH) * wallBulgeProfile(v/vH);
+  }
+  return fns;
+}
+// Full-span zones (per world axis) for each bulged face, so buildBoxWithLogos grids the whole
+// face finely enough for a smooth dome (merged with any logo zones).
+function computeWallBulgeZones(p){
+  const half=[p.width/2, p.height/2, p.depth/2], amps = wallBulgeAmounts(p), zones={0:[],1:[],2:[]};
+  for (const face in amps){
+    const [uAxis,vAxis] = WALL_BULGE_FACES[face];
+    zones[uAxis].push([-half[uAxis], half[uAxis]]);
+    zones[vAxis].push([-half[vAxis], half[vAxis]]);
+  }
+  return zones;
+}
+// Merge two per-face dispFn maps by ADDING (bulge is the base surface, logo relief rides on top).
+function mergeDispFnsAdd(a,b){
+  if (!a) return b; if (!b) return a;
+  const out={}, names=new Set([...Object.keys(a),...Object.keys(b)]);
+  for (const n of names){ const fa=a[n], fb=b[n]; out[n]=(u,v,base)=> (fa?fa(u,v,base):0) + (fb?fb(u,v,base):0); }
+  return out;
+}
+function mergeZones(a,b){
+  if (!a) return b; if (!b) return a;
+  const out={}; for (const ax of [0,1,2]) out[ax] = [...(a[ax]||[]), ...(b[ax]||[])];
+  return out;
+}
+
 function buildCombinedLogoDispFns(taperFn) {
   const p = paramState.box;
   const fnsByFace = {};
@@ -2254,6 +2320,17 @@ function buildTrisForShape(shape, p) {
     const rBot  = p.filletBottom>0 ? p.filletBottom : uni;
     const rVert = p.filletVert>0   ? p.filletVert   : uni;
     const hasFillet = rTop>0 || rBot>0 || rVert>0;
+
+    // Wall bulge (скругление стенок): a full-face signed dome that ADDS to any logo relief, routed
+    // through the same flat displacement path. Takes precedence over corner rounding for this pass
+    // (the two don't combine yet — see the UI note). Taper is applied inside buildBoxWithLogos.
+    if (hasWallBulge(p)) {
+      const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
+      const dispFns = mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p));
+      const zones = mergeZones(logoZones, computeWallBulgeZones(p));
+      return buildBoxWithLogos(p.width, p.height, p.depth, logoResolution, dispFns, taperFn, zones);
+    }
 
     if (logos.length > 0 && !hasFillet) {
       // Flat-box logo path: taper is applied INSIDE buildBoxWithLogos (per-vertex, via taperFn), while

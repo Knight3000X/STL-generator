@@ -148,5 +148,24 @@ wtLogo('tray squircle + logo on +Z wall',        {squircle:45, rim:true, wallThi
 wtLogo('tray squircle + logo on pocket floor',   {squircle:45, rim:true, wallThickness:4, rimHeight:12}, [{face:'-Y-inner'}]);
 wtLogo('tray squircle + logo + taper',           {squircle:45, rim:true, wallThickness:4, rimHeight:12, taperXPlus:6}, [{face:'+Z'}]);
 
+console.log('\n=== cap / pole logos: no radial-fan singularity (regression on the spike bug) ===');
+// A radial-fan apex is incident to ~N triangles; a Cartesian / cube-sphere grid caps out around 6.
+// This is what made a top/pole logo smear into radial spikes, so bound the max vertex valence.
+function maxVertexValence(tris){ const m=new Map(), key=p=>p[0].toFixed(4)+','+p[1].toFixed(4)+','+p[2].toFixed(4);
+  for(const t of tris) for(const p of t){ const k=key(p); m.set(k,(m.get(k)||0)+1); }
+  let mx=0; for(const v of m.values()) if(v>mx) mx=v; return mx; }
+{ base({squircle:45}); addLogo({face:'+Y'}); const t=build();
+  chk('prism +Y cap logo: watertight', wt(t)); chk('prism +Y cap: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+{ base({squircle:45}); addLogo({face:'-Y'}); const t=build();
+  chk('prism -Y cap: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+{ base({squircle:45, squircleV:45}); addLogo({face:'+Y'}); const t=build();
+  chk('superellipsoid top logo: watertight', wt(t)); chk('superellipsoid top: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+{ base({squircle:60, squircleV:70}); addLogo({face:'-Y'}); const t=build();
+  chk('superellipsoid bottom: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+{ base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y-inner'}); const t=build();
+  chk('hollow cavity-floor logo: watertight', wt(t)); chk('hollow cavity floor: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+{ base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y'}); const t=build();
+  chk('hollow outer-bottom logo: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -107,5 +107,46 @@ wtLogo('superellipsoid non-cube + two logos',{squircle:50, squircleV:45, width:8
 console.log('\n=== no-logo path is unchanged (regression) ===');
 { base({squircle:45}); const a=build().length; base({squircle:45}); logos.length=0; const b=build().length; chk('no-logo prism deterministic + logo-free', a===b && a===solidPrism, {a,b}); }
 
+console.log('\n=== squircle as a HOLLOW container (watertight shell) ===');
+for (const s of [12, 30, 45, 70, 100]) {
+  base({squircle:s, hollow:true, wallThickness:4});
+  const t=build(); chk(`hollow squircle ${s}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges, vol:signedVol(t)|0});
+}
+base({squircle:45, hollow:true, wallThickness:2});
+{ const solid=(()=>{ base({squircle:45}); return signedVol(build()); })(); base({squircle:45, hollow:true, wallThickness:2});
+  chk('hollow removes material (cavity < solid volume)', signedVol(build()) < solid, {}); }
+base({squircle:45, hollow:true, wallThickness:8, width:80, height:36, depth:52});
+{ const t=build(); chk('hollow squircle non-cube + thick wall: watertight', wt(t)); chk('hollow squircle non-cube: no NaN', !hasNaN(t)); }
+base({squircle:45, hollow:true, wallThickness:4, taperXPlus:8, taperZMinus:6});
+{ const t=build(); chk('hollow squircle + taper: watertight', wt(t)); }
+base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hollowFlatTop=build();
+base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hollowRoundV=build();
+chk('hollow ignores squircleV (open container has a flat rim)', hollowFlatTop.length===hollowRoundV.length && Math.abs(signedVol(hollowFlatTop)-signedVol(hollowRoundV))<1e-6, {a:hollowFlatTop.length,b:hollowRoundV.length});
+
+console.log('\n=== squircle as a RIM / tray (shallow pocket, solid base) ===');
+for (const s of [12, 30, 45, 70]) {
+  base({squircle:s, rim:true, wallThickness:4, rimHeight:10});
+  const t=build(); chk(`tray squircle ${s}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges});
+}
+base({squircle:45, rim:true, wallThickness:5, rimHeight:6, width:80, depth:52});
+{ const t=build(); chk('tray squircle non-cube: watertight', wt(t)); }
+base({squircle:45, rim:true, wallThickness:4, rimHeight:10, taperXPlus:6});
+{ const t=build(); chk('tray squircle + taper: watertight', wt(t)); }
+{ base({squircle:45, rim:true, wallThickness:4, rimHeight:10}); const vTray=signedVol(build());
+  base({squircle:45, hollow:true, wallThickness:4}); const vHollow=signedVol(build());
+  chk('tray keeps more material than the deep hollow', vTray > vHollow, {tray:vTray|0, hollow:vHollow|0}); }
+
+console.log('\n=== logos on the hollow / tray squircle (walls + bottom + cavity floor) ===');
+wtLogo('hollow squircle + logo on +Z wall',      {squircle:45, hollow:true, wallThickness:4}, [{face:'+Z'}]);
+wtLogo('hollow squircle + logo on -X wall',      {squircle:45, hollow:true, wallThickness:4}, [{face:'-X'}]);
+wtLogo('hollow squircle + logo on -Y (bottom)',  {squircle:45, hollow:true, wallThickness:4}, [{face:'-Y'}]);
+wtLogo('hollow squircle + logo on cavity floor', {squircle:45, hollow:true, wallThickness:5}, [{face:'-Y-inner'}]);
+wtLogo('hollow squircle + engraved wall logo',   {squircle:45, hollow:true, wallThickness:5}, [{face:'+Z', depth:-1.2}]);
+wtLogo('hollow squircle + two wall logos',       {squircle:45, hollow:true, wallThickness:4}, [{face:'+Z'},{face:'+X'}]);
+wtLogo('hollow squircle + wall + floor logos',   {squircle:45, hollow:true, wallThickness:5}, [{face:'+Z'},{face:'-Y-inner'}]);
+wtLogo('tray squircle + logo on +Z wall',        {squircle:45, rim:true, wallThickness:4, rimHeight:12}, [{face:'+Z'}]);
+wtLogo('tray squircle + logo on pocket floor',   {squircle:45, rim:true, wallThickness:4, rimHeight:12}, [{face:'-Y-inner'}]);
+wtLogo('tray squircle + logo + taper',           {squircle:45, rim:true, wallThickness:4, rimHeight:12, taperXPlus:6}, [{face:'+Z'}]);
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -2449,12 +2449,106 @@ function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes)
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
 
+/* ---- Squircle HOLLOW container / RIM tray -------------------------------------------------
+   A squircle prism shell: an outer superellipse wall + a smaller superellipse cavity, joined by a
+   flat top rim. Same builder for both modes — only the cavity floor height changes: hollow = a thin
+   floor near the bottom (floorY = -hh + wall), tray = a shallow pocket from the top (floorY = hh -
+   rimHeight). The inner wall is the outer superellipse inset on the bounding box by `t` (same
+   exponent) — wall thickness is ~t on the flats and varies a little at the corners, matching the
+   "thickness isn't perfectly constant" caveat the box hollow already carries. squircleV (vertical
+   rounding) is ignored here — an open container has a flat rim and sits flat. Logos emboss on the
+   curved outer walls (buildCombinedLogoDispFns via the dominant-normal-axis gate), the outer bottom
+   ('-Y') and the cavity floor ('-Y-inner'); the cavity walls and rim stay plain. Watertight: every
+   surface is a closed grid and seams (wall↔cap, wall↔rim) sit on undisplaced edge rings. */
+function squircleRingAndNormals(hw, hd, pexp, N){
+  const ring=[], rn=[];
+  for(let i=0;i<N;i++) ring.push(squircleRingPoint(2*Math.PI*i/N, hw, hd, pexp));
+  for(let i=0;i<N;i++){ const a=ring[(i-1+N)%N], b=ring[(i+1)%N];
+    let nx=b[1]-a[1], nz=-(b[0]-a[0]);
+    if(nx*ring[i][0]+nz*ring[i][1] < 0){ nx=-nx; nz=-nz; }
+    const L=Math.hypot(nx,nz)||1; rn.push([nx/L, 0, nz/L]);
+  }
+  return { ring, rn };
+}
+// A superellipse wall extruded yLo..yHi. sign +1 = outer shell (normals out, embossable); sign -1 =
+// cavity wall (normals into the void, never embossed). Top/bottom rows stay on the base ring so they
+// coincide exactly with the caps/rim they seam to. Returns the vertex grid (for seam reuse) + tris.
+function squircleWall(ring, rn, N, yLo, yHi, Mv, sign, wallDispFns){
+  const grid=[];
+  for(let j=0;j<=Mv;j++){ const y=yLo+(yHi-yLo)*j/Mv, edge=(j===0||j===Mv), row=[];
+    for(let i=0;i<N;i++){ const base=[ring[i][0], y, ring[i][1]];
+      row.push((!edge && wallDispFns && sign>0) ? applySurfaceLogo(base, rn[i], wallDispFns) : base); }
+    grid.push(row);
+  }
+  const tris=[];
+  for(let j=0;j<Mv;j++) for(let i=0;i<N;i++){ const k=(i+1)%N;
+    const ref=[(ring[i][0]+ring[k][0])*sign, 0, (ring[i][1]+ring[k][1])*sign];
+    tris.push(orient([grid[j][i], grid[j][k], grid[j+1][k]], ref));
+    tris.push(orient([grid[j][i], grid[j+1][k], grid[j+1][i]], ref));
+  }
+  return { grid, tris };
+}
+// Flat superellipse disc (radial grid) at yCap facing outN. `embossFn(point)->point` embosses a cap
+// logo (0 on the boundary via the clamp), so the boundary ring stays == the wall's edge ring.
+function squircleDiscCap(ring, N, yCap, outN, Mr, embossFn){
+  const cg=[];
+  for(let r=1;r<=Mr;r++){ const f=r/Mr, rr=[];
+    for(let i=0;i<N;i++){ const base=[ring[i][0]*f, yCap, ring[i][1]*f]; rr.push((embossFn && r<Mr) ? embossFn(base) : base); }
+    cg.push(rr);
+  }
+  const center = embossFn ? embossFn([0,yCap,0]) : [0,yCap,0];
+  const tris=[];
+  for(let i=0;i<N;i++){ const k=(i+1)%N; tris.push(orient([center, cg[0][i], cg[0][k]], outN)); }
+  for(let r=0;r<cg.length-1;r++) for(let i=0;i<N;i++){ const k=(i+1)%N;
+    tris.push(orient([cg[r][i], cg[r][k], cg[r+1][k]], outN));
+    tris.push(orient([cg[r][i], cg[r+1][k], cg[r+1][i]], outN));
+  }
+  return tris;
+}
+function buildSquircleHollow(w, h, d, pexp, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg){
+  const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
+  const spacing=Math.max(0.5, maxDim/Math.max(12, logoRes||50));
+  const baseN=Math.max(48, Math.round(seg)*12);
+  let coarse=[]; for(let i=0;i<baseN;i++) coarse.push(squircleRingPoint(2*Math.PI*i/baseN, hw, hd, pexp));
+  const N=Math.min(400, Math.max(baseN, Math.ceil(approxRingPerimeter(coarse)/spacing)));
+  const O=squircleRingAndNormals(hw, hd, pexp, N), I=squircleRingAndNormals(hw-t, hd-t, pexp, N);
+  const Mv =Math.min(256, Math.max(2, Math.ceil(2*hh/spacing)));
+  const MvI=Math.min(256, Math.max(2, Math.ceil((hh-floorY)/spacing)));
+  const Mr =Math.min(200, Math.max(1, Math.ceil(Math.max(hw,hd)/spacing)));
+  const capE=(outN,fn)=> fn ? (pt)=>{ const dp=fn(0,0,pt); return dp ? [pt[0]+outN[0]*dp, pt[1]+outN[1]*dp, pt[2]+outN[2]*dp] : pt; } : null;
+  const tris=[];
+  const ow=squircleWall(O.ring, O.rn, N, -hh, hh, Mv, +1, wallDispFns);        // outer wall (embossable)
+  const iw=squircleWall(I.ring, I.rn, N, floorY, hh, MvI, -1, null);           // cavity wall (plain)
+  for(const tr of ow.tris) tris.push(tr);
+  for(const tr of iw.tris) tris.push(tr);
+  for(const tr of squircleDiscCap(O.ring, N, -hh, [0,-1,0], Mr, capE([0,-1,0], botFn))) tris.push(tr);   // outer bottom
+  for(const tr of squircleDiscCap(I.ring, N, floorY, [0,1,0], Mr, capE([0,1,0], floorFn))) tris.push(tr); // cavity floor
+  const oTop=ow.grid[Mv], iTop=iw.grid[MvI];                                   // flat top rim annulus
+  for(let i=0;i<N;i++){ const k=(i+1)%N;
+    tris.push(orient([oTop[i], oTop[k], iTop[k]], [0,1,0]));
+    tris.push(orient([oTop[i], iTop[k], iTop[i]], [0,1,0]));
+  }
+  return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
+}
+
 function buildTrisForShape(shape, p) {
   if (shape === 'box') {
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
       p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
 
     if (p.hollow) {
+      // Squircle container: superellipse shell with a thin floor. Overrides corner fillet + lattice
+      // (squircle IS the corner treatment); squircleV ignored (open top / flat base). Logos ride the
+      // curved outer walls, the outer bottom and the cavity floor. Taper runs afterwards.
+      if (p.squircle > 0) {
+        const eH = Math.max(0.02, Math.min(1, p.squircle/100));
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
+        const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, tW, -p.height/2 + tW,
+          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolutionHollow, p.filletSeg||4);
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
       const uni = p.filletRadius||0;
       const oBot = p.filletBottom>0 ? p.filletBottom : uni, oVert = p.filletVert>0 ? p.filletVert : uni;
       const iFloor = p.filletInnerFloor||0, iVert = p.filletInnerVert||0, iLip = p.filletInnerLip||0;
@@ -2491,6 +2585,19 @@ function buildTrisForShape(shape, p) {
     }
 
     if (p.rim) {
+      // Squircle tray: superellipse shell with a shallow pocket from the top (solid base below).
+      // Same builder as the squircle container, cavity floor raised to hh - rimHeight. squircleV / fillet
+      // ignored. Logos ride the curved outer walls, the outer bottom and the pocket floor.
+      if (p.squircle > 0) {
+        const eH = Math.max(0.02, Math.min(1, p.squircle/100));
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const rh = clampRimHeight(p.height, p.rimHeight||8);
+        const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
+        const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, tW, p.height/2 - rh,
+          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolutionHollow, p.filletSeg||4);
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
       const uni = p.filletRadius||0;
       const oBot = p.filletBottom>0 ? p.filletBottom : uni, oVert = p.filletVert>0 ? p.filletVert : uni;
       const iFloor = p.filletInnerFloor||0, iVert = p.filletInnerVert||0, iLip = p.filletInnerLip||0;

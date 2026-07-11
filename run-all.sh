@@ -63,7 +63,7 @@ run test_logo_zone.js "test_logo_zone.js"
 # Extraction tests: real <script> + DOM stubs, then the test appended.
 for t in test_rim_box.js test_hollow_taper.js test_hollow_resolution.js \
          test_hollow_inner_logo.js test_rounded_fillet.js test_fillet_logo.js \
-         test_fillet_logo_hollow.js test_lattice_floor.js test_wall_bulge.js test_e2e_full.js; do
+         test_fillet_logo_hollow.js test_lattice_floor.js test_wall_bulge.js test_squircle.js test_e2e_full.js; do
   cat stub_preamble.js "$LIB" "$t" > "$TMP/run.js"
   run "$t" "$TMP/run.js"
 done

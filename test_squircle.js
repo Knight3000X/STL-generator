@@ -73,6 +73,10 @@ function synthHM(){ const n=LOGO_HM_SIZE, hm=new Float32Array(n*n);
 const HM=synthHM();
 function addLogo(ov){ const l=Object.assign({id:nextLogoId++, face:'+Z', u0:0, v0:0, w:16, h:16, depth:1.5, threshold:0.5, invert:false, rotation:0, heightmap:HM, previewUrl:null}, ov); logos.push(l); clampLogoToFace(l); return l; }
 function wtLogo(name, ov, logoOvs){ base(ov); for(const o of (logoOvs||[{}])) addLogo(o); const t=build(); chk(name, !hasNaN(t) && manifoldCheck(t).watertight, manifoldCheck(t)); return t; }
+// These logo tests validate watertightness / valence / signs — all density-INDEPENDENT — so run the
+// emboss grid light to keep the suite fast (the app default is ~2× denser; that only changes triangle
+// count, not any property asserted here).
+logoResolution = 24; logoResolutionHollow = 24;
 
 console.log('\n=== logos emboss onto the squircle PRISM wall (watertight) ===');
 const solidPrism = (()=>{ base({squircle:45}); return build().length; })();

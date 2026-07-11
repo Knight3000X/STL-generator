@@ -2435,8 +2435,8 @@ function superellipseFillCap(g, yCap, outN, embossFn){
 // perimeter ring, so side and caps share vertices exactly. Density tracks logoRes.
 function buildSquirclePrismLogos(w, h, d, pexp, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.5, maxDim/Math.max(12, logoRes||50));
-  const G=Math.min(120, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
+  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
   const g=superellipseFillGrid(hw, hd, pexp, G);
   const ring=fillGridBoundaryLoop(g), N=ring.length, rn=ringNormalsXZ(ring);
   const Mv=Math.min(256, Math.max(2, Math.ceil(2*hh/spacing)));
@@ -2470,9 +2470,9 @@ function seImplicitNormal(x, y, z, hw, hh, hd, aH, aV, mix){
 }
 function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.5, maxDim/Math.max(12, logoRes||50));
+  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
   const eHc=Math.max(0.05, eH), eVc=Math.max(0.05, eV), aH=2/eHc, aV=2/eVc, mix=eHc/eVc;
-  const S=Math.min(96, Math.max(8, Math.ceil(2*Math.max(hw,hd,hh)/spacing)));   // cells per cube-face edge
+  const S=Math.min(176, Math.max(8, Math.ceil(2*Math.max(hw,hd,hh)/spacing)));   // cells per cube-face edge
   const coord=[]; for(let i=0;i<=S;i++) coord.push(-1+2*i/S);
   const tris=[];
   for(const [fx,sg] of [[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]){
@@ -2525,8 +2525,8 @@ function squircleWall(ring, rn, N, yLo, yHi, Mv, sign, wallDispFns){
 }
 function buildSquircleHollow(w, h, d, pexp, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.5, maxDim/Math.max(12, logoRes||50));
-  const G=Math.min(120, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
+  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
   // Outer + inner shells share the same G (so their boundary loops have matching point counts for the
   // rim). Caps are Cartesian-centred fill grids (no radial-fan smearing of a bottom/floor logo).
   const gO=superellipseFillGrid(hw, hd, pexp, G), gI=superellipseFillGrid(hw-t, hd-t, pexp, G);

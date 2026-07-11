@@ -445,11 +445,11 @@
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
         <label class="param-label">Детализация (сплошной куб)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <div class="param-row">
         <label class="param-label">Детализация (полый контейнер)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
@@ -2140,7 +2140,7 @@ const transformState = { rx:0, ry:0, rz:0 };
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
 let logoResolution = 50;
-let logoResolutionHollow = 50; // separate control (max 300): buildHollowBox has no zonal grid,
+let logoResolutionHollow = 50; // separate control (max 500): buildHollowBox has no zonal grid,
   // so this drives the density of the WHOLE shell/cavity (and lattice net grid), not just logo zones
 
 // Combines however many logos share a face into one dispFn per face (first matching
@@ -2373,14 +2373,49 @@ function applySurfaceLogo(point, normal, dispFns){
   if(!dp) return point;
   return [point[0]+normal[0]*dp, point[1]+normal[1]*dp, point[2]+normal[2]*dp];
 }
-// A Cartesian-centred grid that FILLS a superellipse: the unit square is mapped to the disc (elliptical
-// grid mapping) and blended out to the superellipse boundary — centre is isotropic per-axis (so a logo
-// there is undistorted), boundary is the exact superellipse. Unlike a radial/fan disc the centre is an
-// ordinary valence-4 vertex, so an embossed logo doesn't smear into radial spikes. (G+1)×(G+1) of [x,z].
-function superellipseFillGrid(hw, hd, pexp, G){
+/* ---- Zone densification for squircle logos --------------------------------------------------
+   High detail everywhere is wasteful: the logo covers a small patch, yet a uniform grid pays for the
+   whole surface. Instead we sample COARSE everywhere and FINE only inside each logo's footprint, so
+   500-detail crispness costs triangles only under the logo. Sampling is per-axis (a separable grid),
+   the same tradeoff the flat-box zonal grid already uses. */
+// Sorted samples on [lo,hi]: coarseStep everywhere, fineStep inside each [a,b] zone (capped so a huge
+// footprint can't explode the count). Endpoints and every zone edge are always included.
+function zonedSamples(lo, hi, coarseStep, fineStep, zones){
+  const span=hi-lo; if(span<=1e-9) return [lo, hi];
+  const cs=Math.max(span/2000, coarseStep), fs=Math.max(span/4000, fineStep);
+  const m=new Map(), key=v=>Math.round((v-lo)/span*1e6), add=v=>{ v=Math.min(hi,Math.max(lo,v)); const k=key(v); if(!m.has(k)) m.set(k,v); };
+  for(let x=lo; x<hi-1e-9; x+=cs) add(x); add(lo); add(hi);
+  for(const z of (zones||[])){ const A=Math.max(lo,Math.min(hi,z[0])), B=Math.max(lo,Math.min(hi,z[1]));
+    if(B-A<1e-9) continue; add(A); add(B);
+    const n=Math.min(400, Math.ceil((B-A)/fs)), st=(B-A)/n; for(let k=1;k<n;k++) add(A+k*st);
+  }
+  return [...m.values()].sort((p,q)=>p-q);
+}
+// Per-axis fine zones (normalised a=x/hw, b=z/hd in [-1,1]; y in world mm) from each logo's footprint.
+// A cap logo (+Y/-Y / cavity floor) densifies both a & b; a wall logo densifies its perimeter axis
+// (a or b, so the boundary ring is fine there) and the wall's height (y). `tInner` normalises a cavity
+// floor logo by the inner half-extents. Coarse-but-correct: generous margin, superset of the footprint.
+function squircleABYZones(p, tInner){
+  const hw=p.width/2, hh=p.height/2, hd=p.depth/2, t=tInner||0, mg=2;
+  const aZ=[], bZ=[], yZ=[];
+  for(const logo of logos){
+    const ext=rotatedHalfExtents(logo.w, logo.h, logo.rotation), f=logo.face;
+    const uLo=logo.u0-ext.halfX-mg, uHi=logo.u0+ext.halfX+mg, vLo=logo.v0-ext.halfY-mg, vHi=logo.v0+ext.halfY+mg;
+    if(f==='+Y'||f==='-Y'){ aZ.push([uLo/hw, uHi/hw]); bZ.push([vLo/hd, vHi/hd]); }
+    else if(f==='-Y-inner'){ const ihw=Math.max(1,hw-t), ihd=Math.max(1,hd-t); aZ.push([uLo/ihw, uHi/ihw]); bZ.push([vLo/ihd, vHi/ihd]); }
+    else if(f==='+X'||f==='-X'){ bZ.push([vLo/hd, vHi/hd]); yZ.push([uLo, uHi]); }   // perim=Z, height=Y
+    else if(f==='+Z'||f==='-Z'){ aZ.push([uLo/hw, uHi/hw]); yZ.push([vLo, vHi]); }   // perim=X, height=Y
+  }
+  return { aZ, bZ, yZ };
+}
+// A Cartesian-centred grid that FILLS a superellipse over explicit (a,b) sample arrays: the unit square
+// is mapped to the disc (elliptical grid mapping) and blended out to the superellipse boundary — centre
+// is isotropic per-axis (so a logo there is undistorted), boundary is the exact superellipse, and the
+// centre is an ordinary valence-4 vertex (no radial-fan spikes). aSamp×bSamp array of [x,z].
+function superellipseFillGrid(hw, hd, pexp, aSamp, bSamp){
   const g=[], e=2/pexp;
-  for(let i=0;i<=G;i++){ const a=-1+2*i/G, row=[];
-    for(let j=0;j<=G;j++){ const b=-1+2*j/G;
+  for(let i=0;i<aSamp.length;i++){ const a=aSamp[i], row=[];
+    for(let j=0;j<bSamp.length;j++){ const b=bSamp[j];
       const u=a*Math.sqrt(1-b*b/2), v=b*Math.sqrt(1-a*a/2), rho=Math.hypot(u,v);
       if(rho<1e-9){ row.push([0,0]); continue; }
       const al=Math.atan2(v,u);
@@ -2392,13 +2427,14 @@ function superellipseFillGrid(hw, hd, pexp, G){
   }
   return g;
 }
-// Ordered outer-boundary loop (4G points) of a fill grid — the superellipse ring shared with the wall.
+// Ordered outer-boundary loop of a (possibly non-square) fill grid — the superellipse ring shared with
+// the wall, so side and caps keep identical seam vertices.
 function fillGridBoundaryLoop(g){
-  const G=g.length-1, loop=[];
-  for(let j=0;j<=G;j++) loop.push(g[0][j]);
-  for(let i=1;i<=G;i++) loop.push(g[i][G]);
-  for(let j=G-1;j>=0;j--) loop.push(g[G][j]);
-  for(let i=G-1;i>=1;i--) loop.push(g[i][0]);
+  const R=g.length-1, C=g[0].length-1, loop=[];
+  for(let j=0;j<=C;j++) loop.push(g[0][j]);
+  for(let i=1;i<=R;i++) loop.push(g[i][C]);
+  for(let j=C-1;j>=0;j--) loop.push(g[R][j]);
+  for(let i=R-1;i>=1;i--) loop.push(g[i][0]);
   return loop;
 }
 // Per-vertex outward XZ normals ([x,0,z]) for a superellipse ring loop.
@@ -2417,30 +2453,32 @@ function makeCapEmboss(outN, fn){
 // Flat cap at yCap from a fill grid. embossFn(point3D)->point3D applies a cap logo; boundary vertices
 // stay undisplaced so they coincide exactly with the wall's edge ring (seam stays closed).
 function superellipseFillCap(g, yCap, outN, embossFn){
-  const G=g.length-1, grid=[];
-  for(let i=0;i<=G;i++){ const row=[];
-    for(let j=0;j<=G;j++){ const p=[g[i][j][0], yCap, g[i][j][1]], edge=(i===0||i===G||j===0||j===G);
+  const R=g.length-1, C=g[0].length-1, grid=[];
+  for(let i=0;i<=R;i++){ const row=[];
+    for(let j=0;j<=C;j++){ const p=[g[i][j][0], yCap, g[i][j][1]], edge=(i===0||i===R||j===0||j===C);
       row.push((embossFn && !edge) ? embossFn(p) : p); }
     grid.push(row);
   }
   const tris=[];
-  for(let i=0;i<G;i++) for(let j=0;j<G;j++){
+  for(let i=0;i<R;i++) for(let j=0;j<C;j++){
     tris.push(orient([grid[i][j], grid[i+1][j], grid[i+1][j+1]], outN));
     tris.push(orient([grid[i][j], grid[i+1][j+1], grid[i][j+1]], outN));
   }
   return tris;
 }
-// Squircle PRISM with logo relief: fine side grid (perimeter × height) + Cartesian-centred flat caps so
-// a +Y/-Y logo rides the top/bottom without radial-fan smearing. The cap's boundary loop IS the wall's
-// perimeter ring, so side and caps share vertices exactly. Density tracks logoRes.
+// Squircle PRISM with logo relief: coarse shell, fine grid only under each logo (perimeter/height for
+// side logos, the cap fill grid for +Y/-Y). The cap's boundary loop IS the wall's perimeter ring, so
+// side and caps share vertices exactly. `fineW` (from logoRes) sets crispness; the coarse baseline keeps
+// the rest of the shell cheap.
 function buildSquirclePrismLogos(w, h, d, pexp, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
-  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
-  const g=superellipseFillGrid(hw, hd, pexp, G);
+  const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2)), coarseW=Math.max(0.8, maxDim/45);
+  const Z=squircleABYZones(paramState.box, 0);
+  const aSamp=zonedSamples(-1,1, coarseW/hw, fineW/hw, Z.aZ), bSamp=zonedSamples(-1,1, coarseW/hd, fineW/hd, Z.bZ);
+  const g=superellipseFillGrid(hw, hd, pexp, aSamp, bSamp);
   const ring=fillGridBoundaryLoop(g), N=ring.length, rn=ringNormalsXZ(ring);
-  const Mv=Math.min(256, Math.max(2, Math.ceil(2*hh/spacing)));
-  const wall=squircleWall(ring, rn, N, -hh, hh, Mv, +1, dispFns);
+  const ySamp=zonedSamples(-hh, hh, coarseW, fineW, Z.yZ);
+  const wall=squircleWall(ring, rn, N, ySamp, +1, dispFns);
   const tris=[...wall.tris];
   for(const tr of superellipseFillCap(g,  hh, [0, 1,0], makeCapEmboss([0, 1,0], dispFns && dispFns['+Y']))) tris.push(tr);
   for(const tr of superellipseFillCap(g, -hh, [0,-1,0], makeCapEmboss([0,-1,0], dispFns && dispFns['-Y']))) tris.push(tr);
@@ -2470,22 +2508,40 @@ function seImplicitNormal(x, y, z, hw, hh, hd, aH, aV, mix){
 }
 function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2));
   const eHc=Math.max(0.05, eH), eVc=Math.max(0.05, eV), aH=2/eHc, aV=2/eVc, mix=eHc/eVc;
-  const S=Math.min(176, Math.max(8, Math.ceil(2*Math.max(hw,hd,hh)/spacing)));   // cells per cube-face edge
-  const coord=[]; for(let i=0;i<=S;i++) coord.push(-1+2*i/S);
+  const surf=(dx,dy,dz)=>seImplicitSurface(dx,dy,dz, hw,hh,hd, aH,aV,mix,eVc);
+  const nrm=(x,y,z)=>seImplicitNormal(x,y,z, hw,hh,hd, aH,aV,mix);
+  const faces=[[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]];
+  // Coarse forward hit-test → per global cube axis, the coord ranges where a logo actually fires. Global
+  // arrays (shared by all faces) keep every shared cube edge sampled identically, so it stays watertight.
+  const cS=40, cc=[]; for(let i=0;i<=cS;i++) cc.push(-1+2*i/cS);
+  const zoneAx={0:[],1:[],2:[]}, mg=3*(2/cS);
+  for(const [fx,sg] of faces){
+    const va=fx===0?1:0, vb=fx===2?1:2; let loA=2,hiA=-2,loB=2,hiB=-2,hit=false;
+    for(let i=0;i<=cS;i++) for(let j=0;j<=cS;j++){
+      const dd=[0,0,0]; dd[fx]=sg; dd[va]=cc[i]; dd[vb]=cc[j];
+      const p=surf(dd[0],dd[1],dd[2]);
+      if(applySurfaceLogo(p, nrm(p[0],p[1],p[2]), dispFns)!==p){ hit=true;
+        if(cc[i]<loA)loA=cc[i]; if(cc[i]>hiA)hiA=cc[i]; if(cc[j]<loB)loB=cc[j]; if(cc[j]>hiB)hiB=cc[j]; }
+    }
+    if(hit){ zoneAx[va].push([loA-mg,hiA+mg]); zoneAx[vb].push([loB-mg,hiB+mg]); }
+  }
+  const coarseStep=2/44, fineStep=Math.max(0.003, 2*fineW/maxDim);
+  const coord=[ zonedSamples(-1,1,coarseStep,fineStep,zoneAx[0]),
+                zonedSamples(-1,1,coarseStep,fineStep,zoneAx[1]),
+                zonedSamples(-1,1,coarseStep,fineStep,zoneAx[2]) ];
   const tris=[];
-  for(const [fx,sg] of [[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]){
-    const va = fx===0?1:0, vb = fx===2?1:2;                     // the two axes that vary on this face
-    const grid=[];
-    for(let i=0;i<=S;i++){ const row=[];
-      for(let j=0;j<=S;j++){ const dd=[0,0,0]; dd[fx]=sg; dd[va]=coord[i]; dd[vb]=coord[j];
-        const p=seImplicitSurface(dd[0],dd[1],dd[2], hw,hh,hd, aH,aV,mix,eVc);
-        row.push(applySurfaceLogo(p, seImplicitNormal(p[0],p[1],p[2], hw,hh,hd, aH,aV,mix), dispFns));
+  for(const [fx,sg] of faces){
+    const va=fx===0?1:0, vb=fx===2?1:2, ca=coord[va], cb=coord[vb], grid=[];
+    for(let i=0;i<ca.length;i++){ const row=[];
+      for(let j=0;j<cb.length;j++){ const dd=[0,0,0]; dd[fx]=sg; dd[va]=ca[i]; dd[vb]=cb[j];
+        const p=surf(dd[0],dd[1],dd[2]);
+        row.push(applySurfaceLogo(p, nrm(p[0],p[1],p[2]), dispFns));
       }
       grid.push(row);
     }
-    for(let i=0;i<S;i++) for(let j=0;j<S;j++){
+    for(let i=0;i<ca.length-1;i++) for(let j=0;j<cb.length-1;j++){
       const a=grid[i][j], b=grid[i+1][j], c=grid[i+1][j+1], e=grid[i][j+1];
       tris.push(orient([a,b,c], [a[0]+b[0]+c[0], a[1]+b[1]+c[1], a[2]+b[2]+c[2]]));
       tris.push(orient([a,c,e], [a[0]+c[0]+e[0], a[1]+c[1]+e[1], a[2]+c[2]+e[2]]));
@@ -2508,15 +2564,15 @@ function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes)
 // A superellipse wall extruded yLo..yHi. sign +1 = outer shell (normals out, embossable); sign -1 =
 // cavity wall (normals into the void, never embossed). Top/bottom rows stay on the base ring so they
 // coincide exactly with the caps/rim they seam to. Returns the vertex grid (for seam reuse) + tris.
-function squircleWall(ring, rn, N, yLo, yHi, Mv, sign, wallDispFns){
-  const grid=[];
-  for(let j=0;j<=Mv;j++){ const y=yLo+(yHi-yLo)*j/Mv, edge=(j===0||j===Mv), row=[];
+function squircleWall(ring, rn, N, ySamp, sign, wallDispFns){
+  const M=ySamp.length-1, grid=[];
+  for(let j=0;j<=M;j++){ const y=ySamp[j], edge=(j===0||j===M), row=[];
     for(let i=0;i<N;i++){ const base=[ring[i][0], y, ring[i][1]];
       row.push((!edge && wallDispFns && sign>0) ? applySurfaceLogo(base, rn[i], wallDispFns) : base); }
     grid.push(row);
   }
   const tris=[];
-  for(let j=0;j<Mv;j++) for(let i=0;i<N;i++){ const k=(i+1)%N;
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){ const k=(i+1)%N;
     const ref=[(ring[i][0]+ring[k][0])*sign, 0, (ring[i][1]+ring[k][1])*sign];
     tris.push(orient([grid[j][i], grid[j][k], grid[j+1][k]], ref));
     tris.push(orient([grid[j][i], grid[j+1][k], grid[j+1][i]], ref));
@@ -2525,23 +2581,24 @@ function squircleWall(ring, rn, N, yLo, yHi, Mv, sign, wallDispFns){
 }
 function buildSquircleHollow(w, h, d, pexp, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
-  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
-  // Outer + inner shells share the same G (so their boundary loops have matching point counts for the
-  // rim). Caps are Cartesian-centred fill grids (no radial-fan smearing of a bottom/floor logo).
-  const gO=superellipseFillGrid(hw, hd, pexp, G), gI=superellipseFillGrid(hw-t, hd-t, pexp, G);
+  const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2)), coarseW=Math.max(0.8, maxDim/45);
+  // Outer + inner shells share the SAME (a,b) sample arrays (normalised [-1,1]), so their boundary loops
+  // have matching point counts for the rim. Fine only under logos; caps are Cartesian-centred fill grids.
+  const Z=squircleABYZones(paramState.box, t);
+  const aSamp=zonedSamples(-1,1, coarseW/hw, fineW/hw, Z.aZ), bSamp=zonedSamples(-1,1, coarseW/hd, fineW/hd, Z.bZ);
+  const gO=superellipseFillGrid(hw, hd, pexp, aSamp, bSamp), gI=superellipseFillGrid(hw-t, hd-t, pexp, aSamp, bSamp);
   const ringO=fillGridBoundaryLoop(gO), ringI=fillGridBoundaryLoop(gI), N=ringO.length;
   const rnO=ringNormalsXZ(ringO), rnI=ringNormalsXZ(ringI);
-  const Mv =Math.min(256, Math.max(2, Math.ceil(2*hh/spacing)));
-  const MvI=Math.min(256, Math.max(2, Math.ceil((hh-floorY)/spacing)));
+  const ySampO=zonedSamples(-hh, hh, coarseW, fineW, Z.yZ);          // outer wall: fine under side logos
+  const ySampI=zonedSamples(floorY, hh, coarseW, coarseW, []);      // cavity wall: not embossed → coarse
   const tris=[];
-  const ow=squircleWall(ringO, rnO, N, -hh, hh, Mv, +1, wallDispFns);          // outer wall (embossable)
-  const iw=squircleWall(ringI, rnI, N, floorY, hh, MvI, -1, null);            // cavity wall (plain)
+  const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns);              // outer wall (embossable)
+  const iw=squircleWall(ringI, rnI, N, ySampI, -1, null);                     // cavity wall (plain)
   for(const tr of ow.tris) tris.push(tr);
   for(const tr of iw.tris) tris.push(tr);
   for(const tr of superellipseFillCap(gO, -hh,   [0,-1,0], makeCapEmboss([0,-1,0], botFn)))   tris.push(tr); // outer bottom
   for(const tr of superellipseFillCap(gI, floorY,[0, 1,0], makeCapEmboss([0, 1,0], floorFn))) tris.push(tr); // cavity floor
-  const oTop=ow.grid[Mv], iTop=iw.grid[MvI];                                   // flat top rim annulus
+  const oTop=ow.grid[ySampO.length-1], iTop=iw.grid[ySampI.length-1];         // flat top rim annulus
   for(let i=0;i<N;i++){ const k=(i+1)%N;
     tris.push(orient([oTop[i], oTop[k], iTop[k]], [0,1,0]));
     tris.push(orient([oTop[i], iTop[k], iTop[i]], [0,1,0]));
@@ -2959,7 +3016,7 @@ function attachLogoEventListeners() {
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
     if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(300, v));
+    v = Math.max(10, Math.min(500, v));
     e.target.value = v;
     logoResolution = v;
     if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending();
@@ -2973,7 +3030,7 @@ function attachLogoEventListeners() {
   resInputHollow.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
     if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(300, v));
+    v = Math.max(10, Math.min(500, v));
     e.target.value = v;
     logoResolutionHollow = v;
     if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending();

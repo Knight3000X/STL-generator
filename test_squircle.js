@@ -171,5 +171,22 @@ function maxVertexValence(tris){ const m=new Map(), key=p=>p[0].toFixed(4)+','+p
 { base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y'}); const t=build();
   chk('hollow outer-bottom logo: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 
+console.log('\n=== zone densification: cost tracks the logo footprint, not the whole surface ===');
+{ const save=logoResolution; logoResolution=300;   // high detail: fine grid should stay local to the logo
+  base({squircle:45, squircleV:45}); addLogo({face:'+Y', w:8,  h:8 }); const small=build().length;
+  base({squircle:45, squircleV:45}); addLogo({face:'+Y', w:44, h:44}); const big=build().length;
+  chk('small +Y logo far cheaper than a full-face one', small < big*0.7, {small, big});
+  base({squircle:45}); addLogo({face:'+Z', w:8, h:8}); const sSmall=build().length;
+  base({squircle:45}); addLogo({face:'+Z', w:44, h:30}); const sBig=build().length;
+  chk('small side logo far cheaper than a big one', sSmall < sBig*0.7, {sSmall, sBig});
+  logoResolution=save; }
+
+console.log('\n=== high detail stays watertight + spike-free (~0.5M tris) ===');
+{ const save=logoResolution; logoResolution=300;   // hits the cube-sphere cap (S=260)
+  base({squircle:45, squircleV:45}); addLogo({face:'+Y'}); const t=build();
+  chk('superellipsoid @ high detail: watertight', wt(t) && !hasNaN(t), {tris:t.length, open:manifoldCheck(t).openEdges});
+  chk('superellipsoid @ high detail: no fan apex', maxVertexValence(t)<=12);
+  logoResolution=save; }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

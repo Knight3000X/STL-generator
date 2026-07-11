@@ -102,5 +102,25 @@ base({rim:true,width:50,height:40,depth:50,wallThickness:4,rimHeight:12,filletVe
 base({hollow:true,width:40,height:40,depth:40,wallThickness:4,bulgeXPlus:6});
 { const bb=computeBBox(build()); chk('hollow convex +X pushes maxX out', Math.abs(bb.maxX-(20+6))<1e-3, bb.maxX); }
 
+console.log('\n=== cavity follows the bulge (wall thickness preserved) ===');
+// hw=20, t=4, convex +X=6 -> outer centre x~26; inner cavity wall follows to ~22 (straight would be 16).
+function maxInnerXAtCentre(tris, outerCut){ let m=-Infinity;
+  for(const tr of tris) for(const p of tr){ if(Math.abs(p[1])<1.5 && Math.abs(p[2])<1.5 && p[0]<outerCut && p[0]>m) m=p[0]; }
+  return m; }
+function signedVol(tris){ let v=0; for(const t of tris){ const a=t[0],b=t[1],c=t[2];
+  v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; } return v; }
+base({hollow:true,width:40,height:40,depth:40,wallThickness:4,bulgeXPlus:6});
+{ const t=build(); chk('flat hollow follow: watertight', wt(t)); chk('flat hollow follow: positive volume', signedVol(t)>0, signedVol(t));
+  const bb=computeBBox(t); chk('flat hollow follow: outer +X centre ~26', Math.abs(bb.maxX-26)<0.6, bb.maxX);
+  const ix=maxInnerXAtCentre(t,25); chk('flat hollow follow: cavity moved out to ~22 (not 16)', ix>20.5, ix); }
+base({hollow:true,width:40,height:40,depth:40,wallThickness:4,filletVert:5,filletBottom:5,filletTop:4,filletInnerFloor:3,filletInnerVert:3,filletInnerLip:3,bulgeXPlus:6});
+{ const t=build(); chk('rounded hollow follow: watertight', wt(t)); chk('rounded hollow follow: positive volume', signedVol(t)>0);
+  const ix=maxInnerXAtCentre(t,25); chk('rounded hollow follow: cavity moved out (>20)', ix>20, ix); }
+base({hollow:true,width:40,height:40,depth:40,wallThickness:4,filletVert:5,filletBottom:5,filletTop:4,filletInnerFloor:3,filletInnerVert:3,filletInnerLip:0,bulgeXPlus:6});
+{ const t=build(); chk('sharp-rim hollow follow: watertight', wt(t)); chk('sharp-rim hollow follow: positive volume', signedVol(t)>0); }
+// concave now safe because the cavity follows inward too (capped so walls can't cross the centre)
+base({hollow:true,width:40,height:40,depth:40,wallThickness:4,bulgeXPlus:-12,bulgeXMinus:-12});
+{ const t=build(); chk('hollow concave follow (capped): watertight', wt(t)); chk('hollow concave: positive volume', signedVol(t)>0); chk('hollow concave: no NaN', !hasNaN(t)); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

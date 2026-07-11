@@ -440,7 +440,7 @@
 
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере и борте/лотке — внешние стенки и дно (полость остаётся прямой, поэтому вогиб внутрь ограничен толщиной стенки, чтобы не прорезать полость). Детализация купола: у сплошного — «Детализация (сплошной куб)», у полого/борта — «Детализация (полый контейнер)».</div></div>
+    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола: у сплошного — «Детализация (сплошной куб)», у полого/борта — «Детализация (полый контейнер)».</div></div>
     <div id="logo-section" class="param-group" data-shape="box">
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
@@ -1319,7 +1319,9 @@ function buildAsymBoxSurfaces(xP, yP, zP, hw, hh, hd, R, segs, skip, flip, yOffs
     // Y shift, so magnitude/sense stay correct.
     const logoFn = raw ? ((u,v,p)=>{ const d = raw(u, v, [p[0], p[1]+yOffset, p[2]]); return flip ? -d : d; }) : null;
     let dfn = logoFn;
-    const bAmp = (!flip && bulgeAmpsByFace) ? bulgeAmpsByFace[f.name] : 0; // outer shell only
+    // Wall bulge: applied to BOTH shells with the SAME sign (NOT negated like logos) so the inner cavity
+    // wall moves the same world direction as the outer wall -> wall thickness is preserved through the bulge.
+    const bAmp = bulgeAmpsByFace ? bulgeAmpsByFace[f.name] : 0;
     if (bAmp) { const bfn = makeInsetBulgeDisp(bAmp, f.uHalf, f.vHalf, f.insetU, f.insetV);
       dfn = logoFn ? (u,v,p)=> (logoFn(u,v,p)||0) + bfn(u,v,p) : bfn; }
     out = out.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn)); }
@@ -1511,7 +1513,7 @@ function buildSharpRimHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDept
   const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
   const trunc = tris => tris.filter(tri => Math.min(tri[0][1],tri[1][1],tri[2][1]) < hh - 1e-6);
   const outer = trunc(buildAsymBoxSurfaces(xP, yPo, zP, hw, HiO, hd, oR, segs, [], false, ciyO, dispFnsOuter, bulgeAmpsByFace));   // outward
-  const inner = trunc(buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, HiI, ihd, iR, segs, [], true, ciyI, dispFnsInner)); // inward
+  const inner = trunc(buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, HiI, ihd, iR, segs, [], true, ciyI, dispFnsInner, bulgeAmpsByFace)); // inward (bulge follows outer)
   const loopsO = sharpTopBoundaryLoops(outer, hh).sort((a,b)=>b.length-a.length);
   const loopsI = sharpTopBoundaryLoops(inner, hh).sort((a,b)=>b.length-a.length);
   const rim = (loopsO[0] && loopsI[0]) ? sharpBuildAnnulus(loopsO[0], loopsI[0], hh, [0,1,0]) : [];
@@ -1578,7 +1580,7 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
   const xInner = xP.filter(x=>x>=-ihw-1e-9&&x<=ihw+1e-9);
   const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
   const outer = buildAsymBoxSurfaces(xP, yPo, zP, hw, hh, hd, oR, segs, ['+Y'], false, 0, dispFnsOuter, bulgeAmpsByFace);
-  const inner = buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, ih/2, ihd, iR, segs, ['+Y'], true, iyOffset, dispFnsInner);
+  const inner = buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, ih/2, ihd, iR, segs, ['+Y'], true, iyOffset, dispFnsInner, bulgeAmpsByFace);
   const rim = buildAsymRimAnnulus(xP, zP, hw, hd,
      {plus:oR.rZ['1,1'], minus:oR.rZ['0,1']}, {plus:oR.rX['1,1'], minus:oR.rX['1,0']},
      ihw, ihd, {plus:iR.rZ['1,1'], minus:iR.rZ['0,1']}, {plus:iR.rX['1,1'], minus:iR.rX['1,0']}, hh);
@@ -1651,7 +1653,7 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   }
 }
 
-function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts) {
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const res = Math.max(1, resolution||1);
@@ -1659,6 +1661,14 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
   const lat = (latticeOpts && latticeOpts.enabled) ? latticeOpts : null;
+  // Cavity-follow bulge: each cavity wall gets a dome that moves it the SAME world direction as the
+  // matching outer wall, so the wall thickness is preserved. cav() negates the amp because the cavity
+  // wall's outward normal points into the cavity (opposite the outer wall). addDisp merges with logos.
+  const bx = bulgeAmpsByFace || {};
+  const cavYLo=-(hh-t), cavYHi=hh, xLo=-(hw-t), xHi=hw-t, zLo=-(hd-t), zHi=hd-t;
+  const cavBulge = !!(bx['+X']||bx['-X']||bx['+Z']||bx['-Z']);
+  const cav = (amp,uLo,uHi,vLo,vHi)=> amp ? makeRectDome(-amp,uLo,uHi,vLo,vHi) : null;
+  const addDisp=(a,b)=>(a&&b)?((u,v,p)=>(a(u,v,p)||0)+(b(u,v,p)||0)):(a||b);
 
   const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
   const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
@@ -1677,13 +1687,14 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
 
   const xMid = midSlice(xPositions, -(hw-t), hw-t);
   const zMid = midSlice(zPositions, -(hd-t), hd-t);
-  const cavityYPositions = [-(hh-t), hh];
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], null, tf));
+  // Bulged cavity walls need Y subdivided (a 2-row strip can't show the dome, since it's 0 at both ends).
+  const cavityYPositions = cavBulge ? bulgeSubdivRange(cavYLo, cavYHi, res) : [cavYLo, cavYHi];
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], cav(bx['-X'],cavYLo,cavYHi,zLo,zHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], cav(bx['+X'],cavYLo,cavYHi,zLo,zHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], cav(bx['-Z'],xLo,xHi,cavYLo,cavYHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], cav(bx['+Z'],xLo,xHi,cavYLo,cavYHi), tf));
   // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
-  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
+  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], addDisp(dfn['-Y-inner'], cav(bx['-Y'],xLo,xHi,zLo,zHi)), tf));
 
   addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
   addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
@@ -2175,13 +2186,18 @@ function buildWallBulgeDispFns(p, amps){
   }
   return fns;
 }
-// Inset-aware dome for the fillet / rounded-hollow shells: the same raised-cosine dome but centred on
-// and scaled to the face's INSET flat rectangle, so it's 0 on the flat-region boundary (and across the
-// corner extensions, since wallBulgeProfile(|x|>=1)=0) — the seam with the edge cylinders stays closed.
-function makeInsetBulgeDisp(amp, uHalf, vHalf, insetU, insetV){
-  const uLo=-uHalf+insetU.minus, uHi=uHalf-insetU.plus, vLo=-vHalf+insetV.minus, vHi=vHalf-insetV.plus;
+function bulgeSubdivRange(lo, hi, n){ const out=[]; n=Math.max(1,n|0); for(let i=0;i<=n;i++) out.push(lo+(hi-lo)*i/n); return out; }
+// Dome over an arbitrary (u,v) rectangle: peak amp at its centre, 0 on its boundary (and outside,
+// since wallBulgeProfile(|x|>=1)=0). The building block for every bulge variant.
+function makeRectDome(amp, uLo, uHi, vLo, vHi){
   const uC=(uLo+uHi)/2, uR=Math.max(1e-6,(uHi-uLo)/2), vC=(vLo+vHi)/2, vR=Math.max(1e-6,(vHi-vLo)/2);
   return (u,v)=> amp*wallBulgeProfile((u-uC)/uR)*wallBulgeProfile((v-vC)/vR);
+}
+// Inset-aware dome for the fillet / rounded-hollow shells: the dome centred on and scaled to the face's
+// INSET flat rectangle, so it's 0 on the flat-region boundary (and across the corner extensions) — the
+// seam with the edge cylinders stays closed.
+function makeInsetBulgeDisp(amp, uHalf, vHalf, insetU, insetV){
+  return makeRectDome(amp, -uHalf+insetU.minus, uHalf-insetU.plus, -vHalf+insetV.minus, vHalf-insetV.plus);
 }
 // Full-span zones (per world axis) for each bulged face, so buildBoxWithLogos grids the whole
 // face finely enough for a smooth dome (merged with any logo zones).
@@ -2298,9 +2314,11 @@ function buildTrisForShape(shape, p) {
         const seg = p.filletSeg||4;
         const { dOuter, dInner, zones } = splitHollowLogoDispFns();
         const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
-        // Wall bulge rides the OUTER shell only; concave capped to the wall thickness so it can't reach the cavity.
-        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*tW) : undefined;
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, zones, logoResolution, bulge);
+        // Wall bulge rides BOTH shells (cavity follows the outer so thickness is preserved); concave capped
+        // so the following cavity walls can't cross the box centre. Bulge zones densify the shell for a smooth dome.
+        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
+        const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -2311,8 +2329,10 @@ function buildTrisForShape(shape, p) {
       const lat = p.latticeFloor ? makeLatticeOpts(p) : null;
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
       const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
-      const dispFns = hasWallBulge(p) ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, wallBulgeAmounts(p, 0.8*tWf))) : logoFns;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat);
+      // Outer walls bulge via the dispFns; the cavity walls follow via bulgeAmps (thickness preserved).
+      const bAmts = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)) : null;
+      const dispFns = bAmts ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, bAmts)) : logoFns;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat, bAmts||undefined);
     }
 
     if (p.rim) {
@@ -2331,8 +2351,9 @@ function buildTrisForShape(shape, p) {
         const seg = p.filletSeg||4;
         const { dOuter, dInner, zones } = splitHollowLogoDispFns();
         const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
-        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*tW) : undefined; // outer shell only
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, zones, logoResolution, bulge);
+        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
+        const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -2340,7 +2361,8 @@ function buildTrisForShape(shape, p) {
       // logoResolutionHollow rather than adding a third detail slider.
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
       const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
-      const dispFns = hasWallBulge(p) ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, wallBulgeAmounts(p, 0.8*tWf))) : logoFns;
+      // Flat tray is solid below the shallow pocket, so only the outer walls bulge (no cavity-follow).
+      const dispFns = hasWallBulge(p) ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)))) : logoFns;
       return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn);
     }
 

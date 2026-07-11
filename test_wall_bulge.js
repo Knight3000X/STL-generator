@@ -62,12 +62,45 @@ base({width:40,bulgeXPlus:-500,bulgeXMinus:-500}); // way past the -0.45*width c
 { const amps=wallBulgeAmounts(paramState.box); chk('concave clamp: |amp| <= 0.45*width', Math.abs(amps['+X'])<=0.45*40+1e-9, amps['+X']);
   const t=build(); chk('extreme concave both walls: watertight', wt(t)); chk('extreme concave: no NaN', !hasNaN(t)); }
 
-console.log('\n=== precedence: bulge wins over corner rounding, still watertight ===');
+console.log('\n=== combined with corner rounding (bulge + fillet, inset-aware dome) ===');
 base({bulgeXPlus:8,filletTop:6,filletBottom:6,filletVert:6});
-{ const t=build(); chk('bulge+fillet set: watertight', wt(t));
-  base({filletTop:6,filletBottom:6,filletVert:6}); const noBulge=build();
-  base({bulgeXPlus:8,filletTop:6,filletBottom:6,filletVert:6}); const withBulge=build();
-  chk('bulge changes the mesh vs pure fillet (bulge took precedence)', withBulge.length!==noBulge.length, {fillet:noBulge.length, bulge:withBulge.length}); }
+{ const t=build(); chk('bulge+fillet: watertight', wt(t)); chk('bulge+fillet: no NaN', !hasNaN(t)); }
+base({bulgeXPlus:7,bulgeZMinus:-5,bulgeYPlus:4,filletTop:8,filletBottom:8,filletVert:8});
+{ const t=build(); chk('bulge(mixed 3 faces)+fillet: watertight', wt(t)); }
+base({bulgeXPlus:6,filletTop:10,filletBottom:4,filletVert:7}); // asymmetric per-group radii
+{ const t=build(); chk('bulge + asym per-group fillet: watertight', wt(t)); }
+base({bulgeXPlus:6,filletTop:6,filletBottom:6,filletVert:6}); addLogo({face:'+X',u0:0,v0:0,w:12,h:12,depth:1.5},true);
+{ const t=build(); chk('bulge+fillet+logo on same face: watertight', wt(t)); chk('bulge+fillet+logo: no NaN', !hasNaN(t)); }
+base({bulgeXPlus:8,filletTop:6,filletBottom:6,filletVert:6,taperXPlus:10});
+{ const t=build(); chk('bulge+fillet+taper: watertight', wt(t)); }
+// combined mesh must carry BOTH features: differ from pure fillet, and push +X out past it
+base({filletTop:6,filletBottom:6,filletVert:6}); const pureFillet=build();
+base({bulgeXPlus:8,filletTop:6,filletBottom:6,filletVert:6}); const combo=build();
+chk('combined differs from pure fillet (bulge applied too)', combo.length!==pureFillet.length, {fillet:pureFillet.length, combo:combo.length});
+{ const bbF=computeBBox(pureFillet), bbC=computeBBox(combo);
+  chk('combined bulges +X out beyond pure fillet (rounded edges kept)', bbC.maxX>bbF.maxX+1e-6, {fillet:bbF.maxX, combo:bbC.maxX}); }
+
+console.log('\n=== hollow / rim outer-wall bulge (all four builders) ===');
+// flat hollow
+base({hollow:true,width:50,height:40,depth:50,wallThickness:4,bulgeXPlus:8,bulgeZPlus:8,bulgeZMinus:-3});
+{ const t=build(); chk('flat hollow + bulge: watertight', wt(t)); chk('flat hollow + bulge: no NaN', !hasNaN(t)); }
+base({hollow:true,width:50,height:40,depth:50,wallThickness:4,bulgeXPlus:6}); addLogo({face:'+X',u0:0,v0:0,w:14,h:14,depth:1.5},true);
+{ const t=build(); chk('flat hollow + bulge + wall logo: watertight', wt(t)); }
+// rounded hollow (iLip>0 -> buildRoundedHollow)
+base({hollow:true,width:50,height:40,depth:50,wallThickness:4,filletVert:6,filletBottom:6,filletTop:5,filletInnerFloor:4,filletInnerVert:4,filletInnerLip:4,bulgeXPlus:7,bulgeZMinus:-3});
+{ const t=build(); chk('rounded hollow + bulge: watertight', wt(t)); chk('rounded hollow + bulge: no NaN', !hasNaN(t)); }
+// sharp-rim hollow (iLip=0 -> buildSharpRimHollow)
+base({hollow:true,width:50,height:40,depth:50,wallThickness:4,filletVert:6,filletBottom:6,filletTop:5,filletInnerFloor:4,filletInnerVert:4,filletInnerLip:0,bulgeXPlus:7});
+{ const t=build(); chk('sharp-rim hollow + bulge: watertight', wt(t)); chk('sharp-rim hollow + bulge: no NaN', !hasNaN(t)); }
+// flat rim / tray
+base({rim:true,width:50,height:40,depth:50,wallThickness:4,rimHeight:10,bulgeXPlus:8,bulgeZMinus:-3});
+{ const t=build(); chk('flat rim + bulge: watertight', wt(t)); }
+// rounded rim
+base({rim:true,width:50,height:40,depth:50,wallThickness:4,rimHeight:12,filletVert:6,filletBottom:6,filletTop:5,filletInnerFloor:3,filletInnerVert:3,filletInnerLip:3,bulgeXPlus:7});
+{ const t=build(); chk('rounded rim + bulge: watertight', wt(t)); }
+// convex hollow pushes the wall out past nominal
+base({hollow:true,width:40,height:40,depth:40,wallThickness:4,bulgeXPlus:6});
+{ const bb=computeBBox(build()); chk('hollow convex +X pushes maxX out', Math.abs(bb.maxX-(20+6))<1e-3, bb.maxX); }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

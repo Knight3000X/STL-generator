@@ -211,6 +211,38 @@
     transition:background 0.12s;
   }
   #btn-export:hover{ background:var(--redline-dark); }
+  /* sticky "apply changes" bar — parameter edits are staged, not live, until confirmed */
+  #apply-bar{
+    position:sticky; top:0; z-index:6;
+    background:var(--paper);
+    padding:8px 0 10px;
+    margin-bottom:2px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  #btn-apply{
+    width:100%;
+    padding:11px 0;
+    background:var(--ink);
+    border:none;
+    border-radius:2px;
+    color:var(--paper);
+    font-family:inherit;
+    font-size:14px;
+    font-weight:700;
+    letter-spacing:0.04em;
+    cursor:pointer;
+    transition:background 0.12s, opacity 0.12s;
+  }
+  #btn-apply:disabled{ opacity:0.4; cursor:default; }
+  #btn-apply.has-pending{ background:var(--redline); color:#fff; }
+  #btn-apply.has-pending:hover{ background:var(--redline-dark); }
+  #apply-hint{
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.35;
+    text-align:center;
+  }
   .export-note{
     font-size:10.5px;
     color:var(--ink-soft);
@@ -399,6 +431,11 @@
       <span class="tag">ЛИСТ 1 ИЗ 1</span>
       <h1>STL-ГЕНЕРАТОР</h1>
       <div class="sub">параметрические тела → экспорт STL · форма: <span id="active-shape-name" class="mono">—</span></div>
+    </div>
+
+    <div id="apply-bar">
+      <button id="btn-apply" disabled>Изменения применены</button>
+      <div id="apply-hint">Правки параметров и логотипов применяются к модели только по этой кнопке. Поворот — сразу.</div>
     </div>
 
     <div class="section-label">Параметры</div>
@@ -2297,11 +2334,11 @@ function attachEventListeners() {
       if (Number.isNaN(val)) return; // mid-edit (e.g. field cleared) — wait for a usable value
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (shape === currentShape) regenerateDebounced();
+      if (shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
       if (t.dataset.shape === 'box' && (t.dataset.key === 'hollow' || t.dataset.key === 'rim') && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (t.dataset.shape === currentShape) regenerateSoon();
+      if (t.dataset.shape === currentShape) markPending();
     }
   });
   // on blur/Enter, snap the field to a valid clamped value
@@ -2314,7 +2351,7 @@ function attachEventListeners() {
       t.value = val;
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (shape === currentShape) regenerateSoon();
+      if (shape === currentShape) markPending();
     }
   });
 
@@ -2357,7 +2394,9 @@ function attachEventListeners() {
   document.getElementById('color-picker').addEventListener('input', (e) => { if (scene3DReady) mesh.material.color.set(e.target.value); });
 
   document.getElementById('btn-export').addEventListener('click', () => {
-    flushPendingRegenerate(); // never export geometry left over from a still-pending edit
+    // Export commits any staged parameter/logo edits first, so the file always matches the
+    // values currently in the panel (and the on-screen model updates to match).
+    if (pendingChanges) applyPendingNow();
     const nameRaw = document.getElementById('filename').value.trim() || 'model';
     const format = document.getElementById('export-format').value;
     const blob = format === 'ascii' ? trisToAsciiSTL(currentTris, nameRaw) : trisToBinarySTL(currentTris);
@@ -2365,9 +2404,12 @@ function attachEventListeners() {
   });
 
   document.getElementById('btn-reset-view').addEventListener('click', () => {
-    flushPendingRegenerate();
+    // Pure camera reset — does NOT apply staged edits (that's the Подтвердить button's job).
     if (scene3DReady) frameCamera(computeBBox(currentTris));
   });
+
+  document.getElementById('btn-apply').addEventListener('click', () => { if (pendingChanges) applyPending(); });
+  updateApplyButton();
 }
 
 const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};
@@ -2430,7 +2472,7 @@ function attachLogoEventListeners() {
       clampLogoToFace(logo);
       logos.push(logo);
       renderLogoCards();
-      if (currentShape === 'box') regenerateSoon();
+      if (currentShape === 'box') markPending();
     });
   });
 
@@ -2444,7 +2486,7 @@ function attachLogoEventListeners() {
     else if (field === 'invert') logo.invert = e.target.checked;
     else if (field === 'thresholdPct') { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo.threshold = Math.max(0.01, Math.min(0.99, v/100)); }
     else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo[field] = v; }
-    if (currentShape === 'box') regenerateDebounced();
+    if (currentShape === 'box') markPending();
   });
 
   document.getElementById('logo-cards').addEventListener('change', (e) => {
@@ -2456,7 +2498,7 @@ function attachLogoEventListeners() {
     if (['face','u0','v0','w','h','rotation'].includes(field)) {
       clampLogoToFace(logo);
       renderLogoCards();
-      if (currentShape === 'box') regenerateSoon();
+      if (currentShape === 'box') markPending();
     }
   });
 
@@ -2467,13 +2509,13 @@ function attachLogoEventListeners() {
     const idx = logos.findIndex(l => l.id === id);
     if (idx >= 0) logos.splice(idx, 1);
     renderLogoCards();
-    if (currentShape === 'box') regenerateSoon();
+    if (currentShape === 'box') markPending();
   });
 
   const resInput = document.getElementById('logo-resolution');
   resInput.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending(); }
   });
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
@@ -2481,13 +2523,13 @@ function attachLogoEventListeners() {
     v = Math.max(10, Math.min(300, v));
     e.target.value = v;
     logoResolution = v;
-    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateSoon();
+    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending();
   });
 
   const resInputHollow = document.getElementById('logo-resolution-hollow');
   resInputHollow.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending(); }
   });
   resInputHollow.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
@@ -2495,7 +2537,7 @@ function attachLogoEventListeners() {
     v = Math.max(10, Math.min(300, v));
     e.target.value = v;
     logoResolutionHollow = v;
-    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateSoon();
+    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending();
   });
 }
 
@@ -2787,6 +2829,37 @@ function flushPendingRegenerate() {
   rotateOnlyDebounced.cancel();
   regenGeneration++; // invalidate any in-flight rAF-deferred call too
   regenerate();
+}
+
+/* =========================================================
+   STAGED PARAMETERS: parameter/logo edits update state only and are shown on the model
+   solely when the user presses "Подтвердить". This keeps a heavy rounded-hollow rebuild from
+   firing on every keystroke/drag (the mobile freeze). Rotation stays live (cheap rotate-only
+   path). pendingChanges tracks whether the on-screen model is behind the current inputs.
+   ========================================================= */
+let pendingChanges = false;
+function updateApplyButton() {
+  const btn = document.getElementById('btn-apply');
+  if (!btn) return;
+  btn.disabled = !pendingChanges;
+  btn.classList.toggle('has-pending', pendingChanges);
+  btn.textContent = pendingChanges ? 'Подтвердить изменения' : 'Изменения применены';
+}
+function markPending() {
+  pendingChanges = true;
+  updateApplyButton();
+}
+// Apply staged edits with the busy indicator (interactive button press).
+function applyPending() {
+  pendingChanges = false;
+  updateApplyButton();
+  regenerateSoon();
+}
+// Apply staged edits synchronously (used before export, so currentTris is up to date immediately).
+function applyPendingNow() {
+  pendingChanges = false;
+  updateApplyButton();
+  flushPendingRegenerate();
 }
 
 

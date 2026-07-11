@@ -68,9 +68,11 @@ for t in test_rim_box.js test_hollow_taper.js test_hollow_resolution.js \
   run "$t" "$TMP/run.js"
 done
 
-# Debounce/token wiring: uses the counter-stubbed library.
+# Debounce/token wiring + staged-parameters (Подтвердить) flow: use the counter-stubbed library.
 cat stub_preamble.js "$LIB_STUBBED" test_debounce_flow.js > "$TMP/run_deb.js"
 run test_debounce_flow.js "$TMP/run_deb.js"
+cat stub_preamble.js "$LIB_STUBBED" test_apply_button.js > "$TMP/run_apply.js"
+run test_apply_button.js "$TMP/run_apply.js"
 
 # 12-radius asym primitive tests: run against asym-12-radius.js (the source the
 # in-page buildAsymRoundedBox was ported from).

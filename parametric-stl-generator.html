@@ -2099,6 +2099,7 @@ const SHAPE_PARAMS = {
     {key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {key:'squircleV', label:'Squircle: скругление верха/низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
@@ -2325,6 +2326,28 @@ function buildSquirclePrism(w, h, d, p, resolution){
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
 
+// Full superellipsoid: the squircle prism with the TOP/BOTTOM edges also rounded. Horizontal exponent
+// eH (side/corner roundness) + vertical exponent eV (top/bottom edge roundness): eV→0 is the flat-top
+// prism, eV=1 is smooth ellipsoid caps. Poles collapse to a single apex top and bottom.
+function seC(a,e){ const c=Math.cos(a); return Math.sign(c)*Math.pow(Math.abs(c),e); }
+function seS(a,e){ const s=Math.sin(a); return Math.sign(s)*Math.pow(Math.abs(s),e); }
+function buildSuperellipsoid(w, h, d, eH, eV, resolution){
+  const hw=w/2, hh=h/2, hd=d/2;
+  const N=Math.max(48, Math.round(resolution)*12), M=Math.max(24, Math.round(resolution)*6);
+  const P=(phi,th)=>{ const cV=seC(phi,eV); return [hw*cV*seC(th,eH), hh*seS(phi,eV), hd*cV*seS(th,eH)]; };
+  const bot=[0,-hh,0], top=[0,hh,0], rings=[];
+  for(let k=1;k<M;k++){ const phi=-Math.PI/2+Math.PI*k/M; const r=[]; for(let i=0;i<N;i++) r.push(P(phi,2*Math.PI*i/N)); rings.push(r); }
+  const tris=[];
+  const ref=t=>[t[0][0]+t[1][0]+t[2][0], t[0][1]+t[1][1]+t[2][1], t[0][2]+t[1][2]+t[2][2]]; // centroid ≈ outward
+  const push=t=>tris.push(orient(t, ref(t)));
+  for(let i=0;i<N;i++){ const j=(i+1)%N; push([bot, rings[0][i], rings[0][j]]); }
+  for(let k=0;k<rings.length-1;k++){ const a=rings[k], b=rings[k+1];
+    for(let i=0;i<N;i++){ const j=(i+1)%N; push([a[i],a[j],b[j]]); push([a[i],b[j],b[i]]); } }
+  const last=rings[rings.length-1];
+  for(let i=0;i<N;i++){ const j=(i+1)%N; push([top, last[j], last[i]]); }
+  return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
+}
+
 function buildTrisForShape(shape, p) {
   if (shape === 'box') {
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
@@ -2401,7 +2424,11 @@ function buildTrisForShape(shape, p) {
     // round into one smooth curve). Overrides corner fillet / wall bulge (different corner treatments);
     // solid box only for this pass. Taper is applied afterwards, per vertex.
     if (p.squircle > 0) {
-      const tris = buildSquirclePrism(p.width, p.height, p.depth, Math.max(0.02, Math.min(1, p.squircle/100)), p.filletSeg||4);
+      const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleV||0)/100));
+      // squircleV>0 rounds the top/bottom edges too (full superellipsoid); =0 keeps the flat-top prism.
+      const tris = eV > 0
+        ? buildSuperellipsoid(p.width, p.height, p.depth, eH, eV, p.filletSeg||4)
+        : buildSquirclePrism(p.width, p.height, p.depth, eH, p.filletSeg||4);
       return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
         p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
     }

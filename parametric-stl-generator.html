@@ -211,6 +211,38 @@
     transition:background 0.12s;
   }
   #btn-export:hover{ background:var(--redline-dark); }
+  /* sticky "apply changes" bar — parameter edits are staged, not live, until confirmed */
+  #apply-bar{
+    position:sticky; top:0; z-index:6;
+    background:var(--paper);
+    padding:8px 0 10px;
+    margin-bottom:2px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  #btn-apply{
+    width:100%;
+    padding:11px 0;
+    background:var(--ink);
+    border:none;
+    border-radius:2px;
+    color:var(--paper);
+    font-family:inherit;
+    font-size:14px;
+    font-weight:700;
+    letter-spacing:0.04em;
+    cursor:pointer;
+    transition:background 0.12s, opacity 0.12s;
+  }
+  #btn-apply:disabled{ opacity:0.4; cursor:default; }
+  #btn-apply.has-pending{ background:var(--redline); color:#fff; }
+  #btn-apply.has-pending:hover{ background:var(--redline-dark); }
+  #apply-hint{
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.35;
+    text-align:center;
+  }
   .export-note{
     font-size:10.5px;
     color:var(--ink-soft);
@@ -401,9 +433,14 @@
       <div class="sub">параметрические тела → экспорт STL · форма: <span id="active-shape-name" class="mono">—</span></div>
     </div>
 
+    <div id="apply-bar">
+      <button id="btn-apply" disabled>Изменения применены</button>
+      <div id="apply-hint">Правки параметров и логотипов применяются к модели только по этой кнопке. Поворот — сразу.</div>
+    </div>
+
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх).</div></div>
+    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола: у сплошного — «Детализация (сплошной куб)», у полого/борта — «Детализация (полый контейнер)».</div></div>
     <div id="logo-section" class="param-group" data-shape="box">
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
@@ -1105,7 +1142,7 @@ function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outwa
   }
   return tris;
 }
-function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesByAxis, logoRes) {
+function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesByAxis, logoRes, bulgeAmpsByFace) {
   const hw=w/2, hh=h/2, hd=d/2;
   resolution = resolution || 10;
   logoRes = logoRes || resolution;
@@ -1186,7 +1223,12 @@ function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesB
       insetU:{plus:R.rY['1,0'], minus:R.rY['0,0']}, insetV:{plus:R.rX['1,0'], minus:R.rX['0,0']} },
   ];
   for (const f of faceDefs) {
-    const dfn = dispFnsByFace && dispFnsByFace[f.name];
+    let dfn = dispFnsByFace && dispFnsByFace[f.name];
+    const bAmp = bulgeAmpsByFace && bulgeAmpsByFace[f.name];
+    if (bAmp) { // wall bulge on a rounded face: inset-aware dome ADDED to any logo relief
+      const bfn = makeInsetBulgeDisp(bAmp, f.uHalf, f.vHalf, f.insetU, f.insetV), logoFn = dfn;
+      dfn = logoFn ? (u,v,base)=> (logoFn(u,v,base)||0) + bfn(u,v,base) : bfn;
+    }
     tris = tris.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn));
   }
   for (const [s1,s2] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
@@ -1258,7 +1300,7 @@ function addLogoZonesToAxis(arr, half, zones, logoRes) {
 // dispFnsByFace: per-face logo relief for the shell's flat faces. flip=true (inner cavity plug) negates
 // the displacement so a positive logo depth stands PROUD into the cavity (matching outer-wall behaviour),
 // not sunk into the surrounding material.
-function buildAsymBoxSurfaces(xP, yP, zP, hw, hh, hd, R, segs, skip, flip, yOffset, dispFnsByFace) {
+function buildAsymBoxSurfaces(xP, yP, zP, hw, hh, hd, R, segs, skip, flip, yOffset, dispFnsByFace, bulgeAmpsByFace) {
   skip = new Set(skip||[]); yOffset = yOffset||0;
   const F = [
     { name:'+X', uAxis:1,vAxis:2,nAxis:0,nOffset:hw, uHalf:hh,vHalf:hd, outward:[1,0,0], uPos:yP, vPos:zP, insetU:{plus:R.rZ['1,1'], minus:R.rZ['1,0']}, insetV:{plus:R.rY['1,1'], minus:R.rY['1,0']} },
@@ -1275,7 +1317,13 @@ function buildAsymBoxSurfaces(xP, yP, zP, hw, hh, hd, R, segs, skip, flip, yOffs
     // coords -> shift the vertex Y by yOffset before the frame projection. flip negates so +depth stands
     // proud into the cavity. The displacement direction (outward) is a pure direction, unaffected by the
     // Y shift, so magnitude/sense stay correct.
-    const dfn = raw ? ((u,v,p)=>{ const d = raw(u, v, [p[0], p[1]+yOffset, p[2]]); return flip ? -d : d; }) : null;
+    const logoFn = raw ? ((u,v,p)=>{ const d = raw(u, v, [p[0], p[1]+yOffset, p[2]]); return flip ? -d : d; }) : null;
+    let dfn = logoFn;
+    // Wall bulge: applied to BOTH shells with the SAME sign (NOT negated like logos) so the inner cavity
+    // wall moves the same world direction as the outer wall -> wall thickness is preserved through the bulge.
+    const bAmp = bulgeAmpsByFace ? bulgeAmpsByFace[f.name] : 0;
+    if (bAmp) { const bfn = makeInsetBulgeDisp(bAmp, f.uHalf, f.vHalf, f.insetU, f.insetV);
+      dfn = logoFn ? (u,v,p)=> (logoFn(u,v,p)||0) + bfn(u,v,p) : bfn; }
     out = out.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn)); }
   for (const [s1,s2] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
     out = out.concat(buildEdgeCylinderFromAxis('X', s1, s2, hw,hh,hd, R, xP, segs));
@@ -1401,7 +1449,7 @@ function sharpBuildAnnulus(loopO, loopI, yPlane, up) {
   }
   return A; // give up gracefully — still watertight, at worst a couple of rim facets wound inconsistently
 }
-function buildSharpRimHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes) {
+function buildSharpRimHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes, bulgeAmpsByFace) {
   logoRes = logoRes || resolution;
   // BOTH shells get a sharp flat top (raise-by-vert + truncate): outer vertical edges keep their full
   // radius up to the rim (no "horns" pinching down to a small rolled lip) and the inner opening is a
@@ -1464,14 +1512,14 @@ function buildSharpRimHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDept
   const xInner = xP.filter(x=>x>=-ihw-1e-9&&x<=ihw+1e-9);
   const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
   const trunc = tris => tris.filter(tri => Math.min(tri[0][1],tri[1][1],tri[2][1]) < hh - 1e-6);
-  const outer = trunc(buildAsymBoxSurfaces(xP, yPo, zP, hw, HiO, hd, oR, segs, [], false, ciyO, dispFnsOuter));   // outward
-  const inner = trunc(buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, HiI, ihd, iR, segs, [], true, ciyI, dispFnsInner)); // inward
+  const outer = trunc(buildAsymBoxSurfaces(xP, yPo, zP, hw, HiO, hd, oR, segs, [], false, ciyO, dispFnsOuter, bulgeAmpsByFace));   // outward
+  const inner = trunc(buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, HiI, ihd, iR, segs, [], true, ciyI, dispFnsInner, bulgeAmpsByFace)); // inward (bulge follows outer)
   const loopsO = sharpTopBoundaryLoops(outer, hh).sort((a,b)=>b.length-a.length);
   const loopsI = sharpTopBoundaryLoops(inner, hh).sort((a,b)=>b.length-a.length);
   const rim = (loopsO[0] && loopsI[0]) ? sharpBuildAnnulus(loopsO[0], loopsI[0], hh, [0,1,0]) : [];
   return outer.concat(inner).concat(rim);
 }
-function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes) {
+function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth, dispFnsOuter, dispFnsInner, zonesByAxis, logoRes, bulgeAmpsByFace) {
   logoRes = logoRes || resolution;
   const hw=w/2, hh=h/2, hd=d/2, ihw=hw-t, ihd=hd-t;
   const isTray = pocketDepth > 0;
@@ -1531,8 +1579,8 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
   xP.sort((a,b)=>a-b); zP.sort((a,b)=>a-b); yPo.sort((a,b)=>a-b); yPi.sort((a,b)=>a-b);
   const xInner = xP.filter(x=>x>=-ihw-1e-9&&x<=ihw+1e-9);
   const zInner = zP.filter(z=>z>=-ihd-1e-9&&z<=ihd+1e-9);
-  const outer = buildAsymBoxSurfaces(xP, yPo, zP, hw, hh, hd, oR, segs, ['+Y'], false, 0, dispFnsOuter);
-  const inner = buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, ih/2, ihd, iR, segs, ['+Y'], true, iyOffset, dispFnsInner);
+  const outer = buildAsymBoxSurfaces(xP, yPo, zP, hw, hh, hd, oR, segs, ['+Y'], false, 0, dispFnsOuter, bulgeAmpsByFace);
+  const inner = buildAsymBoxSurfaces(xInner, yPi, zInner, ihw, ih/2, ihd, iR, segs, ['+Y'], true, iyOffset, dispFnsInner, bulgeAmpsByFace);
   const rim = buildAsymRimAnnulus(xP, zP, hw, hd,
      {plus:oR.rZ['1,1'], minus:oR.rZ['0,1']}, {plus:oR.rX['1,1'], minus:oR.rX['1,0']},
      ihw, ihd, {plus:iR.rZ['1,1'], minus:iR.rZ['0,1']}, {plus:iR.rX['1,1'], minus:iR.rX['1,0']}, hh);
@@ -1605,7 +1653,7 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   }
 }
 
-function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts) {
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const res = Math.max(1, resolution||1);
@@ -1613,6 +1661,14 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
   const lat = (latticeOpts && latticeOpts.enabled) ? latticeOpts : null;
+  // Cavity-follow bulge: each cavity wall gets a dome that moves it the SAME world direction as the
+  // matching outer wall, so the wall thickness is preserved. cav() negates the amp because the cavity
+  // wall's outward normal points into the cavity (opposite the outer wall). addDisp merges with logos.
+  const bx = bulgeAmpsByFace || {};
+  const cavYLo=-(hh-t), cavYHi=hh, xLo=-(hw-t), xHi=hw-t, zLo=-(hd-t), zHi=hd-t;
+  const cavBulge = !!(bx['+X']||bx['-X']||bx['+Z']||bx['-Z']);
+  const cav = (amp,uLo,uHi,vLo,vHi)=> amp ? makeRectDome(-amp,uLo,uHi,vLo,vHi) : null;
+  const addDisp=(a,b)=>(a&&b)?((u,v,p)=>(a(u,v,p)||0)+(b(u,v,p)||0)):(a||b);
 
   const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
   const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
@@ -1631,13 +1687,14 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
 
   const xMid = midSlice(xPositions, -(hw-t), hw-t);
   const zMid = midSlice(zPositions, -(hd-t), hd-t);
-  const cavityYPositions = [-(hh-t), hh];
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], null, tf));
+  // Bulged cavity walls need Y subdivided (a 2-row strip can't show the dome, since it's 0 at both ends).
+  const cavityYPositions = cavBulge ? bulgeSubdivRange(cavYLo, cavYHi, res) : [cavYLo, cavYHi];
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], cav(bx['-X'],cavYLo,cavYHi,zLo,zHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], cav(bx['+X'],cavYLo,cavYHi,zLo,zHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], cav(bx['-Z'],xLo,xHi,cavYLo,cavYHi), tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], cav(bx['+Z'],xLo,xHi,cavYLo,cavYHi), tf));
   // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
-  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
+  if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], addDisp(dfn['-Y-inner'], cav(bx['-Y'],xLo,xHi,zLo,zHi)), tf));
 
   addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
   addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
@@ -2055,6 +2112,12 @@ const SHAPE_PARAMS = {
     {key:'taperYPlusZ', label:'Наклон верха по Z', min:-60, max:60, step:1, default:0, unit:'°'},
     {key:'taperYMinusX', label:'Наклон низа по X', min:-60, max:60, step:1, default:0, unit:'°'},
     {key:'taperYMinusZ', label:'Наклон низа по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {key:'bulgeXPlus',  label:'Скругление стенки +X (+нар/−внутр)', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeXMinus', label:'Скругление стенки −X', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeZPlus',  label:'Скругление стенки +Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeZMinus', label:'Скругление стенки −Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeYPlus',  label:'Скругление верха +Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {key:'bulgeYMinus', label:'Скругление дна −Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
     {key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
     {key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
     {key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
@@ -2081,6 +2144,85 @@ let logoResolutionHollow = 50; // separate control (max 300): buildHollowBox has
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
 // taperFn is needed to precompute each logo's tangent-plane frame (see makeLogoFrame).
+/* =========================================================
+   WALL BULGE (скругление стенок): each flat face can bow OUT (+, convex "бочка") or IN
+   (-, concave "подушка") by a signed amount in mm, per face. Implemented as a full-face
+   displacement that peaks at the face centre and falls to 0 along EVERY face edge (a separable
+   raised-cosine dome), so all seams with neighbouring faces stay closed — the very same
+   displacement-map machinery logo relief rides on, which is why a face's bulge and its logo
+   simply ADD. Solid cube only for this pass; takes precedence over corner rounding (they don't
+   combine yet). Taper composes for free (displacement is along the post-taper local normal).
+   ========================================================= */
+const WALL_BULGE_FACES = { // face -> [uAxis, vAxis, normalAxis]
+  '+X':[1,2,0], '-X':[1,2,0], '+Y':[0,2,1], '-Y':[0,2,1], '+Z':[0,1,2], '-Z':[0,1,2],
+};
+const WALL_BULGE_KEYS = { '+X':'bulgeXPlus','-X':'bulgeXMinus','+Z':'bulgeZPlus','-Z':'bulgeZMinus','+Y':'bulgeYPlus','-Y':'bulgeYMinus' };
+function wallBulgeProfile(x){ const t = x < -1 ? -1 : x > 1 ? 1 : x; return (1 + Math.cos(Math.PI*t)) / 2; } // 1 at centre, 0 at ±1
+// Signed, clamped bulge per face. Concave (negative) is capped so opposite walls can't cross
+// (< 45% of the box dimension along that face's normal); convex is bounded by the input max.
+// Signed clamped bulge per face. Concave (negative) is capped so opposite walls can't cross
+// (< 45% of the box dimension along the face normal); on hollow/rim, concaveCap additionally keeps
+// the outer surface from reaching into the cavity (so it stays a valid solid).
+function wallBulgeAmounts(p, concaveCap){
+  const half=[p.width/2, p.height/2, p.depth/2], out={};
+  for (const face in WALL_BULGE_KEYS){
+    let amp = p[WALL_BULGE_KEYS[face]] || 0;
+    if (!amp) continue;
+    if (amp < 0){
+      amp = Math.max(amp, -0.45 * 2*half[WALL_BULGE_FACES[face][2]]);
+      if (concaveCap != null) amp = Math.max(amp, -Math.abs(concaveCap));
+    }
+    out[face] = amp;
+  }
+  return out;
+}
+function hasWallBulge(p){ for (const face in WALL_BULGE_KEYS) if (p[WALL_BULGE_KEYS[face]]) return true; return false; }
+// Per-face dome dispFn in flat (u,v) position-array space — 0 on every edge, peak amp at centre.
+function buildWallBulgeDispFns(p, amps){
+  const half=[p.width/2, p.height/2, p.depth/2]; amps = amps || wallBulgeAmounts(p); const fns={};
+  for (const face in amps){
+    const [uAxis,vAxis] = WALL_BULGE_FACES[face], uH=half[uAxis], vH=half[vAxis], amp=amps[face];
+    fns[face] = (u,v)=> amp * wallBulgeProfile(u/uH) * wallBulgeProfile(v/vH);
+  }
+  return fns;
+}
+function bulgeSubdivRange(lo, hi, n){ const out=[]; n=Math.max(1,n|0); for(let i=0;i<=n;i++) out.push(lo+(hi-lo)*i/n); return out; }
+// Dome over an arbitrary (u,v) rectangle: peak amp at its centre, 0 on its boundary (and outside,
+// since wallBulgeProfile(|x|>=1)=0). The building block for every bulge variant.
+function makeRectDome(amp, uLo, uHi, vLo, vHi){
+  const uC=(uLo+uHi)/2, uR=Math.max(1e-6,(uHi-uLo)/2), vC=(vLo+vHi)/2, vR=Math.max(1e-6,(vHi-vLo)/2);
+  return (u,v)=> amp*wallBulgeProfile((u-uC)/uR)*wallBulgeProfile((v-vC)/vR);
+}
+// Inset-aware dome for the fillet / rounded-hollow shells: the dome centred on and scaled to the face's
+// INSET flat rectangle, so it's 0 on the flat-region boundary (and across the corner extensions) — the
+// seam with the edge cylinders stays closed.
+function makeInsetBulgeDisp(amp, uHalf, vHalf, insetU, insetV){
+  return makeRectDome(amp, -uHalf+insetU.minus, uHalf-insetU.plus, -vHalf+insetV.minus, vHalf-insetV.plus);
+}
+// Full-span zones (per world axis) for each bulged face, so buildBoxWithLogos grids the whole
+// face finely enough for a smooth dome (merged with any logo zones).
+function computeWallBulgeZones(p, amps){
+  const half=[p.width/2, p.height/2, p.depth/2]; amps = amps || wallBulgeAmounts(p); const zones={0:[],1:[],2:[]};
+  for (const face in amps){
+    const [uAxis,vAxis] = WALL_BULGE_FACES[face];
+    zones[uAxis].push([-half[uAxis], half[uAxis]]);
+    zones[vAxis].push([-half[vAxis], half[vAxis]]);
+  }
+  return zones;
+}
+// Merge two per-face dispFn maps by ADDING (bulge is the base surface, logo relief rides on top).
+function mergeDispFnsAdd(a,b){
+  if (!a) return b; if (!b) return a;
+  const out={}, names=new Set([...Object.keys(a),...Object.keys(b)]);
+  for (const n of names){ const fa=a[n], fb=b[n]; out[n]=(u,v,base)=> (fa?fa(u,v,base):0) + (fb?fb(u,v,base):0); }
+  return out;
+}
+function mergeZones(a,b){
+  if (!a) return b; if (!b) return a;
+  const out={}; for (const ax of [0,1,2]) out[ax] = [...(a[ax]||[]), ...(b[ax]||[])];
+  return out;
+}
+
 function buildCombinedLogoDispFns(taperFn) {
   const p = paramState.box;
   const fnsByFace = {};
@@ -2172,7 +2314,11 @@ function buildTrisForShape(shape, p) {
         const seg = p.filletSeg||4;
         const { dOuter, dInner, zones } = splitHollowLogoDispFns();
         const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, zones, logoResolution);
+        // Wall bulge rides BOTH shells (cavity follows the outer so thickness is preserved); concave capped
+        // so the following cavity walls can't cross the box centre. Bulge zones densify the shell for a smooth dome.
+        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
+        const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -2181,8 +2327,12 @@ function buildTrisForShape(shape, p) {
       // so lattice + wall logos keep full relief detail. Lattice can't carry relief itself, so
       // -Y / -Y-inner logos are simply not rendered on it (wall logos are unaffected).
       const lat = p.latticeFloor ? makeLatticeOpts(p) : null;
-      const dispFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat);
+      const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+      // Outer walls bulge via the dispFns; the cavity walls follow via bulgeAmps (thickness preserved).
+      const bAmts = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)) : null;
+      const dispFns = bAmts ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, bAmts)) : logoFns;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat, bAmts||undefined);
     }
 
     if (p.rim) {
@@ -2201,13 +2351,18 @@ function buildTrisForShape(shape, p) {
         const seg = p.filletSeg||4;
         const { dOuter, dInner, zones } = splitHollowLogoDispFns();
         const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, zones, logoResolution);
+        const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
+        const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
       // Same non-zonal cost model as hollow (no logo-zone grid), so it reuses
       // logoResolutionHollow rather than adding a third detail slider.
-      const dispFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+      // Flat tray is solid below the shallow pocket, so only the outer walls bulge (no cavity-follow).
+      const dispFns = hasWallBulge(p) ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)))) : logoFns;
       return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn);
     }
 
@@ -2217,6 +2372,29 @@ function buildTrisForShape(shape, p) {
     const rBot  = p.filletBottom>0 ? p.filletBottom : uni;
     const rVert = p.filletVert>0   ? p.filletVert   : uni;
     const hasFillet = rTop>0 || rBot>0 || rVert>0;
+
+    // Wall bulge (скругление стенок): a full-face signed dome that ADDS to any logo relief.
+    if (hasWallBulge(p)) {
+      const bulgeZones = computeWallBulgeZones(p);
+      if (hasFillet) {
+        // Combined with corner rounding: feed an inset-aware dome per bulged face into the asym
+        // fillet builder (added to logo relief). Taper is applied afterwards (taperBoxTris), so the
+        // logo frames + bulge are built in FLAT space here — same convention as the fillet+logo path.
+        const idT = q => q;
+        const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
+        const logoZones = logos.length > 0 ? computeLogoZonesByAxis(idT) : null;
+        const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2);
+        const tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, Math.max(8,(p.filletSeg||4)*2), p.filletSeg||4,
+          logoFns, mergeZones(logoZones, bulgeZones), logoResolution, wallBulgeAmounts(p));
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
+      // No corner rounding: full-face dome via the flat logo path; taper applied inside.
+      const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
+      const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
+      const dispFns = mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p));
+      return buildBoxWithLogos(p.width, p.height, p.depth, logoResolution, dispFns, taperFn, mergeZones(logoZones, bulgeZones));
+    }
 
     if (logos.length > 0 && !hasFillet) {
       // Flat-box logo path: taper is applied INSIDE buildBoxWithLogos (per-vertex, via taperFn), while
@@ -2297,11 +2475,11 @@ function attachEventListeners() {
       if (Number.isNaN(val)) return; // mid-edit (e.g. field cleared) — wait for a usable value
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (shape === currentShape) regenerateDebounced();
+      if (shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
       if (t.dataset.shape === 'box' && (t.dataset.key === 'hollow' || t.dataset.key === 'rim') && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (t.dataset.shape === currentShape) regenerateSoon();
+      if (t.dataset.shape === currentShape) markPending();
     }
   });
   // on blur/Enter, snap the field to a valid clamped value
@@ -2314,7 +2492,7 @@ function attachEventListeners() {
       t.value = val;
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
-      if (shape === currentShape) regenerateSoon();
+      if (shape === currentShape) markPending();
     }
   });
 
@@ -2339,7 +2517,15 @@ function attachEventListeners() {
   document.getElementById('shade-flat').addEventListener('click', () => setShading(false));
   document.getElementById('shade-smooth').addEventListener('click', () => setShading(true));
 
-  document.getElementById('toggle-wire').addEventListener('change', (e) => { if (scene3DReady) wireMesh.visible = e.target.checked; });
+  document.getElementById('toggle-wire').addEventListener('change', (e) => {
+    if (!scene3DReady) return;
+    wireMesh.visible = e.target.checked;
+    if (e.target.checked && wireGeoDirty && mesh.geometry) { // build the wire we skipped while hidden
+      if (wireMesh.geometry) wireMesh.geometry.dispose();
+      wireMesh.geometry = new THREE.WireframeGeometry(mesh.geometry);
+      wireGeoDirty = false;
+    }
+  });
   document.getElementById('toggle-dims').addEventListener('change', (e) => {
     dimsVisible = e.target.checked;
     if (!scene3DReady) return;
@@ -2349,7 +2535,9 @@ function attachEventListeners() {
   document.getElementById('color-picker').addEventListener('input', (e) => { if (scene3DReady) mesh.material.color.set(e.target.value); });
 
   document.getElementById('btn-export').addEventListener('click', () => {
-    flushPendingRegenerate(); // never export geometry left over from a still-pending edit
+    // Export commits any staged parameter/logo edits first, so the file always matches the
+    // values currently in the panel (and the on-screen model updates to match).
+    if (pendingChanges) applyPendingNow();
     const nameRaw = document.getElementById('filename').value.trim() || 'model';
     const format = document.getElementById('export-format').value;
     const blob = format === 'ascii' ? trisToAsciiSTL(currentTris, nameRaw) : trisToBinarySTL(currentTris);
@@ -2357,9 +2545,12 @@ function attachEventListeners() {
   });
 
   document.getElementById('btn-reset-view').addEventListener('click', () => {
-    flushPendingRegenerate();
+    // Pure camera reset — does NOT apply staged edits (that's the Подтвердить button's job).
     if (scene3DReady) frameCamera(computeBBox(currentTris));
   });
+
+  document.getElementById('btn-apply').addEventListener('click', () => { if (pendingChanges) applyPending(); });
+  updateApplyButton();
 }
 
 const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};
@@ -2422,7 +2613,7 @@ function attachLogoEventListeners() {
       clampLogoToFace(logo);
       logos.push(logo);
       renderLogoCards();
-      if (currentShape === 'box') regenerateSoon();
+      if (currentShape === 'box') markPending();
     });
   });
 
@@ -2436,7 +2627,7 @@ function attachLogoEventListeners() {
     else if (field === 'invert') logo.invert = e.target.checked;
     else if (field === 'thresholdPct') { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo.threshold = Math.max(0.01, Math.min(0.99, v/100)); }
     else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo[field] = v; }
-    if (currentShape === 'box') regenerateDebounced();
+    if (currentShape === 'box') markPending();
   });
 
   document.getElementById('logo-cards').addEventListener('change', (e) => {
@@ -2448,7 +2639,7 @@ function attachLogoEventListeners() {
     if (['face','u0','v0','w','h','rotation'].includes(field)) {
       clampLogoToFace(logo);
       renderLogoCards();
-      if (currentShape === 'box') regenerateSoon();
+      if (currentShape === 'box') markPending();
     }
   });
 
@@ -2459,13 +2650,13 @@ function attachLogoEventListeners() {
     const idx = logos.findIndex(l => l.id === id);
     if (idx >= 0) logos.splice(idx, 1);
     renderLogoCards();
-    if (currentShape === 'box') regenerateSoon();
+    if (currentShape === 'box') markPending();
   });
 
   const resInput = document.getElementById('logo-resolution');
   resInput.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending(); }
   });
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
@@ -2473,13 +2664,13 @@ function attachLogoEventListeners() {
     v = Math.max(10, Math.min(300, v));
     e.target.value = v;
     logoResolution = v;
-    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) regenerateSoon();
+    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending();
   });
 
   const resInputHollow = document.getElementById('logo-resolution-hollow');
   resInputHollow.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateDebounced(); }
+    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending(); }
   });
   resInputHollow.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
@@ -2487,7 +2678,7 @@ function attachLogoEventListeners() {
     v = Math.max(10, Math.min(300, v));
     e.target.value = v;
     logoResolutionHollow = v;
-    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) regenerateSoon();
+    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending();
   });
 }
 
@@ -2631,26 +2822,41 @@ function updateDimensionOverlay(bbox) {
 // (measured ~6s on 1.4M triangles vs ~1.7s to generate them), and it's a diagnostic display,
 // not something the model needs correct to render or export.
 const MANIFOLD_CHECK_TRI_LIMIT = 120000;
+let statCheckGen = 0; // token so a superseded (newer rebuild) deferred watertight check is skipped
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;
   document.getElementById('stat-verts').textContent = tris.length*3;
   document.getElementById('stat-size').textContent =
     (bbox.maxX-bbox.minX).toFixed(1)+' × '+(bbox.maxY-bbox.minY).toFixed(1)+' × '+(bbox.maxZ-bbox.minZ).toFixed(1)+' мм';
   const el = document.getElementById('stat-watertight');
+  const myGen = ++statCheckGen;
   if (tris.length > MANIFOLD_CHECK_TRI_LIMIT) {
     el.textContent = 'не проверено (>'+Math.round(MANIFOLD_CHECK_TRI_LIMIT/1000)+'k треугольников)';
     el.className = 'v mono';
-  } else {
+    return;
+  }
+  // The watertight check is an O(n) diagnostic (~0.7s on 120k tris). Running it inline made every
+  // size/fillet edit block the main thread on it — the mobile freeze. Defer it past the paint so the
+  // model updates immediately; the token skips it if a newer rebuild has already superseded this one.
+  el.textContent = 'проверка…';
+  el.className = 'v mono';
+  setTimeout(() => {
+    if (myGen !== statCheckGen) return;
     const mc = manifoldCheck(tris);
+    if (myGen !== statCheckGen) return;
     if (mc.watertight) { el.textContent = 'замкнутый ✓'; el.className = 'v mono ok'; }
     else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
-  }
+  }, 0);
 }
 
 // Triangles as buildTrisForShape returned them, BEFORE the whole-model rotation is applied —
 // lets rotation re-use this instead of rebuilding the (potentially expensive) box/logo
 // geometry from scratch just because rx/ry/rz changed. Set inside computeGeometry().
 let cachedRawTris = [];
+// The wireframe overlay is off by default. Building a full edge-dedup WireframeGeometry for a
+// 100k-triangle mesh on every rebuild is a large, invisible cost — set when the overlay is hidden
+// so the toggle handler can rebuild the wire lazily the first time it's actually shown.
+let wireGeoDirty = false;
 function computeGeometry() {
   const raw = buildTrisForShape(currentShape, paramState[currentShape]);
   cachedRawTris = raw;
@@ -2670,8 +2876,15 @@ function updateScene3D(tris, bbox) {
 
   if (mesh.geometry) mesh.geometry.dispose();
   mesh.geometry = newGeo;
-  if (wireMesh.geometry) wireMesh.geometry.dispose();
-  wireMesh.geometry = new THREE.WireframeGeometry(newGeo);
+  // Only pay for the wireframe when the overlay is actually shown; otherwise defer it (see toggle
+  // handler). This was a major cause of the mobile freeze when resizing a fully-filleted hollow box.
+  if (wireMesh.visible) {
+    if (wireMesh.geometry) wireMesh.geometry.dispose();
+    wireMesh.geometry = new THREE.WireframeGeometry(newGeo);
+    wireGeoDirty = false;
+  } else {
+    wireGeoDirty = true;
+  }
 
   gridHelper.position.y = bbox.minY - 0.01;
   const maxDim = Math.max(bbox.maxX-bbox.minX, bbox.maxY-bbox.minY, bbox.maxZ-bbox.minZ, 1e-6);
@@ -2757,6 +2970,37 @@ function flushPendingRegenerate() {
   rotateOnlyDebounced.cancel();
   regenGeneration++; // invalidate any in-flight rAF-deferred call too
   regenerate();
+}
+
+/* =========================================================
+   STAGED PARAMETERS: parameter/logo edits update state only and are shown on the model
+   solely when the user presses "Подтвердить". This keeps a heavy rounded-hollow rebuild from
+   firing on every keystroke/drag (the mobile freeze). Rotation stays live (cheap rotate-only
+   path). pendingChanges tracks whether the on-screen model is behind the current inputs.
+   ========================================================= */
+let pendingChanges = false;
+function updateApplyButton() {
+  const btn = document.getElementById('btn-apply');
+  if (!btn) return;
+  btn.disabled = !pendingChanges;
+  btn.classList.toggle('has-pending', pendingChanges);
+  btn.textContent = pendingChanges ? 'Подтвердить изменения' : 'Изменения применены';
+}
+function markPending() {
+  pendingChanges = true;
+  updateApplyButton();
+}
+// Apply staged edits with the busy indicator (interactive button press).
+function applyPending() {
+  pendingChanges = false;
+  updateApplyButton();
+  regenerateSoon();
+}
+// Apply staged edits synchronously (used before export, so currentTris is up to date immediately).
+function applyPendingNow() {
+  pendingChanges = false;
+  updateApplyButton();
+  flushPendingRegenerate();
 }
 
 

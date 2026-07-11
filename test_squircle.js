@@ -64,5 +64,48 @@ base({squircle:60, squircleV:60, width:80, height:34, depth:52, taperXPlus:10});
 base({squircle:100, squircleV:100}); // fully round both ways = ellipsoid
 { const t=build(); chk('full ellipsoid (100/100): watertight', wt(t) && signedVol(t)>0); }
 
+// ---- logos on the curved squircle / superellipsoid wall ----
+// Synthetic heightmap: ring + diagonal bar -> lots of relief walls to stress watertightness.
+function synthHM(){ const n=LOGO_HM_SIZE, hm=new Float32Array(n*n);
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){ const fx=x/n-0.5, fy=y/n-0.5, r=Math.hypot(fx,fy);
+    hm[y*n+x]=((r>0.28&&r<0.40)||(Math.abs(fx-fy)<0.06&&r<0.42))?1:0; }
+  return hm; }
+const HM=synthHM();
+function addLogo(ov){ const l=Object.assign({id:nextLogoId++, face:'+Z', u0:0, v0:0, w:16, h:16, depth:1.5, threshold:0.5, invert:false, rotation:0, heightmap:HM, previewUrl:null}, ov); logos.push(l); clampLogoToFace(l); return l; }
+function wtLogo(name, ov, logoOvs){ base(ov); for(const o of (logoOvs||[{}])) addLogo(o); const t=build(); chk(name, !hasNaN(t) && manifoldCheck(t).watertight, manifoldCheck(t)); return t; }
+
+console.log('\n=== logos emboss onto the squircle PRISM wall (watertight) ===');
+const solidPrism = (()=>{ base({squircle:45}); return build().length; })();
+{ const t=wtLogo('squircle prism + logo on +Z (curved side)', {squircle:45}, [{face:'+Z'}]);
+  chk('logo path densifies the mesh vs plain prism', t.length > solidPrism, {plain:solidPrism, withLogo:t.length}); }
+wtLogo('squircle prism + logo on +X',            {squircle:45}, [{face:'+X'}]);
+wtLogo('squircle prism + logo on -X',            {squircle:45}, [{face:'-X'}]);
+wtLogo('squircle prism + logo on -Z',            {squircle:45}, [{face:'-Z'}]);
+wtLogo('squircle prism + logo on +Y (flat cap)', {squircle:45}, [{face:'+Y'}]);
+wtLogo('squircle prism + logo on -Y (flat cap)', {squircle:45}, [{face:'-Y'}]);
+wtLogo('squircle prism + engraved logo',         {squircle:45}, [{depth:-1.2}]);
+wtLogo('squircle prism + rotated logo',          {squircle:45}, [{rotation:30}]);
+wtLogo('rounder squircle (70%) + logo',          {squircle:70}, [{face:'+Z'}]);
+wtLogo('boxier squircle (20%) + logo',           {squircle:20}, [{face:'+Z'}]);
+wtLogo('squircle + logo + taper',                {squircle:45, taperXPlus:8, taperZMinus:6}, [{face:'+Z'}]);
+wtLogo('squircle + two logos, different faces',  {squircle:45}, [{face:'+Z'},{face:'+X'}]);
+wtLogo('squircle + two logos, same face',        {squircle:45}, [{face:'+Z', u0:-8},{face:'+Z', u0:8}]);
+wtLogo('non-cube squircle + logo',               {squircle:45, width:80, height:34, depth:52}, [{face:'+Z'}]);
+
+console.log('\n=== logos emboss onto the SUPERELLIPSOID wall (watertight) ===');
+const solidSE = (()=>{ base({squircle:45, squircleV:40}); return build().length; })();
+{ const t=wtLogo('superellipsoid + logo on +Z', {squircle:45, squircleV:40}, [{face:'+Z'}]);
+  chk('superellipsoid logo path densifies the mesh', t.length > solidSE, {plain:solidSE, withLogo:t.length}); }
+wtLogo('superellipsoid + logo on +X',        {squircle:45, squircleV:40}, [{face:'+X'}]);
+wtLogo('superellipsoid + logo on top pole',  {squircle:45, squircleV:40}, [{face:'+Y'}]);
+wtLogo('superellipsoid + engraved logo',     {squircle:45, squircleV:40}, [{depth:-1.2}]);
+wtLogo('superellipsoid + rotated logo',      {squircle:45, squircleV:40}, [{rotation:25}]);
+wtLogo('rounder superellipsoid (80/80)+logo',{squircle:80, squircleV:80}, [{face:'+Z'}]);
+wtLogo('superellipsoid + taper + logo',      {squircle:60, squircleV:50, taperXPlus:8}, [{face:'+Z'}]);
+wtLogo('superellipsoid non-cube + two logos',{squircle:50, squircleV:45, width:80, height:34, depth:52}, [{face:'+Z'},{face:'-X'}]);
+
+console.log('\n=== no-logo path is unchanged (regression) ===');
+{ base({squircle:45}); const a=build().length; base({squircle:45}); logos.length=0; const b=build().length; chk('no-logo prism deterministic + logo-free', a===b && a===solidPrism, {a,b}); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

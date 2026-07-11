@@ -445,11 +445,11 @@
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
         <label class="param-label">Детализация (сплошной куб)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <div class="param-row">
         <label class="param-label">Детализация (полый контейнер)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="300" step="1" value="50"><span class="num-unit"></span></div>
+        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
@@ -2140,7 +2140,7 @@ const transformState = { rx:0, ry:0, rz:0 };
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
 let logoResolution = 50;
-let logoResolutionHollow = 50; // separate control (max 300): buildHollowBox has no zonal grid,
+let logoResolutionHollow = 50; // separate control (max 500): buildHollowBox has no zonal grid,
   // so this drives the density of the WHOLE shell/cavity (and lattice net grid), not just logo zones
 
 // Combines however many logos share a face into one dispFn per face (first matching
@@ -2435,8 +2435,8 @@ function superellipseFillCap(g, yCap, outN, embossFn){
 // perimeter ring, so side and caps share vertices exactly. Density tracks logoRes.
 function buildSquirclePrismLogos(w, h, d, pexp, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
-  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
+  const spacing=Math.max(0.05, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const G=Math.min(260, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
   const g=superellipseFillGrid(hw, hd, pexp, G);
   const ring=fillGridBoundaryLoop(g), N=ring.length, rn=ringNormalsXZ(ring);
   const Mv=Math.min(256, Math.max(2, Math.ceil(2*hh/spacing)));
@@ -2470,9 +2470,9 @@ function seImplicitNormal(x, y, z, hw, hh, hd, aH, aV, mix){
 }
 function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const spacing=Math.max(0.05, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
   const eHc=Math.max(0.05, eH), eVc=Math.max(0.05, eV), aH=2/eHc, aV=2/eVc, mix=eHc/eVc;
-  const S=Math.min(176, Math.max(8, Math.ceil(2*Math.max(hw,hd,hh)/spacing)));   // cells per cube-face edge
+  const S=Math.min(260, Math.max(8, Math.ceil(2*Math.max(hw,hd,hh)/spacing)));   // cells per cube-face edge
   const coord=[]; for(let i=0;i<=S;i++) coord.push(-1+2*i/S);
   const tris=[];
   for(const [fx,sg] of [[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]){
@@ -2525,8 +2525,8 @@ function squircleWall(ring, rn, N, yLo, yHi, Mv, sign, wallDispFns){
 }
 function buildSquircleHollow(w, h, d, pexp, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
-  const spacing=Math.max(0.15, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
-  const G=Math.min(220, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
+  const spacing=Math.max(0.05, maxDim/Math.max(12, (logoRes||50)*2)); // ×2 = denser grid (crisper logo edges)
+  const G=Math.min(200, Math.max(8, Math.ceil(2*Math.max(hw,hd)/spacing)));
   // Outer + inner shells share the same G (so their boundary loops have matching point counts for the
   // rim). Caps are Cartesian-centred fill grids (no radial-fan smearing of a bottom/floor logo).
   const gO=superellipseFillGrid(hw, hd, pexp, G), gI=superellipseFillGrid(hw-t, hd-t, pexp, G);
@@ -2959,7 +2959,7 @@ function attachLogoEventListeners() {
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
     if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(300, v));
+    v = Math.max(10, Math.min(500, v));
     e.target.value = v;
     logoResolution = v;
     if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending();
@@ -2973,7 +2973,7 @@ function attachLogoEventListeners() {
   resInputHollow.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
     if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(300, v));
+    v = Math.max(10, Math.min(500, v));
     e.target.value = v;
     logoResolutionHollow = v;
     if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending();

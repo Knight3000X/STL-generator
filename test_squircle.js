@@ -171,5 +171,12 @@ function maxVertexValence(tris){ const m=new Map(), key=p=>p[0].toFixed(4)+','+p
 { base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y'}); const t=build();
   chk('hollow outer-bottom logo: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 
+console.log('\n=== high detail stays watertight + spike-free (raised caps, ~0.7M tris) ===');
+{ const save=logoResolution; logoResolution=300;   // hits the cube-sphere cap (S=260)
+  base({squircle:45, squircleV:45}); addLogo({face:'+Y'}); const t=build();
+  chk('superellipsoid @ high detail: watertight', wt(t) && !hasNaN(t), {tris:t.length, open:manifoldCheck(t).openEdges});
+  chk('superellipsoid @ high detail: no fan apex', maxVertexValence(t)<=12);
+  logoResolution=save; }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

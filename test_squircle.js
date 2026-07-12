@@ -123,9 +123,36 @@ base({squircle:45, hollow:true, wallThickness:8, width:80, height:36, depth:52})
 { const t=build(); chk('hollow squircle non-cube + thick wall: watertight', wt(t)); chk('hollow squircle non-cube: no NaN', !hasNaN(t)); }
 base({squircle:45, hollow:true, wallThickness:4, taperXPlus:8, taperZMinus:6});
 { const t=build(); chk('hollow squircle + taper: watertight', wt(t)); }
-base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hollowFlatTop=build();
-base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hollowRoundV=build();
-chk('hollow ignores squircleV (open container has a flat rim)', hollowFlatTop.length===hollowRoundV.length && Math.abs(signedVol(hollowFlatTop)-signedVol(hollowRoundV))<1e-6, {a:hollowFlatTop.length,b:hollowRoundV.length});
+console.log('\n=== squircleV rounds the container BOTTOM (superellipsoid lower half) ===');
+for (const sv of [20, 45, 70, 100]) {
+  base({squircle:45, hollow:true, wallThickness:4, squircleV:sv});
+  const t=build(); chk(`hollow squircle + rounded bottom ${sv}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges, tris:t.length});
+}
+base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hollowFlat=signedVol(build());
+base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hollowRound=signedVol(build());
+chk('rounded bottom removes material (round vol < flat vol)', hollowRound < hollowFlat, {flat:hollowFlat|0, round:hollowRound|0});
+base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hFlatN=build().length;
+base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hRoundN=build().length;
+chk('rounded bottom changes the mesh vs flat', hFlatN!==hRoundN, {flat:hFlatN, round:hRoundN});
+base({squircle:60, hollow:true, wallThickness:5, squircleV:50, width:80, height:40, depth:52});
+{ const t=build(); chk('rounded-bottom hollow non-cube: watertight', wt(t)); chk('rounded-bottom hollow non-cube: no NaN', !hasNaN(t)); }
+base({squircle:100, hollow:true, wallThickness:4, squircleV:100});
+{ const t=build(); chk('fully round bottom (100/100) hollow: watertight', wt(t) && signedVol(t)>0); }
+base({squircle:45, hollow:true, wallThickness:4, squircleV:50, taperXPlus:6});
+{ const t=build(); chk('rounded-bottom hollow + taper: watertight', wt(t)); }
+wtLogo('rounded-bottom hollow + wall logo',   {squircle:45, hollow:true, wallThickness:4, squircleV:50}, [{face:'+Z', v0:8}]);
+wtLogo('rounded-bottom hollow + bottom logo', {squircle:45, hollow:true, wallThickness:5, squircleV:50}, [{face:'-Y'}]);
+wtLogo('rounded-bottom hollow + floor logo',  {squircle:45, hollow:true, wallThickness:6, squircleV:40}, [{face:'-Y-inner'}]);
+
+console.log('\n=== squircle TRAY with rounded bottom (shallow pocket stays flat) ===');
+for (const sv of [30, 60, 100]) {
+  base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:sv});
+  const t=build(); chk(`tray + rounded bottom ${sv}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges});
+}
+base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:0}); const trayFlat=signedVol(build());
+base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:60}); const trayRound=signedVol(build());
+chk('tray rounded bottom removes material', trayRound < trayFlat, {flat:trayFlat|0, round:trayRound|0});
+wtLogo('rounded-bottom tray + wall logo', {squircle:45, rim:true, wallThickness:5, rimHeight:10, squircleV:50}, [{face:'+Z', v0:10}]);
 
 console.log('\n=== squircle as a RIM / tray (shallow pocket, solid base) ===');
 for (const s of [12, 30, 45, 70]) {

@@ -197,6 +197,15 @@ function maxVertexValence(tris){ const m=new Map(), key=p=>p[0].toFixed(4)+','+p
   chk('hollow cavity-floor logo: watertight', wt(t)); chk('hollow cavity floor: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 { base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y'}); const t=build();
   chk('hollow outer-bottom logo: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
+// Rounded bottom: the pole cap must keep the bottom logo spike-free (valence bounded) AND actually emboss it.
+{ base({squircle:45, hollow:true, wallThickness:5, squircleV:50}); const plain=build().length;
+  base({squircle:45, hollow:true, wallThickness:5, squircleV:50}); addLogo({face:'-Y'}); const t=build();
+  chk('rounded bottom + outer logo: watertight', wt(t));
+  chk('rounded bottom + outer logo: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)});
+  chk('rounded bottom + outer logo: relief actually embossed', t.length>plain, {plain, withLogo:t.length}); }
+{ base({squircle:45, hollow:true, wallThickness:6, squircleV:40}); addLogo({face:'-Y-inner'}); const t=build();
+  chk('rounded cavity floor + logo: watertight', wt(t));
+  chk('rounded cavity floor + logo: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 
 console.log('\n=== zone densification: cost tracks the logo footprint, not the whole surface ===');
 { const save=logoResolution; logoResolution=300;   // high detail: fine grid should stay local to the logo

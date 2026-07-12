@@ -2579,22 +2579,47 @@ function squircleWall(ring, rn, N, ySamp, sign, wallDispFns){
   }
   return { grid, tris };
 }
-// Rounded (superellipsoid-bottom) dome: concentric superellipse rings sampled by HEIGHT y (which samples
-// the profile evenly — the near-vertical part near y=0 and the flatter part near the pole both get rings),
-// from the full boundary at y=0 (level 0 == the wall's bottom ring, shared) down to a pole at `poleY`.
-// The horizontal scale follows the superellipsoid lower half: rS(y)=(1-(y/poleY)^(2/eV))^(eV/2). Plain
-// (no logo emboss — a central bottom logo would sit on the pole fan; bottom-face logos need a flat base).
-// outwardSign +1 = outer bottom, -1 = cavity floor.
-function superellipseDomeFan(ring, N, poleY, invEv, outwardSign, nRings){
+// Rounded (superellipsoid-bottom) dome: the steep near-vertical part is concentric superellipse rings
+// sampled by HEIGHT y (even along the profile), from the full boundary at y=0 (level 0 == the wall's
+// bottom ring, shared) down to a transition ring at radius fraction rCap; the flatter centre is a
+// Cartesian fill "pole cap" (grid `g` scaled by rCap, height following the profile) — its centre is an
+// ordinary valence-4 vertex, so a BOTTOM logo (`fn`) embosses there without radial-fan spikes. Horizontal
+// scale = superellipsoid lower half: rS(y)=(1-(y/poleY)^(2/eV))^(eV/2). outwardSign +1 = outer bottom.
+function superellipseDomeCapped(ring, g, aSamp, bSamp, N, poleY, invEv, outwardSign, nRings, fn){
+  const rCap=0.68;
+  const yD=r=>poleY*Math.pow(Math.max(0, 1-Math.pow(r, invEv)), 1/invEv);
   const rS=y=>Math.pow(Math.max(0, 1-Math.pow(y/poleY, invEv)), 1/invEv);
-  const lvl=[ ring.map(p=>[p[0], 0, p[1]]) ];                 // level 0 at y=0 == wall bottom ring
-  for(let k=1;k<nRings;k++){ const y=poleY*(k/nRings), s=rS(y); lvl.push(ring.map(p=>[p[0]*s, y, p[1]*s])); }
-  const pole=[0,poleY,0], tris=[];
+  const yT=yD(rCap), tris=[];
   const push=(A,B,C)=>tris.push(orient([A,B,C], [(A[0]+B[0]+C[0])*outwardSign,(A[1]+B[1]+C[1])*outwardSign,(A[2]+B[2]+C[2])*outwardSign]));
-  for(let k=0;k<lvl.length-1;k++){ const a=lvl[k], b=lvl[k+1];
-    for(let i=0;i<N;i++){ const j=(i+1)%N; push(a[i],a[j],b[j]); push(a[i],b[j],b[i]); } }
-  const last=lvl[lvl.length-1];
-  for(let i=0;i<N;i++){ const j=(i+1)%N; push(pole, last[j], last[i]); }
+  // steep rings: y=0 (== wall bottom ring) down to the transition ring (ring*rCap @ yT)
+  const lvl=[ ring.map(p=>[p[0],0,p[1]]) ];
+  for(let k=1;k<nRings;k++){ const y=yT*(k/nRings), s=rS(y); lvl.push(ring.map(p=>[p[0]*s, y, p[1]*s])); }
+  lvl.push(ring.map(p=>[p[0]*rCap, yT, p[1]*rCap]));
+  for(let m=0;m<lvl.length-1;m++){ const a=lvl[m], b=lvl[m+1]; for(let i=0;i<N;i++){ const j=(i+1)%N; push(a[i],a[j],b[j]); push(a[i],b[j],b[i]); } }
+  // Cartesian pole cap (r < rCap): xz = g*rCap (boundary == the transition ring exactly), y follows the
+  // profile, centre is valence-4. Boundary kept undisplaced; interior embossed along the numeric normal.
+  const R=aSamp.length-1, C=bSamp.length-1, cap=[];
+  for(let i=0;i<=R;i++){ const a=aSamp[i], row=[];
+    for(let j=0;j<=C;j++){ const b=bSamp[j], rho=Math.min(1, Math.hypot(a*Math.sqrt(1-b*b/2), b*Math.sqrt(1-a*a/2))), edge=(i===0||i===R||j===0||j===C);
+      row.push([ g[i][j][0]*rCap, edge?yT:yD(rCap*rho), g[i][j][1]*rCap ]);
+    }
+    cap.push(row);
+  }
+  const nAt=(i,j)=>{ const ip=cap[Math.min(R,i+1)][j], im=cap[Math.max(0,i-1)][j], jp=cap[i][Math.min(C,j+1)], jm=cap[i][Math.max(0,j-1)];
+    let nn=cross([ip[0]-im[0],ip[1]-im[1],ip[2]-im[2]], [jp[0]-jm[0],jp[1]-jm[1],jp[2]-jm[2]]);
+    const pt=cap[i][j], dd=nn[0]*pt[0]+nn[1]*pt[1]+nn[2]*pt[2];
+    if(outwardSign>0 ? dd<0 : dd>0) nn=[-nn[0],-nn[1],-nn[2]];
+    const L=vlength(nn)||1; return [nn[0]/L,nn[1]/L,nn[2]/L];
+  };
+  const cg=[];
+  for(let i=0;i<=R;i++){ const row=[];
+    for(let j=0;j<=C;j++){ const edge=(i===0||i===R||j===0||j===C);
+      if(fn && !edge){ const pt=cap[i][j], dp=fn(0,0,pt); if(dp){ const n=nAt(i,j); row.push([pt[0]+n[0]*dp, pt[1]+n[1]*dp, pt[2]+n[2]*dp]); } else row.push(pt); }
+      else row.push(cap[i][j]);
+    }
+    cg.push(row);
+  }
+  for(let i=0;i<R;i++) for(let j=0;j<C;j++){ const A=cg[i][j], B=cg[i+1][j], Cc=cg[i+1][j+1], D=cg[i][j+1]; push(A,B,Cc); push(A,Cc,D); }
   return tris;
 }
 function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome){
@@ -2618,12 +2643,12 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
     const ySampO=zonedSamples(0, hh, coarseW, fineW, Z.yZ);
     const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns);
     for(const tr of ow.tris) tris.push(tr);
-    for(const tr of superellipseDomeFan(ringO, N, -hh, invEv, +1, nRings)) tris.push(tr);
+    for(const tr of superellipseDomeCapped(ringO, gO, aSamp, bSamp, N, -hh, invEv, +1, nRings, botFn)) tris.push(tr);
     let iw;
     if(innerDome){ // hollow: cavity mirrors the rounded bottom (pole at floorY = -hh+t)
       iw=squircleWall(ringI, rnI, N, zonedSamples(0, hh, coarseW, coarseW, []), -1, null);
       for(const tr of iw.tris) tris.push(tr);
-      for(const tr of superellipseDomeFan(ringI, N, floorY, invEv, -1, nRings)) tris.push(tr);
+      for(const tr of superellipseDomeCapped(ringI, gI, aSamp, bSamp, N, floorY, invEv, -1, nRings, floorFn)) tris.push(tr);
     } else { // tray: flat shallow pocket (kept above the dome)
       const fY=Math.max(0, floorY);
       iw=squircleWall(ringI, rnI, N, zonedSamples(fY, hh, coarseW, coarseW, []), -1, null);

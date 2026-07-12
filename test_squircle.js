@@ -224,5 +224,19 @@ console.log('\n=== high detail stays watertight + spike-free (~0.5M tris) ===');
   chk('superellipsoid @ high detail: no fan apex', maxVertexValence(t)<=12);
   logoResolution=save; }
 
+console.log('\n=== fuzz regression: very boxy squircle (corner cell collinear on the flat edge) ===');
+// At squircle 8 % the superellipse is a near-rectangle: three corners of the fill grid's corner cell
+// were collinear on the flat edge, one cell half degenerated and was filtered -> T-junction (6 open
+// edges on the tray). pushQuadAdaptive must pick the other diagonal and keep the seam closed.
+for (const ov of [
+  {squircle:8, rim:true, wallThickness:6.7, rimHeight:15, width:110, height:78, depth:45},
+  {squircle:8, rim:true, wallThickness:6.7, rimHeight:15, width:110, height:78, depth:45, squircleV:21},
+  {squircle:8, hollow:true, wallThickness:6.7, width:110, height:78, depth:45},
+  {squircle:5, hollow:true, wallThickness:4, width:120, height:30, depth:24, squircleV:60},
+]) {
+  base(ov); const t=build();
+  chk(`boxy squircle ${ov.rim?'tray':'hollow'} sq=${ov.squircle} sv=${ov.squircleV||0}: watertight`, wt(t) && !hasNaN(t), manifoldCheck(t));
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

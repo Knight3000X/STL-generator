@@ -58,4 +58,16 @@ wt('hollow fillet no logo', HOLLOW, []);
 wt('hollow logo no fillet', {hollow:true}, [{face:'+X',u0:0,v0:0,w:16,h:16}]);
 wt('tray fillet no logo',   TRAY, []);
 
+console.log('=== fuzz regressions (extreme params found by the seeded sweep) ===');
+// Fillets 11+12 on a 24 mm-tall hollow leave a 1 mm flat strip; the old 1 mm clamp floor pushed the
+// logo into the edge cylinders (4 open edges). The honest clamp shrinks it to nothing instead.
+wt('extreme fillets + micro logo (clamp has no 1mm floor)',
+  {width:102,height:24,depth:43,hollow:true,wallThickness:6.4,filletSeg:4,filletTop:11,filletBottom:12,filletVert:10},
+  [{face:'-Z',u0:7,v0:0,w:16,h:4,rotation:45,depth:-1.5}], true);
+// Hairline seam split (~2e-15) amplified by taper landed EXACTLY on a toFixed rounding boundary and the
+// old string-keyed manifoldCheck reported 24 fake open edges; tolerance welding must stay clean.
+wt('rounded hollow + taper: no knife-edge false opens',
+  {width:25,height:65,depth:93,hollow:true,wallThickness:3.9,filletSeg:7,filletTop:2,filletBottom:2,filletVert:8,taperXPlus:-18},
+  []);
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

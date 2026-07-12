@@ -1765,16 +1765,49 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   return tris;
 }
 
+// Watertightness via edge counting over TOLERANCE-welded vertices. The old string-rounding key
+// (toFixed) was a knife-edge classifier: two hairline-split copies of one seam vertex (builders
+// computing the same arc point through different arithmetic, ~1e-15 apart) could land exactly ON a
+// rounding boundary — especially after taper arithmetic — and split into different keys, reporting
+// fake open edges on a mesh that is closed at 7 decimals. Welding is now a true epsilon-ball union
+// (spatial hash + union-find, radius ~half the rounding bucket), so near-coincident vertices merge
+// regardless of where they sit relative to a decimal boundary.
 function manifoldCheck(tris, decimals) {
   decimals = decimals == null ? 5 : decimals;
-  const key = (p) => p[0].toFixed(decimals)+','+p[1].toFixed(decimals)+','+p[2].toFixed(decimals);
-  const edges = new Map();
+  const cellSz = Math.pow(10, -decimals), tol = cellSz * 0.51;
+  const exactId = new Map(), pts = [], triIds = [];
   for (const tri of tris) {
-    const k = [key(tri[0]), key(tri[1]), key(tri[2])];
+    const ids = [];
+    for (const p of tri) {
+      const ke = p[0]+','+p[1]+','+p[2];
+      let id = exactId.get(ke);
+      if (id === undefined) { id = pts.length; exactId.set(ke, id); pts.push(p); }
+      ids.push(id);
+    }
+    triIds.push(ids);
+  }
+  const parent = new Int32Array(pts.length); for (let i=0;i<pts.length;i++) parent[i]=i;
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const grid = new Map();
+  for (let i=0;i<pts.length;i++) {
+    const p = pts[i], cx = Math.round(p[0]/cellSz), cy = Math.round(p[1]/cellSz), cz = Math.round(p[2]/cellSz);
+    for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) for (let dz=-1;dz<=1;dz++) {
+      const lst = grid.get((cx+dx)+','+(cy+dy)+','+(cz+dz));
+      if (lst) for (const j of lst) { const q = pts[j];
+        if (Math.abs(q[0]-p[0])<=tol && Math.abs(q[1]-p[1])<=tol && Math.abs(q[2]-p[2])<=tol) {
+          const a = find(i), b = find(j); if (a !== b) parent[a] = b;
+        } }
+    }
+    const k = cx+','+cy+','+cz;
+    let lst = grid.get(k); if (!lst) { lst = []; grid.set(k, lst); } lst.push(i);
+  }
+  const edges = new Map();
+  for (const ids of triIds) {
+    const w = [find(ids[0]), find(ids[1]), find(ids[2])];
     for (let e = 0; e < 3; e++) {
-      const ka = k[e], kb = k[(e+1)%3];
-      if (ka === kb) continue;
-      const ek = ka < kb ? ka+'|'+kb : kb+'|'+ka;
+      const a = w[e], b = w[(e+1)%3];
+      if (a === b) continue;
+      const ek = a < b ? a*8388608+b : b*8388608+a;
       edges.set(ek, (edges.get(ek)||0)+1);
     }
   }
@@ -2048,8 +2081,12 @@ function clampLogoToFace(logo) {
   const dims = BOX_FACE_DIMS[logo.face](paramState.box);
   const margin = 1.5;
   const ins = faceFilletInsets(logo.face, paramState.box);
-  const maxHalfW = Math.max(1, dims.uLen/2 - margin - ins.u);
-  const maxHalfH = Math.max(1, dims.vLen/2 - margin - ins.v);
+  // Honest bound: when fillets/margins eat the whole flat zone there is NO room — the logo shrinks
+  // to zero (renders nothing) instead of being floored to 1 mm and overflowing into the edge
+  // cylinders (which displaced clipped cells and broke the seam — found by fuzzing: fillets 11+12
+  // on a 24 mm-tall hollow left a 1 mm flat strip, and the floored logo opened 4 edges).
+  const maxHalfW = Math.max(0, dims.uLen/2 - margin - ins.u);
+  const maxHalfH = Math.max(0, dims.vLen/2 - margin - ins.v);
 
   const p = paramState.box;
   // Hollow mode now applies taper the same as the solid box (buildHollowBox) — clamp with
@@ -2450,6 +2487,17 @@ function ringNormalsXZ(ring){
 function makeCapEmboss(outN, fn){
   return fn ? (pt)=>{ const dp=fn(0,0,pt); return dp ? [pt[0]+outN[0]*dp, pt[1]+outN[1]*dp, pt[2]+outN[2]*dp] : pt; } : null;
 }
+// Split a grid cell along whichever diagonal keeps both halves non-degenerate. On a very boxy
+// superellipse (exponent→0) a boundary corner cell can have THREE corners collinear on the flat edge:
+// the fixed A–C split then makes one zero-area triangle which the degenerate filter drops, leaving a
+// T-junction against the wall ring (found by fuzzing: rim + squircle 8 % → 6 open edges). Choosing the
+// diagonal by max(min area of the two halves) keeps every cell boundary edge covered.
+function pushQuadAdaptive(tris, A, B, C, D, refFor){
+  const acMin=Math.min(vlength(cross(sub(B,A),sub(C,A))), vlength(cross(sub(C,A),sub(D,A))));
+  const bdMin=Math.min(vlength(cross(sub(C,B),sub(D,B))), vlength(cross(sub(D,B),sub(A,B))));
+  if(acMin >= bdMin){ tris.push(orient([A,B,C], refFor(A,B,C))); tris.push(orient([A,C,D], refFor(A,C,D))); }
+  else { tris.push(orient([B,C,D], refFor(B,C,D))); tris.push(orient([B,D,A], refFor(B,D,A))); }
+}
 // Flat cap at yCap from a fill grid. embossFn(point3D)->point3D applies a cap logo; boundary vertices
 // stay undisplaced so they coincide exactly with the wall's edge ring (seam stays closed).
 function superellipseFillCap(g, yCap, outN, embossFn){
@@ -2459,11 +2507,9 @@ function superellipseFillCap(g, yCap, outN, embossFn){
       row.push((embossFn && !edge) ? embossFn(p) : p); }
     grid.push(row);
   }
-  const tris=[];
-  for(let i=0;i<R;i++) for(let j=0;j<C;j++){
-    tris.push(orient([grid[i][j], grid[i+1][j], grid[i+1][j+1]], outN));
-    tris.push(orient([grid[i][j], grid[i+1][j+1], grid[i][j+1]], outN));
-  }
+  const tris=[], refN=()=>outN;
+  for(let i=0;i<R;i++) for(let j=0;j<C;j++)
+    pushQuadAdaptive(tris, grid[i][j], grid[i+1][j], grid[i+1][j+1], grid[i][j+1], refN);
   return tris;
 }
 // Squircle PRISM with logo relief: coarse shell, fine grid only under each logo (perimeter/height for
@@ -2541,11 +2587,9 @@ function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes)
       }
       grid.push(row);
     }
-    for(let i=0;i<ca.length-1;i++) for(let j=0;j<cb.length-1;j++){
-      const a=grid[i][j], b=grid[i+1][j], c=grid[i+1][j+1], e=grid[i][j+1];
-      tris.push(orient([a,b,c], [a[0]+b[0]+c[0], a[1]+b[1]+c[1], a[2]+b[2]+c[2]]));
-      tris.push(orient([a,c,e], [a[0]+c[0]+e[0], a[1]+c[1]+e[1], a[2]+c[2]+e[2]]));
-    }
+    const refC=(A,B,C)=>[A[0]+B[0]+C[0], A[1]+B[1]+C[1], A[2]+B[2]+C[2]];
+    for(let i=0;i<ca.length-1;i++) for(let j=0;j<cb.length-1;j++)
+      pushQuadAdaptive(tris, grid[i][j], grid[i+1][j], grid[i+1][j+1], grid[i][j+1], refC);
   }
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
@@ -2619,7 +2663,9 @@ function superellipseDomeCapped(ring, g, aSamp, bSamp, N, poleY, invEv, outwardS
     }
     cg.push(row);
   }
-  for(let i=0;i<R;i++) for(let j=0;j<C;j++){ const A=cg[i][j], B=cg[i+1][j], Cc=cg[i+1][j+1], D=cg[i][j+1]; push(A,B,Cc); push(A,Cc,D); }
+  const refS=(A,B,C)=>[(A[0]+B[0]+C[0])*outwardSign,(A[1]+B[1]+C[1])*outwardSign,(A[2]+B[2]+C[2])*outwardSign];
+  for(let i=0;i<R;i++) for(let j=0;j<C;j++)
+    pushQuadAdaptive(tris, cg[i][j], cg[i+1][j], cg[i+1][j+1], cg[i][j+1], refS);
   return tris;
 }
 function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome){

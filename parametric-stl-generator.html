@@ -214,6 +214,13 @@
     transition:background 0.12s, border-color 0.12s;
   }
   .preset-btn:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  #btn-save-config, #btn-load-config{
+    width:100%; padding:9px 0; margin-bottom:6px;
+    background:#fff; border:1.5px solid var(--ink-soft); border-radius:2px;
+    color:var(--ink); font-family:inherit; font-size:13px; cursor:pointer;
+    transition:background 0.12s, border-color 0.12s;
+  }
+  #btn-save-config:hover, #btn-load-config:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
   /* sticky "apply changes" bar — parameter edits are staged, not live, until confirmed */
   #apply-bar{
     position:sticky; top:0; z-index:6;
@@ -557,6 +564,12 @@
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
+
+    <div class="section-label">Конфигурация сборки</div>
+    <button id="btn-save-config">💾 Сохранить (JSON)</button>
+    <button id="btn-load-config">📂 Загрузить (JSON)</button>
+    <input type="file" id="config-file-input" accept="application/json,.json" style="display:none">
+    <div class="export-note">Сохраняет всю сборку (модели, параметры, позиции, цвета и логотипы) в JSON и загружает обратно. Логотипы восстанавливаются из встроенного превью-изображения.</div>
   </div>
 
 <script>
@@ -3198,6 +3211,11 @@ function attachEventListeners() {
   document.getElementById('preset-bar').addEventListener('click', (e) => {
     const btn = e.target.closest('.preset-btn'); if (btn) applyPreset(btn.dataset.preset);
   });
+  document.getElementById('btn-save-config').addEventListener('click', exportAssemblyJSON);
+  document.getElementById('btn-load-config').addEventListener('click', () => document.getElementById('config-file-input').click());
+  document.getElementById('config-file-input').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (f) importAssemblyJSON(f); e.target.value = '';
+  });
   document.getElementById('panel').addEventListener('input', (e) => {
     const t = e.target;
     if (t.matches('.param-number') && t.dataset.shape) {
@@ -3904,6 +3922,73 @@ function applyPreset(name) {
   if (logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
   refreshActiveModelUI();
   applyPending(); // regenerate now + clear the "Подтвердить" highlight
+}
+
+// ---- Assembly config (JSON) save / load -----------------------------------------------------
+// Serialises the WHOLE assembly (every model's params, transform, position, colour, visibility and
+// logos) to JSON. Logos store their previewUrl (a PNG data URL) rather than the raw heightmap, so
+// the file stays compact; on load the heightmap is re-derived from that image exactly like an upload.
+function exportAssemblyJSON() {
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const data = {
+    format: 'stl-generator-assembly', version: 1, activeIndex: Math.max(0, models.findIndex(m => m.id === activeModelId)),
+    models: models.map(m => ({
+      name: m.name, params: m.params, rx:m.rx, ry:m.ry, rz:m.rz, px:m.px, py:m.py, pz:m.pz,
+      visible: m.visible, color: m.color,
+      logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
+        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl }))
+    }))
+  };
+  const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
+  downloadBlob(new Blob([JSON.stringify(data)], {type:'application/json'}), name + '.json');
+}
+// Re-derive a logo heightmap from its stored previewUrl (async: the image must decode first). Resolves
+// to a full logo object, or null if the image is missing/undecodable (that logo is then dropped).
+function restoreLogoFromDef(ld) {
+  return new Promise(res => {
+    if (!ld.previewUrl) { res(null); return; }
+    const img = new Image();
+    img.onload = () => {
+      const size = LOGO_HM_SIZE, canvas = document.createElement('canvas'); canvas.width=size; canvas.height=size;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
+      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size);
+      res({ id: nextLogoId++, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
+        threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl });
+    };
+    img.onerror = () => res(null);
+    img.src = ld.previewUrl;
+  });
+}
+function importAssemblyJSON(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let data; try { data = JSON.parse(e.target.result); } catch (err) { alert('Не удалось прочитать JSON.'); return; }
+    if (!data || data.format !== 'stl-generator-assembly' || !Array.isArray(data.models) || !data.models.length) {
+      alert('Это не файл конфигурации сборки.'); return;
+    }
+    // Restore every model's logos (async) before rebuilding, so geometry is built with artwork present.
+    Promise.all(data.models.map(md => Promise.all((md.logos||[]).map(restoreLogoFromDef)))).then(perModelLogos => {
+      // Tear down current scene meshes + state.
+      for (const m of models) { const mm = modelMeshes.get(m.id);
+        if (mm) { if (typeof scene !== 'undefined' && scene) scene.remove(mm); mm.geometry && mm.geometry.dispose(); mm.material && mm.material.dispose(); modelMeshes.delete(m.id); } }
+      models.length = 0; activeModelId = null; nextModelId = 1; pendingChanges = false; updateApplyButton();
+      data.models.forEach((md, i) => {
+        const rec = makeModelRecord(md.name || ('Модель ' + nextModelId), Object.assign(defaultBoxParams(), md.params || {}));
+        rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
+        rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
+        rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
+        models.push(rec);
+      });
+      // Build geometry for each model (mirrors addModel: make it active, then regenerate).
+      for (const m of models) { loadModel(m); regenerate(); }
+      const idx = Math.min(models.length-1, Math.max(0, data.activeIndex|0));
+      loadModel(models[idx]);
+      renderModelCards();
+      if (scene3DReady) frameCamera(sceneUnionBBox());
+    });
+  };
+  reader.readAsText(file);
 }
 
 

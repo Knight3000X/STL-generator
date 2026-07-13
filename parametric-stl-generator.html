@@ -319,6 +319,19 @@
     color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
   }
   #btn-add-text:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-hole{
+    width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
+    border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
+    cursor:pointer; margin-bottom:10px;
+  }
+  #btn-add-hole:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-hole:disabled{ opacity:0.4; cursor:not-allowed; }
+  .hole-card{ border:1.5px solid var(--ink-soft); border-radius:2px; padding:7px; margin-bottom:7px; }
+  .hole-card .hole-grid{ display:grid; grid-template-columns:auto 1fr auto 1fr; gap:5px 7px; align-items:center; }
+  .hole-card label{ font-size:11px; color:var(--ink-soft); }
+  .hole-card select, .hole-card input{ width:100%; min-width:0; padding:4px 5px; border:1.5px solid var(--ink-soft); border-radius:2px; font-family:inherit; font-size:12px; }
+  .hole-card .hole-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; }
+  .hole-card .hole-del{ border:none; background:transparent; color:var(--redline); cursor:pointer; font-size:15px; line-height:1; padding:0 2px; }
   .logo-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -526,6 +539,13 @@
       </div>
       <div id="logo-cards"></div>
       <div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+    </div>
+
+    <div id="holes-section" class="param-group" data-shape="box">
+      <div class="section-label">Отверстия (сквозные)</div>
+      <button id="btn-add-hole">+ Добавить отверстие</button>
+      <div id="hole-cards"></div>
+      <div class="export-note">Круглое сквозное отверстие насквозь по нормали выбранной грани (вентиляция / кабель / винт). Работает ТОЛЬКО на сплошном кубе без скругления, squircle, выгиба и логотипов (при любом из них отверстия игнорируются — плоская стенка нужна для герметичности выреза). Наклон стенок допустим (отверстие наклоняется вместе со стенкой). Положение задаётся в координатах грани, диаметр — в мм; несколько отверстий можно ставить на любые грани.</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -2323,7 +2343,7 @@ function getModel(id){ return models.find(m => m.id === id) || null; }
 function getActiveModel(){ return getModel(activeModelId); }
 function makeModelRecord(name, params){
   return { id: nextModelId++, name, params: params || deepCopyParams(paramState.box),
-    logos: [], rx:0, ry:0, rz:0, px:0, py:0, pz:0, visible: true, color:'#b9c5cd',
+    logos: [], holes: [], rx:0, ry:0, rz:0, px:0, py:0, pz:0, visible: true, color:'#b9c5cd',
     rawTris: [], bbox: null };
 }
 // Copy the ACTIVE globals into the active record (before switching away / exporting).
@@ -2331,6 +2351,7 @@ function saveActiveModel(){
   const m = getActiveModel(); if (!m) return;
   m.params = deepCopyParams(paramState.box);
   m.logos = logos.slice();          // logo objects move with the model; heightmaps shared by ref
+  m.holes = boxHoles.slice();
   m.rx = transformState.rx; m.ry = transformState.ry; m.rz = transformState.rz;
   m.px = positionState.px; m.py = positionState.py; m.pz = positionState.pz;
   m.rawTris = cachedRawTris;
@@ -2341,12 +2362,14 @@ function loadModel(m){
   activeModelId = m.id;
   Object.assign(paramState.box, deepCopyParams(m.params));
   logos.length = 0; for (const l of m.logos) logos.push(l);
+  boxHoles.length = 0; for (const hh of (m.holes||[])) boxHoles.push(hh);
   transformState.rx = m.rx; transformState.ry = m.ry; transformState.rz = m.rz;
   positionState.px = m.px; positionState.py = m.py; positionState.pz = m.pz;
   cachedRawTris = m.rawTris || [];
   if (scene3DReady) { mesh = ensureModelMesh(m); applyMeshTransform(); }
   refreshActiveModelUI();
   renderLogoCards();
+  renderHoleCards();
   renderModelCards();
   applyRotationOnly();
 }
@@ -2407,6 +2430,7 @@ function duplicateModel(id){
   const src = getModel(id); if (!src) return;
   const rec = makeModelRecord(src.name + ' (копия)', deepCopyParams(src.params));
   rec.logos = src.logos.map(l => Object.assign({}, l, { id: nextLogoId++ }));
+  rec.holes = (src.holes||[]).map(h => Object.assign({}, h, { id: nextHoleId++ }));
   rec.rx = src.rx; rec.ry = src.ry; rec.rz = src.rz;
   rec.py = src.py; rec.pz = src.pz;
   rec.px = src.px + (src.bbox ? (src.bbox.maxX - src.bbox.minX) : (src.params.width || 40)) + 10;
@@ -2494,6 +2518,8 @@ function refreshActiveModelUI(){
 
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
+const boxHoles = []; // {id, face, u0, v0, diameter} — cylindrical through-holes on the plain solid box
+let nextHoleId = 1;
 // Single logo-detail control (max 500), shared by ALL modes. With wall logos it drives the ZONAL grid
 // (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still drives
 // the whole-shell/cavity density.
@@ -3046,6 +3072,86 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
 
+// ---- Cylindrical through-holes on a PLAIN solid box (vents / screw / cable pass-throughs) ----------
+// Each pierced face is plain grid quads everywhere except a rectangular BLOCK around each hole; the block
+// is an annulus between its border grid-ring (shared with neighbours) and the circle (shared with the
+// bore). Border point i maps to the circle point at border[i]'s angle from the hole centre, so both loops
+// have equal length and the same CCW order → a clean triangle strip. The bore is that same circle sampling
+// extruded along the axis, so its two rims coincide exactly with the two faces' inner loops → watertight
+// by construction (shared vertices, no arbitrary boolean clipping). Only used on the plain solid box:
+// taper / fillet / squircle / bulge / hollow all override it (a flat wall is what keeps the bore exact).
+const HOLE_AXIS_PQ = { 0:[1,2], 1:[0,2], 2:[0,1] }; // bore axis -> the face's (u,v) world axes (match FACE_AXES)
+function holeFaceWithHoles(a, s, half, holes, N) {
+  const [p,q] = HOLE_AXIS_PQ[a];
+  const hp=half[p], hq=half[q], ha=half[a];
+  const outward=[0,0,0]; outward[a]=s;
+  // Per-AXIS grid counts (shared box-wide), so two faces meeting at an edge always agree on how many
+  // points sit along that edge — a per-face resolution would mismatch and open the shared edge.
+  const Np=N[p], Nq=N[q];
+  const P=(ip,iq)=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=-hp+2*hp*ip/Np; c[q]=-hq+2*hq*iq/Nq; return c; };
+  const tris=[];
+  const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C], outward)); tris.push(orient([A,C,D], outward)); };
+  const blocks = holes.map(h=>{
+    const hs=Math.min(h.r*1.7, hp-1e-3, hq-1e-3);
+    const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
+    let i0=Math.max(0,Math.floor(toIp(h.cp-hs))), i1=Math.min(Np,Math.ceil(toIp(h.cp+hs)));
+    let j0=Math.max(0,Math.floor(toIq(h.cq-hs))), j1=Math.min(Nq,Math.ceil(toIq(h.cq+hs)));
+    if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
+    return {h,i0,i1,j0,j1};
+  });
+  const inBlock=(ci,cj)=>blocks.some(b=> ci>=b.i0&&ci<b.i1&&cj>=b.j0&&cj<b.j1);
+  for(let ci=0;ci<Np;ci++)for(let cj=0;cj<Nq;cj++){ if(inBlock(ci,cj)) continue;
+    pushQ(P(ci,cj),P(ci+1,cj),P(ci+1,cj+1),P(ci,cj+1)); }
+  const rims=[];
+  for(const b of blocks){
+    const {h,i0,i1,j0,j1}=b, border=[];
+    for(let i=i0;i<i1;i++) border.push([i,j0]);
+    for(let j=j0;j<j1;j++) border.push([i1,j]);
+    for(let i=i1;i>i0;i--) border.push([i,j1]);
+    for(let j=j1;j>j0;j--) border.push([i0,j]);
+    const B=border.length, borderPts=[], angs=[];
+    for(const [i,j] of border){ const bp=P(i,j); borderPts.push(bp); angs.push(Math.atan2(bp[q]-h.cq, bp[p]-h.cp)); }
+    const circAt=ang=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=h.cp+h.r*Math.cos(ang); c[q]=h.cq+h.r*Math.sin(ang); return c; };
+    const circPts=angs.map(circAt);
+    for(let k=0;k<B;k++){ const k1=(k+1)%B; pushQ(borderPts[k],borderPts[k1],circPts[k1],circPts[k]); }
+    rims.push({h, angs});
+  }
+  return {tris, rims};
+}
+function buildBoxWithHoles(w,h,d, holes){
+  const half=[w/2,h/2,d/2], tris=[];
+  const gres=Math.max(w,h,d)/24;
+  const N=[Math.max(2,Math.round(w/gres)), Math.max(2,Math.round(h/gres)), Math.max(2,Math.round(d/gres))];
+  const byAxis={0:[],1:[],2:[]};
+  for(const H of holes) byAxis[H.axis].push(H);
+  const faceRims={};
+  for(let a=0;a<3;a++){
+    const fp=holeFaceWithHoles(a,+1,half,byAxis[a],N), fm=holeFaceWithHoles(a,-1,half,byAxis[a],N);
+    for(const t of fp.tris) tris.push(t); for(const t of fm.tris) tris.push(t);
+    faceRims[a]=fp.rims; // plus/minus share the same (p,q) circle sampling (P ignores the axis sign there)
+  }
+  for(let a=0;a<3;a++){
+    const [p,q]=HOLE_AXIS_PQ[a], ha=half[a], rims=faceRims[a];
+    byAxis[a].forEach((H, hi)=>{
+      const angs=rims[hi].angs, B=angs.length;
+      const ptAt=(ang,ca)=>{ const c=[0,0,0]; c[a]=ca; c[p]=H.cp+H.r*Math.cos(ang); c[q]=H.cq+H.r*Math.sin(ang); return c; };
+      for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+        const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
+        const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2);
+        const refIn=[-mid[0],-mid[1],-mid[2]]; // bore wall faces the void (toward the axis centre-line)
+        tris.push(orient([Ap,Bp,Bm], refIn)); tris.push(orient([Ap,Bm,Am], refIn));
+      }
+    });
+  }
+  return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
+}
+// Convert a UI hole {face,u0,v0,diameter} to the builder's {axis,cp,cq,r}. Through-hole → the sign of the
+// face doesn't matter; (u0,v0) are already in the face's (u,v) = HOLE_AXIS_PQ order.
+function holesForBuilder(p){
+  return (boxHoles||[]).map(H=>{ const ax = FACE_AXES[H.face] ? FACE_AXES[H.face](p)[2] : 2;
+    return { axis:ax, cp:H.u0, cq:H.v0, r:Math.max(0.3, H.diameter/2) }; });
+}
+
 // Axial (flat-region) grid density for the asym rounded builders. `filletSeg` sets the ARC smoothness;
 // this is the SEPARATE control for how finely the flat spans between rounded edges are sampled. 0 = auto
 // (the old coupling: 2× filletSeg, floored at 8), any >0 overrides it directly.
@@ -3055,6 +3161,18 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') {
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
       p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+
+    // Cylindrical through-holes: only on the PLAIN solid box (no hollow/rim/squircle/fillet/bulge/logos —
+    // a flat wall is what keeps the bore watertight). Taper is fine: taperBoxTris is a per-vertex map, so
+    // shared hole vertices move together and the mesh stays closed (holes just slant with the walls).
+    const hasHoles = typeof boxHoles !== 'undefined' && boxHoles && boxHoles.length > 0;
+    const plainSolid = !p.hollow && !p.rim && !(p.squircle>0) && !hasWallBulge(p) && logos.length===0 &&
+      !(p.filletRadius>0 || p.filletTop>0 || p.filletBottom>0 || p.filletVert>0);
+    if (hasHoles && plainSolid) {
+      const tris = buildBoxWithHoles(p.width, p.height, p.depth, holesForBuilder(p));
+      return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+        p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+    }
 
     if (p.hollow) {
       // Squircle container: superellipse shell with a thin floor. Overrides corner fillet + lattice
@@ -3293,6 +3411,7 @@ function attachEventListeners() {
       if (Number.isNaN(val)) return; // mid-edit (e.g. field cleared) — wait for a usable value
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && boxHoles.length) { boxHoles.forEach(clampHoleToFace); renderHoleCards(); }
       if (shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
@@ -3310,6 +3429,7 @@ function attachEventListeners() {
       t.value = val;
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && boxHoles.length) { boxHoles.forEach(clampHoleToFace); renderHoleCards(); }
       if (shape === currentShape) markPending();
     }
   });
@@ -3472,6 +3592,74 @@ function renderLogoCards() {
     container.appendChild(card);
   }
   document.getElementById('btn-add-logo').disabled = logos.length >= 18;
+}
+
+// ---- Through-holes: state helpers + card UI (mirrors the logo cards, but plain params) --------------
+const HOLE_FACES = ['+Z','-Z','+X','-X','+Y','-Y'];
+function clampHoleToFace(hole) {
+  const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
+  const hu = dims.uLen/2, hv = dims.vLen/2;
+  const maxR = Math.max(0.3, Math.min(hu, hv) * 0.9 / 1.7); // block (hs = r*1.7) must fit inside the face
+  hole.diameter = Math.max(0.6, Math.min(hole.diameter || 6, maxR * 2));
+  const hs = (hole.diameter/2) * 1.7;
+  hole.u0 = Math.max(-(hu-hs), Math.min(hu-hs, hole.u0 || 0));
+  hole.v0 = Math.max(-(hv-hs), Math.min(hv-hs, hole.v0 || 0));
+}
+function renderHoleCards() {
+  const container = document.getElementById('hole-cards');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const hole of boxHoles) {
+    const labels = FACE_AXIS_LABELS[hole.face] || ['U','V'];
+    const card = document.createElement('div');
+    card.className = 'hole-card';
+    card.dataset.holeId = hole.id;
+    card.innerHTML =
+      '<div class="hole-head">'+
+        '<select data-field="face">'+ HOLE_FACES.map(f=>'<option value="'+f+'" '+(f===hole.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('') +'</select>'+
+        '<button class="hole-del" data-action="remove" title="Удалить">✕</button>'+
+      '</div>'+
+      '<div class="hole-grid">'+
+        '<label>Смещ. '+labels[0]+'</label><input type="number" data-field="u0" step="0.5" value="'+hole.u0+'">'+
+        '<label>Смещ. '+labels[1]+'</label><input type="number" data-field="v0" step="0.5" value="'+hole.v0+'">'+
+        '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+hole.diameter+'"><label></label><span></span>'+
+      '</div>';
+    container.appendChild(card);
+  }
+  const btn = document.getElementById('btn-add-hole'); if (btn) btn.disabled = boxHoles.length >= 24;
+}
+function addHole() {
+  if (boxHoles.length >= 24) return;
+  const used = new Set(boxHoles.map(h=>h.face));
+  const face = HOLE_FACES.find(f=>!used.has(f)) || '+Z';
+  const hole = { id: nextHoleId++, face, u0:0, v0:0, diameter:6 };
+  clampHoleToFace(hole);
+  boxHoles.push(hole);
+  renderHoleCards();
+  if (currentShape === 'box') markPending();
+}
+function attachHoleEventListeners() {
+  document.getElementById('btn-add-hole').addEventListener('click', addHole);
+  const cards = document.getElementById('hole-cards');
+  const onEdit = (e, commit) => {
+    const card = e.target.closest('.hole-card'); const field = e.target.dataset.field;
+    if (!card || !field) return;
+    const hole = boxHoles.find(h => h.id === Number(card.dataset.holeId)); if (!hole) return;
+    if (field === 'face') hole.face = e.target.value;
+    else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) hole[field] = v; }
+    if (commit) { clampHoleToFace(hole); renderHoleCards(); }
+    if (currentShape === 'box') markPending();
+  };
+  cards.addEventListener('input', (e) => onEdit(e, false));
+  cards.addEventListener('change', (e) => onEdit(e, true));
+  cards.addEventListener('click', (e) => {
+    if (e.target.dataset.action !== 'remove') return;
+    const card = e.target.closest('.hole-card'); const id = Number(card.dataset.holeId);
+    const idx = boxHoles.findIndex(h => h.id === id);
+    if (idx >= 0) boxHoles.splice(idx, 1);
+    renderHoleCards();
+    if (currentShape === 'box') markPending();
+  });
 }
 
 // Turn a {heightmap, previewUrl, suggestedInvert} result (image OR text) into a logo on a free face.
@@ -4025,7 +4213,8 @@ function exportAssemblyJSON() {
       name: m.name, params: m.params, rx:m.rx, ry:m.ry, rz:m.rz, px:m.px, py:m.py, pz:m.pz,
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
-        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl }))
+        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl })),
+      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, diameter:h.diameter }))
     }))
   };
   const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
@@ -4066,6 +4255,7 @@ function importAssemblyJSON(file) {
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
+        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, diameter:h.diameter }));
         models.push(rec);
       });
       // Build geometry for each model (mirrors addModel: make it active, then regenerate).
@@ -4134,6 +4324,7 @@ function init() {
   buildAllParamUI();
   attachEventListeners();
   attachLogoEventListeners();
+  attachHoleEventListeners();
   attachModelEventListeners();
   models.push(makeModelRecord('Модель 1', defaultBoxParams()));
   activeModelId = models[0].id;

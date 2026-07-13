@@ -185,17 +185,6 @@
     color:var(--ink);
     margin-bottom:9px;
   }
-  #export-format{
-    width:100%;
-    padding:7px 9px;
-    border:1.5px solid var(--ink-soft);
-    border-radius:2px;
-    background:#fff;
-    font-family:'IBM Plex Sans', sans-serif;
-    font-size:12.5px;
-    color:var(--ink);
-    margin-bottom:11px;
-  }
   #btn-export{
     width:100%;
     padding:11px 0;
@@ -544,10 +533,6 @@
 
     <div class="section-label">Экспорт</div>
     <input type="text" id="filename" value="model" spellcheck="false">
-    <select id="export-format">
-      <option value="binary">Binary STL (компактный)</option>
-      <option value="ascii">ASCII STL (текстовый)</option>
-    </select>
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
   </div>
@@ -1972,20 +1957,6 @@ function trisToBinarySTL(tris) {
   return new Blob([buffer], {type:'application/sla'});
 }
 
-function trisToAsciiSTL(tris, name) {
-  name = (name||'model').replace(/\s+/g,'_');
-  const lines = ['solid '+name];
-  for (const tri of tris) {
-    const n = faceNormal(tri);
-    lines.push('facet normal '+n[0].toExponential(6)+' '+n[1].toExponential(6)+' '+n[2].toExponential(6));
-    lines.push('outer loop');
-    for (const p of tri) lines.push('vertex '+p[0].toExponential(6)+' '+p[1].toExponential(6)+' '+p[2].toExponential(6));
-    lines.push('endloop');
-    lines.push('endfacet');
-  }
-  lines.push('endsolid '+name);
-  return new Blob([lines.join('\n')], {type:'text/plain'});
-}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -3292,9 +3263,8 @@ function attachEventListeners() {
     // values currently in the panel (and the on-screen model updates to match).
     if (pendingChanges) applyPendingNow();
     const nameRaw = document.getElementById('filename').value.trim() || 'model';
-    const format = document.getElementById('export-format').value;
     const exportTris = mergedExportTris(); // every visible model, rotated + placed
-    const blob = format === 'ascii' ? trisToAsciiSTL(exportTris, nameRaw) : trisToBinarySTL(exportTris);
+    const blob = trisToBinarySTL(exportTris);
     downloadBlob(blob, nameRaw.replace(/\.stl$/i,'') + '.stl');
   });
 

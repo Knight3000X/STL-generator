@@ -3618,9 +3618,37 @@ function updateDimensionOverlay(bbox) {
 // Above this triangle count, skip the O(n) watertightness check in the stats panel — it
 // walks every triangle edge into a Map and can cost MORE than generating the geometry itself
 // (measured ~6s on 1.4M triangles vs ~1.7s to generate them), and it's a diagnostic display,
-// not something the model needs correct to render or export.
-const MANIFOLD_CHECK_TRI_LIMIT = 120000;
+// not something the model needs correct to render or export. The check now runs in a Web Worker
+// (off the main thread), so this ceiling is raised well past the old inline-blocking 120k.
+const MANIFOLD_CHECK_TRI_LIMIT = 600000;
 let statCheckGen = 0; // token so a superseded (newer rebuild) deferred watertight check is skipped
+
+// Watertight check in a Web Worker: the O(n) edge walk was the last heavy synchronous step on the
+// main thread (the "mobile freeze" the deferred setTimeout only partly hid — it still blocked once it
+// ran). The worker's source is manifoldCheck itself, serialised via .toString() (it has ZERO external
+// deps — only Map/Int32Array/Math), so there is no duplicated logic and no build step: the exact same
+// routine runs off-thread. Triangles cross as a transferable Float64Array (9 doubles/tri) — Float64,
+// not Float32, so the coordinates are bit-identical and the weld/edge result matches the inline check.
+let _wtWorker = null, _wtWorkerBad = false;
+function getWatertightWorker() {
+  if (_wtWorker || _wtWorkerBad) return _wtWorker;
+  try {
+    const src = manifoldCheck.toString() + '\n' +
+      'self.onmessage=function(e){var d=e.data,a=new Float64Array(d.buf),n=d.count,t=new Array(n);' +
+      'for(var i=0;i<n;i++){var o=i*9;t[i]=[[a[o],a[o+1],a[o+2]],[a[o+3],a[o+4],a[o+5]],[a[o+6],a[o+7],a[o+8]]];}' +
+      'self.postMessage({gen:d.gen,mc:manifoldCheck(t)});};';
+    const url = URL.createObjectURL(new Blob([src], {type:'application/javascript'}));
+    _wtWorker = new Worker(url);
+    URL.revokeObjectURL(url);
+  } catch (err) { _wtWorkerBad = true; _wtWorker = null; } // no Worker / blocked → inline fallback
+  return _wtWorker;
+}
+// Apply a finished watertight result to the stats badge (shared by the worker reply and the fallback).
+function paintWatertight(el, mc) {
+  if (mc.watertight) { el.textContent = 'замкнутый ✓'; el.className = 'v mono ok'; }
+  else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
+}
+
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;
   document.getElementById('stat-verts').textContent = tris.length*3;
@@ -3633,18 +3661,28 @@ function updateStatsPanel(tris, bbox) {
     el.className = 'v mono';
     return;
   }
-  // The watertight check is an O(n) diagnostic (~0.7s on 120k tris). Running it inline made every
-  // size/fillet edit block the main thread on it — the mobile freeze. Defer it past the paint so the
-  // model updates immediately; the token skips it if a newer rebuild has already superseded this one.
+  // The watertight check is an O(n) diagnostic (~0.7s on 120k tris). Run it in a Web Worker so it never
+  // blocks the main thread; the token skips a stale reply if a newer rebuild has superseded this one.
   el.textContent = 'проверка…';
   el.className = 'v mono';
-  setTimeout(() => {
-    if (myGen !== statCheckGen) return;
-    const mc = manifoldCheck(tris);
-    if (myGen !== statCheckGen) return;
-    if (mc.watertight) { el.textContent = 'замкнутый ✓'; el.className = 'v mono ok'; }
-    else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
-  }, 0);
+  const worker = getWatertightWorker();
+  if (worker) {
+    const buf = new Float64Array(tris.length*9);
+    for (let i=0;i<tris.length;i++){ const t=tris[i], o=i*9;
+      buf[o]=t[0][0]; buf[o+1]=t[0][1]; buf[o+2]=t[0][2];
+      buf[o+3]=t[1][0]; buf[o+4]=t[1][1]; buf[o+5]=t[1][2];
+      buf[o+6]=t[2][0]; buf[o+7]=t[2][1]; buf[o+8]=t[2][2]; }
+    worker.onmessage = (ev) => { if (ev.data.gen !== statCheckGen) return; paintWatertight(el, ev.data.mc); };
+    worker.postMessage({gen: myGen, count: tris.length, buf: buf.buffer}, [buf.buffer]);
+  } else {
+    // Fallback (no Worker available): defer past the paint so the model still updates immediately.
+    setTimeout(() => {
+      if (myGen !== statCheckGen) return;
+      const mc = manifoldCheck(tris);
+      if (myGen !== statCheckGen) return;
+      paintWatertight(el, mc);
+    }, 0);
+  }
 }
 
 // Triangles as buildTrisForShape returned them, BEFORE the whole-model rotation is applied —

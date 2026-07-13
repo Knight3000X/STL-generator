@@ -12,7 +12,7 @@ function hasNaN(t){for(const tr of t)for(const p of tr)for(const c of p)if(!Numb
 function signedVol(tris){let v=0;for(const t of tris){const a=t[0],b=t[1],c=t[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function base(ov){
   Object.assign(paramState.box,{width:60,height:42,depth:60,hollow:false,rim:false,wallThickness:4,rimHeight:8,filletSeg:8,
-    filletRadius:0,filletTop:0,filletBottom:0,filletVert:0,filletInnerFloor:0,filletInnerVert:0,filletInnerLip:0,squircle:0,squircleV:0,
+    filletRadius:0,filletTop:0,filletBottom:0,filletVert:0,filletInnerFloor:0,filletInnerVert:0,filletInnerLip:0,squircle:0,squircleVTop:0, squircleVBot:0,
     latticeFloor:false,latticeCell:8,latticeRib:2,latticeBorder:1,
     bulgeXPlus:0,bulgeXMinus:0,bulgeZPlus:0,bulgeZMinus:0,bulgeYPlus:0,bulgeYMinus:0,
     taperXPlus:0,taperXMinus:0,taperZPlus:0,taperZMinus:0,taperYPlusX:0,taperYPlusZ:0,taperYMinusX:0,taperYMinusZ:0},ov);
@@ -51,18 +51,29 @@ chk('squircle+fillet == squircle-only (fillet ignored)', sqWithFillet.length ===
 
 console.log('\n=== superellipsoid: rounded top/bottom edges too (squircleV>0) ===');
 for (const sv of [20, 45, 70, 100]) {
-  base({squircle:45, squircleV:sv});
+  base({squircle:45, squircleVTop:sv, squircleVBot:sv});
   const t=build();
   chk(`squircle=45 squircleV=${sv}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges, tris:t.length});
 }
-base({squircle:45, squircleV:50}); const ellipsoid = build();
-base({squircle:45, squircleV:0});  const prism = build();
+base({squircle:45, squircleVTop:50, squircleVBot:50}); const ellipsoid = build();
+base({squircle:45, squircleVTop:0, squircleVBot:0});  const prism = build();
 chk('squircleV>0 changes the mesh vs flat-top prism', ellipsoid.length !== prism.length, {prism:prism.length, ellipsoid:ellipsoid.length});
 chk('superellipsoid has less volume than the prism (top/bottom rounded off)', signedVol(ellipsoid) < signedVol(prism), {prism:signedVol(prism)|0, ellipsoid:signedVol(ellipsoid)|0});
-base({squircle:60, squircleV:60, width:80, height:34, depth:52, taperXPlus:10});
+base({squircle:60, squircleVTop:60, squircleVBot:60, width:80, height:34, depth:52, taperXPlus:10});
 { const t=build(); chk('superellipsoid non-cube + taper: watertight', wt(t)); chk('superellipsoid non-cube + taper: no NaN', !hasNaN(t)); }
-base({squircle:100, squircleV:100}); // fully round both ways = ellipsoid
+base({squircle:100, squircleVTop:100, squircleVBot:100}); // fully round both ways = ellipsoid
 { const t=build(); chk('full ellipsoid (100/100): watertight', wt(t) && signedVol(t)>0); }
+
+console.log('\n=== independent top / bottom rounding (squircleVTop != squircleVBot) ===');
+// Top rounded, bottom flat — and the mirror. Each must stay watertight and NOT equal the symmetric mesh.
+base({squircle:45, squircleVTop:60, squircleVBot:0}); const topOnly=build();
+chk('top-only rounding (top 60 / bottom 0): watertight', wt(topOnly) && !hasNaN(topOnly) && signedVol(topOnly)>0, {open:manifoldCheck(topOnly).openEdges});
+base({squircle:45, squircleVTop:0, squircleVBot:60}); const botOnly=build();
+chk('bottom-only rounding (top 0 / bottom 60): watertight', wt(botOnly) && !hasNaN(botOnly) && signedVol(botOnly)>0, {open:manifoldCheck(botOnly).openEdges});
+base({squircle:45, squircleVTop:60, squircleVBot:60}); const bothR=build();
+chk('asymmetric removes less material than rounding both', signedVol(topOnly) > signedVol(bothR) && signedVol(botOnly) > signedVol(bothR), {top:signedVol(topOnly)|0, bot:signedVol(botOnly)|0, both:signedVol(bothR)|0});
+// A tall flat-bottom-domed-top mesh sits flat but rounds off just the top.
+base({squircle:50, squircleVTop:80, squircleVBot:0, width:60, height:60, depth:44}); { const t=build(); chk('top-domed non-cube: watertight', wt(t) && !hasNaN(t)); }
 
 // ---- logos on the curved squircle / superellipsoid wall ----
 // Synthetic heightmap: ring + diagonal bar -> lots of relief walls to stress watertightness.
@@ -97,16 +108,20 @@ wtLogo('squircle + two logos, same face',        {squircle:45}, [{face:'+Z', u0:
 wtLogo('non-cube squircle + logo',               {squircle:45, width:80, height:34, depth:52}, [{face:'+Z'}]);
 
 console.log('\n=== logos emboss onto the SUPERELLIPSOID wall (watertight) ===');
-const solidSE = (()=>{ base({squircle:45, squircleV:40}); return build().length; })();
-{ const t=wtLogo('superellipsoid + logo on +Z', {squircle:45, squircleV:40}, [{face:'+Z'}]);
+const solidSE = (()=>{ base({squircle:45, squircleVTop:40, squircleVBot:40}); return build().length; })();
+{ const t=wtLogo('superellipsoid + logo on +Z', {squircle:45, squircleVTop:40, squircleVBot:40}, [{face:'+Z'}]);
   chk('superellipsoid logo path densifies the mesh', t.length > solidSE, {plain:solidSE, withLogo:t.length}); }
-wtLogo('superellipsoid + logo on +X',        {squircle:45, squircleV:40}, [{face:'+X'}]);
-wtLogo('superellipsoid + logo on top pole',  {squircle:45, squircleV:40}, [{face:'+Y'}]);
-wtLogo('superellipsoid + engraved logo',     {squircle:45, squircleV:40}, [{depth:-1.2}]);
-wtLogo('superellipsoid + rotated logo',      {squircle:45, squircleV:40}, [{rotation:25}]);
-wtLogo('rounder superellipsoid (80/80)+logo',{squircle:80, squircleV:80}, [{face:'+Z'}]);
-wtLogo('superellipsoid + taper + logo',      {squircle:60, squircleV:50, taperXPlus:8}, [{face:'+Z'}]);
-wtLogo('superellipsoid non-cube + two logos',{squircle:50, squircleV:45, width:80, height:34, depth:52}, [{face:'+Z'},{face:'-X'}]);
+wtLogo('superellipsoid + logo on +X',        {squircle:45, squircleVTop:40, squircleVBot:40}, [{face:'+X'}]);
+wtLogo('superellipsoid + logo on top pole',  {squircle:45, squircleVTop:40, squircleVBot:40}, [{face:'+Y'}]);
+wtLogo('superellipsoid + engraved logo',     {squircle:45, squircleVTop:40, squircleVBot:40}, [{depth:-1.2}]);
+wtLogo('superellipsoid + rotated logo',      {squircle:45, squircleVTop:40, squircleVBot:40}, [{rotation:25}]);
+wtLogo('rounder superellipsoid (80/80)+logo',{squircle:80, squircleVTop:80, squircleVBot:80}, [{face:'+Z'}]);
+wtLogo('superellipsoid + taper + logo',      {squircle:60, squircleVTop:50, squircleVBot:50, taperXPlus:8}, [{face:'+Z'}]);
+wtLogo('superellipsoid non-cube + two logos',{squircle:50, squircleVTop:45, squircleVBot:45, width:80, height:34, depth:52}, [{face:'+Z'},{face:'-X'}]);
+// Asymmetric top/bottom rounding with logos — the cube-sphere path must stay continuous across dy=0.
+wtLogo('asymmetric superellipsoid + top logo',    {squircle:45, squircleVTop:70, squircleVBot:20}, [{face:'+Y'}]);
+wtLogo('asymmetric superellipsoid + bottom logo', {squircle:45, squircleVTop:20, squircleVBot:70}, [{face:'-Y'}]);
+wtLogo('asymmetric superellipsoid + side logo',   {squircle:50, squircleVTop:60, squircleVBot:10}, [{face:'+Z'}]);
 
 console.log('\n=== no-logo path is unchanged (regression) ===');
 { base({squircle:45}); const a=build().length; base({squircle:45}); logos.length=0; const b=build().length; chk('no-logo prism deterministic + logo-free', a===b && a===solidPrism, {a,b}); }
@@ -125,34 +140,34 @@ base({squircle:45, hollow:true, wallThickness:4, taperXPlus:8, taperZMinus:6});
 { const t=build(); chk('hollow squircle + taper: watertight', wt(t)); }
 console.log('\n=== squircleV rounds the container BOTTOM (superellipsoid lower half) ===');
 for (const sv of [20, 45, 70, 100]) {
-  base({squircle:45, hollow:true, wallThickness:4, squircleV:sv});
+  base({squircle:45, hollow:true, wallThickness:4, squircleVBot:sv});
   const t=build(); chk(`hollow squircle + rounded bottom ${sv}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges, tris:t.length});
 }
-base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hollowFlat=signedVol(build());
-base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hollowRound=signedVol(build());
+base({squircle:45, hollow:true, wallThickness:4, squircleVBot:0}); const hollowFlat=signedVol(build());
+base({squircle:45, hollow:true, wallThickness:4, squircleVBot:60}); const hollowRound=signedVol(build());
 chk('rounded bottom removes material (round vol < flat vol)', hollowRound < hollowFlat, {flat:hollowFlat|0, round:hollowRound|0});
-base({squircle:45, hollow:true, wallThickness:4, squircleV:0}); const hFlatN=build().length;
-base({squircle:45, hollow:true, wallThickness:4, squircleV:60}); const hRoundN=build().length;
+base({squircle:45, hollow:true, wallThickness:4, squircleVBot:0}); const hFlatN=build().length;
+base({squircle:45, hollow:true, wallThickness:4, squircleVBot:60}); const hRoundN=build().length;
 chk('rounded bottom changes the mesh vs flat', hFlatN!==hRoundN, {flat:hFlatN, round:hRoundN});
-base({squircle:60, hollow:true, wallThickness:5, squircleV:50, width:80, height:40, depth:52});
+base({squircle:60, hollow:true, wallThickness:5, squircleVBot:50, width:80, height:40, depth:52});
 { const t=build(); chk('rounded-bottom hollow non-cube: watertight', wt(t)); chk('rounded-bottom hollow non-cube: no NaN', !hasNaN(t)); }
-base({squircle:100, hollow:true, wallThickness:4, squircleV:100});
+base({squircle:100, hollow:true, wallThickness:4, squircleVBot:100});
 { const t=build(); chk('fully round bottom (100/100) hollow: watertight', wt(t) && signedVol(t)>0); }
-base({squircle:45, hollow:true, wallThickness:4, squircleV:50, taperXPlus:6});
+base({squircle:45, hollow:true, wallThickness:4, squircleVBot:50, taperXPlus:6});
 { const t=build(); chk('rounded-bottom hollow + taper: watertight', wt(t)); }
-wtLogo('rounded-bottom hollow + wall logo',   {squircle:45, hollow:true, wallThickness:4, squircleV:50}, [{face:'+Z', v0:8}]);
-wtLogo('rounded-bottom hollow + bottom logo', {squircle:45, hollow:true, wallThickness:5, squircleV:50}, [{face:'-Y'}]);
-wtLogo('rounded-bottom hollow + floor logo',  {squircle:45, hollow:true, wallThickness:6, squircleV:40}, [{face:'-Y-inner'}]);
+wtLogo('rounded-bottom hollow + wall logo',   {squircle:45, hollow:true, wallThickness:4, squircleVBot:50}, [{face:'+Z', v0:8}]);
+wtLogo('rounded-bottom hollow + bottom logo', {squircle:45, hollow:true, wallThickness:5, squircleVBot:50}, [{face:'-Y'}]);
+wtLogo('rounded-bottom hollow + floor logo',  {squircle:45, hollow:true, wallThickness:6, squircleVBot:40}, [{face:'-Y-inner'}]);
 
 console.log('\n=== squircle TRAY with rounded bottom (shallow pocket stays flat) ===');
 for (const sv of [30, 60, 100]) {
-  base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:sv});
+  base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleVBot:sv});
   const t=build(); chk(`tray + rounded bottom ${sv}%: watertight`, wt(t) && !hasNaN(t) && signedVol(t)>0, {open:manifoldCheck(t).openEdges});
 }
-base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:0}); const trayFlat=signedVol(build());
-base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleV:60}); const trayRound=signedVol(build());
+base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleVBot:0}); const trayFlat=signedVol(build());
+base({squircle:45, rim:true, wallThickness:5, rimHeight:8, squircleVBot:60}); const trayRound=signedVol(build());
 chk('tray rounded bottom removes material', trayRound < trayFlat, {flat:trayFlat|0, round:trayRound|0});
-wtLogo('rounded-bottom tray + wall logo', {squircle:45, rim:true, wallThickness:5, rimHeight:10, squircleV:50}, [{face:'+Z', v0:10}]);
+wtLogo('rounded-bottom tray + wall logo', {squircle:45, rim:true, wallThickness:5, rimHeight:10, squircleVBot:50}, [{face:'+Z', v0:10}]);
 
 console.log('\n=== squircle as a RIM / tray (shallow pocket, solid base) ===');
 for (const s of [12, 30, 45, 70]) {
@@ -189,28 +204,28 @@ function maxVertexValence(tris){ const m=new Map(), key=p=>p[0].toFixed(4)+','+p
   chk('prism +Y cap logo: watertight', wt(t)); chk('prism +Y cap: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 { base({squircle:45}); addLogo({face:'-Y'}); const t=build();
   chk('prism -Y cap: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
-{ base({squircle:45, squircleV:45}); addLogo({face:'+Y'}); const t=build();
+{ base({squircle:45, squircleVTop:45, squircleVBot:45}); addLogo({face:'+Y'}); const t=build();
   chk('superellipsoid top logo: watertight', wt(t)); chk('superellipsoid top: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
-{ base({squircle:60, squircleV:70}); addLogo({face:'-Y'}); const t=build();
+{ base({squircle:60, squircleVTop:70, squircleVBot:70}); addLogo({face:'-Y'}); const t=build();
   chk('superellipsoid bottom: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 { base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y-inner'}); const t=build();
   chk('hollow cavity-floor logo: watertight', wt(t)); chk('hollow cavity floor: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 { base({squircle:45, hollow:true, wallThickness:5}); addLogo({face:'-Y'}); const t=build();
   chk('hollow outer-bottom logo: no fan apex (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 // Rounded bottom: the pole cap must keep the bottom logo spike-free (valence bounded) AND actually emboss it.
-{ base({squircle:45, hollow:true, wallThickness:5, squircleV:50}); const plain=build().length;
-  base({squircle:45, hollow:true, wallThickness:5, squircleV:50}); addLogo({face:'-Y'}); const t=build();
+{ base({squircle:45, hollow:true, wallThickness:5, squircleVBot:50}); const plain=build().length;
+  base({squircle:45, hollow:true, wallThickness:5, squircleVBot:50}); addLogo({face:'-Y'}); const t=build();
   chk('rounded bottom + outer logo: watertight', wt(t));
   chk('rounded bottom + outer logo: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)});
   chk('rounded bottom + outer logo: relief actually embossed', t.length>plain, {plain, withLogo:t.length}); }
-{ base({squircle:45, hollow:true, wallThickness:6, squircleV:40}); addLogo({face:'-Y-inner'}); const t=build();
+{ base({squircle:45, hollow:true, wallThickness:6, squircleVBot:40}); addLogo({face:'-Y-inner'}); const t=build();
   chk('rounded cavity floor + logo: watertight', wt(t));
   chk('rounded cavity floor + logo: no pole fan (max valence <= 12)', maxVertexValence(t)<=12, {maxVal:maxVertexValence(t)}); }
 
 console.log('\n=== zone densification: cost tracks the logo footprint, not the whole surface ===');
 { const save=logoResolution; logoResolution=300;   // high detail: fine grid should stay local to the logo
-  base({squircle:45, squircleV:45}); addLogo({face:'+Y', w:8,  h:8 }); const small=build().length;
-  base({squircle:45, squircleV:45}); addLogo({face:'+Y', w:44, h:44}); const big=build().length;
+  base({squircle:45, squircleVTop:45, squircleVBot:45}); addLogo({face:'+Y', w:8,  h:8 }); const small=build().length;
+  base({squircle:45, squircleVTop:45, squircleVBot:45}); addLogo({face:'+Y', w:44, h:44}); const big=build().length;
   chk('small +Y logo far cheaper than a full-face one', small < big*0.7, {small, big});
   base({squircle:45}); addLogo({face:'+Z', w:8, h:8}); const sSmall=build().length;
   base({squircle:45}); addLogo({face:'+Z', w:44, h:30}); const sBig=build().length;
@@ -219,7 +234,7 @@ console.log('\n=== zone densification: cost tracks the logo footprint, not the w
 
 console.log('\n=== high detail stays watertight + spike-free (~0.5M tris) ===');
 { const save=logoResolution; logoResolution=300;   // hits the cube-sphere cap (S=260)
-  base({squircle:45, squircleV:45}); addLogo({face:'+Y'}); const t=build();
+  base({squircle:45, squircleVTop:45, squircleVBot:45}); addLogo({face:'+Y'}); const t=build();
   chk('superellipsoid @ high detail: watertight', wt(t) && !hasNaN(t), {tris:t.length, open:manifoldCheck(t).openEdges});
   chk('superellipsoid @ high detail: no fan apex', maxVertexValence(t)<=12);
   logoResolution=save; }
@@ -230,12 +245,12 @@ console.log('\n=== fuzz regression: very boxy squircle (corner cell collinear on
 // edges on the tray). pushQuadAdaptive must pick the other diagonal and keep the seam closed.
 for (const ov of [
   {squircle:8, rim:true, wallThickness:6.7, rimHeight:15, width:110, height:78, depth:45},
-  {squircle:8, rim:true, wallThickness:6.7, rimHeight:15, width:110, height:78, depth:45, squircleV:21},
+  {squircle:8, rim:true, wallThickness:6.7, rimHeight:15, width:110, height:78, depth:45, squircleVBot:21},
   {squircle:8, hollow:true, wallThickness:6.7, width:110, height:78, depth:45},
-  {squircle:5, hollow:true, wallThickness:4, width:120, height:30, depth:24, squircleV:60},
+  {squircle:5, hollow:true, wallThickness:4, width:120, height:30, depth:24, squircleVBot:60},
 ]) {
   base(ov); const t=build();
-  chk(`boxy squircle ${ov.rim?'tray':'hollow'} sq=${ov.squircle} sv=${ov.squircleV||0}: watertight`, wt(t) && !hasNaN(t), manifoldCheck(t));
+  chk(`boxy squircle ${ov.rim?'tray':'hollow'} sq=${ov.squircle} sv=${ov.squircleVBot||0}: watertight`, wt(t) && !hasNaN(t), manifoldCheck(t));
 }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

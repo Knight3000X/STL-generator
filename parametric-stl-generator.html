@@ -2187,7 +2187,8 @@ const SHAPE_PARAMS = {
     {key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
-    {key:'squircleV', label:'Squircle: скругление верха/низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {key:'squircleVTop', label:'Squircle: скругление верха (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {key:'squircleVBot', label:'Squircle: скругление низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
@@ -2578,10 +2579,13 @@ function buildSquirclePrism(w, h, d, p, resolution){
 // prism, eV=1 is smooth ellipsoid caps. Poles collapse to a single apex top and bottom.
 function seC(a,e){ const c=Math.cos(a); return Math.sign(c)*Math.pow(Math.abs(c),e); }
 function seS(a,e){ const s=Math.sin(a); return Math.sign(s)*Math.pow(Math.abs(s),e); }
-function buildSuperellipsoid(w, h, d, eH, eV, resolution){
+// eVTop / eVBot: vertical exponent for the upper (phi>=0) / lower (phi<0) hemisphere — split so the top
+// and bottom edges round independently (0 on a side = flat cap there; degenerate rings are filtered). The
+// equator ring (phi=0) is seS=0 / seC=1 regardless of exponent, so the two halves join seamlessly.
+function buildSuperellipsoid(w, h, d, eH, eVTop, eVBot, resolution){
   const hw=w/2, hh=h/2, hd=d/2;
   const N=Math.max(48, Math.round(resolution)*12), M=Math.max(24, Math.round(resolution)*6);
-  const P=(phi,th)=>{ const cV=seC(phi,eV); return [hw*cV*seC(th,eH), hh*seS(phi,eV), hd*cV*seS(th,eH)]; };
+  const P=(phi,th)=>{ const eV=phi>=0?eVTop:eVBot, cV=seC(phi,eV); return [hw*cV*seC(th,eH), hh*seS(phi,eV), hd*cV*seS(th,eH)]; };
   const bot=[0,-hh,0], top=[0,hh,0], rings=[];
   for(let k=1;k<M;k++){ const phi=-Math.PI/2+Math.PI*k/M; const r=[]; for(let i=0;i<N;i++) r.push(P(phi,2*Math.PI*i/N)); rings.push(r); }
   const tris=[];
@@ -2748,13 +2752,18 @@ function buildSquirclePrismLogos(w, h, d, pexp, resolution, dispFns, logoRes){
 // ANALYTIC (∇F), a pure function of the surface point, so a vertex shared by two cube faces gets an
 // identical normal (and thus identical emboss) from both -> watertight even where a logo crosses a
 // cube edge. Emboss picks the face by the dominant normal axis (applySurfaceLogo).
-function seImplicitSurface(dx, dy, dz, hw, hh, hd, aH, aV, mix, eVc){
+// Vertical exponent is chosen per hemisphere (sign of dy/y): the top and bottom round independently. The
+// horizontal cross-section at the equator solves to (|x|/hw)^aH+(|z|/hd)^aH=1 regardless of the vertical
+// exponent, and ny=0 there (aV>1), so surface and (normalised) normal stay continuous across dy=0.
+function seImplicitSurface(dx, dy, dz, hw, hh, hd, aH, aVt, aVb, mixT, mixB, eVt, eVb){
+  const up=dy>=0, aV=up?aVt:aVb, mix=up?mixT:mixB, eVc=up?eVt:eVb;
   const A=Math.pow(Math.abs(dx)/hw, aH)+Math.pow(Math.abs(dz)/hd, aH);
   const G=Math.pow(A, mix)+Math.pow(Math.abs(dy)/hh, aV);
   const t=Math.pow(G, -eVc/2);
   return [t*dx, t*dy, t*dz];
 }
-function seImplicitNormal(x, y, z, hw, hh, hd, aH, aV, mix){
+function seImplicitNormal(x, y, z, hw, hh, hd, aH, aVt, aVb, mixT, mixB){
+  const up=y>=0, aV=up?aVt:aVb, mix=up?mixT:mixB;
   const ax=Math.abs(x)/hw, az=Math.abs(z)/hd, ay=Math.abs(y)/hh;
   const A=Math.pow(ax, aH)+Math.pow(az, aH);
   if(A < 1e-9) return [0, y>=0?1:-1, 0];                       // pole: gradient is vertical
@@ -2762,12 +2771,13 @@ function seImplicitNormal(x, y, z, hw, hh, hd, aH, aV, mix){
   const nx=Am*Math.pow(ax, aH-1)*Math.sign(x)/hw, nz=Am*Math.pow(az, aH-1)*Math.sign(z)/hd, ny=Math.pow(ay, aV-1)*Math.sign(y)/hh;
   const L=Math.hypot(nx, ny, nz)||1; return [nx/L, ny/L, nz/L];
 }
-function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes){
+function buildSuperellipsoidLogos(w, h, d, eH, eVTop, eVBot, resolution, dispFns, logoRes){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
   const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2));
-  const eHc=Math.max(0.05, eH), eVc=Math.max(0.05, eV), aH=2/eHc, aV=2/eVc, mix=eHc/eVc;
-  const surf=(dx,dy,dz)=>seImplicitSurface(dx,dy,dz, hw,hh,hd, aH,aV,mix,eVc);
-  const nrm=(x,y,z)=>seImplicitNormal(x,y,z, hw,hh,hd, aH,aV,mix);
+  const eHc=Math.max(0.05, eH), eVt=Math.max(0.05, eVTop), eVb=Math.max(0.05, eVBot);
+  const aH=2/eHc, aVt=2/eVt, aVb=2/eVb, mixT=eHc/eVt, mixB=eHc/eVb;
+  const surf=(dx,dy,dz)=>seImplicitSurface(dx,dy,dz, hw,hh,hd, aH,aVt,aVb,mixT,mixB,eVt,eVb);
+  const nrm=(x,y,z)=>seImplicitNormal(x,y,z, hw,hh,hd, aH,aVt,aVb,mixT,mixB);
   const faces=[[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]];
   // Coarse forward hit-test → per global cube axis, the coord ranges where a logo actually fires. Global
   // arrays (shared by all faces) keep every shared cube edge sampled identically, so it stays watertight.
@@ -2810,7 +2820,7 @@ function buildSuperellipsoidLogos(w, h, d, eH, eV, resolution, dispFns, logoRes)
    floor near the bottom (floorY = -hh + wall), tray = a shallow pocket from the top (floorY = hh -
    rimHeight). The inner wall is the outer superellipse inset on the bounding box by `t` (same
    exponent) — wall thickness is ~t on the flats and varies a little at the corners, matching the
-   "thickness isn't perfectly constant" caveat the box hollow already carries. squircleV (vertical
+   "thickness isn't perfectly constant" caveat the box hollow already carries. squircleVBot (vertical
    rounding) is ignored here — an open container has a flat rim and sits flat. Logos emboss on the
    curved outer walls (buildCombinedLogoDispFns via the dominant-normal-axis gate), the outer bottom
    ('-Y') and the cavity floor ('-Y-inner'); the cavity walls and rim stay plain. Watertight: every
@@ -2892,7 +2902,7 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
     tris.push(orient([oTop[i], oTop[k], iTop[k]], [0,1,0])); tris.push(orient([oTop[i], iTop[k], iTop[i]], [0,1,0])); } };
 
   if(eV > 0){
-    // Rounded bottom (squircleV): straight wall = upper half [0,hh], the bottom is a superellipsoid-lower-
+    // Rounded bottom (squircleVBot): straight wall = upper half [0,hh], the bottom is a superellipsoid-lower-
     // half dome (pole at y=-hh). Cavity: hollow → matching inner dome (thin wall); tray → flat shallow
     // pocket above the rounded base.
     const invEv=2/Math.max(0.05, eV), nRings=Math.max(12, Math.round(hh/coarseW));
@@ -2915,7 +2925,7 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
     return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
   }
 
-  // Flat bottom (squircleV=0): straight wall full height + flat superellipse caps.
+  // Flat bottom (squircleVBot=0): straight wall full height + flat superellipse caps.
   const ySampO=zonedSamples(-hh, hh, coarseW, fineW, Z.yZ);          // outer wall: fine under side logos
   const ySampI=zonedSamples(floorY, hh, coarseW, coarseW, []);      // cavity wall: not embossed → coarse
   const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns);              // outer wall (embossable)
@@ -2935,10 +2945,11 @@ function buildTrisForShape(shape, p) {
 
     if (p.hollow) {
       // Squircle container: superellipse shell with a thin floor. Overrides corner fillet + lattice
-      // (squircle IS the corner treatment). squircleV rounds the BOTTOM (superellipsoid lower half) — open
-      // top / flat rim stays. Logos ride the curved outer walls, the outer bottom and the cavity floor.
+      // (squircle IS the corner treatment). squircleVBot rounds the BOTTOM (superellipsoid lower half) — the
+      // open top / flat rim stays (squircleVTop is a solid-cube-only control). Logos ride the curved outer
+      // walls, the outer bottom and the cavity floor.
       if (p.squircle > 0) {
-        const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleV||0)/100));
+        const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, -p.height/2 + tW,
@@ -2983,10 +2994,10 @@ function buildTrisForShape(shape, p) {
 
     if (p.rim) {
       // Squircle tray: superellipse shell with a shallow pocket from the top (solid base below).
-      // Same builder as the squircle container, cavity floor raised to hh - rimHeight. squircleV rounds
+      // Same builder as the squircle container, cavity floor raised to hh - rimHeight. squircleVBot rounds
       // the outer BOTTOM (the shallow pocket stays flat). Logos ride the walls, outer bottom, pocket floor.
       if (p.squircle > 0) {
-        const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleV||0)/100));
+        const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
         const rh = clampRimHeight(p.height, p.rimHeight||8);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
@@ -3029,14 +3040,16 @@ function buildTrisForShape(shape, p) {
     // round into one smooth curve). Overrides corner fillet / wall bulge (different corner treatments);
     // solid box only for this pass. Taper is applied afterwards, per vertex.
     if (p.squircle > 0) {
-      const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleV||0)/100));
+      const eH = Math.max(0.02, Math.min(1, p.squircle/100));
+      const eVTop = Math.max(0, Math.min(1, (p.squircleVTop||0)/100)), eVBot = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
       // Logos ride the curved wall via the emboss path (frames built in flat space — taper runs after).
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(q => q) : null;
       const seg = p.filletSeg||4;
-      // squircleV>0 rounds the top/bottom edges too (full superellipsoid); =0 keeps the flat-top prism.
-      const tris = eV > 0
-        ? (logoFns ? buildSuperellipsoidLogos(p.width, p.height, p.depth, eH, eV, seg, logoFns, logoResolution)
-                   : buildSuperellipsoid(p.width, p.height, p.depth, eH, eV, seg))
+      // Either top or bottom rounded (>0) → superellipsoid with per-pole exponents (a 0 side stays a flat
+      // cap); both flat → the flat-top squircle prism.
+      const tris = (eVTop > 0 || eVBot > 0)
+        ? (logoFns ? buildSuperellipsoidLogos(p.width, p.height, p.depth, eH, eVTop, eVBot, seg, logoFns, logoResolution)
+                   : buildSuperellipsoid(p.width, p.height, p.depth, eH, eVTop, eVBot, seg))
         : (logoFns ? buildSquirclePrismLogos(p.width, p.height, p.depth, eH, seg, logoFns, logoResolution)
                    : buildSquirclePrism(p.width, p.height, p.depth, eH, seg));
       return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,

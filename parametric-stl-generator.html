@@ -307,6 +307,18 @@
   }
   #btn-add-logo:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-logo:disabled{ opacity:0.4; cursor:not-allowed; }
+  #logo-text-row{ display:flex; gap:6px; margin-bottom:10px; }
+  #logo-text-input{
+    flex:1; min-width:0; padding:7px 8px;
+    border:1.5px solid var(--ink-soft); border-radius:2px;
+    font-family:inherit; font-size:12.5px; color:var(--ink);
+  }
+  #btn-add-text{
+    flex:0 0 auto; padding:0 12px;
+    background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
+    color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+  }
+  #btn-add-text:hover{ border-color:var(--ink); color:var(--ink); }
   .logo-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -507,8 +519,12 @@
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
+      <div id="logo-text-row">
+        <input type="text" id="logo-text-input" placeholder="Текст рельефом…" maxlength="40" spellcheck="false">
+        <button id="btn-add-text">+ Текст</button>
+      </div>
       <div id="logo-cards"></div>
-      <div class="export-note" id="logo-note">До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+      <div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -2054,6 +2070,28 @@ function loadLogoImageFile(file, cb) {
   reader.readAsDataURL(file);
 }
 
+// Renders text into the same {heightmap, previewUrl, suggestedInvert} shape an uploaded image produces,
+// so text relief reuses the entire logo pipeline. The glyphs are drawn OPAQUE on a TRANSPARENT canvas,
+// so analyzeLogoImageData takes the alpha channel (letters proud, background flat) — no invert guessing.
+// Font size is fitted so the text spans ~88% of the width, capped by height (single line).
+function makeTextLogoResult(text, bold) {
+  text = (text || '').trim(); if (!text) return null;
+  const size = LOGO_HM_SIZE;
+  const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const weight = bold ? 700 : 500, family = "'IBM Plex Sans', Arial, sans-serif";
+  let fs = Math.round(size * 0.6);
+  ctx.font = weight + ' ' + fs + 'px ' + family;
+  const w = ctx.measureText(text).width || 1;
+  fs = Math.max(8, Math.min(Math.round(size * 0.72), fs * (size * 0.88) / w));
+  ctx.font = weight + ' ' + Math.round(fs) + 'px ' + family;
+  ctx.fillText(text, size / 2, size / 2);
+  const { heightmap, suggestedInvert } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
+  return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert };
+}
+
 function sampleHeightmap(hm, u01, v01) {
   const size = LOGO_HM_SIZE;
   const x = Math.min(size-1, Math.max(0, Math.floor(u01*size)));
@@ -3403,6 +3441,25 @@ function renderLogoCards() {
   document.getElementById('btn-add-logo').disabled = logos.length >= 18;
 }
 
+// Turn a {heightmap, previewUrl, suggestedInvert} result (image OR text) into a logo on a free face.
+function addLogoFromResult(result) {
+  if (!result) return;
+  const { heightmap, previewUrl, suggestedInvert } = result;
+  const usedFaces = new Set(logos.map(l => l.face));
+  const face = ALL_FACES.find(f => !usedFaces.has(f)) || '+Z';
+  const dims = BOX_FACE_DIMS[face](paramState.box);
+  const logo = {
+    id: nextLogoId++, face, u0: 0, v0: 0,
+    w: Math.max(2, Math.min(dims.uLen*0.4, dims.uLen-3)),
+    h: Math.max(2, Math.min(dims.vLen*0.4, dims.vLen-3)),
+    depth: 2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
+  };
+  clampLogoToFace(logo);
+  logos.push(logo);
+  renderLogoCards();
+  if (currentShape === 'box') markPending();
+}
+
 function attachLogoEventListeners() {
   document.getElementById('btn-add-logo').addEventListener('click', () => {
     if (logos.length >= 18) return;
@@ -3415,22 +3472,20 @@ function attachLogoEventListeners() {
     if (!file) return;
     loadLogoImageFile(file, (result) => {
       if (!result) { alert('Не удалось загрузить изображение.'); return; }
-      const { heightmap, previewUrl, suggestedInvert } = result;
-      const usedFaces = new Set(logos.map(l => l.face));
-      const face = ALL_FACES.find(f => !usedFaces.has(f)) || '+Z';
-      const dims = BOX_FACE_DIMS[face](paramState.box);
-      const logo = {
-        id: nextLogoId++, face, u0: 0, v0: 0,
-        w: Math.max(2, Math.min(dims.uLen*0.4, dims.uLen-3)),
-        h: Math.max(2, Math.min(dims.vLen*0.4, dims.vLen-3)),
-        depth: 2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
-      };
-      clampLogoToFace(logo);
-      logos.push(logo);
-      renderLogoCards();
-      if (currentShape === 'box') markPending();
+      addLogoFromResult(result);
     });
   });
+
+  const addText = () => {
+    if (logos.length >= 18) return;
+    const inp = document.getElementById('logo-text-input');
+    const result = makeTextLogoResult(inp.value, true);
+    if (!result) { inp.focus(); return; }
+    addLogoFromResult(result);
+    inp.value = '';
+  };
+  document.getElementById('btn-add-text').addEventListener('click', addText);
+  document.getElementById('logo-text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addText(); } });
 
   document.getElementById('logo-cards').addEventListener('input', (e) => {
     const card = e.target.closest('.logo-card');

@@ -2217,6 +2217,7 @@ const SHAPE_PARAMS = {
     {key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
     {key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
+    {key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
     {key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {key:'squircleVTop', label:'Squircle: скругление верха (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {key:'squircleVBot', label:'Squircle: скругление низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
@@ -2970,6 +2971,11 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
 
+// Axial (flat-region) grid density for the asym rounded builders. `filletSeg` sets the ARC smoothness;
+// this is the SEPARATE control for how finely the flat spans between rounded edges are sampled. 0 = auto
+// (the old coupling: 2× filletSeg, floored at 8), any >0 overrides it directly.
+function asymAxisRes(p) { return (p.filletAxisRes>0) ? Math.max(2, p.filletAxisRes|0) : Math.max(8, (p.filletSeg||4)*2); }
+
 function buildTrisForShape(shape, p) {
   if (shape === 'box') {
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
@@ -3007,7 +3013,7 @@ function buildTrisForShape(shape, p) {
         // so the following cavity walls can't cross the box centre. Bulge zones densify the shell for a smooth dome.
         const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
         const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, undefined, dOuter, dInner, allZones, logoResolution, bulge);
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, asymAxisRes(p), seg, undefined, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -3059,7 +3065,7 @@ function buildTrisForShape(shape, p) {
         const build = iLip>0 ? buildRoundedHollow : buildSharpRimHollow; // lip>0 = rolled inner lip; lip=0 = sharp flat rim
         const bulge = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(hw,hh,hd)-tW)) : undefined;
         const allZones = bulge ? mergeZones(zones, computeWallBulgeZones(p, bulge)) : zones;
-        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, Math.max(8, seg*2), seg, rh, dOuter, dInner, allZones, logoResolution, bulge);
+        const tris = build(p.width, p.height, p.depth, tW, Rout, Rin, asymAxisRes(p), seg, rh, dOuter, dInner, allZones, logoResolution, bulge);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -3113,7 +3119,7 @@ function buildTrisForShape(shape, p) {
         const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
         const logoZones = logos.length > 0 ? computeLogoZonesByAxis(idT) : null;
         const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2);
-        const tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, Math.max(8,(p.filletSeg||4)*2), p.filletSeg||4,
+        const tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, asymAxisRes(p), p.filletSeg||4,
           logoFns, mergeZones(logoZones, bulgeZones), logoResolution, wallBulgeAmounts(p));
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
@@ -3147,7 +3153,7 @@ function buildTrisForShape(shape, p) {
       let dispFnsFlat = null, zonesFlat = null;
       if (logos.length > 0) { const idT = q => q; dispFnsFlat = buildCombinedLogoDispFns(idT); zonesFlat = computeLogoZonesByAxis(idT); }
       const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2);
-      tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, Math.max(8, (p.filletSeg||4)*2), p.filletSeg||4, dispFnsFlat, zonesFlat, logoResolution);
+      tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, asymAxisRes(p), p.filletSeg||4, dispFnsFlat, zonesFlat, logoResolution);
     } else {
       tris = genRoundedBox(p.width, p.height, p.depth, rTop, p.segW, p.segH, p.segD, p.filletSeg||4);
     }

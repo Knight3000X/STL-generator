@@ -78,4 +78,26 @@ console.log('\n=== sub-slider fillets snap to sharp (no fragile sliver) ===');
   check('tiny inner vert snapped, watertight', !hasNaN(tris) && mc.watertight, mc);
 }
 
+console.log('\n=== filletAxisRes: axial grid density decoupled from filletSeg ===');
+{
+  // 0 = auto (old coupling: 2×filletSeg floored at 8). A solid asym box (mixed groups → asym builder).
+  base({ filletTop:12, filletBottom:6, filletVert:9, filletSeg:5, filletAxisRes:0 });
+  const auto = buildTrisForShape('box', paramState.box);
+  check('asym filletAxisRes=0 (auto): watertight', !hasNaN(auto) && manifoldCheck(auto,5).watertight, manifoldCheck(auto,5));
+  // A high explicit axial density adds triangles (finer flat spans) while filletSeg is unchanged.
+  base({ filletTop:12, filletBottom:6, filletVert:9, filletSeg:5, filletAxisRes:30 });
+  const dense = buildTrisForShape('box', paramState.box);
+  check('asym filletAxisRes=30: watertight', !hasNaN(dense) && manifoldCheck(dense,5).watertight, manifoldCheck(dense,5));
+  check('higher axial density adds triangles (decoupled from filletSeg)', dense.length > auto.length, {auto:auto.length, dense:dense.length});
+  // A low explicit density is coarser than auto, proving the override really drives the grid (not filletSeg).
+  base({ filletTop:12, filletBottom:6, filletVert:9, filletSeg:5, filletAxisRes:2 });
+  const coarse = buildTrisForShape('box', paramState.box);
+  check('asym filletAxisRes=2: watertight', !hasNaN(coarse) && manifoldCheck(coarse,5).watertight, manifoldCheck(coarse,5));
+  check('low axial density is coarser than auto', coarse.length < auto.length, {auto:auto.length, coarse:coarse.length});
+  // Same control on the rounded HOLLOW path.
+  base({ hollow:true, wallThickness:4, filletTop:8, filletBottom:8, filletVert:8, filletInnerFloor:6, filletInnerVert:6, filletInnerLip:4, filletSeg:5, filletAxisRes:24 });
+  const hollowDense = buildTrisForShape('box', paramState.box);
+  check('rounded hollow + high axial density: watertight', !hasNaN(hollowDense) && manifoldCheck(hollowDense,5).watertight, manifoldCheck(hollowDense,5));
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

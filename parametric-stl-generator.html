@@ -251,6 +251,37 @@
   }
 
   /* ---------- logo / relief cards ---------- */
+  #btn-add-model{
+    width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
+    border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
+    cursor:pointer; margin-bottom:10px;
+  }
+  #btn-add-model:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-model:disabled{ opacity:0.4; cursor:not-allowed; }
+  .model-card{
+    border:1px solid var(--ink-soft);
+    border-radius:2px;
+    background:rgba(255,255,255,0.4);
+    padding:8px 9px;
+    margin-bottom:8px;
+    cursor:pointer;
+  }
+  .model-card.active{
+    border:1.5px solid var(--redline);
+    background:rgba(255,255,255,0.7);
+  }
+  .model-card-head{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .model-name{
+    flex:1; min-width:0; padding:5px 6px; border:1.5px solid var(--ink-soft); border-radius:2px;
+    background:#fff; font-family:'IBM Plex Sans', sans-serif; font-size:12.5px; font-weight:600; color:var(--ink);
+  }
+  .btn-model{
+    flex:0 0 auto; width:26px; height:26px; border:1.5px solid var(--ink-soft); border-radius:2px;
+    background:transparent; color:var(--ink-soft); font-size:13px; line-height:1; cursor:pointer;
+  }
+  .btn-model:hover{ border-color:var(--ink); color:var(--ink); }
+  .btn-model:disabled{ opacity:0.35; cursor:not-allowed; }
+  .model-vis-row{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); cursor:pointer; }
   #btn-add-logo{
     width:100%;
     padding:9px 0;
@@ -438,6 +469,11 @@
       <div id="apply-hint">Правки параметров и логотипов применяются к модели только по этой кнопке. Поворот — сразу.</div>
     </div>
 
+    <div class="section-label">Модели (сборка)</div>
+    <div id="model-cards"></div>
+    <button id="btn-add-model">+ Добавить модель</button>
+    <div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div>
+
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
     <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола: у сплошного — «Детализация (сплошной куб)», у полого/борта — «Детализация (полый контейнер)».</div></div>
@@ -455,6 +491,20 @@
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
       <div id="logo-cards"></div>
       <div class="export-note" id="logo-note">До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. У сплошного куба сетка сгущается зонально вокруг каждого логотипа, а не по всей грани, поэтому её детализацию можно поднимать высоко без взрыва числа треугольников. У полого контейнера и у борта/лотка зональной сетки пока нет — детализация там задаёт плотность сразу всей оболочки/полости (общая настройка «Детализация (полый контейнер)» на оба режима), поэтому её предел ниже и своя настройка отдельно от сплошного куба. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+    </div>
+
+    <div class="section-label">Позиция модели (в сборке)</div>
+    <div class="param-row">
+      <label class="param-label">Смещение X</label>
+      <div class="num-field"><input type="number" class="param-number" id="px" step="1" value="0"><span class="num-unit">мм</span></div>
+    </div>
+    <div class="param-row">
+      <label class="param-label">Смещение Y</label>
+      <div class="num-field"><input type="number" class="param-number" id="py" step="1" value="0"><span class="num-unit">мм</span></div>
+    </div>
+    <div class="param-row">
+      <label class="param-label">Смещение Z</label>
+      <div class="num-field"><input type="number" class="param-number" id="pz" step="1" value="0"><span class="num-unit">мм</span></div>
     </div>
 
     <div class="section-label">Поворот (для печати)</div>
@@ -485,7 +535,8 @@
 
     <div class="section-label">Сводка</div>
     <div class="stats-box">
-      <div class="stats-row"><span class="k">Треугольники</span><span class="v mono" id="stat-tris">—</span></div>
+      <div class="stats-row"><span class="k">Треугольники (активная)</span><span class="v mono" id="stat-tris">—</span></div>
+      <div class="stats-row"><span class="k">Треугольники (экспорт)</span><span class="v mono" id="stat-tris-total">—</span></div>
       <div class="stats-row"><span class="k">Вершины</span><span class="v mono" id="stat-verts">—</span></div>
       <div class="stats-row"><span class="k">Габариты (Ш×В×Г)</span><span class="v mono" id="stat-size">—</span></div>
       <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
@@ -2174,6 +2225,165 @@ for (const shape in SHAPE_PARAMS) {
   for (const p of SHAPE_PARAMS[shape]) paramState[shape][p.key] = p.default;
 }
 const transformState = { rx:0, ry:0, rz:0 };
+const positionState = { px:0, py:0, pz:0 };
+
+/* =========================================================
+   MULTI-MODEL: the app can hold several independent models ("сборка"). The GLOBALS above
+   (paramState.box, logos, transformState, positionState, cachedRawTris/currentTris) always hold
+   the ACTIVE model's live state — every existing code path keeps operating on them unchanged.
+   Each model record is a snapshot of those globals plus its own scene mesh; switching models is
+   save-globals-into-record / load-record-into-globals. Export merges every VISIBLE model
+   (rotate + translate its cached raw tris) into one STL.
+   ========================================================= */
+const models = []; // {id, name, params, logos, rx,ry,rz, px,py,pz, visible, color, rawTris, bbox}
+let activeModelId = null;
+let nextModelId = 1;
+const MAX_MODELS = 12;
+function deepCopyParams(o){ return JSON.parse(JSON.stringify(o)); }
+function defaultBoxParams(){ const o = {}; for (const p of SHAPE_PARAMS.box) o[p.key] = p.default; return o; }
+function getModel(id){ return models.find(m => m.id === id) || null; }
+function getActiveModel(){ return getModel(activeModelId); }
+function makeModelRecord(name, params){
+  return { id: nextModelId++, name, params: params || deepCopyParams(paramState.box),
+    logos: [], rx:0, ry:0, rz:0, px:0, py:0, pz:0, visible: true, color:'#b9c5cd',
+    rawTris: [], bbox: null };
+}
+// Copy the ACTIVE globals into the active record (before switching away / exporting).
+function saveActiveModel(){
+  const m = getActiveModel(); if (!m) return;
+  m.params = deepCopyParams(paramState.box);
+  m.logos = logos.slice();          // logo objects move with the model; heightmaps shared by ref
+  m.rx = transformState.rx; m.ry = transformState.ry; m.rz = transformState.rz;
+  m.px = positionState.px; m.py = positionState.py; m.pz = positionState.pz;
+  m.rawTris = cachedRawTris;
+}
+// Load a record into the ACTIVE globals + refresh every panel. Cheap: geometry comes from the
+// record's cached rawTris (rotate-only), no buildTrisForShape run.
+function loadModel(m){
+  activeModelId = m.id;
+  Object.assign(paramState.box, deepCopyParams(m.params));
+  logos.length = 0; for (const l of m.logos) logos.push(l);
+  transformState.rx = m.rx; transformState.ry = m.ry; transformState.rz = m.rz;
+  positionState.px = m.px; positionState.py = m.py; positionState.pz = m.pz;
+  cachedRawTris = m.rawTris || [];
+  if (scene3DReady) { mesh = ensureModelMesh(m); applyMeshTransform(); }
+  refreshActiveModelUI();
+  renderLogoCards();
+  renderModelCards();
+  applyRotationOnly();
+}
+function activateModel(id){
+  if (id === activeModelId) return;
+  const target = getModel(id); if (!target) return;
+  if (pendingChanges) applyPendingNow(); // commit staged edits to the OUTGOING model first
+  saveActiveModel();
+  loadModel(target);
+}
+function addModel(){
+  if (models.length >= MAX_MODELS) return;
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const rec = makeModelRecord('Модель ' + nextModelId, defaultBoxParams());
+  let right = -Infinity; // place the newcomer to the right of everything already in the scene
+  for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
+  rec.px = (right === -Infinity) ? 0 : Math.round(right + (rec.params.width || 40)/2 + 10);
+  models.push(rec);
+  loadModel(rec);
+  regenerate();          // fresh record has no cached tris — build it now
+  renderModelCards();
+  if (scene3DReady) frameCamera(sceneUnionBBox());
+}
+function duplicateModel(id){
+  if (models.length >= MAX_MODELS) return;
+  if (id === activeModelId) { if (pendingChanges) applyPendingNow(); saveActiveModel(); }
+  const src = getModel(id); if (!src) return;
+  const rec = makeModelRecord(src.name + ' (копия)', deepCopyParams(src.params));
+  rec.logos = src.logos.map(l => Object.assign({}, l, { id: nextLogoId++ }));
+  rec.rx = src.rx; rec.ry = src.ry; rec.rz = src.rz;
+  rec.py = src.py; rec.pz = src.pz;
+  rec.px = src.px + (src.bbox ? (src.bbox.maxX - src.bbox.minX) : (src.params.width || 40)) + 10;
+  rec.color = src.color;
+  rec.rawTris = src.rawTris; rec.bbox = src.bbox; // shared refs are safe: rebuilt arrays REPLACE, never mutate
+  models.push(rec);
+  if (scene3DReady) { ensureModelMesh(rec); frameCamera(sceneUnionBBox()); }
+  renderModelCards();
+  updateExportTotal();
+}
+function deleteModel(id){
+  if (models.length <= 1) return; // there is always at least one model
+  const idx = models.findIndex(m => m.id === id);
+  if (idx < 0) return;
+  models.splice(idx, 1);
+  const mm = modelMeshes.get(id);
+  if (mm) { if (typeof scene !== 'undefined' && scene) scene.remove(mm);
+    if (mm.geometry) mm.geometry.dispose(); if (mm.material) mm.material.dispose(); modelMeshes.delete(id); }
+  if (id === activeModelId) {
+    pendingChanges = false; updateApplyButton(); // staged edits belonged to the deleted model
+    loadModel(models[Math.min(idx, models.length - 1)]);
+  } else { renderModelCards(); updateExportTotal(); }
+}
+function setModelVisible(id, vis){
+  const m = getModel(id); if (!m) return;
+  m.visible = vis;
+  const mm = modelMeshes.get(id); if (mm) mm.visible = vis;
+  updateExportTotal();
+  if (scene3DReady) gridHelper.position.y = sceneFloorY(0) - 0.01;
+}
+// Every VISIBLE model, rotated + translated into assembly space — the exported STL.
+function mergedExportTris(){
+  saveActiveModel();
+  const out = [];
+  for (const m of models){
+    if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
+    const rot = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
+    if (m.px || m.py || m.pz)
+      for (const t of rot) out.push([[t[0][0]+m.px, t[0][1]+m.py, t[0][2]+m.pz],
+                                     [t[1][0]+m.px, t[1][1]+m.py, t[1][2]+m.pz],
+                                     [t[2][0]+m.px, t[2][1]+m.py, t[2][2]+m.pz]]);
+    else for (const t of rot) out.push(t);
+  }
+  return out;
+}
+function translateBBox(b, p){
+  return { minX:b.minX+p.px, maxX:b.maxX+p.px, minY:b.minY+p.py, maxY:b.maxY+p.py, minZ:b.minZ+p.pz, maxZ:b.maxZ+p.pz };
+}
+function sceneFloorY(fallback){
+  let y = Infinity;
+  for (const m of models) if (m.visible && m.bbox) y = Math.min(y, m.bbox.minY + m.py);
+  return y === Infinity ? fallback : y;
+}
+function sceneUnionBBox(){
+  let u = null;
+  for (const m of models){
+    if (!m.visible || !m.bbox) continue;
+    const b = translateBBox(m.bbox, {px:m.px, py:m.py, pz:m.pz});
+    if (!u) u = {minX:b.minX, maxX:b.maxX, minY:b.minY, maxY:b.maxY, minZ:b.minZ, maxZ:b.maxZ};
+    else { u.minX=Math.min(u.minX,b.minX); u.maxX=Math.max(u.maxX,b.maxX);
+           u.minY=Math.min(u.minY,b.minY); u.maxY=Math.max(u.maxY,b.maxY);
+           u.minZ=Math.min(u.minZ,b.minZ); u.maxZ=Math.max(u.maxZ,b.maxZ); }
+  }
+  return u || computeBBox(currentTris);
+}
+function updateExportTotal(){
+  let n = 0;
+  for (const m of models){ if (!m.visible) continue;
+    n += (m.id === activeModelId) ? currentTris.length : (m.rawTris ? m.rawTris.length : 0); }
+  const el = document.getElementById('stat-tris-total'); if (el) el.textContent = n;
+}
+// Push the ACTIVE globals back into the panel inputs (after a model switch).
+function refreshActiveModelUI(){
+  document.querySelectorAll('input[data-key]').forEach(inp => {
+    const shape = inp.dataset.shape || 'box', key = inp.dataset.key;
+    if (!paramState[shape] || paramState[shape][key] === undefined) return;
+    if (inp.type === 'checkbox') inp.checked = !!paramState[shape][key];
+    else inp.value = paramState[shape][key];
+  });
+  ['rx','ry','rz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = transformState[a]; });
+  ['px','py','pz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = positionState[a]; });
+  const m = getActiveModel(), cp = document.getElementById('color-picker');
+  if (m && cp) cp.value = m.color;
+}
+
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
 let logoResolution = 50;
@@ -2981,6 +3191,21 @@ function attachEventListeners() {
     });
   });
 
+  ['px','py','pz'].forEach(axis => {
+    const el = document.getElementById(axis);
+    const apply = (val) => { positionState[axis] = val; applyPositionOnly(); };
+    el.addEventListener('input', () => {
+      const val = parseFloat(el.value);
+      if (!Number.isNaN(val)) apply(val);
+    });
+    el.addEventListener('change', () => {
+      let val = parseFloat(el.value);
+      if (Number.isNaN(val)) val = 0;
+      el.value = val;
+      apply(val);
+    });
+  });
+
   document.getElementById('shade-flat').addEventListener('click', () => setShading(false));
   document.getElementById('shade-smooth').addEventListener('click', () => setShading(true));
 
@@ -2999,7 +3224,10 @@ function attachEventListeners() {
     dimLines.visible = dimsVisible;
     for (const k in dimLabelEls) dimLabelEls[k].style.display = dimsVisible ? '' : 'none';
   });
-  document.getElementById('color-picker').addEventListener('input', (e) => { if (scene3DReady) mesh.material.color.set(e.target.value); });
+  document.getElementById('color-picker').addEventListener('input', (e) => {
+    const m = getActiveModel(); if (m) m.color = e.target.value;
+    if (scene3DReady && mesh) mesh.material.color.set(e.target.value);
+  });
 
   document.getElementById('btn-export').addEventListener('click', () => {
     // Export commits any staged parameter/logo edits first, so the file always matches the
@@ -3007,13 +3235,14 @@ function attachEventListeners() {
     if (pendingChanges) applyPendingNow();
     const nameRaw = document.getElementById('filename').value.trim() || 'model';
     const format = document.getElementById('export-format').value;
-    const blob = format === 'ascii' ? trisToAsciiSTL(currentTris, nameRaw) : trisToBinarySTL(currentTris);
+    const exportTris = mergedExportTris(); // every visible model, rotated + placed
+    const blob = format === 'ascii' ? trisToAsciiSTL(exportTris, nameRaw) : trisToBinarySTL(exportTris);
     downloadBlob(blob, nameRaw.replace(/\.stl$/i,'') + '.stl');
   });
 
   document.getElementById('btn-reset-view').addEventListener('click', () => {
     // Pure camera reset — does NOT apply staged edits (that's the Подтвердить button's job).
-    if (scene3DReady) frameCamera(computeBBox(currentTris));
+    if (scene3DReady) frameCamera(sceneUnionBBox());
   });
 
   document.getElementById('btn-apply').addEventListener('click', () => { if (pendingChanges) applyPending(); });
@@ -3023,6 +3252,54 @@ function attachEventListeners() {
 const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};
 const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'] };
 const ALL_FACES = ['+Z','+X','-X','+Y','-Y','-Y-inner','-Z'];
+
+function escapeHtml(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function renderModelCards() {
+  const container = document.getElementById('model-cards');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const m of models) {
+    const card = document.createElement('div');
+    card.className = 'model-card' + (m.id === activeModelId ? ' active' : '');
+    card.dataset.modelId = m.id;
+    const triCount = (m.id === activeModelId) ? currentTris.length : (m.rawTris ? m.rawTris.length : 0);
+    card.innerHTML =
+      '<div class="model-card-head">'+
+        '<input class="model-name" data-field="name" value="'+escapeHtml(m.name)+'" spellcheck="false">'+
+        '<button class="btn-model" data-action="dup" title="Дублировать">⧉</button>'+
+        '<button class="btn-model" data-action="del" title="Удалить" '+(models.length <= 1 ? 'disabled' : '')+'>✕</button>'+
+      '</div>'+
+      '<label class="model-vis-row"><input type="checkbox" data-field="visible" '+(m.visible ? 'checked' : '')+'> в сцене и в STL · <span class="mono">'+triCount+'</span> треуг.</label>';
+    container.appendChild(card);
+  }
+  const btn = document.getElementById('btn-add-model');
+  if (btn) btn.disabled = models.length >= MAX_MODELS;
+}
+function attachModelEventListeners() {
+  document.getElementById('btn-add-model').addEventListener('click', addModel);
+  const container = document.getElementById('model-cards');
+  container.addEventListener('click', (e) => {
+    const card = e.target.closest('.model-card');
+    if (!card) return;
+    const id = Number(card.dataset.modelId);
+    const action = e.target.dataset.action;
+    if (action === 'dup') { duplicateModel(id); return; }
+    if (action === 'del') { deleteModel(id); return; }
+    if (e.target.tagName === 'INPUT') return; // name / visibility have their own handlers
+    activateModel(id);
+  });
+  container.addEventListener('input', (e) => {
+    if (e.target.dataset.field !== 'name') return;
+    const card = e.target.closest('.model-card'); if (!card) return;
+    const m = getModel(Number(card.dataset.modelId));
+    if (m) m.name = e.target.value; // no re-render mid-typing (keeps focus)
+  });
+  container.addEventListener('change', (e) => {
+    if (e.target.dataset.field !== 'visible') return;
+    const card = e.target.closest('.model-card'); if (!card) return;
+    setModelVisible(Number(card.dataset.modelId), e.target.checked);
+  });
+}
 
 function renderLogoCards() {
   const container = document.getElementById('logo-cards');
@@ -3151,8 +3428,8 @@ function attachLogoEventListeners() {
 
 function setShading(smooth) {
   if (!scene3DReady) return;
-  mesh.material.flatShading = smooth ? false : true;
-  mesh.material.needsUpdate = true;
+  smoothShading = smooth;
+  for (const mm of modelMeshes.values()) { mm.material.flatShading = !smooth; mm.material.needsUpdate = true; }
   document.getElementById('shade-flat').classList.toggle('active', !smooth);
   document.getElementById('shade-smooth').classList.toggle('active', smooth);
 }
@@ -3162,13 +3439,15 @@ function switchShape(shapeKey) {
   document.querySelectorAll('.param-group').forEach(g => g.style.display = (g.dataset.shape === shapeKey) ? '' : 'none');
   document.getElementById('active-shape-name').textContent = SHAPE_LABELS[shapeKey];
   regenerate();
-  if (scene3DReady) frameCamera(computeBBox(currentTris));
+  if (scene3DReady) frameCamera(sceneUnionBBox());
 }
 
 /* =========================================================
    THREE.JS SCENE / CUSTOM ORBIT CONTROLS
    ========================================================= */
 let scene, camera, renderer, mesh, wireMesh, gridHelper, controls;
+const modelMeshes = new Map(); // model id -> THREE.Mesh (global `mesh` always points at the ACTIVE one)
+let smoothShading = false;
 let dimLines, dimAnchors = {}, dimLabelEls = {};
 let currentShape = 'box';
 let currentTris = [];
@@ -3330,8 +3609,56 @@ function computeGeometry() {
   const tris = rotateTris(raw, transformState.rx, transformState.ry, transformState.rz);
   currentTris = tris;
   const bbox = computeBBox(tris);
+  const am = getActiveModel();
+  if (am) { am.rawTris = raw; am.bbox = bbox; }
   updateStatsPanel(tris, bbox);
+  updateExportTotal();
+  renderModelCards(); // keep per-card triangle counts fresh
   return bbox;
+}
+
+function setMeshTrisGeometry(threeMesh, tris) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(trisToPositions(tris), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(computeWeldedNormals(tris), 3));
+  if (threeMesh.geometry) threeMesh.geometry.dispose();
+  threeMesh.geometry = geo;
+}
+// One THREE.Mesh per model, each with its own material (per-model colour). Inactive models keep
+// showing their last-built geometry; only the ACTIVE one is rebuilt by updateScene3D.
+function ensureModelMesh(m) {
+  if (typeof scene === 'undefined' || !scene) return null;
+  let mm = modelMeshes.get(m.id);
+  if (mm) return mm;
+  const material = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(m.color || '#b9c5cd'), metalness:0.15, roughness:0.55,
+    flatShading: !smoothShading, side:THREE.DoubleSide
+  });
+  mm = new THREE.Mesh(new THREE.BufferGeometry(), material);
+  mm.position.set(m.px || 0, m.py || 0, m.pz || 0);
+  mm.visible = m.visible !== false;
+  scene.add(mm);
+  modelMeshes.set(m.id, mm);
+  if (m.rawTris && m.rawTris.length && m.id !== activeModelId)
+    setMeshTrisGeometry(mm, rotateTris(m.rawTris, m.rx, m.ry, m.rz));
+  return mm;
+}
+// The ACTIVE mesh (and its wireframe overlay) follow the live position offset.
+function applyMeshTransform() {
+  if (!mesh) return;
+  mesh.position.set(positionState.px, positionState.py, positionState.pz);
+  if (wireMesh) wireMesh.position.set(positionState.px, positionState.py, positionState.pz);
+}
+// Live position change: no geometry work at all — move the mesh, refresh grid/dims/export count.
+function applyPositionOnly() {
+  const am = getActiveModel();
+  if (am) { am.px = positionState.px; am.py = positionState.py; am.pz = positionState.pz; }
+  if (!scene3DReady) return;
+  applyMeshTransform();
+  const bbox = (am && am.bbox) ? am.bbox : computeBBox(currentTris);
+  const bboxT = translateBBox(bbox, positionState);
+  gridHelper.position.y = sceneFloorY(bboxT.minY) - 0.01;
+  updateDimensionOverlay(bboxT);
 }
 
 function updateScene3D(tris, bbox) {
@@ -3353,11 +3680,13 @@ function updateScene3D(tris, bbox) {
     wireGeoDirty = true;
   }
 
-  gridHelper.position.y = bbox.minY - 0.01;
+  applyMeshTransform();
+  const bboxT = translateBBox(bbox, positionState);
+  gridHelper.position.y = sceneFloorY(bboxT.minY) - 0.01;
   const maxDim = Math.max(bbox.maxX-bbox.minX, bbox.maxY-bbox.minY, bbox.maxZ-bbox.minZ, 1e-6);
   const gridScale = (maxDim*3) / 500;
   gridHelper.scale.set(gridScale, 1, gridScale);
-  updateDimensionOverlay(bbox);
+  updateDimensionOverlay(bboxT);
 }
 
 function regenerate() {
@@ -3413,7 +3742,10 @@ function applyRotationOnly() {
   const tris = rotateTris(cachedRawTris, transformState.rx, transformState.ry, transformState.rz);
   currentTris = tris;
   const bbox = computeBBox(tris);
+  const am = getActiveModel();
+  if (am) { am.rx = transformState.rx; am.ry = transformState.ry; am.rz = transformState.rz; am.bbox = bbox; }
   updateStatsPanel(tris, bbox);
+  updateExportTotal();
   if (scene3DReady) updateScene3D(tris, bbox);
 }
 function rotateOnlySoon() {
@@ -3525,6 +3857,10 @@ function init() {
   buildAllParamUI();
   attachEventListeners();
   attachLogoEventListeners();
+  attachModelEventListeners();
+  models.push(makeModelRecord('Модель 1', defaultBoxParams()));
+  activeModelId = models[0].id;
+  renderModelCards();
   switchShape('box'); // computes geometry + stats; 3D update inside is a no-op until scene3DReady
 
   if (typeof THREE === 'undefined') {
@@ -3583,11 +3919,8 @@ function initScene3D() {
   gridHelper.material.opacity = 0.35;
   scene.add(gridHelper);
 
-  const material = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#b9c5cd'), metalness:0.15, roughness:0.55, flatShading:true, side:THREE.DoubleSide
-  });
-  mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
-  scene.add(mesh);
+  for (const m of models) ensureModelMesh(m);
+  mesh = modelMeshes.get(activeModelId) || null;
 
   wireMesh = new THREE.LineSegments(
     new THREE.BufferGeometry(),

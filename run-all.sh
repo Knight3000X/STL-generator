@@ -73,6 +73,8 @@ cat stub_preamble.js "$LIB_STUBBED" test_debounce_flow.js > "$TMP/run_deb.js"
 run test_debounce_flow.js "$TMP/run_deb.js"
 cat stub_preamble.js "$LIB_STUBBED" test_apply_button.js > "$TMP/run_apply.js"
 run test_apply_button.js "$TMP/run_apply.js"
+cat stub_preamble.js "$LIB_STUBBED" test_multi_model.js > "$TMP/run_mm.js"
+run test_multi_model.js "$TMP/run_mm.js"
 
 # 12-radius asym primitive tests: run against asym-12-radius.js (the source the
 # in-page buildAsymRoundedBox was ported from).

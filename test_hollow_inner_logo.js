@@ -75,5 +75,37 @@ const trisExtreme = buildTrisForShape('box', paramState.box);
 check('extreme wall thickness: no NaN', !hasNaN(trisExtreme));
 check('extreme wall thickness: watertight', manifoldCheck(trisExtreme,4).watertight, manifoldCheck(trisExtreme,4));
 
+// ---- Zonal wall-logo grid on the FLAT hollow / rim (fine only under the logo) ----
+console.log('\n=== flat hollow / rim: zonal wall-logo grid (cost tracks the footprint) ===');
+function baseHollow(ov){
+  Object.assign(paramState.box, { width:80, height:50, depth:60, hollow:false, rim:false, wallThickness:4, rimHeight:10,
+    filletRadius:0,filletTop:0,filletBottom:0,filletVert:0,filletInnerFloor:0,filletInnerVert:0,filletInnerLip:0,
+    squircle:0,squircleVTop:0,squircleVBot:0, latticeFloor:false,
+    bulgeXPlus:0,bulgeXMinus:0,bulgeZPlus:0,bulgeZMinus:0,bulgeYPlus:0,bulgeYMinus:0,
+    taperXPlus:0,taperXMinus:0,taperZPlus:0,taperZMinus:0,taperYPlusX:0,taperYPlusZ:0,taperYMinusX:0,taperYMinusZ:0 }, ov);
+  logos.length = 0;
+}
+function addWallLogo(ov){ logos.push(Object.assign({ id:nextLogoId++, face:'+Z', u0:0, v0:0, w:12, h:12, depth:1.5, threshold:0.5, invert:false, rotation:0, heightmap: makeSolidHeightmap(), previewUrl:'' }, ov)); for(const l of logos) clampLogoToFace(l); }
+const saveLR = logoResolution, saveLRH = logoResolutionHollow;
+logoResolutionHollow = 200; // crank detail high: the zonal grid must keep the shell cheap
+// A logo'd shell densifies ONLY its footprint (coarse base + local zone), so it costs FAR less than the
+// uniform no-logo shell at the same high detail — that gap is the whole point of the zonal grid.
+baseHollow({hollow:true}); addWallLogo({face:'+Z', w:12, h:12}); const logoH = buildTrisForShape('box', paramState.box);
+baseHollow({hollow:true}); const plainH = buildTrisForShape('box', paramState.box); // no logo → uniform dense
+check('flat hollow wall logo: watertight', manifoldCheck(logoH,4).watertight, manifoldCheck(logoH,4));
+check('flat hollow: zonal logo shell far cheaper than the uniform shell at the same detail', logoH.length < plainH.length*0.6, {zonal:logoH.length, uniform:plainH.length});
+// logo hard against a vertical edge (its zone spills into the top-rim corner band) must stay watertight
+baseHollow({hollow:true}); addWallLogo({face:'+Z', u0:34, v0:20, w:10, h:10}); const cornerH = buildTrisForShape('box', paramState.box);
+check('flat hollow corner logo: watertight (rim corner band aligned)', manifoldCheck(cornerH,4).watertight, manifoldCheck(cornerH,4));
+// bulge + logo together (merged full-span bulge + local logo zones) stays watertight
+baseHollow({hollow:true, bulgeXPlus:6}); addWallLogo({face:'+X', w:14, h:14}); const bulgeH = buildTrisForShape('box', paramState.box);
+check('flat hollow bulge + wall logo: watertight', manifoldCheck(bulgeH,4).watertight, manifoldCheck(bulgeH,4));
+// rim / tray wall logo: zonal + watertight
+baseHollow({rim:true, rimHeight:12}); addWallLogo({face:'+Z', w:12, h:12}); const logoR = buildTrisForShape('box', paramState.box);
+baseHollow({rim:true, rimHeight:12}); const plainR = buildTrisForShape('box', paramState.box);
+check('flat tray wall logo: watertight', manifoldCheck(logoR,4).watertight, manifoldCheck(logoR,4));
+check('flat tray: zonal logo shell far cheaper than the uniform shell at the same detail', logoR.length < plainR.length*0.6, {zonal:logoR.length, uniform:plainR.length});
+logoResolution = saveLR; logoResolutionHollow = saveLRH;
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail > 0 ? 1 : 0);

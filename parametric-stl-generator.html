@@ -1704,7 +1704,7 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   }
 }
 
-function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace) {
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace, zonesByAxis, logoRes) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const res = Math.max(1, resolution||1);
@@ -1721,9 +1721,25 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   const cav = (amp,uLo,uHi,vLo,vHi)=> amp ? makeRectDome(-amp,uLo,uHi,vLo,vHi) : null;
   const addDisp=(a,b)=>(a&&b)?((u,v,p)=>(a(u,v,p)||0)+(b(u,v,p)||0)):(a||b);
 
-  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
-  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
-  const yPositions = buildAxisPositions(hh, [], res);
+  // Zonal grid for wall logos: a COARSE flat shell (a flat/tapered wall is planar, so a few cells
+  // reproduce it exactly) with fine subdivisions added ONLY inside each logo's footprint — the same
+  // coarse-outside / fine-under-logo tradeoff the solid box uses, so a crisp logo no longer forces a
+  // dense WHOLE shell. Skipped for the lattice floor (its net grid needs the uniform density) and when
+  // there are no zones (plain / bulge-only shell keeps its uniform grid). Bulge passes full-span zones,
+  // so the dome still gets a full-face grid. zonesByAxis are in flat (pre-taper) axis space, matching the
+  // position arrays; taper is applied per-vertex afterwards.
+  const zonal = !lat && zonesByAxis;
+  const baseRes = zonal ? Math.min(res, 4) : res;
+  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], baseRes);
+  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], baseRes);
+  const yPositions = buildAxisPositions(hh, [], baseRes);
+  if (zonal) {
+    const lr = Math.max(1, logoRes||res);
+    addLogoZonesToAxis(xPositions, hw, zonesByAxis[0], lr);
+    addLogoZonesToAxis(yPositions, hh, zonesByAxis[1], lr);
+    addLogoZonesToAxis(zPositions, hd, zonesByAxis[2], lr);
+    xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
+  }
 
   // NOTE: concat, not push(...array) — spreading a large face's triangles as individual
   // push() arguments blows the call stack once a face gets big enough (confirmed crash
@@ -1747,14 +1763,18 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
   if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], addDisp(dfn['-Y-inner'], cav(bx['-Y'],xLo,xHi,zLo,zHi)), tf));
 
-  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), hd-t,hd, [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, hw-t,hw, hd-t,hd, [0,1,0], tf);
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [-hd,-(hd-t)], [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [hd-t,hd], [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [-hw,-(hw-t)], zMid, [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [hw-t,hw], zMid, [0,1,0], null, tf));
+  // Top rim (y=hh): the annulus between the outer top edge and the cavity opening, tiled as a 3×3
+  // grid of position bands (minus the centre = the opening). Using the ACTUAL banded slices of
+  // xPositions/zPositions (not fixed 2-point corners) keeps every rim vertex aligned with the walls'
+  // top edges even after zonal densification adds interior points in a corner band — otherwise those
+  // extra wall-edge points would T-junction against a single-quad corner.
+  const xLoB = midSlice(xPositions, -hw, -(hw-t)), xHiB = midSlice(xPositions, hw-t, hw);
+  const zLoB = midSlice(zPositions, -hd, -(hd-t)), zHiB = midSlice(zPositions, hd-t, hd);
+  const xBands = [xLoB, xMid, xHiB], zBands = [zLoB, zMid, zHiB];
+  for (let bi=0; bi<3; bi++) for (let bj=0; bj<3; bj++) {
+    if (bi===1 && bj===1) continue; // the cavity opening
+    tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xBands[bi], zBands[bj], [0,1,0], null, tf));
+  }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
   if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf);
@@ -1770,7 +1790,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
 // flat) — only the pocket (floor + 4 short walls) and the rim frame connecting the pocket's
 // top edge to the outer top edge are new pieces, built the same "shared position array"
 // way as buildHollowBox's cavity+opening so every seam matches exactly.
-function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsByFace, taperFn) {
+function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsByFace, taperFn, zonesByAxis, logoRes) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const rh = clampRimHeight(h, rimHeight);
@@ -1779,9 +1799,20 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
 
-  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], res);
-  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], res);
-  const yPositions = buildAxisPositions(hh, [], res);
+  // Zonal grid for wall logos: coarse flat shell + fine subdivisions only under each logo (see
+  // buildHollowBox). Bulge passes full-span zones so its dome still gets a full-face grid.
+  const zonal = !!zonesByAxis;
+  const baseRes = zonal ? Math.min(res, 4) : res;
+  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], baseRes);
+  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], baseRes);
+  const yPositions = buildAxisPositions(hh, [], baseRes);
+  if (zonal) {
+    const lr = Math.max(1, logoRes||res);
+    addLogoZonesToAxis(xPositions, hw, zonesByAxis[0], lr);
+    addLogoZonesToAxis(yPositions, hh, zonesByAxis[1], lr);
+    addLogoZonesToAxis(zPositions, hd, zonesByAxis[2], lr);
+    xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
+  }
 
   // Solid outer shell: full-height sides + bottom, exactly like a plain solid box's faces.
   tris = tris.concat(buildFaceFromPositionsTapered(0,2,1,-hh, xPositions, zPositions, [0,-1,0], dfn['-Y'], tf));
@@ -1802,16 +1833,16 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, pocketYPositions, [0,0,-1], null, tf));
   tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh-rh, xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
 
-  // Rim frame at y=hh: flat annular border from the outer top edge to the pocket's top edge
-  // — the visible "top of the wall" you'd see looking straight down at the tray.
-  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), -hd,-(hd-t), [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, hw-t,hw, -hd,-(hd-t), [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, -hw,-(hw-t), hd-t,hd, [0,1,0], tf);
-  addQuad(tris, 0,2,1, hh, hw-t,hw, hd-t,hd, [0,1,0], tf);
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [-hd,-(hd-t)], [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xMid, [hd-t,hd], [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [-hw,-(hw-t)], zMid, [0,1,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, [hw-t,hw], zMid, [0,1,0], null, tf));
+  // Rim frame at y=hh: flat annular border from the outer top edge to the pocket's top edge — the
+  // visible "top of the wall" looking straight down at the tray. Tiled as a 3×3 band grid (minus the
+  // pocket opening) so zonal densification points in a corner band stay aligned with the walls.
+  const xLoB = midSlice(xPositions, -hw, -(hw-t)), xHiB = midSlice(xPositions, hw-t, hw);
+  const zLoB = midSlice(zPositions, -hd, -(hd-t)), zHiB = midSlice(zPositions, hd-t, hd);
+  const xBands = [xLoB, xMid, xHiB], zBands = [zLoB, zMid, zHiB];
+  for (let bi=0; bi<3; bi++) for (let bj=0; bj<3; bj++) {
+    if (bi===1 && bj===1) continue; // the pocket opening
+    tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xBands[bi], zBands[bj], [0,1,0], null, tf));
+  }
 
   return tris;
 }
@@ -2388,8 +2419,9 @@ function refreshActiveModelUI(){
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
 let logoResolution = 50;
-let logoResolutionHollow = 50; // separate control (max 500): buildHollowBox has no zonal grid,
-  // so this drives the density of the WHOLE shell/cavity (and lattice net grid), not just logo zones
+let logoResolutionHollow = 50; // separate control (max 500): with wall logos it now drives the ZONAL
+  // grid (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still
+  // drives the whole-shell/cavity density
 
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
@@ -2989,7 +3021,11 @@ function buildTrisForShape(shape, p) {
       // Outer walls bulge via the dispFns; the cavity walls follow via bulgeAmps (thickness preserved).
       const bAmts = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)) : null;
       const dispFns = bAmts ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, bAmts)) : logoFns;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat, bAmts||undefined);
+      // Zonal wall-logo grid (fine only under logos). Only when logos exist — a plain / bulge-only shell
+      // keeps its uniform grid. Bulge adds full-span zones so its dome still gets a full-face grid.
+      const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
+      const zones = logoZones ? (bAmts ? mergeZones(logoZones, computeWallBulgeZones(p, bAmts)) : logoZones) : null;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolutionHollow);
     }
 
     if (p.rim) {
@@ -3027,13 +3063,16 @@ function buildTrisForShape(shape, p) {
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
-      // Same non-zonal cost model as hollow (no logo-zone grid), so it reuses
-      // logoResolutionHollow rather than adding a third detail slider.
+      // Wall logos get a zonal grid (fine only under each logo), driven by logoResolutionHollow — no
+      // third detail slider. A plain / bulge-only tray keeps its uniform grid.
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
       const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
       // Flat tray is solid below the shallow pocket, so only the outer walls bulge (no cavity-follow).
-      const dispFns = hasWallBulge(p) ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)))) : logoFns;
-      return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn);
+      const bAmts = hasWallBulge(p) ? wallBulgeAmounts(p, 0.8*(Math.min(p.width,p.height,p.depth)/2 - tWf)) : null;
+      const dispFns = bAmts ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, bAmts)) : logoFns;
+      const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
+      const zones = logoZones ? (bAmts ? mergeZones(logoZones, computeWallBulgeZones(p, bAmts)) : logoZones) : null;
+      return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn, zones, logoResolutionHollow);
     }
 
     // Squircle: the horizontal cross-section becomes a superellipse (sides bow out, vertical corners

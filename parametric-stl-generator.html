@@ -200,6 +200,20 @@
     transition:background 0.12s;
   }
   #btn-export:hover{ background:var(--redline-dark); }
+  #preset-bar{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:9px; }
+  .preset-btn{
+    flex:0 0 auto;
+    padding:5px 9px;
+    background:#fff;
+    border:1.5px solid var(--ink-soft);
+    border-radius:2px;
+    color:var(--ink);
+    font-family:inherit;
+    font-size:12px;
+    cursor:pointer;
+    transition:background 0.12s, border-color 0.12s;
+  }
+  .preset-btn:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
   /* sticky "apply changes" bar — parameter edits are staged, not live, until confirmed */
   #apply-bar{
     position:sticky; top:0; z-index:6;
@@ -462,6 +476,18 @@
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
     <div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div>
+
+    <div class="section-label">Пресеты</div>
+    <div id="preset-bar" class="param-group" data-shape="box">
+      <button class="preset-btn" data-preset="plain">Сплошной</button>
+      <button class="preset-btn" data-preset="rounded">Скруглённый</button>
+      <button class="preset-btn" data-preset="squircle">Squircle</button>
+      <button class="preset-btn" data-preset="puffy">Надутый</button>
+      <button class="preset-btn" data-preset="container">Контейнер</button>
+      <button class="preset-btn" data-preset="tray">Лоток</button>
+      <button class="preset-btn" data-preset="barrel">Бочка</button>
+      <div class="export-note">Пресет задаёт скругления и режим дна/верха под типовую форму; размеры (X/Y/Z), наклон и логотипы не трогает. Дальше можно доводить параметрами вручную.</div>
+    </div>
 
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
@@ -3169,6 +3195,9 @@ function buildAllParamUI() {
 }
 
 function attachEventListeners() {
+  document.getElementById('preset-bar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset-btn'); if (btn) applyPreset(btn.dataset.preset);
+  });
   document.getElementById('panel').addEventListener('input', (e) => {
     const t = e.target;
     if (t.matches('.param-number') && t.dataset.shape) {
@@ -3848,6 +3877,33 @@ function applyPendingNow() {
   pendingChanges = false;
   updateApplyButton();
   flushPendingRegenerate();
+}
+
+// ---- Presets: one-click bundles of the corner/rounding + top/bottom-mode params, for the common shapes.
+// A preset resets only the "treatment" keys (rounding, mode, wall/rim) to their defaults and then applies
+// its overrides — dimensions (X/Y/Z), segments, taper, lattice size and the logos are deliberately left
+// alone, so a preset re-shapes the current model without discarding its size or artwork.
+const PRESET_TREATMENT_KEYS = ['filletRadius','filletTop','filletBottom','filletVert',
+  'filletInnerFloor','filletInnerVert','filletInnerLip','squircle','squircleVTop','squircleVBot',
+  'bulgeXPlus','bulgeXMinus','bulgeZPlus','bulgeZMinus','bulgeYPlus','bulgeYMinus',
+  'hollow','wallThickness','rim','rimHeight','latticeFloor'];
+const PRESETS = {
+  plain:     {},
+  rounded:   { filletRadius:6 },
+  squircle:  { squircle:45 },
+  puffy:     { squircle:45, squircleVTop:60, squircleVBot:60 },
+  container: { hollow:true, wallThickness:2, filletTop:3, filletBottom:3, filletVert:3, filletInnerFloor:2, filletInnerVert:2, filletInnerLip:2 },
+  tray:      { rim:true, rimHeight:8, filletVert:4, filletBottom:4 },
+  barrel:    { bulgeXPlus:6, bulgeXMinus:6, bulgeZPlus:6, bulgeZMinus:6 },
+};
+function applyPreset(name) {
+  const preset = PRESETS[name]; if (!preset) return;
+  const defs = {}; for (const p of SHAPE_PARAMS.box) defs[p.key] = p.default;
+  for (const k of PRESET_TREATMENT_KEYS) paramState.box[k] = defs[k]; // clear prior treatment
+  Object.assign(paramState.box, preset);                             // apply the preset bundle
+  if (logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+  refreshActiveModelUI();
+  applyPending(); // regenerate now + clear the "Подтвердить" highlight
 }
 
 

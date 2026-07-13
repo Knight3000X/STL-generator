@@ -1713,7 +1713,7 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
 // hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
 // then taperFn'd, so seams match after taper. Proven watertight in Node across
 // sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
-function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf) {
+function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded) {
   tf = tf || ((p)=>p);
   const pitch = Math.max(1e-3, cellWorld);
   const UP=[0,1,0], DN=[0,-1,0];
@@ -1747,17 +1747,40 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
       else if (c1&&c2&&!a&&!d) { solid[i][j]=true; changed=true; }
     }
   }
-  const V=(i,j,y)=>[xMid[i], y, zMid[j]];
   const S=(i,j)=> (i<0||j<0||i>=nx||j>=nz) ? true : solid[i][j]; // outside = solid (container closes it)
+  // Rounded rib profile: the TOP height is a field sampled at grid VERTICES (not per-cell insets — those
+  // would disagree on shared edges and open the mesh). A vertex touching a hole gets a small lip height;
+  // the height domes up to the full cavity floor (yt) as the vertex sits deeper inside a rib. Because the
+  // field is per-vertex, two cells sharing an edge read identical heights there → watertight. Flat profile
+  // keeps the old constant yt.
+  const H=yt-yb, domeR=Math.max(1, Math.round((rib/2)/Math.max(1e-3,cellWorld)) + 1), edgeFrac=0.18;
+  const NXv=nx+1, NZv=nz+1, INF=1e9;
+  const dist=Array.from({length:NXv},()=>new Array(NZv).fill(INF));
+  if (rounded) {
+    const q=[]; // multi-source BFS from vertices that touch a hole cell
+    for (let i=0;i<NXv;i++) for (let j=0;j<NZv;j++) {
+      const touchesHole = (i>0&&j>0&&!solid[i-1][j-1]) || (i>0&&j<nz&&!solid[i-1][j]) ||
+                          (i<nx&&j>0&&!solid[i][j-1]) || (i<nx&&j<nz&&!solid[i][j]);
+      if (touchesHole) { dist[i][j]=0; q.push([i,j]); }
+    }
+    for (let h=0; h<q.length; h++) { const [i,j]=q[h]; const dv=dist[i][j]; if (dv>=domeR) continue;
+      for (const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]) { const ni=i+di,nj=j+dj;
+        if (ni>=0&&nj>=0&&ni<NXv&&nj<NZv&&dist[ni][nj]>dv+1) { dist[ni][nj]=dv+1; q.push([ni,nj]); } }
+    }
+  }
+  const topY=(i,j)=>{ if (!rounded) return yt; const d=dist[i][j]; if (d>=domeR) return yt;
+    const n=d/domeR, f=edgeFrac+(1-edgeFrac)*Math.sqrt(1-(1-n)*(1-n)); return yb+H*f; };
+  const V=(i,j,y)=>[xMid[i], y, zMid[j]];
+  const Vt=(i,j)=>[xMid[i], topY(i,j), zMid[j]]; // top vertex on the domed field
   for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
     if (!solid[i][j]) continue;
-    quad(V(i,j,yt),V(i+1,j,yt),V(i+1,j+1,yt),V(i,j+1,yt),UP);   // cavity floor (top)
-    quad(V(i,j,yb),V(i+1,j,yb),V(i+1,j+1,yb),V(i,j+1,yb),DN);   // outer bottom (inner region)
-    // vertical rib walls where the neighbour is a hole (normal points into the hole)
-    if (!S(i-1,j)) quad(V(i,j,yt),V(i,j+1,yt),V(i,j+1,yb),V(i,j,yb),[-1,0,0]);
-    if (!S(i+1,j)) quad(V(i+1,j,yt),V(i+1,j+1,yt),V(i+1,j+1,yb),V(i+1,j,yb),[1,0,0]);
-    if (!S(i,j-1)) quad(V(i,j,yt),V(i+1,j,yt),V(i+1,j,yb),V(i,j,yb),[0,0,-1]);
-    if (!S(i,j+1)) quad(V(i,j+1,yt),V(i+1,j+1,yt),V(i+1,j+1,yb),V(i,j+1,yb),[0,0,1]);
+    quad(Vt(i,j),Vt(i+1,j),Vt(i+1,j+1),Vt(i,j+1),UP);         // cavity floor (top, domed when rounded)
+    quad(V(i,j,yb),V(i+1,j,yb),V(i+1,j+1,yb),V(i,j+1,yb),DN); // outer bottom (inner region)
+    // vertical rib walls where the neighbour is a hole (top edge follows the domed field)
+    if (!S(i-1,j)) quad(Vt(i,j),Vt(i,j+1),V(i,j+1,yb),V(i,j,yb),[-1,0,0]);
+    if (!S(i+1,j)) quad(Vt(i+1,j),Vt(i+1,j+1),V(i+1,j+1,yb),V(i+1,j,yb),[1,0,0]);
+    if (!S(i,j-1)) quad(Vt(i,j),Vt(i+1,j),V(i+1,j,yb),V(i,j,yb),[0,0,-1]);
+    if (!S(i,j+1)) quad(Vt(i,j+1),Vt(i+1,j+1),V(i+1,j+1,yb),V(i,j+1,yb),[0,0,1]);
   }
 }
 
@@ -1834,7 +1857,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
-  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf);
+  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded);
 
   return tris;
 }
@@ -2314,6 +2337,7 @@ const SHAPE_PARAMS = {
     {key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
     {key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
     {key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
+    {key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
   ],
 };
 
@@ -2675,6 +2699,7 @@ function makeLatticeOpts(p) {
     rib: Math.max(0.1, p.latticeRib||2),
     cell: Math.max(1, p.latticeCell||8),
     borderCells: Math.max(0, Math.round(p.latticeBorder||0)),
+    rounded: !!p.latticeRound,
   };
 }
 

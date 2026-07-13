@@ -102,5 +102,24 @@ const wc2=wallTriCount(2.5), wc8=wallTriCount(8), wc20=wallTriCount(20);
 chk('wall+cavity tris identical across cell (2.5 vs 8)', wc2===wc8, {wc2,wc8});
 chk('wall+cavity tris identical across cell (8 vs 20)', wc8===wc20, {wc8,wc20});
 
+console.log('=== ROUNDED rib profile: continuous domed top, still watertight ===');
+const R = {hollow:true, latticeFloor:true, latticeRound:true};
+wt('rounded 60^3 pitch10 rib2',   {...R, wallThickness:4, latticeCell:10, latticeRib:2, latticeBorder:2});
+wt('rounded 60^3 pitch8 rib1.5',  {...R, wallThickness:4, latticeCell:8, latticeRib:1.5, latticeBorder:2});
+wt('rounded fat rib pitch8 rib4', {...R, wallThickness:4, latticeCell:8, latticeRib:4, latticeBorder:2});
+wt('rounded thin rib pitch10 r1', {...R, wallThickness:4, latticeCell:10, latticeRib:1, latticeBorder:2});
+wt('rounded non-cube 80x50x60',   {...R, width:80,height:50,depth:60, wallThickness:4, latticeCell:9, latticeRib:2, latticeBorder:2});
+wt('rounded + taper',             {...R, wallThickness:4, latticeCell:8, taperXPlus:8,taperXMinus:8,taperZPlus:8,taperZMinus:8});
+wt('rounded + wall logo',         {...R, wallThickness:4, latticeCell:8}, [{face:'+X',u0:0,v0:0,w:16,h:16}]);
+wt('rounded coarse pitch20',      {...R, wallThickness:4, latticeCell:20, latticeRib:3, latticeBorder:1});
+// rounded differs from flat (the domed top adds height variation → different vertex set/tri count)
+{ base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); const flat=buildTrisForShape('box',paramState.box);
+  base({...R, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); const round=buildTrisForShape('box',paramState.box);
+  // top surface must actually dome: some floor-region vertices sit ABOVE the flat cavity-floor plane's rib edge
+  const hh=30, t=clampWallThickness(60,60,60,4), yb=-hh, yt=-(hh-t);
+  const flatMaxFloorY = Math.max(...flat.flatMap(tr=>tr.map(p=>p[1])).filter(y=>y<=yt+1e-6));
+  chk('rounded floor still watertight vs flat (both build)', flat.length>0 && round.length>0);
+  chk('rounded top domes between yb and yt', round.some(tr=>tr.some(p=>p[1]>yb+1e-3 && p[1]<yt-1e-3)), {yb,yt}); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail>0) process.exit(1);

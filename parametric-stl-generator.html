@@ -1713,7 +1713,7 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
 // hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
 // then taperFn'd, so seams match after taper. Proven watertight in Node across
 // sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
-function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded) {
+function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded, solidRects, floorFn) {
   tf = tf || ((p)=>p);
   const pitch = Math.max(1e-3, cellWorld);
   const UP=[0,1,0], DN=[0,-1,0];
@@ -1747,6 +1747,17 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
       else if (c1&&c2&&!a&&!d) { solid[i][j]=true; changed=true; }
     }
   }
+  // Floor-logo compatibility: force a SOLID patch under each cavity-floor ('-Y-inner') logo footprint, so
+  // the relief has a continuous surface (the perforated net can't carry an emboss). Adding solid is
+  // monotone (fills holes → never creates a new checkerboard), so it's safe after pinch removal, and it
+  // runs BEFORE the dome BFS so the patch reads as solid there too.
+  if (solidRects && solidRects.length) {
+    for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
+      if (solid[i][j]) continue;
+      const cx=(xMid[i]+xMid[i+1])/2, cz=(zMid[j]+zMid[j+1])/2;
+      for (const r of solidRects) if (cx>=r.x0&&cx<=r.x1&&cz>=r.z0&&cz<=r.z1) { solid[i][j]=true; break; }
+    }
+  }
   const S=(i,j)=> (i<0||j<0||i>=nx||j>=nz) ? true : solid[i][j]; // outside = solid (container closes it)
   // Rounded rib profile: the TOP height is a field sampled at grid VERTICES (not per-cell insets — those
   // would disagree on shared edges and open the mesh). A vertex touching a hole gets a small lip height;
@@ -1771,7 +1782,10 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   const topY=(i,j)=>{ if (!rounded) return yt; const d=dist[i][j]; if (d>=domeR) return yt;
     const n=d/domeR, f=edgeFrac+(1-edgeFrac)*Math.sqrt(1-(1-n)*(1-n)); return yb+H*f; };
   const V=(i,j,y)=>[xMid[i], y, zMid[j]];
-  const Vt=(i,j)=>[xMid[i], topY(i,j), zMid[j]]; // top vertex on the domed field
+  // Top vertex on the domed field, PLUS the cavity-floor logo relief (floorFn returns 0 outside the logo,
+  // so only the solid patch is embossed). Per-vertex, so shared edges agree → watertight.
+  const Vt=(i,j)=>{ const y=topY(i,j); const e=floorFn?(floorFn(xMid[i],zMid[j],[xMid[i],y,zMid[j]])||0):0;
+    return [xMid[i], y+e, zMid[j]]; };
   for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
     if (!solid[i][j]) continue;
     quad(Vt(i,j),Vt(i+1,j),Vt(i+1,j+1),Vt(i,j+1),UP);         // cavity floor (top, domed when rounded)
@@ -1857,7 +1871,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
-  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded);
+  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn);
 
   return tris;
 }
@@ -3236,10 +3250,20 @@ function buildTrisForShape(shape, p) {
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
       // Flat hollow. Optional diamond-lattice (through-hole) floor. Wall resolution stays at
-      // logoResolution (hole size is decoupled — emitLatticeFloor groups the fine grid),
-      // so lattice + wall logos keep full relief detail. Lattice can't carry relief itself, so
-      // -Y / -Y-inner logos are simply not rendered on it (wall logos are unaffected).
+      // logoResolution (hole size is decoupled — emitLatticeFloor groups the fine grid), so lattice +
+      // wall logos keep full relief detail. A cavity-floor ('-Y-inner') logo is now carried too: the net
+      // is forced SOLID under the logo's footprint and the relief embossed there (flat-space fn + solid
+      // rects; taper is applied afterwards). Outer-bottom '-Y' logos stay unsupported with the lattice.
       const lat = p.latticeFloor ? makeLatticeOpts(p) : null;
+      if (lat && logos.some(l => l.face === '-Y-inner')) {
+        const idFns = buildCombinedLogoDispFns(q => q);
+        lat.floorFn = idFns['-Y-inner'] || null;
+        lat.solidRects = [];
+        for (const l of logos) if (l.face === '-Y-inner') {
+          const ext = rotatedHalfExtents(l.w, l.h, l.rotation), mg = 1.5;
+          lat.solidRects.push({ x0:l.u0-ext.halfX-mg, x1:l.u0+ext.halfX+mg, z0:l.v0-ext.halfY-mg, z1:l.v0+ext.halfY+mg });
+        }
+      }
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
       const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
       // Outer walls bulge via the dispFns; the cavity walls follow via bulgeAmps (thickness preserved).

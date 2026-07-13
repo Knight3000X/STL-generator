@@ -69,7 +69,7 @@ console.log('=== lattice floor + WALL logos (relief on walls, holes in floor) ==
 wt('lattice + +X logo',  {...L, wallThickness:4, latticeCell:8}, [{face:'+X',u0:0,v0:0,w:16,h:16}]);
 wt('lattice + -Z logo',  {...L, wallThickness:4, latticeCell:8}, [{face:'-Z',u0:0,v0:0,w:16,h:16,depth:-1.2}]);
 wt('lattice + 2 walls',  {...L, wallThickness:4, latticeCell:8}, [{face:'+X',u0:0,v0:0,w:14,h:14},{face:'+Z',u0:0,v0:0,w:14,h:14}]);
-wt('lattice + floor logo ignored', {...L, wallThickness:4, latticeCell:8}, [{face:'-Y-inner',u0:0,v0:0,w:14,h:14}]);
+wt('lattice + cavity-floor logo (solid patch)', {...L, wallThickness:4, latticeCell:8}, [{face:'-Y-inner',u0:0,v0:0,w:14,h:14}], true);
 
 console.log('=== lattice floor + TAPER (angled walls) ===');
 wt('taper 8/8 cell8',    {...L, wallThickness:4, latticeCell:8, taperXPlus:8,taperXMinus:8,taperZPlus:8,taperZMinus:8});
@@ -101,6 +101,25 @@ function wallTriCount(cell){
 const wc2=wallTriCount(2.5), wc8=wallTriCount(8), wc20=wallTriCount(20);
 chk('wall+cavity tris identical across cell (2.5 vs 8)', wc2===wc8, {wc2,wc8});
 chk('wall+cavity tris identical across cell (8 vs 20)', wc8===wc20, {wc8,wc20});
+
+console.log('=== cavity-floor logo ON the lattice: solid patch + relief, watertight ===');
+// A -Y-inner logo forces a solid patch under its footprint (fewer through-holes) and embosses the relief.
+{ base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2});
+  const noLogo=buildTrisForShape('box',paramState.box).length;
+  base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); addLogo({face:'-Y-inner',u0:0,v0:0,w:18,h:18,depth:1.5}, true);
+  const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,5);
+  chk('floor logo on lattice: watertight', !hasNaN(t)&&mc.watertight, {open:mc.openEdges});
+  // solid patch + emboss changes the mesh vs the hole-free-floor-logo-less lattice
+  chk('floor logo changes the lattice mesh (patch + relief)', t.length!==noLogo, {withLogo:t.length, noLogo});
+  // relief actually raised above the cavity-floor plane (only possible if the patch is solid under it)
+  const hh=30, t2=clampWallThickness(60,60,60,4), yt=-(hh-t2);
+  chk('floor logo relief rises above the cavity floor', t.some(tr=>tr.some(p=>p[1]>yt+0.3)), {yt}); }
+// engraved floor logo (negative depth) + rounded ribs, watertight
+{ base({hollow:true, latticeFloor:true, latticeRound:true, wallThickness:4, latticeCell:8}); addLogo({face:'-Y-inner',u0:4,v0:-3,w:14,h:14,depth:-1.2}, true);
+  const t=buildTrisForShape('box',paramState.box); chk('engraved floor logo + rounded lattice: watertight', !hasNaN(t)&&manifoldCheck(t,5).watertight, manifoldCheck(t,5)); }
+// floor logo + wall logo together on the lattice
+{ base({...L, wallThickness:4, latticeCell:8}); addLogo({face:'-Y-inner',u0:0,v0:0,w:14,h:14}, true); addLogo({face:'+X',u0:0,v0:0,w:14,h:14}, true);
+  const t=buildTrisForShape('box',paramState.box); chk('floor logo + wall logo + lattice: watertight', !hasNaN(t)&&manifoldCheck(t,5).watertight, manifoldCheck(t,5)); }
 
 console.log('=== ROUNDED rib profile: continuous domed top, still watertight ===');
 const R = {hollow:true, latticeFloor:true, latticeRound:true};

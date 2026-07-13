@@ -465,21 +465,17 @@
 
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола: у сплошного — «Детализация (сплошной куб)», у полого/борта — «Детализация (полый контейнер)».</div></div>
+    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола задаётся общей настройкой «Детализация логотипов».</div></div>
     <div id="logo-section" class="param-group" data-shape="box">
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
-        <label class="param-label">Детализация (сплошной куб)</label>
+        <label class="param-label">Детализация логотипов</label>
         <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
-      </div>
-      <div class="param-row">
-        <label class="param-label">Детализация (полый контейнер)</label>
-        <div class="num-field"><input type="number" class="param-number" id="logo-resolution-hollow" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
       <div id="logo-cards"></div>
-      <div class="export-note" id="logo-note">До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. У сплошного куба сетка сгущается зонально вокруг каждого логотипа, а не по всей грани, поэтому её детализацию можно поднимать высоко без взрыва числа треугольников. У полого контейнера и у борта/лотка зональной сетки пока нет — детализация там задаёт плотность сразу всей оболочки/полости (общая настройка «Детализация (полый контейнер)» на оба режима), поэтому её предел ниже и своя настройка отдельно от сплошного куба. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+      <div class="export-note" id="logo-note">До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -2390,10 +2386,10 @@ function refreshActiveModelUI(){
 
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
+// Single logo-detail control (max 500), shared by ALL modes. With wall logos it drives the ZONAL grid
+// (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still drives
+// the whole-shell/cavity density.
 let logoResolution = 50;
-let logoResolutionHollow = 50; // separate control (max 500): with wall logos it now drives the ZONAL
-  // grid (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still
-  // drives the whole-shell/cavity density
 
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
@@ -2535,7 +2531,7 @@ function splitHollowLogoDispFns() {
 }
 
 // Lattice-floor options from the box params. Hole size (`cell`) is DECOUPLED from wall/logo
-// detail: the hollow build keeps its normal resolution (logoResolutionHollow), and
+// detail: the hollow build keeps its normal resolution (logoResolution), and
 // emitLatticeFloor groups that fine grid into ~cell-sized diamond blocks. So changing the cell
 // size no longer coarsens the walls / logo relief. rib = axial gap between holes;
 // borderCells = solid fine cells kept as a rim so holes never reach the walls.
@@ -2962,7 +2958,7 @@ function buildTrisForShape(shape, p) {
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, -p.height/2 + tW,
-          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolutionHollow, p.filletSeg||4, true);
+          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolution, p.filletSeg||4, true);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -2989,7 +2985,7 @@ function buildTrisForShape(shape, p) {
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
       // Flat hollow. Optional diamond-lattice (through-hole) floor. Wall resolution stays at
-      // logoResolutionHollow (hole size is decoupled — emitLatticeFloor groups the fine grid),
+      // logoResolution (hole size is decoupled — emitLatticeFloor groups the fine grid),
       // so lattice + wall logos keep full relief detail. Lattice can't carry relief itself, so
       // -Y / -Y-inner logos are simply not rendered on it (wall logos are unaffected).
       const lat = p.latticeFloor ? makeLatticeOpts(p) : null;
@@ -3002,7 +2998,7 @@ function buildTrisForShape(shape, p) {
       // keeps its uniform grid. Bulge adds full-span zones so its dome still gets a full-face grid.
       const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
       const zones = logoZones ? (bAmts ? mergeZones(logoZones, computeWallBulgeZones(p, bAmts)) : logoZones) : null;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolutionHollow, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolutionHollow);
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolution, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolution);
     }
 
     if (p.rim) {
@@ -3015,7 +3011,7 @@ function buildTrisForShape(shape, p) {
         const rh = clampRimHeight(p.height, p.rimHeight||8);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, p.height/2 - rh,
-          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolutionHollow, p.filletSeg||4, false);
+          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolution, p.filletSeg||4, false);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
@@ -3040,7 +3036,7 @@ function buildTrisForShape(shape, p) {
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }
-      // Wall logos get a zonal grid (fine only under each logo), driven by logoResolutionHollow — no
+      // Wall logos get a zonal grid (fine only under each logo), driven by logoResolution — no
       // third detail slider. A plain / bulge-only tray keeps its uniform grid.
       const logoFns = logos.length > 0 ? buildCombinedLogoDispFns(taperFn) : null;
       const tWf = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
@@ -3049,7 +3045,7 @@ function buildTrisForShape(shape, p) {
       const dispFns = bAmts ? mergeDispFnsAdd(logoFns, buildWallBulgeDispFns(p, bAmts)) : logoFns;
       const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
       const zones = logoZones ? (bAmts ? mergeZones(logoZones, computeWallBulgeZones(p, bAmts)) : logoZones) : null;
-      return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolutionHollow, dispFns, taperFn, zones, logoResolutionHollow);
+      return buildRimBox(p.width, p.height, p.depth, p.wallThickness||2, p.rimHeight||8, logoResolution, dispFns, taperFn, zones, logoResolution);
     }
 
     // Squircle: the horizontal cross-section becomes a superellipse (sides bow out, vertical corners
@@ -3428,7 +3424,7 @@ function attachLogoEventListeners() {
   const resInput = document.getElementById('logo-resolution');
   resInput.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending(); }
+    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && logos.length > 0) markPending(); }
   });
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);
@@ -3436,21 +3432,7 @@ function attachLogoEventListeners() {
     v = Math.max(10, Math.min(500, v));
     e.target.value = v;
     logoResolution = v;
-    if (currentShape === 'box' && !paramState.box.hollow && logos.length > 0) markPending();
-  });
-
-  const resInputHollow = document.getElementById('logo-resolution-hollow');
-  resInputHollow.addEventListener('input', (e) => {
-    const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolutionHollow = v; if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending(); }
-  });
-  resInputHollow.addEventListener('change', (e) => {
-    let v = parseInt(e.target.value, 10);
-    if (Number.isNaN(v)) v = 50;
-    v = Math.max(10, Math.min(500, v));
-    e.target.value = v;
-    logoResolutionHollow = v;
-    if (currentShape === 'box' && paramState.box.hollow && logos.length > 0) markPending();
+    if (currentShape === 'box' && logos.length > 0) markPending();
   });
 }
 

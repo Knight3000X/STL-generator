@@ -87,7 +87,7 @@ function wtLogo(name, ov, logoOvs){ base(ov); for(const o of (logoOvs||[{}])) ad
 // These logo tests validate watertightness / valence / signs — all density-INDEPENDENT — so run the
 // emboss grid light to keep the suite fast (the app default is ~2× denser; that only changes triangle
 // count, not any property asserted here).
-logoResolution = 24; logoResolutionHollow = 24;
+logoResolution = 24;
 
 console.log('\n=== logos emboss onto the squircle PRISM wall (watertight) ===');
 const solidPrism = (()=>{ base({squircle:45}); return build().length; })();

@@ -86,8 +86,8 @@ function baseHollow(ov){
   logos.length = 0;
 }
 function addWallLogo(ov){ logos.push(Object.assign({ id:nextLogoId++, face:'+Z', u0:0, v0:0, w:12, h:12, depth:1.5, threshold:0.5, invert:false, rotation:0, heightmap: makeSolidHeightmap(), previewUrl:'' }, ov)); for(const l of logos) clampLogoToFace(l); }
-const saveLR = logoResolution, saveLRH = logoResolutionHollow;
-logoResolutionHollow = 200; // crank detail high: the zonal grid must keep the shell cheap
+const saveLR = logoResolution;
+logoResolution = 200; // crank detail high: the zonal grid must keep the shell cheap
 // A logo'd shell densifies ONLY its footprint (coarse base + local zone), so it costs FAR less than the
 // uniform no-logo shell at the same high detail — that gap is the whole point of the zonal grid.
 baseHollow({hollow:true}); addWallLogo({face:'+Z', w:12, h:12}); const logoH = buildTrisForShape('box', paramState.box);
@@ -105,7 +105,7 @@ baseHollow({rim:true, rimHeight:12}); addWallLogo({face:'+Z', w:12, h:12}); cons
 baseHollow({rim:true, rimHeight:12}); const plainR = buildTrisForShape('box', paramState.box);
 check('flat tray wall logo: watertight', manifoldCheck(logoR,4).watertight, manifoldCheck(logoR,4));
 check('flat tray: zonal logo shell far cheaper than the uniform shell at the same detail', logoR.length < plainR.length*0.6, {zonal:logoR.length, uniform:plainR.length});
-logoResolution = saveLR; logoResolutionHollow = saveLRH;
+logoResolution = saveLR;
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail > 0 ? 1 : 0);

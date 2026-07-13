@@ -27,7 +27,7 @@ function holeCount(){
   const p=paramState.box, hw=p.width/2, hd=p.depth/2;
   const t=clampWallThickness(p.width,p.height,p.depth,p.wallThickness);
   const lat=makeLatticeOpts(p), pitch=Math.max(1e-3,lat.cell);
-  const xP=buildAxisPositions(hw,[-(hw-t),hw-t],logoResolutionHollow), zP=buildAxisPositions(hd,[-(hd-t),hd-t],logoResolutionHollow);
+  const xP=buildAxisPositions(hw,[-(hw-t),hw-t],logoResolution), zP=buildAxisPositions(hd,[-(hd-t),hd-t],logoResolution);
   const xMid=midSlice(xP,-(hw-t),hw-t), zMid=midSlice(zP,-(hd-t),hd-t);
   const nx=xMid.length-1, nz=zMid.length-1, xi0=xMid[0], zi0=zMid[0];
   const b=Math.min(Math.max(1,lat.borderCells), Math.floor(nx/2), Math.floor(nz/2));

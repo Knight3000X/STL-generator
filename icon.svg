@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#16283a"/>
+  <rect x="14" y="14" width="484" height="484" rx="84" fill="none" stroke="#cfe0ee" stroke-width="4" opacity="0.25"/>
+  <!-- isometric open container (matches the tool's preview aesthetic) -->
+  <g fill="none" stroke="#dfeaf3" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+    <!-- top rim (open) -->
+    <path d="M256 150 L392 214 L256 278 L120 214 Z" opacity="0.95"/>
+    <!-- vertical edges -->
+    <path d="M120 214 L120 300 L256 366 L256 278"/>
+    <path d="M392 214 L392 300 L256 366"/>
+    <!-- inner far rim hint -->
+    <path d="M256 278 L256 366" opacity="0.9"/>
+  </g>
+  <!-- lattice hint on the floor -->
+  <g stroke="#7fa8c9" stroke-width="6" opacity="0.7">
+    <path d="M180 300 L232 326"/><path d="M212 290 L280 324"/><path d="M244 336 L300 308"/>
+  </g>
+  <text x="256" y="452" font-family="'IBM Plex Sans','DejaVu Sans',sans-serif" font-size="60" font-weight="700" fill="#dfeaf3" text-anchor="middle" letter-spacing="4">STL</text>
+</svg>

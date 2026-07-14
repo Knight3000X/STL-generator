@@ -1,5 +1,29 @@
 # STL Generator — журнал прогресса
 
+## Этот проход: PWA — генератор устанавливается как приложение на ПК/телефон
+
+Сделали инструмент устанавливаемым (иконка на рабочем столе/домашнем экране, standalone-окно, офлайн).
+Ключевое ограничение платформ: браузеры ставят PWA только со страницы по http(s), с `file://` — нельзя;
+поэтому добавили и хостинг-обвязку.
+
+- **Иконка**: нарисовали SVG в стиле инструмента (blueprint-контейнер + «STL» на navy), растеризовали
+  через headless-Chromium в `icon-192/512.png` и `apple-touch-icon.png` (180).
+- **`manifest.webmanifest`**: name/short_name, `start_url=parametric-stl-generator.html`,
+  `display=standalone`, theme/bg `#16283a`, иконки (192/512/512-maskable/svg).
+- **`sw.js`**: service worker, precache оболочки (HTML+манифест+иконки), stale-while-revalidate; версия
+  кэша `stl-gen-v1`, activate чистит старые. Регистрируется ТОЛЬКО по http(s).
+- **`index.html`**: редирект на генератор (корень GitHub Pages).
+- **В HTML**: `<link rel=manifest>`, theme-color, apple-mobile-web-app-* + apple-touch-icon; `setupPWA()`
+  регистрирует SW (guard по протоколу), ловит `beforeinstallprompt` → показывает кнопку «⤓ Установить
+  приложение» и вызывает `prompt()`; на iOS (нет beforeinstallprompt) кнопка показывает шаги
+  «Поделиться → На экран „Домой“». В standalone-режиме секция скрыта.
+
+Проверка: локальный http-сервер + Chromium — манифест валиден (4 иконки, standalone), **SW active**, иконки
+200, ошибок нет; офлайн ПОСЛЕ прогрева кэша — `fetch` и reload отдают приложение из кэша; на `file://` — SW
+пропущен, секция установки скрыта, ошибок нет, Three r128 работает. Node-батарея без изменений —
+**513/513**. Файлы `index.html`/`sw.js` не влияют на извлечение `<script>` в `run-all.sh`. Хостинг — через
+GitHub Pages (одна настройка репозитория, описано в README).
+
 ## Этот проход: шрифты вшиты — файл полностью автономен (0 внешних запросов)
 
 После инлайна Three.js оставалась одна внешняя загрузка — IBM Plex с Google Fonts (`<link>` на

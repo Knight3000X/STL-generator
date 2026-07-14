@@ -274,5 +274,24 @@ boxHoles.push({id:1,face:'+Z',u0:0,v0:2,shape:'rrect',portW:12,portH:6,cornerR:2
   chk('dispatcher: squircle port changes the mesh', t.length!==sqNoHole.length, {withPort:t.length, noHole:sqNoHole.length}); }
 boxHoles.length=0;
 
+// ---- port on a ROUNDED-BOTTOM (superellipsoid) hollow container: rides the straight upper wall ----------
+console.log('\n=== squircle hollow port with a rounded bottom (superellipsoid) ===');
+for (const [name, eV, port] of [
+  ['eV0.5 +Z', 0.5, {faceAxis:2, faceSign:1, hOff:0, hH:6, yC:8, yH:4}],
+  ['eV0.8 +X', 0.8, {faceAxis:0, faceSign:1, hOff:0, hH:6, yC:10, yH:4}],
+  ['eV1.0 -Z', 1.0, {faceAxis:2, faceSign:-1, hOff:4, hH:5, yC:9, yH:3}],
+  ['port near the dome seam (y low)', 0.7, {faceAxis:2, faceSign:1, hOff:0, hH:6, yC:3, yH:4}], // ylo clamps above y=0
+]) { const t=buildSquircleHollow(64,50,52, eV, eV, 3, -25+3, null,null,null, 50, 4, true, port);
+  chk('rounded-bottom port '+name+': watertight', wt(t) && !hasNaN(t), manifoldCheck(t)); }
+// a rounded bottom without a port is unchanged (refactor safety)
+{ const t=buildSquircleHollow(64,50,52,0.6,0.6,3,-25+3,null,null,null,50,4,true,null); chk('rounded-bottom no-port watertight', wt(t)); }
+// dispatcher: squircle hollow + rounded bottom + a UI hole → watertight port
+base({width:64,height:50,depth:52,hollow:true,squircle:50,squircleVBot:60,wallThickness:3}); boxHoles.length=0;
+boxHoles.push({id:1,face:'+Z',u0:0,v0:8,shape:'rrect',portW:12,portH:6,cornerR:2}); clampHoleToFace(boxHoles[0]);
+{ const t=build(); chk('dispatcher: rounded-bottom port watertight', wt(t) && !hasNaN(t), manifoldCheck(t));
+  base({width:64,height:50,depth:52,hollow:true,squircle:50,squircleVBot:60,wallThickness:3}); boxHoles.length=0;
+  chk('dispatcher: rounded-bottom port changes the mesh', t.length !== build().length); }
+boxHoles.length=0;
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

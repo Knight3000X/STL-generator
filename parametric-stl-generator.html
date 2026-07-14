@@ -651,7 +651,7 @@
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle (у squircle порт — прямоугольное окно с прямыми углами: кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
+      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle, в т.ч. со скруглённым дном (суперэллипсоид) — порт садится на прямую верхнюю стенку над скруглением; окно прямоугольное с прямыми углами (кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -3304,6 +3304,39 @@ function superellipseDomeCapped(ring, g, aSamp, bSamp, N, poleY, invEv, outwardS
     pushQuadAdaptive(tris, cg[i][j], cg[i+1][j], cg[i+1][j+1], cg[i][j+1], refS);
   return tris;
 }
+// Cut a single-wall port (rectangular window) through the STRAIGHT part of a squircle shell and stitch the
+// tube. Shared by every bottom style (flat, rounded/superellipsoid, tray) — only the straight-wall y-range
+// [yLoLim, yHiLim] differs, so the same trick applies while the rounded dome below stays untouched. Mutates
+// ySampO/ySampI (reseats them to identical y-samples inside the window) and returns {skip, tube}.
+function squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim){
+  const arc=squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH);
+  let ylo=Math.max(yLoLim, port.yC-port.yH), yhi=Math.min(yHiLim, port.yC+port.yH);
+  if (!arc || yhi<=ylo+0.5) return { skip:null, tube:[] };
+  // Drop originals within half a coarse cell of the window (else a near-duplicate row folds into overlapping
+  // triangles), lay the window lines, dedupe. Both walls run this identically → identical samples in [ylo,yhi].
+  // ALWAYS keep the array endpoints: they are the wall's top/bottom edge rows that seam to the rim / cap /
+  // dome, so a port sitting near an edge (rounded-bottom wall starts at y=0) must not delete them.
+  const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
+    const a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || v<=ylo-mgn || v>=yhi+mgn)
+      .concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
+    a.sort((x,y)=>x-y);
+    return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
+  const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  const skip={ cols:new Set(arc.slice(0,-1)), ylo, yhi };
+  const yList=ySampO.filter(v=>v>=ylo-1e-6 && v<=yhi+1e-6), bnd=[];
+  for(const i of arc) bnd.push([i, yList[0]]);
+  const iLast=arc[arc.length-1]; for(let k=1;k<yList.length;k++) bnd.push([iLast, yList[k]]);
+  for(let k=arc.length-2;k>=0;k--) bnd.push([arc[k], yList[yList.length-1]]);
+  const iFirst=arc[0]; for(let k=yList.length-2;k>=1;k--) bnd.push([iFirst, yList[k]]);
+  const midI=arc[arc.length>>1], cen=[(ringO[midI][0]+ringI[midI][0])/2, (ylo+yhi)/2, (ringO[midI][1]+ringI[midI][1])/2];
+  const tube=[], B=bnd.length;
+  for(let k=0;k<B;k++){ const k1=(k+1)%B, [i0,y0]=bnd[k], [i1,y1]=bnd[k1];
+    const O0=[ringO[i0][0],y0,ringO[i0][1]], O1=[ringO[i1][0],y1,ringO[i1][1]];
+    const I0=[ringI[i0][0],y0,ringI[i0][1]], I1=[ringI[i1][0],y1,ringI[i1][1]];
+    const ref=[cen[0]-(O0[0]+I0[0])/2, cen[1]-(O0[1]+I0[1])/2, cen[2]-(O0[2]+I0[2])/2];
+    tube.push(orient([O0,O1,I1],ref)); tube.push(orient([O0,I1,I0],ref)); }
+  return { skip, tube };
+}
 function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome, port){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
   const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2)), coarseW=Math.max(0.8, maxDim/45);
@@ -3320,23 +3353,24 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
   if(eV > 0){
     // Rounded bottom (squircleVBot): straight wall = upper half [0,hh], the bottom is a superellipsoid-lower-
     // half dome (pole at y=-hh). Cavity: hollow → matching inner dome (thin wall); tray → flat shallow
-    // pocket above the rounded base.
+    // pocket above the rounded base. A single-wall port rides the STRAIGHT upper wall (above the dome) — the
+    // same shared-window tube as the flat-bottom case; the rounded dome below is untouched.
     const invEv=2/Math.max(0.05, eV), nRings=Math.max(12, Math.round(hh/coarseW));
+    const fY = innerDome ? 0 : Math.max(0, floorY);
     const ySampO=zonedSamples(0, hh, coarseW, fineW, Z.yZ);
-    const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns);
+    const ySampI=zonedSamples(fY, hh, coarseW, coarseW, []);
+    const { skip, tube } = port ? squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, fY+0.6, hh-0.6) : { skip:null, tube:[] };
+    const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns, skip);
     for(const tr of ow.tris) tris.push(tr);
     for(const tr of superellipseDomeCapped(ringO, gO, aSamp, bSamp, N, -hh, invEv, +1, nRings, botFn)) tris.push(tr);
-    let iw;
+    const iw=squircleWall(ringI, rnI, N, ySampI, -1, null, skip);
+    for(const tr of iw.tris) tris.push(tr);
     if(innerDome){ // hollow: cavity mirrors the rounded bottom (pole at floorY = -hh+t)
-      iw=squircleWall(ringI, rnI, N, zonedSamples(0, hh, coarseW, coarseW, []), -1, null);
-      for(const tr of iw.tris) tris.push(tr);
       for(const tr of superellipseDomeCapped(ringI, gI, aSamp, bSamp, N, floorY, invEv, -1, nRings, floorFn)) tris.push(tr);
     } else { // tray: flat shallow pocket (kept above the dome)
-      const fY=Math.max(0, floorY);
-      iw=squircleWall(ringI, rnI, N, zonedSamples(fY, hh, coarseW, coarseW, []), -1, null);
-      for(const tr of iw.tris) tris.push(tr);
       for(const tr of superellipseFillCap(gI, fY, [0,1,0], makeCapEmboss([0,1,0], floorFn))) tris.push(tr);
     }
+    for(const tr of tube) tris.push(tr);
     rim(ow.grid[ow.grid.length-1], iw.grid[iw.grid.length-1]);
     return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
   }
@@ -3344,39 +3378,9 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
   // Flat bottom (squircleVBot=0): straight wall full height + flat superellipse caps.
   const ySampO=zonedSamples(-hh, hh, coarseW, fineW, Z.yZ);          // outer wall: fine under side logos
   const ySampI=zonedSamples(floorY, hh, coarseW, coarseW, []);      // cavity wall: not embossed → coarse
-  // Single-wall port (rectangular window through ONE curved wall into the cavity). The outer + inner walls
-  // skip the SAME block (arc columns × [ylo,yhi]) and are re-seated to share identical y-samples there, so
-  // their cutout rings coincide and the connecting tube is watertight — the box-port trick, in the wall's
-  // angular parametrisation. Corners are square (a curved wall has no watertight-by-construction rounding).
-  let skip=null; const tube=[];
-  if (port) {
-    const arc=squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH);
-    let ylo=port.yC-port.yH, yhi=port.yC+port.yH;
-    ylo=Math.max(floorY+0.6, ylo); yhi=Math.min(hh-0.6, yhi);
-    if (arc && yhi>ylo+0.5) {
-      // Drop originals within HALF a coarse cell of the window (avoids a near-duplicate row at the boundary,
-      // which would fold into overlapping triangles), then lay the window lines and dedupe cleanly. Both
-      // walls run this identically → their samples in [ylo,yhi] are the same window lines → tube stays k→k.
-      const reseat=arr=>{ const mgn=coarseW*0.5;
-        const a=arr.filter(v=>v<=ylo-mgn || v>=yhi+mgn).concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
-        a.sort((x,y)=>x-y);
-        return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
-      const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
-      skip={ cols:new Set(arc.slice(0,-1)), ylo, yhi };
-      const yList=ySampO.filter(v=>v>=ylo-1e-6 && v<=yhi+1e-6), bnd=[];
-      for(const i of arc) bnd.push([i, yList[0]]);
-      const iLast=arc[arc.length-1]; for(let k=1;k<yList.length;k++) bnd.push([iLast, yList[k]]);
-      for(let k=arc.length-2;k>=0;k--) bnd.push([arc[k], yList[yList.length-1]]);
-      const iFirst=arc[0]; for(let k=yList.length-2;k>=1;k--) bnd.push([iFirst, yList[k]]);
-      const midI=arc[arc.length>>1], cen=[(ringO[midI][0]+ringI[midI][0])/2, (ylo+yhi)/2, (ringO[midI][1]+ringI[midI][1])/2];
-      const B=bnd.length;
-      for(let k=0;k<B;k++){ const k1=(k+1)%B, [i0,y0]=bnd[k], [i1,y1]=bnd[k1];
-        const O0=[ringO[i0][0],y0,ringO[i0][1]], O1=[ringO[i1][0],y1,ringO[i1][1]];
-        const I0=[ringI[i0][0],y0,ringI[i0][1]], I1=[ringI[i1][0],y1,ringI[i1][1]];
-        const ref=[cen[0]-(O0[0]+I0[0])/2, cen[1]-(O0[1]+I0[1])/2, cen[2]-(O0[2]+I0[2])/2];
-        tube.push(orient([O0,O1,I1],ref)); tube.push(orient([O0,I1,I0],ref)); }
-    }
-  }
+  // Single-wall port (rectangular window through ONE curved wall into the cavity), watertight by the shared
+  // window-line trick (see squirclePortCut). Corners are square — a curved wall has no watertight rounding.
+  const { skip, tube } = port ? squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, floorY+0.6, hh-0.6) : { skip:null, tube:[] };
   const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns, skip);         // outer wall (embossable)
   const iw=squircleWall(ringI, rnI, N, ySampI, -1, null, skip);               // cavity wall (plain)
   for(const tr of ow.tris) tris.push(tr);
@@ -3738,9 +3742,10 @@ function buildTrisForShape(shape, p) {
         const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
-        // Single-wall port (rectangular window) on a plain flat-bottom squircle container: first side-wall
-        // hole, no logos. A curved wall can't take a watertight rounded cutout, so the window is square.
-        const sqPort = (hasHoles && logos.length===0 && eV===0)
+        // Single-wall port (rectangular window) on a plain squircle container — flat OR rounded bottom
+        // (superellipsoid): the port rides the straight upper wall, so squircleVBot doesn't block it. First
+        // side-wall hole, no logos. A curved wall can't take a watertight rounded cutout, so it's square.
+        const sqPort = (hasHoles && logos.length===0)
           ? (ports=>ports.length?squirclePortParams(ports[0]):null)(portsForBuilder(p).filter(pt=>pt.axis!==1))
           : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, -p.height/2 + tW,

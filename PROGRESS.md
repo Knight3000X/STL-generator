@@ -1,5 +1,23 @@
 # STL Generator — журнал прогресса
 
+## Этот проход: шрифты вшиты — файл полностью автономен (0 внешних запросов)
+
+После инлайна Three.js оставалась одна внешняя загрузка — IBM Plex с Google Fonts (`<link>` на
+`fonts.googleapis.com`). Вшили и её:
+
+- Взяли `@fontsource/ibm-plex-sans@5.2.8` и `@fontsource/ibm-plex-mono@5.2.7` из npm, извлекли WOFF2 для
+  нужных начертаний (Sans 400/500/600/700, Mono 400/500/600), сабсеты **latin + cyrillic** (UI на русском),
+  14 файлов ~244 КБ.
+- Сгенерировали 14 `@font-face` с `src:url(data:font/woff2;base64,…)` и точными `unicode-range` (взяты из
+  CSS fontsource — latin и cyrillic диапазоны), заменили три `<link>` (preconnect ×2 + stylesheet) на
+  инлайн-`<style>`. Base64 не содержит `<`, так что извлечение `<script>` в `run-all.sh` не задето.
+  Файл вырос до ~1.16 МБ.
+
+Проверка: реальный Chromium (offline, file://) — **0 внешних HTTP-запросов** при загрузке, `THREE.REVISION
+==='128'`, `scene3DReady===true`, `document.fonts.check("600 14px 'IBM Plex Sans'")===true`,
+`document.fonts.status==='loaded'`; русский текст и 3D-сцена рисуются (скриншот). Node-батарея —
+**513/513 в 18 файлах**.
+
 ## Этот проход: Three.js встроен в файл (3D-превью работает офлайн)
 
 README обещал «весь код, включая Three.js, в одном файле», но по факту библиотека тянулась с

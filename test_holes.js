@@ -68,5 +68,25 @@ base({width:40,height:40,depth:40});
   boxHoles.length=0; boxHoles.push(h);
   chk('clamped oversized hole still watertight', wt(buildTrisForShape('box',paramState.box))); }
 
+console.log('\n=== overlapping holes on the same axis stay watertight (later one dropped) ===');
+// Two holes on the SAME face whose blocks overlap used to share grid cells and open the mesh.
+{ const t = buildBoxWithHoles(60,60,60,[{axis:2,cp:-3,cq:0,r:7},{axis:2,cp:4,cq:0,r:7}]);
+  const mc = manifoldCheck(t,4);
+  chk('overlapping same-face bores: watertight', mc.watertight && !hasNaN(t), {open:mc.openEdges, bad:mc.badEdges}); }
+// A +Y and a -Y hole are the SAME axis (Y): overlapping in the shared X/Z plane must not leak either.
+{ const t = buildBoxWithHoles(40,40,40,[{axis:1,cp:2,cq:3,r:8},{axis:1,cp:-2,cq:-2,r:8}]);
+  const mc = manifoldCheck(t,4);
+  chk('overlapping +Y/-Y bores: watertight', mc.watertight && !hasNaN(t), {open:mc.openEdges, bad:mc.badEdges}); }
+// The overlap guard must be conservative, not greedy: two well-separated holes on one axis both survive.
+{ const solid = buildBoxWithHoles(80,40,80,[]);
+  const two   = buildBoxWithHoles(80,40,80,[{axis:2,cp:-22,cq:0,r:6},{axis:2,cp:22,cq:0,r:6}]);
+  chk('separated same-axis bores: both drilled', signedVol(two) < signedVol(solid) - 2000, {solid:signedVol(solid)|0, two:signedVol(two)|0});
+  chk('separated same-axis bores: watertight', manifoldCheck(two,4).watertight); }
+// buildTrisForShape path: two overlapping UI holes on +Z → still watertight (was open before the fix).
+base({width:60,height:60,depth:60}); boxHoles.length=0;
+boxHoles.push({id:11,face:'+Z',u0:-3,v0:0,diameter:14}); boxHoles.push({id:12,face:'+Z',u0:4,v0:0,diameter:14});
+boxHoles.forEach(clampHoleToFace);
+chk('dispatcher: overlapping UI holes watertight', wt(buildTrisForShape('box',paramState.box)));
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -3254,6 +3254,25 @@ function buildBoxWithHoles(w,h,d, holes){
   const N=[Math.max(2,Math.round(w/gres)), Math.max(2,Math.round(h/gres)), Math.max(2,Math.round(d/gres))];
   const byAxis={0:[],1:[],2:[]};
   for(const H of holes) byAxis[H.axis].push(H);
+  // Drop any hole whose grid block would overlap OR touch an already-kept hole on the SAME axis.
+  // Two holes on the same axis pierce the same pair of faces (a +Y and a -Y hole share axis Y), so
+  // their blocks live in one shared grid; overlapping blocks share cells and break the annulus/bore
+  // stitching → open edges. Requiring a one-cell gap (block index rects strictly disjoint) keeps the
+  // plain grid quad between them consistent with both border rings → watertight by construction. The
+  // block index math mirrors holeFaceWithHoles exactly so the kept set matches what actually gets built.
+  for(let a=0;a<3;a++){
+    const [p,q]=HOLE_AXIS_PQ[a], hp=half[p], hq=half[q], Np=N[p], Nq=N[q], kept=[], keptBlocks=[];
+    for(const H of byAxis[a]){
+      const hs=Math.min(H.r*1.7, hp-1e-3, hq-1e-3);
+      const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
+      let i0=Math.max(0,Math.floor(toIp(H.cp-hs))), i1=Math.min(Np,Math.ceil(toIp(H.cp+hs)));
+      let j0=Math.max(0,Math.floor(toIq(H.cq-hs))), j1=Math.min(Nq,Math.ceil(toIq(H.cq+hs)));
+      if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
+      const clash=keptBlocks.some(b=> i0<=b.i1&&b.i0<=i1 && j0<=b.j1&&b.j0<=j1);
+      if(!clash){ kept.push(H); keptBlocks.push({i0,i1,j0,j1}); }
+    }
+    byAxis[a]=kept;
+  }
   const faceRims={};
   for(let a=0;a<3;a++){
     const fp=holeFaceWithHoles(a,+1,half,byAxis[a],N), fm=holeFaceWithHoles(a,-1,half,byAxis[a],N);

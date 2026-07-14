@@ -117,6 +117,19 @@ console.log('=== cavity-floor logo ON the lattice: solid patch + relief, waterti
 // engraved floor logo (negative depth) + rounded ribs, watertight
 { base({hollow:true, latticeFloor:true, latticeRound:true, wallThickness:4, latticeCell:8}); addLogo({face:'-Y-inner',u0:4,v0:-3,w:14,h:14,depth:-1.2}, true);
   const t=buildTrisForShape('box',paramState.box); chk('engraved floor logo + rounded lattice: watertight', !hasNaN(t)&&manifoldCheck(t,5).watertight, manifoldCheck(t,5)); }
+// depth==0 floor logo: the SHAPE must still fill a solid patch (flush inlay), not vanish into the net
+{ base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); const noLogo=buildTrisForShape('box',paramState.box).length;
+  base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); addLogo({face:'-Y-inner',u0:0,v0:0,w:20,h:20,depth:0}, true);
+  const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,5);
+  chk('depth-0 floor logo: watertight', !hasNaN(t)&&mc.watertight, {open:mc.openEdges});
+  chk('depth-0 floor logo still fills the shape (mesh differs from no-logo)', t.length!==noLogo, {withLogo:t.length, noLogo});
+  // check only the CENTRAL floor region (|x|,|z|<12) — no walls there, just floor/relief
+  const hh=30, t2=clampWallThickness(60,60,60,4), yt=-(hh-t2);
+  const centralMaxY=(tris)=>{ let m=-1e9; for(const tr of tris) for(const p of tr) if(Math.abs(p[0])<12&&Math.abs(p[2])<12) m=Math.max(m,p[1]); return m; };
+  chk('depth-0 floor logo is FLUSH (central floor not raised above yt)', centralMaxY(t) <= yt+0.05, {centralMaxY:+centralMaxY(t).toFixed(2), yt});
+  // sanity: a depth>0 logo DOES raise the central floor above yt
+  base({...L, wallThickness:4, latticeCell:8, latticeRib:2, latticeBorder:2}); addLogo({face:'-Y-inner',u0:0,v0:0,w:20,h:20,depth:1.5}, true);
+  chk('depth>0 floor logo IS raised (central floor above yt)', centralMaxY(buildTrisForShape('box',paramState.box)) > yt+0.3, {yt}); }
 // floor logo + wall logo together on the lattice
 { base({...L, wallThickness:4, latticeCell:8}); addLogo({face:'-Y-inner',u0:0,v0:0,w:14,h:14}, true); addLogo({face:'+X',u0:0,v0:0,w:14,h:14}, true);
   const t=buildTrisForShape('box',paramState.box); chk('floor logo + wall logo + lattice: watertight', !hasNaN(t)&&manifoldCheck(t,5).watertight, manifoldCheck(t,5)); }

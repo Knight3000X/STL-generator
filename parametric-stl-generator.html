@@ -1760,7 +1760,7 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
 // hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
 // then taperFn'd, so seams match after taper. Proven watertight in Node across
 // sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
-function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded, solidRects, floorFn) {
+function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded, solidRects, floorFn, floorMask) {
   tf = tf || ((p)=>p);
   const pitch = Math.max(1e-3, cellWorld);
   const UP=[0,1,0], DN=[0,-1,0];
@@ -1785,13 +1785,15 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
     const uu=(cx+cz)/pitch, vv=(cx-cz)/pitch;
     solid[i][j] = Math.abs(uu-Math.round(uu))<rh || Math.abs(vv-Math.round(vv))<rh;
   }
-  // Floor-logo compatibility: fill in solid ONLY where the cavity-floor ('-Y-inner') relief actually is —
-  // i.e. the logo's SHAPE (the fork), not its whole bounding square — so the relief rides ON the net
-  // background instead of a solid tile. A cell becomes solid if floorFn is non-zero at any corner/centre
-  // (so thin strokes are captured). Done BEFORE pinch removal so any checkerboard the shape creates with
-  // the net gets cleaned up. solidRects is a fallback (force a whole rect) if no floorFn is supplied.
-  if (floorFn) {
-    const rel=(x,z)=>Math.abs(floorFn(x, z, [x, yt, z])||0)>1e-6;
+  // Floor-logo compatibility: fill in solid ONLY where the cavity-floor ('-Y-inner') logo's SHAPE is —
+  // i.e. the fork itself, not its whole bounding square — so it rides ON the net background, not a solid
+  // tile. The SHAPE is taken from `floorMask` (heightmap>threshold, depth-INDEPENDENT), so a depth==0 logo
+  // still fills a flush inlay (the depth-scaled floorFn would be 0 everywhere and the logo would vanish).
+  // A cell becomes solid if the shape covers any corner/centre (thin strokes captured). Done BEFORE pinch
+  // removal so any checkerboard the shape makes with the net is cleaned up. solidRects is a fallback.
+  const shapeFn = floorMask || floorFn;
+  if (shapeFn) {
+    const rel=(x,z)=>Math.abs(shapeFn(x, z, [x, yt, z])||0)>1e-6;
     for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
       if (solid[i][j]) continue;
       const xm=(xMid[i]+xMid[i+1])/2, zm=(zMid[j]+zMid[j+1])/2;
@@ -1926,7 +1928,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
-  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn);
+  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn, lat.floorMask);
 
   return tris;
 }
@@ -2251,6 +2253,25 @@ function makeLogoDispFn(logo, frame) {
     let val = sampleHeightmap(logo.heightmap, u01, v01);
     if (logo.invert) val = 1 - val;
     return val > logo.threshold ? logo.depth : 0;
+  };
+}
+
+// Like makeLogoDispFn but returns the SHAPE MASK (1 inside the logo shape, 0 outside), independent of
+// depth. The lattice floor uses this to fill a solid patch under the shape even when depth==0 (a flush
+// inlay), where the depth-scaled dispFn would be 0 everywhere and the logo would vanish into the net.
+function makeLogoMaskFn(logo, frame) {
+  if (!logo.heightmap) return null;
+  const rad = (logo.rotation||0) * Math.PI/180;
+  const cosR = Math.cos(-rad), sinR = Math.sin(-rad);
+  return (u, v, taperedPos) => {
+    const offset3D = sub(taperedPos, frame.center);
+    const realDu = dot(offset3D, frame.TuHat), realDv = dot(offset3D, frame.TvHat);
+    const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
+    if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
+    const u01 = (ldu + logo.w/2) / logo.w, v01 = 1 - (ldv + logo.h/2) / logo.h;
+    let val = sampleHeightmap(logo.heightmap, u01, v01);
+    if (logo.invert) val = 1 - val;
+    return val > logo.threshold ? 1 : 0;
   };
 }
 
@@ -2717,6 +2738,21 @@ function buildCombinedLogoDispFns(taperFn) {
     dispFns[face] = (u,v,base) => { for (const fn of fns) { const d = fn(u,v,base); if (d !== 0) return d; } return 0; };
   }
   return dispFns;
+}
+
+// Per-face SHAPE-MASK map (fn(u,v,base) -> 1 inside any logo's shape on that face, else 0), depth-
+// independent. Used by the lattice floor so a depth==0 cavity-floor logo still fills a solid patch.
+function buildCombinedLogoMaskFns(taperFn) {
+  const p = paramState.box, byFace = {};
+  for (const logo of logos) {
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const frame = makeLogoFrame({...logo, uAxis, vAxis, nAxis, nOffset}, taperFn);
+    (byFace[logo.face] || (byFace[logo.face] = [])).push(makeLogoMaskFn({...logo, uAxis, vAxis, nAxis, nOffset}, frame));
+  }
+  const out = {};
+  for (const face in byFace) { const fns = byFace[face];
+    out[face] = (u,v,base) => { for (const fn of fns) if (fn && fn(u,v,base)) return 1; return 0; }; }
+  return out;
 }
 
 // For each of the 3 world axes, computes the flat-space intervals ("zones") that need fine
@@ -3313,6 +3349,9 @@ function buildTrisForShape(shape, p) {
       if (lat && logos.some(l => l.face === '-Y-inner')) {
         const idFns = buildCombinedLogoDispFns(q => q);
         lat.floorFn = idFns['-Y-inner'] || null;
+        // Shape mask (depth-independent): fills the solid patch under the logo shape even at depth 0, so
+        // a flush (depth-0) cavity-floor logo is still visible as a solid inlay on the net.
+        lat.floorMask = (buildCombinedLogoMaskFns(q => q))['-Y-inner'] || null;
         lat.solidRects = [];
         for (const l of logos) if (l.face === '-Y-inner') {
           const ext = rotatedHalfExtents(l.w, l.h, l.rotation), mg = 1.5;

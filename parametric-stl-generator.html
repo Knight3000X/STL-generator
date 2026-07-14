@@ -415,6 +415,8 @@
   #btn-add-hole:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-hole:disabled{ opacity:0.4; cursor:not-allowed; }
   .hole-card{ border:1.5px solid var(--ink-soft); border-radius:2px; padding:7px; margin-bottom:7px; }
+  .hole-card .hole-shape-row{ margin-bottom:6px; }
+  .hole-card .hole-shape-row select{ width:100%; padding:4px 5px; border:1.5px solid var(--ink-soft); border-radius:2px; font-family:inherit; font-size:12px; background:var(--field-bg); color:var(--ink); }
   .hole-card .hole-grid{ display:grid; grid-template-columns:auto 1fr auto 1fr; gap:5px 7px; align-items:center; }
   .hole-card label{ font-size:11px; color:var(--ink-soft); }
   .hole-card select, .hole-card input{ width:100%; min-width:0; padding:4px 5px; border:1.5px solid var(--ink-soft); border-radius:2px; font-family:inherit; font-size:12px; }
@@ -634,7 +636,7 @@
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Круглое сквозное отверстие насквозь по нормали выбранной грани (вентиляция / кабель / винт). Работает ТОЛЬКО на сплошном кубе без скругления, squircle, выгиба и логотипов (при любом из них отверстия игнорируются — плоская стенка нужна для герметичности выреза). Наклон стенок допустим (отверстие наклоняется вместе со стенкой). Положение задаётся в координатах грани, диаметр — в мм; несколько отверстий можно ставить на любые грани.</div>
+      <div class="export-note">Сквозное отверстие насквозь по нормали выбранной грани (вентиляция / кабель / винт / порт). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). Работает ТОЛЬКО на сплошном кубе без скругления, squircle, выгиба и логотипов (при любом из них отверстия игнорируются — плоская стенка нужна для герметичности выреза). Наклон стенок допустим (отверстие наклоняется вместе со стенкой). Положение задаётся в координатах грани, размеры — в мм; несколько отверстий можно ставить на любые грани.</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -2680,7 +2682,7 @@ function refreshActiveModelUI(){
 
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
 let nextLogoId = 1;
-const boxHoles = []; // {id, face, u0, v0, diameter} — cylindrical through-holes on the plain solid box
+const boxHoles = []; // {id, face, u0, v0, shape:'circle'|'rrect', diameter | portW,portH,cornerR} — through-holes (plain solid box)
 let nextHoleId = 1;
 // Single logo-detail control (max 500), shared by ALL modes. With wall logos it drives the ZONAL grid
 // (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still drives
@@ -3259,6 +3261,36 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
 // by construction (shared vertices, no arbitrary boolean clipping). Only used on the plain solid box:
 // taper / fillet / squircle / bulge / hollow all override it (a flat wall is what keeps the bore exact).
 const HOLE_AXIS_PQ = { 0:[1,2], 1:[0,2], 2:[0,1] }; // bore axis -> the face's (u,v) world axes (match FACE_AXES)
+// Hole cross-section as a rounded rectangle in the face's (p,q) plane: half-extents (ap,aq) along p/q and a
+// corner radius rc. This one primitive spells every supported shape — circle (ap=aq=rc=r), pill/slot
+// (rc=min(ap,aq)), USB-C / rounded rectangle (rc<min), sharp rectangle (rc≈0). A builder-hole may instead
+// carry a plain {r} (legacy circle); holeHalfExtents normalises both.
+function holeHalfExtents(H){
+  if (H.ap !== undefined) {
+    const ap=Math.max(0.3,H.ap), aq=Math.max(0.3,H.aq);
+    const rc=Math.max(0, Math.min(H.rc===undefined?Math.min(ap,aq):H.rc, Math.min(ap,aq)));
+    return { ap, aq, rc };
+  }
+  const r=Math.max(0.3, H.r||3); return { ap:r, aq:r, rc:r };
+}
+// Distance from the centre to the rounded-rect boundary along a ray at angle `ang` (p = cos axis, q = sin
+// axis). The shape is convex and contains the centre, so a ray hits the boundary exactly once → radius(ang)
+// is single-valued, which is exactly what keeps the border-ring↔boundary mapping (by shared angle) a clean
+// bijection: the annulus and the bore both sample the boundary at the SAME angles, so the mesh stays
+// watertight by construction just as the circle did. Reduces to the first quadrant by symmetry.
+function roundedRectDist(ap, aq, rc, ang){
+  const acx=Math.abs(Math.cos(ang)), asy=Math.abs(Math.sin(ang));
+  if (acx < 1e-12) return aq;               // straight along q
+  if (asy < 1e-12) return ap;               // straight along p
+  const tR=ap/acx;                          // hit the p-edge (x=ap)?
+  if (tR*asy <= aq-rc+1e-9) return tR;
+  const tT=aq/asy;                          // hit the q-edge (y=aq)?
+  if (tT*acx <= ap-rc+1e-9) return tT;
+  const Cx=ap-rc, Cy=aq-rc;                 // corner quarter-circle centre
+  const b=acx*Cx + asy*Cy, c=Cx*Cx+Cy*Cy - rc*rc; // acx^2+asy^2 = 1
+  return b + Math.sqrt(Math.max(0, b*b - c));
+}
+function holeRadiusAt(H, ang){ const e=holeHalfExtents(H); return roundedRectDist(e.ap, e.aq, e.rc, ang); }
 function holeFaceWithHoles(a, s, half, holes, N) {
   const [p,q] = HOLE_AXIS_PQ[a];
   const hp=half[p], hq=half[q], ha=half[a];
@@ -3270,10 +3302,11 @@ function holeFaceWithHoles(a, s, half, holes, N) {
   const tris=[];
   const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C], outward)); tris.push(orient([A,C,D], outward)); };
   const blocks = holes.map(h=>{
-    const hs=Math.min(h.r*1.7, hp-1e-3, hq-1e-3);
+    const e=holeHalfExtents(h);
+    const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
     const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
-    let i0=Math.max(0,Math.floor(toIp(h.cp-hs))), i1=Math.min(Np,Math.ceil(toIp(h.cp+hs)));
-    let j0=Math.max(0,Math.floor(toIq(h.cq-hs))), j1=Math.min(Nq,Math.ceil(toIq(h.cq+hs)));
+    let i0=Math.max(0,Math.floor(toIp(h.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(h.cp+hsP)));
+    let j0=Math.max(0,Math.floor(toIq(h.cq-hsQ))), j1=Math.min(Nq,Math.ceil(toIq(h.cq+hsQ)));
     if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
     return {h,i0,i1,j0,j1};
   });
@@ -3289,7 +3322,7 @@ function holeFaceWithHoles(a, s, half, holes, N) {
     for(let j=j1;j>j0;j--) border.push([i0,j]);
     const B=border.length, borderPts=[], angs=[];
     for(const [i,j] of border){ const bp=P(i,j); borderPts.push(bp); angs.push(Math.atan2(bp[q]-h.cq, bp[p]-h.cp)); }
-    const circAt=ang=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=h.cp+h.r*Math.cos(ang); c[q]=h.cq+h.r*Math.sin(ang); return c; };
+    const circAt=ang=>{ const rr=holeRadiusAt(h,ang); const c=[0,0,0]; c[a]=s*ha; c[p]=h.cp+rr*Math.cos(ang); c[q]=h.cq+rr*Math.sin(ang); return c; };
     const circPts=angs.map(circAt);
     for(let k=0;k<B;k++){ const k1=(k+1)%B; pushQ(borderPts[k],borderPts[k1],circPts[k1],circPts[k]); }
     rims.push({h, angs});
@@ -3311,10 +3344,11 @@ function buildBoxWithHoles(w,h,d, holes){
   for(let a=0;a<3;a++){
     const [p,q]=HOLE_AXIS_PQ[a], hp=half[p], hq=half[q], Np=N[p], Nq=N[q], kept=[], keptBlocks=[];
     for(const H of byAxis[a]){
-      const hs=Math.min(H.r*1.7, hp-1e-3, hq-1e-3);
+      const e=holeHalfExtents(H);
+      const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
       const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
-      let i0=Math.max(0,Math.floor(toIp(H.cp-hs))), i1=Math.min(Np,Math.ceil(toIp(H.cp+hs)));
-      let j0=Math.max(0,Math.floor(toIq(H.cq-hs))), j1=Math.min(Nq,Math.ceil(toIq(H.cq+hs)));
+      let i0=Math.max(0,Math.floor(toIp(H.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(H.cp+hsP)));
+      let j0=Math.max(0,Math.floor(toIq(H.cq-hsQ))), j1=Math.min(Nq,Math.ceil(toIq(H.cq+hsQ)));
       if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
       const clash=keptBlocks.some(b=> i0<=b.i1&&b.i0<=i1 && j0<=b.j1&&b.j0<=j1);
       if(!clash){ kept.push(H); keptBlocks.push({i0,i1,j0,j1}); }
@@ -3331,7 +3365,7 @@ function buildBoxWithHoles(w,h,d, holes){
     const [p,q]=HOLE_AXIS_PQ[a], ha=half[a], rims=faceRims[a];
     byAxis[a].forEach((H, hi)=>{
       const angs=rims[hi].angs, B=angs.length;
-      const ptAt=(ang,ca)=>{ const c=[0,0,0]; c[a]=ca; c[p]=H.cp+H.r*Math.cos(ang); c[q]=H.cq+H.r*Math.sin(ang); return c; };
+      const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(H,ang); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
       for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
         const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
         const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2);
@@ -3342,11 +3376,17 @@ function buildBoxWithHoles(w,h,d, holes){
   }
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
 }
-// Convert a UI hole {face,u0,v0,diameter} to the builder's {axis,cp,cq,r}. Through-hole → the sign of the
-// face doesn't matter; (u0,v0) are already in the face's (u,v) = HOLE_AXIS_PQ order.
+// Convert a UI hole to the builder's {axis,cp,cq, …profile}. Circle → {r}; rounded rectangle (USB-C etc.)
+// → {ap,aq,rc}. Through-hole → the sign of the face doesn't matter; (u0,v0) are already in the face's
+// (u,v) = HOLE_AXIS_PQ order (u along p, v along q), so portW maps to ap and portH to aq.
 function holesForBuilder(p){
   return (boxHoles||[]).map(H=>{ const ax = FACE_AXES[H.face] ? FACE_AXES[H.face](p)[2] : 2;
-    return { axis:ax, cp:H.u0, cq:H.v0, r:Math.max(0.3, H.diameter/2) }; });
+    if (H.shape === 'rrect') {
+      const ap=Math.max(0.3,(H.portW||9)/2), aq=Math.max(0.3,(H.portH||3.2)/2);
+      const rc=Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq)));
+      return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc };
+    }
+    return { axis:ax, cp:H.u0, cq:H.v0, r:Math.max(0.3, (H.diameter||6)/2) }; });
 }
 
 // Axial (flat-region) grid density for the asym rounded builders. `filletSeg` sets the ARC smoothness;
@@ -3809,6 +3849,17 @@ const HOLE_FACES = ['+Z','-Z','+X','-X','+Y','-Y'];
 function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
   const hu = dims.uLen/2, hv = dims.vLen/2;
+  if (hole.shape === 'rrect') {
+    // Block half is (portW/2)*1.7 along u and (portH/2)*1.7 along v — each must fit inside the face.
+    const maxW = Math.max(1, (hu * 0.9 / 1.7) * 2), maxH = Math.max(1, (hv * 0.9 / 1.7) * 2);
+    hole.portW = Math.max(1, Math.min(hole.portW || 9, maxW));
+    hole.portH = Math.max(1, Math.min(hole.portH || 3.2, maxH));
+    hole.cornerR = Math.max(0, Math.min(hole.cornerR === undefined ? 1.6 : hole.cornerR, Math.min(hole.portW, hole.portH) / 2));
+    const hsU = (hole.portW/2) * 1.7, hsV = (hole.portH/2) * 1.7;
+    hole.u0 = Math.max(-(hu-hsU), Math.min(hu-hsU, hole.u0 || 0));
+    hole.v0 = Math.max(-(hv-hsV), Math.min(hv-hsV, hole.v0 || 0));
+    return;
+  }
   const maxR = Math.max(0.3, Math.min(hu, hv) * 0.9 / 1.7); // block (hs = r*1.7) must fit inside the face
   hole.diameter = Math.max(0.6, Math.min(hole.diameter || 6, maxR * 2));
   const hs = (hole.diameter/2) * 1.7;
@@ -3824,15 +3875,27 @@ function renderHoleCards() {
     const card = document.createElement('div');
     card.className = 'hole-card';
     card.dataset.holeId = hole.id;
+    const isR = hole.shape === 'rrect';
+    const dimFields = isR
+      ? '<label>Ширина</label><input type="number" data-field="portW" step="0.5" min="1" value="'+(hole.portW ?? 9)+'">'+
+        '<label>Высота</label><input type="number" data-field="portH" step="0.5" min="1" value="'+(hole.portH ?? 3.2)+'">'+
+        '<label>Радиус</label><input type="number" data-field="cornerR" step="0.2" min="0" value="'+(hole.cornerR ?? 1.6)+'"><label></label><span></span>'
+      : '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+(hole.diameter ?? 6)+'"><label></label><span></span>';
     card.innerHTML =
       '<div class="hole-head">'+
         '<select data-field="face">'+ HOLE_FACES.map(f=>'<option value="'+f+'" '+(f===hole.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('') +'</select>'+
         '<button class="hole-del" data-action="remove" title="Удалить">✕</button>'+
       '</div>'+
+      '<div class="hole-shape-row">'+
+        '<select data-field="shape">'+
+          '<option value="circle"'+(!isR?' selected':'')+'>Круг</option>'+
+          '<option value="rrect"'+(isR?' selected':'')+'>Скруг. прямоугольник (USB-C)</option>'+
+        '</select>'+
+      '</div>'+
       '<div class="hole-grid">'+
         '<label>Смещ. '+labels[0]+'</label><input type="number" data-field="u0" step="0.5" value="'+hole.u0+'">'+
         '<label>Смещ. '+labels[1]+'</label><input type="number" data-field="v0" step="0.5" value="'+hole.v0+'">'+
-        '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+hole.diameter+'"><label></label><span></span>'+
+        dimFields+
       '</div>';
     container.appendChild(card);
   }
@@ -3856,6 +3919,15 @@ function attachHoleEventListeners() {
     if (!card || !field) return;
     const hole = boxHoles.find(h => h.id === Number(card.dataset.holeId)); if (!hole) return;
     if (field === 'face') hole.face = e.target.value;
+    else if (field === 'shape') {
+      hole.shape = e.target.value;
+      if (hole.shape === 'rrect') { // seed USB-C standard dims on first switch
+        if (hole.portW === undefined) hole.portW = 9;
+        if (hole.portH === undefined) hole.portH = 3.2;
+        if (hole.cornerR === undefined) hole.cornerR = 1.6;
+      }
+      commit = true; // the field set changes → always re-clamp + re-render
+    }
     else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) hole[field] = v; }
     if (commit) { clampHoleToFace(hole); renderHoleCards(); }
     if (currentShape === 'box') markPending();
@@ -4424,7 +4496,7 @@ function exportAssemblyJSON() {
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl })),
-      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, diameter:h.diameter }))
+      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR }))
     }))
   };
   const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
@@ -4465,7 +4537,7 @@ function importAssemblyJSON(file) {
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
-        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, diameter:h.diameter }));
+        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR }));
         models.push(rec);
       });
       // Build geometry for each model (mirrors addModel: make it active, then regenerate).

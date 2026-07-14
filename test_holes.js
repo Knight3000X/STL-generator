@@ -88,5 +88,35 @@ boxHoles.push({id:11,face:'+Z',u0:-3,v0:0,diameter:14}); boxHoles.push({id:12,fa
 boxHoles.forEach(clampHoleToFace);
 chk('dispatcher: overlapping UI holes watertight', wt(buildTrisForShape('box',paramState.box)));
 
+console.log('\n=== hole cross-section shapes (circle / rounded-rect / slot) stay watertight ===');
+// roundedRectDist: circle is r at every angle; a rectangle hits its half-extents on-axis.
+chk('roundedRectDist circle @0', Math.abs(roundedRectDist(5,5,5,0)-5)<1e-9);
+chk('roundedRectDist circle @45', Math.abs(roundedRectDist(5,5,5,Math.PI/4)-5)<1e-9);
+chk('roundedRectDist rect p-extent', Math.abs(roundedRectDist(8,2,1,0)-8)<1e-9);
+chk('roundedRectDist rect q-extent', Math.abs(roundedRectDist(8,2,1,Math.PI/2)-2)<1e-9);
+// Circle expressed two ways builds the identical mesh.
+{ const a=buildBoxWithHoles(40,40,40,[{axis:2,cp:0,cq:0,r:6}]);
+  const b=buildBoxWithHoles(40,40,40,[{axis:2,cp:0,cq:0,ap:6,aq:6,rc:6}]);
+  chk('circle {r} == circle {ap=aq=rc}', a.length===b.length && Math.abs(signedVol(a)-signedVol(b))<1e-6, {a:a.length,b:b.length}); }
+for (const [name,w,h,d,holes] of [
+  ['USB-C rrect (9x3.2 r1.6) +Z', 40,30,40, [{axis:2,cp:0,cq:0,ap:4.5,aq:1.6,rc:1.6}]],
+  ['USB-C rrect on +X',           30,40,60, [{axis:0,cp:0,cq:0,ap:4.5,aq:1.6,rc:1.6}]],
+  ['slot / pill (rc=min)',        60,40,40, [{axis:2,cp:0,cq:0,ap:6,aq:2,rc:2}]],
+  ['near-rect (rc small)',        50,50,50, [{axis:0,cp:0,cq:0,ap:5,aq:8,rc:0.3}]],
+  ['rrect off-centre + circle',   80,50,80, [{axis:2,cp:-14,cq:6,ap:6,aq:2,rc:2},{axis:2,cp:16,cq:-8,r:4}]],
+]) { const t=buildBoxWithHoles(w,h,d,holes); const mc=manifoldCheck(t,4);
+  chk(name+': watertight', mc.watertight && !hasNaN(t) && signedVol(t)>0, {open:mc.openEdges,bad:mc.badEdges}); }
+// dispatcher path: a UI rounded-rect (USB-C) hole → still watertight, and less material than the solid box.
+base({width:44,height:30,depth:40}); boxHoles.length=0;
+boxHoles.push({id:21,face:'+Z',u0:0,v0:0,shape:'rrect',portW:9,portH:3.2,cornerR:1.6}); clampHoleToFace(boxHoles[0]);
+{ const t=buildTrisForShape('box',paramState.box); chk('dispatcher: USB-C port watertight', wt(t)&&!hasNaN(t));
+  chk('dispatcher: USB-C port removes material', signedVol(t) < signedVol(buildBoxWithHoles(44,30,40,[])), signedVol(t)|0); }
+// clampHoleToFace on an oversized rounded-rect keeps its block inside the face and stays watertight.
+base({width:40,height:24,depth:40});
+{ const h={id:22,face:'+Z',u0:50,v0:-50,shape:'rrect',portW:999,portH:999,cornerR:999}; clampHoleToFace(h);
+  chk('oversized rrect clamped', h.portW<=40 && h.portH<=24 && h.cornerR<=Math.min(h.portW,h.portH)/2+1e-9, h);
+  boxHoles.length=0; boxHoles.push(h);
+  chk('clamped oversized rrect watertight', wt(buildTrisForShape('box',paramState.box))); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

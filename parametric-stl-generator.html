@@ -636,7 +636,7 @@
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle (у squircle порт — прямоугольное окно с прямыми углами: кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
+      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle (у squircle порт — прямоугольное окно с прямыми углами: кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -3412,6 +3412,17 @@ function roundedRectDist(ap, aq, rc, ang){
   return b + Math.sqrt(Math.max(0, b*b - c));
 }
 function holeRadiusAt(H, ang){ const e=holeHalfExtents(H); return roundedRectDist(e.ap, e.aq, e.rc, ang); }
+// Grid-block extents for a hole. A countersunk/counterbored (head) hole widens at the entry face to headR,
+// so its block must enclose that larger circle on BOTH faces (same block ⇒ matching border rings ⇒ the
+// stepped bore stays watertight). Head is circle-only, so the block is square at max(r, headR).
+function holeBlockExtents(H){ const e=holeHalfExtents(H);
+  if (H.head){ const r=Math.max(e.ap, e.aq, H.headR||0); return { ap:r, aq:r }; }
+  return e; }
+// Cutout radius on the face at axis-sign `s`: the head (widened) circle on the entry side, else the bore.
+function holeFaceRadiusAt(H, s, ang){
+  if (H.head && s === (H.headSide||1)) return H.headR; // entry face opens at the head diameter
+  return holeRadiusAt(H, ang);
+}
 // Border ring of a hole's rectangular block within given (sorted, deduped) position arrays: the block
 // boundary loop as index pairs + the angle of each boundary point from the hole centre. Shared by the
 // fillet flat-face annulus and its bore so both sample the cutout at IDENTICAL angles → watertight tube.
@@ -3438,7 +3449,7 @@ function holeFaceWithHoles(a, s, half, holes, N) {
   const tris=[];
   const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C], outward)); tris.push(orient([A,C,D], outward)); };
   const blocks = holes.map(h=>{
-    const e=holeHalfExtents(h);
+    const e=holeBlockExtents(h);
     const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
     const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
     let i0=Math.max(0,Math.floor(toIp(h.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(h.cp+hsP)));
@@ -3458,7 +3469,7 @@ function holeFaceWithHoles(a, s, half, holes, N) {
     for(let j=j1;j>j0;j--) border.push([i0,j]);
     const B=border.length, borderPts=[], angs=[];
     for(const [i,j] of border){ const bp=P(i,j); borderPts.push(bp); angs.push(Math.atan2(bp[q]-h.cq, bp[p]-h.cp)); }
-    const circAt=ang=>{ const rr=holeRadiusAt(h,ang); const c=[0,0,0]; c[a]=s*ha; c[p]=h.cp+rr*Math.cos(ang); c[q]=h.cq+rr*Math.sin(ang); return c; };
+    const circAt=ang=>{ const rr=holeFaceRadiusAt(h,s,ang); const c=[0,0,0]; c[a]=s*ha; c[p]=h.cp+rr*Math.cos(ang); c[q]=h.cq+rr*Math.sin(ang); return c; };
     const circPts=angs.map(circAt);
     for(let k=0;k<B;k++){ const k1=(k+1)%B; pushQ(borderPts[k],borderPts[k1],circPts[k1],circPts[k]); }
     rims.push({h, angs});
@@ -3480,7 +3491,7 @@ function buildBoxWithHoles(w,h,d, holes){
   for(let a=0;a<3;a++){
     const [p,q]=HOLE_AXIS_PQ[a], hp=half[p], hq=half[q], Np=N[p], Nq=N[q], kept=[], keptBlocks=[];
     for(const H of byAxis[a]){
-      const e=holeHalfExtents(H);
+      const e=holeBlockExtents(H);
       const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
       const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
       let i0=Math.max(0,Math.floor(toIp(H.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(H.cp+hsP)));
@@ -3501,6 +3512,31 @@ function buildBoxWithHoles(w,h,d, holes){
     const [p,q]=HOLE_AXIS_PQ[a], ha=half[a], rims=faceRims[a];
     byAxis[a].forEach((H, hi)=>{
       const angs=rims[hi].angs, B=angs.length;
+      // point on the bore wall at angle `ang`, axial coord `ca`, radius `rad`
+      const pt=(ang,ca,rad)=>{ const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rad*Math.cos(ang); c[q]=H.cq+rad*Math.sin(ang); return c; };
+      // ruled tube between two coaxial rings (ca0,r0)→(ca1,r1); wall faces the axis (the void)
+      const tube=(ca0,r0,ca1,r1)=>{ for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+        const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+        tris.push(orient([pt(a0,ca0,r0),pt(a1,ca0,r0),pt(a1,ca1,r1)], refIn));
+        tris.push(orient([pt(a0,ca0,r0),pt(a1,ca1,r1),pt(a0,ca1,r1)], refIn)); } };
+      if (H.head) {
+        // Countersink (conical) / counterbore (cylindrical step) at the ENTRY face (headSide); the main
+        // bore continues to the far face. Every ring shares the same `angs`, so all sections stay watertight.
+        const hs=H.headSide||1, hr=Math.max(H.headR||0, holeHalfExtents(H).ap), baseR=holeHalfExtents(H).ap;
+        const dep=Math.max(0.3, Math.min(H.headDepth||3, 2*ha-0.5)), sh=hs*(ha-dep);
+        if (H.head==='bore') {
+          tube(hs*ha, hr, sh, hr);                    // counterbore cylinder
+          const nrm=[0,0,0]; nrm[a]=hs;                // shoulder ring (headR→baseR), faces the entry
+          for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+            tris.push(orient([pt(a0,sh,hr),pt(a1,sh,hr),pt(a1,sh,baseR)], nrm));
+            tris.push(orient([pt(a0,sh,hr),pt(a1,sh,baseR),pt(a0,sh,baseR)], nrm)); }
+          tube(sh, baseR, -hs*ha, baseR);             // main bore
+        } else {
+          tube(hs*ha, hr, sh, baseR);                 // conical countersink
+          tube(sh, baseR, -hs*ha, baseR);             // main bore
+        }
+        return;
+      }
       const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(H,ang); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
       for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
         const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
@@ -3516,13 +3552,21 @@ function buildBoxWithHoles(w,h,d, holes){
 // → {ap,aq,rc}. Through-hole → the sign of the face doesn't matter; (u0,v0) are already in the face's
 // (u,v) = HOLE_AXIS_PQ order (u along p, v along q), so portW maps to ap and portH to aq.
 function holesForBuilder(p){
-  return (boxHoles||[]).map(H=>{ const ax = FACE_AXES[H.face] ? FACE_AXES[H.face](p)[2] : 2;
+  return (boxHoles||[]).map(H=>{ const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
+    const ax = fa[2];
     if (H.shape === 'rrect') {
       const ap=Math.max(0.3,(H.portW||9)/2), aq=Math.max(0.3,(H.portH||3.2)/2);
       const rc=Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq)));
-      return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc };
+      return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc }; // rounded rect: no head (screw seats are round)
     }
-    return { axis:ax, cp:H.u0, cq:H.v0, r:Math.max(0.3, (H.diameter||6)/2) }; });
+    const r=Math.max(0.3, (H.diameter||6)/2);
+    const out = { axis:ax, cp:H.u0, cq:H.v0, r };
+    // Countersink / counterbore: a recessed head at the entry face (the face the hole is placed on).
+    if (H.head==='sink' || H.head==='bore') {
+      out.head=H.head; out.headR=Math.max(r+0.3, (H.headDiameter||r*2+4)/2);
+      out.headDepth=Math.max(0.3, H.headDepth||3); out.headSide=fa[3]>=0?1:-1;
+    }
+    return out; });
 }
 // Convert UI holes → single-wall PORTS for a hollow container: {axis, side, cp, cq, …profile}. Same
 // face→(axis,offset-sign) mapping as FACE_AXES, and u/v already match HOLE_AXIS_PQ's (p,q). The open top
@@ -4133,7 +4177,15 @@ function clampHoleToFace(hole) {
   }
   const maxR = Math.max(0.3, Math.min(hu, hv) * 0.9 / 1.7); // block (hs = r*1.7) must fit inside the face
   hole.diameter = Math.max(0.6, Math.min(hole.diameter || 6, maxR * 2));
-  const hs = (hole.diameter/2) * 1.7;
+  // Countersink / counterbore head: the widened head circle drives the block, so it (not the bore) must fit
+  // the face; its depth is capped to most of the box's thickness along the bore axis.
+  if (hole.head === 'sink' || hole.head === 'bore') {
+    hole.headDiameter = Math.max(hole.diameter + 0.6, Math.min(hole.headDiameter || hole.diameter + 4, maxR * 2));
+    const axisHalf = hole.face==='+X'||hole.face==='-X' ? p.width/2 : hole.face==='+Y'||hole.face==='-Y' ? p.height/2 : p.depth/2;
+    hole.headDepth = Math.max(0.3, Math.min(hole.headDepth || 3, axisHalf * 1.5));
+  }
+  const effR = (hole.head==='sink'||hole.head==='bore') ? Math.max(hole.diameter, hole.headDiameter||0)/2 : hole.diameter/2;
+  const hs = effR * 1.7;
   hole.u0 = Math.max(-(hu-hs), Math.min(hu-hs, hole.u0 || 0));
   hole.v0 = Math.max(-(hv-hs), Math.min(hv-hs, hole.v0 || 0));
 }
@@ -4147,11 +4199,26 @@ function renderHoleCards() {
     card.className = 'hole-card';
     card.dataset.holeId = hole.id;
     const isR = hole.shape === 'rrect';
+    const head = hole.head || 'none';
     const dimFields = isR
       ? '<label>Ширина</label><input type="number" data-field="portW" step="0.5" min="1" value="'+(hole.portW ?? 9)+'">'+
         '<label>Высота</label><input type="number" data-field="portH" step="0.5" min="1" value="'+(hole.portH ?? 3.2)+'">'+
         '<label>Радиус</label><input type="number" data-field="cornerR" step="0.2" min="0" value="'+(hole.cornerR ?? 1.6)+'"><label></label><span></span>'
       : '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+(hole.diameter ?? 6)+'"><label></label><span></span>';
+    // Countersink / counterbore head (circle holes only): a recessed seat for a screw head at the entry face.
+    const headRow = isR ? '' :
+      '<div class="hole-shape-row">'+
+        '<select data-field="head">'+
+          '<option value="none"'+(head==='none'?' selected':'')+'>Без потая</option>'+
+          '<option value="sink"'+(head==='sink'?' selected':'')+'>Зенковка (конус)</option>'+
+          '<option value="bore"'+(head==='bore'?' selected':'')+'>Цекование (цилиндр)</option>'+
+        '</select>'+
+      '</div>'+
+      (head==='none' ? '' :
+        '<div class="hole-grid">'+
+          '<label>Ø головки</label><input type="number" data-field="headDiameter" step="0.5" min="1" value="'+(hole.headDiameter ?? (hole.diameter??6)+4)+'">'+
+          '<label>Глубина</label><input type="number" data-field="headDepth" step="0.5" min="0.3" value="'+(hole.headDepth ?? 3)+'"><label></label><span></span>'+
+        '</div>');
     card.innerHTML =
       '<div class="hole-head">'+
         '<select data-field="face">'+ HOLE_FACES.map(f=>'<option value="'+f+'" '+(f===hole.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('') +'</select>'+
@@ -4167,7 +4234,8 @@ function renderHoleCards() {
         '<label>Смещ. '+labels[0]+'</label><input type="number" data-field="u0" step="0.5" value="'+hole.u0+'">'+
         '<label>Смещ. '+labels[1]+'</label><input type="number" data-field="v0" step="0.5" value="'+hole.v0+'">'+
         dimFields+
-      '</div>';
+      '</div>'+
+      headRow;
     container.appendChild(card);
   }
   const btn = document.getElementById('btn-add-hole'); if (btn) btn.disabled = boxHoles.length >= 24;
@@ -4196,8 +4264,15 @@ function attachHoleEventListeners() {
         if (hole.portW === undefined) hole.portW = 9;
         if (hole.portH === undefined) hole.portH = 3.2;
         if (hole.cornerR === undefined) hole.cornerR = 1.6;
+        hole.head = 'none'; // a rounded rectangle can't take a round screw-head seat
       }
       commit = true; // the field set changes → always re-clamp + re-render
+    }
+    else if (field === 'head') {
+      hole.head = e.target.value === 'none' ? undefined : e.target.value;
+      if (hole.head && hole.headDiameter === undefined) hole.headDiameter = (hole.diameter || 6) + 4;
+      if (hole.head && hole.headDepth === undefined) hole.headDepth = 3;
+      commit = true; // shows/hides the head dimension fields
     }
     else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) hole[field] = v; }
     if (commit) { clampHoleToFace(hole); renderHoleCards(); }
@@ -4769,7 +4844,7 @@ function exportAssemblyJSON() {
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl })),
-      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR }))
+      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth }))
     }))
   };
   const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
@@ -4810,7 +4885,7 @@ function importAssemblyJSON(file) {
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
-        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR }));
+        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth }));
         models.push(rec);
       });
       // Build geometry for each model (mirrors addModel: make it active, then regenerate).

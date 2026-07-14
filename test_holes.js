@@ -182,5 +182,32 @@ base({width:60,height:40,depth:50,filletRadius:6,taperXPlus:8,taperZMinus:-6}); 
 boxHoles.push({id:43,face:'+Z',u0:0,v0:0,diameter:8}); clampHoleToFace(boxHoles[0]);
 chk('dispatcher: fillet + hole + taper watertight', wt(buildTrisForShape('box',paramState.box)));
 
+console.log('\n=== countersink / counterbore heads (recessed screw seats) on the solid box ===');
+for (const [name, holes] of [
+  ['countersink +Z head+', [{axis:2,cp:0,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:1}]],
+  ['countersink head-',    [{axis:2,cp:0,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:-1}]],
+  ['counterbore +Z',       [{axis:2,cp:0,cq:0,r:2.5,head:'bore',headR:5,headDepth:4,headSide:1}]],
+  ['counterbore floor -Y', [{axis:1,cp:0,cq:0,r:2,head:'bore',headR:4.5,headDepth:3,headSide:-1}]],
+  ['sink + plain circle',  [{axis:2,cp:-12,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:1},{axis:2,cp:12,cq:0,r:4}]],
+  ['sink on two axes',     [{axis:2,cp:0,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:1},{axis:0,cp:0,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:1}]],
+]) { const t=buildBoxWithHoles(50,40,50,holes); const mc=manifoldCheck(t,4);
+  chk(name+': watertight', mc.watertight && !hasNaN(t) && signedVol(t)>0, {open:mc.openEdges,bad:mc.badEdges}); }
+// a head opens a wider entry → removes MORE material than the plain bore
+{ const plain=signedVol(buildBoxWithHoles(50,40,50,[{axis:2,cp:0,cq:0,r:2.5}]));
+  const sink =signedVol(buildBoxWithHoles(50,40,50,[{axis:2,cp:0,cq:0,r:2.5,head:'sink',headR:5,headDepth:3,headSide:1}]));
+  chk('head removes more material than the plain bore', sink < plain, {plain:plain|0, sink:sink|0}); }
+// dispatcher: UI head hole (circle) on the plain solid box
+base({width:50,height:40,depth:50}); boxHoles.length=0;
+boxHoles.push({id:51,face:'+Z',u0:0,v0:0,diameter:5,head:'sink',headDiameter:10,headDepth:3}); clampHoleToFace(boxHoles[0]);
+chk('dispatcher: countersink watertight', wt(buildTrisForShape('box',paramState.box)));
+boxHoles.length=0;
+boxHoles.push({id:52,face:'+X',u0:0,v0:0,diameter:5,head:'bore',headDiameter:11,headDepth:4}); clampHoleToFace(boxHoles[0]);
+chk('dispatcher: counterbore watertight', wt(buildTrisForShape('box',paramState.box)));
+// oversized head is clamped to the face and stays watertight
+base({width:40,height:30,depth:40}); boxHoles.length=0;
+{ const ho={id:53,face:'+Z',u0:0,v0:0,diameter:5,head:'sink',headDiameter:999,headDepth:999}; clampHoleToFace(ho);
+  chk('oversized head clamped', ho.headDiameter<=40 && ho.headDepth<=40 && ho.headDiameter>ho.diameter, ho);
+  boxHoles.length=0; boxHoles.push(ho); chk('clamped head watertight', wt(buildTrisForShape('box',paramState.box))); }
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

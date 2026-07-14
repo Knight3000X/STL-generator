@@ -55,10 +55,12 @@ boxHoles.push({id:3,face:'+Z',u0:0,v0:0,diameter:10}); clampHoleToFace(boxHoles[
 base({squircle:45}); const sqNoHole=buildTrisForShape('box',paramState.box).length;
 boxHoles.push({id:4,face:'+Z',u0:0,v0:0,diameter:8}); clampHoleToFace(boxHoles[0]);
 chk('squircle: holes ignored', buildTrisForShape('box',paramState.box).length===sqNoHole);
-// fillet present → holes ignored
+// fillet present → hole is now DRILLED through the flat faces (compatibility), mesh differs + watertight
 base({filletRadius:6}); const filNoHole=buildTrisForShape('box',paramState.box).length;
 boxHoles.push({id:5,face:'+X',u0:0,v0:0,diameter:8}); clampHoleToFace(boxHoles[0]);
-chk('fillet: holes ignored', buildTrisForShape('box',paramState.box).length===filNoHole);
+{ const t=buildTrisForShape('box',paramState.box);
+  chk('fillet: hole drilled (mesh differs)', t.length!==filNoHole, {withHole:t.length, noHole:filNoHole});
+  chk('fillet + hole watertight', wt(t)); }
 
 console.log('\n=== clampHoleToFace keeps the hole inside the face ===');
 base({width:40,height:40,depth:40});
@@ -154,6 +156,31 @@ chk('hollow + port + taper: watertight', wt(buildTrisForShape('box',paramState.b
 base({width:60,height:40,depth:50,hollow:true,wallThickness:3,filletInnerFloor:3}); boxHoles.length=0;
 boxHoles.push({id:33,face:'+Z',u0:0,v0:0,diameter:6}); clampHoleToFace(boxHoles[0]);
 { const t=buildTrisForShape('box',paramState.box); chk('hollow + fillet: port gated off (still builds)', t.length>0 && !hasNaN(t)); }
+
+console.log('\n=== holes on a CORNER-FILLETED box (drilled through the flat faces) ===');
+{ const R=(rT,rB,rV)=>asymRadiiFromGroups(rT,rB,rV,30,20,25);
+  for (const [name,rT,rB,rV,holes] of [
+    ['uniform fillet + circle',  6,6,6,  [{axis:2,cp:0,cq:0,r:6}]],
+    ['uniform fillet + USB-C',   6,6,6,  [{axis:2,cp:0,cq:0,ap:4.5,aq:1.6,rc:1.6}]],
+    ['asym fillet + circle',     8,4,10, [{axis:2,cp:0,cq:0,r:5}]],
+    ['fillet + holes on 2 axes', 6,6,6,  [{axis:2,cp:0,cq:0,r:5},{axis:0,cp:0,cq:0,r:4}]],
+    ['fillet + off-centre rrect',5,5,5,  [{axis:2,cp:-8,cq:6,ap:5,aq:2.5,rc:1.5}]],
+  ]) { const tr=buildAsymRoundedBox(60,40,50,R(rT,rB,rV),16,4,null,null,50,undefined,holes);
+    chk(name+': watertight', manifoldCheck(tr,4).watertight && !hasNaN(tr) && signedVol(tr)>0); }
+  // a hole too big for the flat region is dropped → identical to the no-hole filleted box
+  const noH=buildAsymRoundedBox(40,40,40,R(6,6,6),16,4,null,null,50,undefined,[]).length;
+  const big=buildAsymRoundedBox(40,40,40,R(6,6,6),16,4,null,null,50,undefined,[{axis:2,cp:0,cq:0,r:100}]);
+  chk('oversized fillet hole dropped', big.length===noH && manifoldCheck(big,4).watertight, {big:big.length,noH}); }
+// dispatcher: filleted solid box + hole (circle / USB-C / asym / taper)
+base({width:60,height:40,depth:50,filletRadius:6}); boxHoles.length=0;
+boxHoles.push({id:41,face:'+Z',u0:0,v0:0,shape:'rrect',portW:12,portH:5,cornerR:2}); clampHoleToFace(boxHoles[0]);
+chk('dispatcher: fillet + USB-C watertight', wt(buildTrisForShape('box',paramState.box)));
+base({width:60,height:40,depth:50,filletTop:8,filletBottom:4,filletVert:10}); boxHoles.length=0;
+boxHoles.push({id:42,face:'+X',u0:0,v0:0,diameter:7}); clampHoleToFace(boxHoles[0]);
+chk('dispatcher: asym fillet + hole watertight', wt(buildTrisForShape('box',paramState.box)));
+base({width:60,height:40,depth:50,filletRadius:6,taperXPlus:8,taperZMinus:-6}); boxHoles.length=0;
+boxHoles.push({id:43,face:'+Z',u0:0,v0:0,diameter:8}); clampHoleToFace(boxHoles[0]);
+chk('dispatcher: fillet + hole + taper watertight', wt(buildTrisForShape('box',paramState.box)));
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

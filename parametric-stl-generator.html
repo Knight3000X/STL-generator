@@ -1294,7 +1294,7 @@ function buildCornerSphere(sx, sy, sz, hw, hh, hd, R, segs) {
 // cylinders share one limit curve by construction. Within a cell each min() is one linear
 // piece (switches lie on grid lines), so Sutherland-Hodgman clips it exactly and adjacent
 // cells agree on shared edges -> interior watertight.
-function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outward, insetU, insetV, uPositionsFull, vPositionsFull, dispFn) {
+function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outward, insetU, insetV, uPositionsFull, vPositionsFull, dispFn, port) {
   const EPS = 1e-7;
   const mk = (uu, vv) => { const p=[0,0,0]; p[uAxis]=uu; p[vAxis]=vv; p[nAxis]=nOffset; return p; };
   // Logo relief: displace each vertex along the (flat, constant) face normal by the heightmap value at
@@ -1311,6 +1311,11 @@ function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outwa
   const inF = (u,v) => sides.every(f => f(u,v) >= -EPS);
   const dedup = a => a.slice().sort((x,y)=>x-y).filter((x,i,arr)=> i===0 || x > arr[i-1]+1e-9);
   const uPos = dedup(uPositionsFull), vPos = dedup(vPositionsFull);
+  // Optional through-hole cut from the flat interior: skip the block's cells and stitch a border-ring →
+  // cutout annulus. The block sits well inside the flat region (clamped in buildAsymRoundedBox), so its
+  // cells are full interior cells and the annulus never touches the fillet clip.
+  let ring=null; const cp = port?port.cp:0, cq = port?port.cq:0;
+  if (port) { const e=holeHalfExtents(port); ring=holeBlockRing(uPos, vPos, cp, cq, e.ap*1.7, e.aq*1.7); }
   function clip(poly, f) {
     const out = [];
     for (let i=0;i<poly.length;i++){
@@ -1331,6 +1336,7 @@ function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outwa
   const tris = [];
   for (let j=0;j<vPos.length-1;j++){
     for (let i=0;i<uPos.length-1;i++){
+      if (ring && i>=ring.iu0 && i<ring.iu1 && j>=ring.iv0 && j<ring.iv1) continue; // hole block
       const u0=uPos[i],u1=uPos[i+1],v0=vPos[j],v1=vPos[j+1];
       let poly=[[u0,v0],[u1,v0],[u1,v1],[u0,v1]];
       const nin=poly.filter(c=>inF(c[0],c[1])).length;
@@ -1345,10 +1351,16 @@ function buildFaceAsymFromAxis(uAxis, vAxis, nAxis, nOffset, uHalf, vHalf, outwa
       }
     }
   }
+  if (ring) { // border-ring → cutout annulus (no relief: holes gate off logos)
+    const bp = ring.border.map(([i,j])=>mk(uPos[i],vPos[j]));
+    const cut = ring.angs.map(ang=>{ const rr=holeRadiusAt(port,ang); return mk(cp+rr*Math.cos(ang), cq+rr*Math.sin(ang)); });
+    const B = ring.border.length;
+    for(let k=0;k<B;k++){ const k1=(k+1)%B; tris.push(orient([bp[k],bp[k1],cut[k1]],outward)); tris.push(orient([bp[k],cut[k1],cut[k]],outward)); }
+  }
   return tris;
 }
-function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesByAxis, logoRes, bulgeAmpsByFace) {
-  const hw=w/2, hh=h/2, hd=d/2;
+function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesByAxis, logoRes, bulgeAmpsByFace, holes) {
+  const hw=w/2, hh=h/2, hd=d/2, half=[hw,hh,hd];
   resolution = resolution || 10;
   logoRes = logoRes || resolution;
   let tris = [];
@@ -1378,6 +1390,28 @@ function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesB
     addLogoZonesToAxis(xPositions, hw, zonesByAxis[0], logoRes);
     addLogoZonesToAxis(yPositions, hh, zonesByAxis[1], logoRes);
     addLogoZonesToAxis(zPositions, hd, zonesByAxis[2], logoRes);
+    xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
+  }
+  // Through-holes on the FLAT faces (fillet compatibility). Each hole is clamped into the flat interior
+  // (away from the rounded edges by the largest radius) and its window sub-lines are injected into the two
+  // shared perpendicular axis arrays — so BOTH pierced faces (±half[axis]) sample the cutout at identical
+  // angles and the straight bore joining them is watertight, exactly like the hollow ports. A hole too big
+  // for the flat region is dropped.
+  const maxR = Math.max(0, ...[R.rX['0,0'],R.rX['0,1'],R.rX['1,0'],R.rX['1,1'],R.rY['0,0'],R.rY['0,1'],R.rY['1,0'],R.rY['1,1'],R.rZ['0,0'],R.rZ['0,1'],R.rZ['1,0'],R.rZ['1,1']]);
+  let effHoles = [];
+  if (holes && holes.length) {
+    const cs = Math.max(w,h,d)/24, posArr=[xPositions,yPositions,zPositions], usedAxis=new Set();
+    for (const H of holes) {
+      if (usedAxis.has(H.axis)) continue; // one through-hole per axis (both faces share it)
+      const [p,q]=HOLE_AXIS_PQ[H.axis], e=holeHalfExtents(H), hsU=e.ap*1.7, hsV=e.aq*1.7;
+      const limP=half[p]-maxR-0.5, limQ=half[q]-maxR-0.5;
+      if (limP<=hsU || limQ<=hsV) continue; // doesn't fit the flat region
+      const cp=Math.max(-(limP-hsU), Math.min(limP-hsU, H.cp)), cq=Math.max(-(limQ-hsV), Math.min(limQ-hsV, H.cq));
+      usedAxis.add(H.axis);
+      const eff=Object.assign({}, H, {cp, cq}); effHoles.push(eff);
+      const inject=(arr,center,hs)=>{ for(const v of hpWindowLines(center,hs,cs)) if(!arr.some(x=>Math.abs(x-v)<1e-6)) arr.push(v); };
+      inject(posArr[p], cp, hsU); inject(posArr[q], cq, hsV);
+    }
     xPositions.sort((a,b)=>a-b); yPositions.sort((a,b)=>a-b); zPositions.sort((a,b)=>a-b);
   }
   // A corner's chamfer diagonal is the 45deg line signV*v - signU*u = vHalf - uHalf (radius-
@@ -1434,7 +1468,8 @@ function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesB
       const bfn = makeInsetBulgeDisp(bAmp, f.uHalf, f.vHalf, f.insetU, f.insetV), logoFn = dfn;
       dfn = logoFn ? (u,v,base)=> (logoFn(u,v,base)||0) + bfn(u,v,base) : bfn;
     }
-    tris = tris.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn));
+    const port = effHoles.find(H => H.axis === f.nAxis) || null; // both faces on the axis share the hole
+    tris = tris.concat(buildFaceAsymFromAxis(f.uAxis,f.vAxis,f.nAxis,f.nOffset,f.uHalf,f.vHalf,f.outward,f.insetU,f.insetV,f.uPos,f.vPos,dfn,port));
   }
   for (const [s1,s2] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
     tris = tris.concat(buildEdgeCylinderFromAxis('X', s1, s2, hw,hh,hd, R, xPositions, segs));
@@ -1443,6 +1478,21 @@ function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesB
   }
   for (const sx of [1,-1]) for (const sy of [1,-1]) for (const sz of [1,-1]) {
     tris = tris.concat(buildCornerSphere(sx,sy,sz, hw,hh,hd, R, segs));
+  }
+  // Bores: connect each through-hole's two flat-face cutouts (n=±half[axis]). Both faces sampled the cutout
+  // at the SAME angles (shared window lines) so the tube is a clean prism → watertight.
+  const dedupA = a => a.slice().sort((x,y)=>x-y).filter((x,i,arr)=> i===0 || x > arr[i-1]+1e-9);
+  const posArr2=[xPositions,yPositions,zPositions];
+  for (const H of effHoles) {
+    const a=H.axis, [p,q]=HOLE_AXIS_PQ[a], e=holeHalfExtents(H);
+    const ring=holeBlockRing(dedupA(posArr2[p]), dedupA(posArr2[q]), H.cp, H.cq, e.ap*1.7, e.aq*1.7);
+    if(!ring) continue;
+    const ha=half[a], angs=ring.angs, B=angs.length;
+    const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(H,ang); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
+    for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+      const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
+      const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+      tris.push(orient([Ap,Bp,Bm],refIn)); tris.push(orient([Ap,Bm,Am],refIn)); }
   }
   return tris;
 }
@@ -3291,6 +3341,21 @@ function roundedRectDist(ap, aq, rc, ang){
   return b + Math.sqrt(Math.max(0, b*b - c));
 }
 function holeRadiusAt(H, ang){ const e=holeHalfExtents(H); return roundedRectDist(e.ap, e.aq, e.rc, ang); }
+// Border ring of a hole's rectangular block within given (sorted, deduped) position arrays: the block
+// boundary loop as index pairs + the angle of each boundary point from the hole centre. Shared by the
+// fillet flat-face annulus and its bore so both sample the cutout at IDENTICAL angles → watertight tube.
+// Returns null if the block is degenerate (hole doesn't fit the sampled region).
+function holeBlockRing(uPos, vPos, cp, cq, hsU, hsV){
+  const iu0=uPos.findIndex(x=>x>=cp-hsU-1e-4); let iu1=-1; for(let i=uPos.length-1;i>=0;i--){ if(uPos[i]<=cp+hsU+1e-4){ iu1=i; break; } }
+  const iv0=vPos.findIndex(x=>x>=cq-hsV-1e-4); let iv1=-1; for(let j=vPos.length-1;j>=0;j--){ if(vPos[j]<=cq+hsV+1e-4){ iv1=j; break; } }
+  if(iu0<0||iv0<0||iu1<=iu0||iv1<=iv0) return null;
+  const border=[];
+  for(let i=iu0;i<iu1;i++) border.push([i,iv0]);
+  for(let j=iv0;j<iv1;j++) border.push([iu1,j]);
+  for(let i=iu1;i>iu0;i--) border.push([i,iv1]);
+  for(let j=iv1;j>iv0;j--) border.push([iu0,j]);
+  return { iu0, iu1, iv0, iv1, border, angs: border.map(([i,j])=>Math.atan2(vPos[j]-cq, uPos[i]-cp)) };
+}
 function holeFaceWithHoles(a, s, half, holes, N) {
   const [p,q] = HOLE_AXIS_PQ[a];
   const hp=half[p], hq=half[q], ha=half[a];
@@ -3707,12 +3772,16 @@ function buildTrisForShape(shape, p) {
     // each logo zone). Logos are clamped into the flat region (faceFilletInsets) so the relief never
     // reaches the edge cylinders. Taper stretch of the relief is accepted for the rare fillet+taper+logo
     // combo; with no taper it is exact.
+    // Through-holes on a corner-filleted box: pierced through the FLAT faces (holes gate off logos, so no
+    // relief conflict). Routes through the asym builder (which drills the holes); a hole too big for the
+    // flat region is dropped inside it.
+    const filletHoles = (hasHoles && logos.length===0) ? holesForBuilder(p) : [];
     let tris;
-    if (rTop !== rBot || rTop !== rVert || logos.length > 0) {
+    if (rTop !== rBot || rTop !== rVert || logos.length > 0 || filletHoles.length > 0) {
       let dispFnsFlat = null, zonesFlat = null;
       if (logos.length > 0) { const idT = q => q; dispFnsFlat = buildCombinedLogoDispFns(idT); zonesFlat = computeLogoZonesByAxis(idT); }
       const R = asymRadiiFromGroups(rTop, rBot, rVert, p.width/2, p.height/2, p.depth/2);
-      tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, asymAxisRes(p), p.filletSeg||4, dispFnsFlat, zonesFlat, logoResolution);
+      tris = buildAsymRoundedBox(p.width, p.height, p.depth, R, asymAxisRes(p), p.filletSeg||4, dispFnsFlat, zonesFlat, logoResolution, undefined, filletHoles);
     } else {
       tris = genRoundedBox(p.width, p.height, p.depth, rTop, p.segW, p.segH, p.segD, p.filletSeg||4);
     }

@@ -636,7 +636,7 @@
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере (без скругления, squircle, выгиба, решётки и логотипов) отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); на каждую стенку — по одному порту, верх (+Y) открыт и не пробивается. Наклон стенок допустим (порт наклоняется вместе со стенкой). Положение — в координатах грани, размеры — в мм. При скруглении/squircle/выгибе/решётке/логотипах или в режиме «борт» отверстия игнорируются (нужна плоская стенка для герметичности выреза).</div>
+      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle (у squircle порт — прямоугольное окно с прямыми углами: кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -3192,20 +3192,50 @@ function buildSuperellipsoidLogos(w, h, d, eH, eVTop, eVBot, resolution, dispFns
 // A superellipse wall extruded yLo..yHi. sign +1 = outer shell (normals out, embossable); sign -1 =
 // cavity wall (normals into the void, never embossed). Top/bottom rows stay on the base ring so they
 // coincide exactly with the caps/rim they seam to. Returns the vertex grid (for seam reuse) + tris.
-function squircleWall(ring, rn, N, ySamp, sign, wallDispFns){
+function squircleWall(ring, rn, N, ySamp, sign, wallDispFns, skip){
   const M=ySamp.length-1, grid=[];
   for(let j=0;j<=M;j++){ const y=ySamp[j], edge=(j===0||j===M), row=[];
     for(let i=0;i<N;i++){ const base=[ring[i][0], y, ring[i][1]];
       row.push((!edge && wallDispFns && sign>0) ? applySurfaceLogo(base, rn[i], wallDispFns) : base); }
     grid.push(row);
   }
+  // Optional single-wall port: skip the rectangular block of cells (arc columns × [ylo,yhi]) — the cavity
+  // wall skips the SAME block so both cutout rings coincide and the tube (built in buildSquircleHollow) is
+  // watertight. skip.cols = ring indices i whose cell (i→i+1) is inside the port arc.
+  const inBlock=(i,j)=> skip && skip.cols.has(i) && ySamp[j]>=skip.ylo-1e-6 && ySamp[j+1]<=skip.yhi+1e-6;
   const tris=[];
-  for(let j=0;j<M;j++) for(let i=0;i<N;i++){ const k=(i+1)%N;
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){ if(inBlock(i,j)) continue; const k=(i+1)%N;
     const ref=[(ring[i][0]+ring[k][0])*sign, 0, (ring[i][1]+ring[k][1])*sign];
     tris.push(orient([grid[j][i], grid[j][k], grid[j+1][k]], ref));
     tris.push(orient([grid[j][i], grid[j+1][k], grid[j+1][i]], ref));
   }
   return { grid, tris };
+}
+// The contiguous arc of ring indices a single-wall squircle port covers, from its face (axis+sign) and the
+// port's half-width (aP) along that face's horizontal axis. The face's OTHER coordinate must have the right
+// sign (front/back), and the arc is trimmed to the run where the horizontal coordinate stays MONOTONIC —
+// that's what stops it wrapping around a corner into the neighbouring face (which would fold the window and
+// tear the tube). Handles the seam wrap (arc crossing index 0).
+function squirclePortArc(ring, rn, faceAxis, faceSign, cP, aP){
+  const N=ring.length, hAxis = faceAxis===0 ? 1 : 0; // face horizontal world axis (ring is [x,z] → 0=x,1=z)
+  const fAxis = faceAxis===0 ? 0 : 1;                // face-normal coord in ring space
+  const hit=[];
+  for(let i=0;i<N;i++){ const onFace = Math.sign(ring[i][fAxis]) === faceSign;
+    const hc = ring[i][hAxis];
+    if(onFace && hc>=cP-aP-1e-6 && hc<=cP+aP+1e-6) hit.push(i); }
+  if(hit.length<2) return null;
+  const set=new Set(hit);
+  let start=hit[0];
+  if(set.has(0) && set.has(N-1)){ let s=0; while(set.has((s-1+N)%N)) s=(s-1+N)%N; start=s; }
+  else start=Math.min(...hit);
+  let arc=[]; let i=start; for(let n=0;n<N;n++){ if(!set.has(i)) break; arc.push(i); i=(i+1)%N; }
+  // Trim to the maximal MONOTONIC-horizontal run (drops corner fold-back where hc reverses direction).
+  if(arc.length>=3){
+    const hc=arc.map(idx=>ring[idx][hAxis]); const dir=Math.sign(hc[1]-hc[0]) || 1; let end=1;
+    while(end<arc.length && Math.sign(hc[end]-hc[end-1])===dir) end++;
+    arc=arc.slice(0,end);
+  }
+  return arc.length>=2 ? arc : null;
 }
 // Rounded (superellipsoid-bottom) dome: the steep near-vertical part is concentric superellipse rings
 // sampled by HEIGHT y (even along the profile), from the full boundary at y=0 (level 0 == the wall's
@@ -3252,7 +3282,7 @@ function superellipseDomeCapped(ring, g, aSamp, bSamp, N, poleY, invEv, outwardS
     pushQuadAdaptive(tris, cg[i][j], cg[i+1][j], cg[i+1][j+1], cg[i][j+1], refS);
   return tris;
 }
-function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome){
+function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome, port){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
   const fineW=Math.max(0.1, maxDim/Math.max(12, (logoRes||50)*2)), coarseW=Math.max(0.8, maxDim/45);
   // Outer + inner shells share the SAME (a,b) sample arrays (normalised [-1,1]), so their boundary loops
@@ -3292,10 +3322,44 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
   // Flat bottom (squircleVBot=0): straight wall full height + flat superellipse caps.
   const ySampO=zonedSamples(-hh, hh, coarseW, fineW, Z.yZ);          // outer wall: fine under side logos
   const ySampI=zonedSamples(floorY, hh, coarseW, coarseW, []);      // cavity wall: not embossed → coarse
-  const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns);              // outer wall (embossable)
-  const iw=squircleWall(ringI, rnI, N, ySampI, -1, null);                     // cavity wall (plain)
+  // Single-wall port (rectangular window through ONE curved wall into the cavity). The outer + inner walls
+  // skip the SAME block (arc columns × [ylo,yhi]) and are re-seated to share identical y-samples there, so
+  // their cutout rings coincide and the connecting tube is watertight — the box-port trick, in the wall's
+  // angular parametrisation. Corners are square (a curved wall has no watertight-by-construction rounding).
+  let skip=null; const tube=[];
+  if (port) {
+    const arc=squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH);
+    let ylo=port.yC-port.yH, yhi=port.yC+port.yH;
+    ylo=Math.max(floorY+0.6, ylo); yhi=Math.min(hh-0.6, yhi);
+    if (arc && yhi>ylo+0.5) {
+      // Drop originals within HALF a coarse cell of the window (avoids a near-duplicate row at the boundary,
+      // which would fold into overlapping triangles), then lay the window lines and dedupe cleanly. Both
+      // walls run this identically → their samples in [ylo,yhi] are the same window lines → tube stays k→k.
+      const reseat=arr=>{ const mgn=coarseW*0.5;
+        const a=arr.filter(v=>v<=ylo-mgn || v>=yhi+mgn).concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
+        a.sort((x,y)=>x-y);
+        return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
+      const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+      skip={ cols:new Set(arc.slice(0,-1)), ylo, yhi };
+      const yList=ySampO.filter(v=>v>=ylo-1e-6 && v<=yhi+1e-6), bnd=[];
+      for(const i of arc) bnd.push([i, yList[0]]);
+      const iLast=arc[arc.length-1]; for(let k=1;k<yList.length;k++) bnd.push([iLast, yList[k]]);
+      for(let k=arc.length-2;k>=0;k--) bnd.push([arc[k], yList[yList.length-1]]);
+      const iFirst=arc[0]; for(let k=yList.length-2;k>=1;k--) bnd.push([iFirst, yList[k]]);
+      const midI=arc[arc.length>>1], cen=[(ringO[midI][0]+ringI[midI][0])/2, (ylo+yhi)/2, (ringO[midI][1]+ringI[midI][1])/2];
+      const B=bnd.length;
+      for(let k=0;k<B;k++){ const k1=(k+1)%B, [i0,y0]=bnd[k], [i1,y1]=bnd[k1];
+        const O0=[ringO[i0][0],y0,ringO[i0][1]], O1=[ringO[i1][0],y1,ringO[i1][1]];
+        const I0=[ringI[i0][0],y0,ringI[i0][1]], I1=[ringI[i1][0],y1,ringI[i1][1]];
+        const ref=[cen[0]-(O0[0]+I0[0])/2, cen[1]-(O0[1]+I0[1])/2, cen[2]-(O0[2]+I0[2])/2];
+        tube.push(orient([O0,O1,I1],ref)); tube.push(orient([O0,I1,I0],ref)); }
+    }
+  }
+  const ow=squircleWall(ringO, rnO, N, ySampO, +1, wallDispFns, skip);         // outer wall (embossable)
+  const iw=squircleWall(ringI, rnI, N, ySampI, -1, null, skip);               // cavity wall (plain)
   for(const tr of ow.tris) tris.push(tr);
   for(const tr of iw.tris) tris.push(tr);
+  for(const tr of tube) tris.push(tr);
   for(const tr of superellipseFillCap(gO, -hh,   [0,-1,0], makeCapEmboss([0,-1,0], botFn)))   tris.push(tr); // outer bottom
   for(const tr of superellipseFillCap(gI, floorY,[0, 1,0], makeCapEmboss([0, 1,0], floorFn))) tris.push(tr); // cavity floor
   rim(ow.grid[ySampO.length-1], iw.grid[ySampI.length-1]);                    // flat top rim annulus
@@ -3468,6 +3532,13 @@ function portsForBuilder(p){
     return Object.assign(base, { r:Math.max(0.3, (H.diameter||6)/2) });
   }).filter(pt => !(pt.axis===1 && pt.side===1));
 }
+// One builder-port → squircle single-wall port params: split (p,q) into the vertical (y) axis and the
+// horizontal wall axis. Only side walls (axis 0/2) — a curved wall, not the flat top/bottom.
+function squirclePortParams(pt){
+  const [p,q]=HOLE_AXIS_PQ[pt.axis], e=holeHalfExtents(pt);
+  if (p===1) return { faceAxis:pt.axis, faceSign:pt.side, yC:pt.cp, yH:e.ap, hOff:pt.cq, hH:e.aq };
+  return { faceAxis:pt.axis, faceSign:pt.side, yC:pt.cq, yH:e.aq, hOff:pt.cp, hH:e.ap };
+}
 
 // ---- Single-wall ports on a PLAIN hollow container (USB-C etc. pierce ONE wall into the cavity) --------
 // Watertight strategy: the outer faces and inner cavity walls sample the SAME per-axis position arrays
@@ -3601,8 +3672,13 @@ function buildTrisForShape(shape, p) {
         const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
+        // Single-wall port (rectangular window) on a plain flat-bottom squircle container: first side-wall
+        // hole, no logos. A curved wall can't take a watertight rounded cutout, so the window is square.
+        const sqPort = (hasHoles && logos.length===0 && eV===0)
+          ? (ports=>ports.length?squirclePortParams(ports[0]):null)(portsForBuilder(p).filter(pt=>pt.axis!==1))
+          : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, -p.height/2 + tW,
-          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolution, p.filletSeg||4, true);
+          all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolution, p.filletSeg||4, true, sqPort);
         return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
           p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
       }

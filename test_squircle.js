@@ -253,5 +253,26 @@ for (const ov of [
   chk(`boxy squircle ${ov.rim?'tray':'hollow'} sq=${ov.squircle} sv=${ov.squircleVBot||0}: watertight`, wt(t) && !hasNaN(t), manifoldCheck(t));
 }
 
+// ---- single-wall ports on a plain squircle HOLLOW container (rectangular window through one curved wall)
+console.log('\n=== squircle hollow single-wall port (rectangular window, watertight) ===');
+// buildSquircleHollow direct: side walls (front/back/left), off-centre, seam-wrap (+X arc crosses index 0).
+for (const [name, port] of [
+  ['+Z front',      {faceAxis:2, faceSign:1, hOff:0, hH:6, yC:2, yH:4}],
+  ['+X seam-wrap',  {faceAxis:0, faceSign:1, hOff:0, hH:6, yC:0, yH:4}],
+  ['-Z back',       {faceAxis:2, faceSign:-1, hOff:5, hH:5, yC:0, yH:3}],
+  ['+Z off-centre', {faceAxis:2, faceSign:1, hOff:-8, hH:5, yC:5, yH:3}],
+]) { const t=buildSquircleHollow(64,44,52, 0.5, 0, 3, -22+3, null,null,null, 50, 4, true, port);
+  chk('squircle port '+name+': watertight', wt(t) && !hasNaN(t), manifoldCheck(t)); }
+// no-port baseline unchanged
+{ const t=buildSquircleHollow(64,44,52,0.5,0,3,-22+3,null,null,null,50,4,true,null); chk('squircle no-port watertight', wt(t)); }
+// dispatcher: squircle hollow + a UI rrect hole → watertight single-wall port, less material than no hole
+base({width:64,height:44,depth:52,hollow:true,squircle:50,wallThickness:3}); boxHoles.length=0;
+const sqNoHole=build();
+base({width:64,height:44,depth:52,hollow:true,squircle:50,wallThickness:3}); boxHoles.length=0;
+boxHoles.push({id:1,face:'+Z',u0:0,v0:2,shape:'rrect',portW:12,portH:6,cornerR:2}); clampHoleToFace(boxHoles[0]);
+{ const t=build(); chk('dispatcher: squircle port watertight', wt(t) && !hasNaN(t), manifoldCheck(t));
+  chk('dispatcher: squircle port changes the mesh', t.length!==sqNoHole.length, {withPort:t.length, noHole:sqNoHole.length}); }
+boxHoles.length=0;
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

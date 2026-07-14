@@ -46,11 +46,11 @@ base({}); boxHoles.push({id:1,face:'+Z',u0:5,v0:-4,diameter:10}); clampHoleToFac
 // taper + hole → still watertight (per-vertex taper preserves the closed mesh)
 base({taperXPlus:10,taperZMinus:6}); boxHoles.push({id:2,face:'+Z',u0:0,v0:0,diameter:12}); clampHoleToFace(boxHoles[0]);
 { const t=buildTrisForShape('box',paramState.box); chk('taper + hole: watertight', wt(t)&&!hasNaN(t), manifoldCheck(t,4)); }
-// hollow present → holes ignored (equals the hole-free hollow build)
+// plain hollow present → hole becomes a single-wall PORT (no longer ignored): mesh changes + stays watertight
 base({hollow:true}); const hollowNoHole=buildTrisForShape('box',paramState.box).length;
 boxHoles.push({id:3,face:'+Z',u0:0,v0:0,diameter:10}); clampHoleToFace(boxHoles[0]);
-{ const t=buildTrisForShape('box',paramState.box); chk('hollow: holes ignored (same as no-hole hollow)', t.length===hollowNoHole, {withHole:t.length, noHole:hollowNoHole});
-  chk('hollow + (ignored) holes still watertight', wt(t)); }
+{ const t=buildTrisForShape('box',paramState.box); chk('plain hollow: hole applied as port (mesh differs)', t.length!==hollowNoHole, {withPort:t.length, noHole:hollowNoHole});
+  chk('plain hollow + port still watertight', wt(t)); }
 // squircle present → holes ignored
 base({squircle:45}); const sqNoHole=buildTrisForShape('box',paramState.box).length;
 boxHoles.push({id:4,face:'+Z',u0:0,v0:0,diameter:8}); clampHoleToFace(boxHoles[0]);
@@ -117,6 +117,43 @@ base({width:40,height:24,depth:40});
   chk('oversized rrect clamped', h.portW<=40 && h.portH<=24 && h.cornerR<=Math.min(h.portW,h.portH)/2+1e-9, h);
   boxHoles.length=0; boxHoles.push(h);
   chk('clamped oversized rrect watertight', wt(buildTrisForShape('box',paramState.box))); }
+
+console.log('\n=== single-wall ports on a PLAIN hollow container (USB-C etc. pierce ONE wall) ===');
+// buildHollowBoxWithPorts directly: circle / USB-C / slot on side walls + bottom, all watertight.
+for (const [name,w,h,d,t,ports] of [
+  ['circle side +Z',   60,40,50,3,   [{axis:2,side:1,cp:0,cq:0,r:6}]],
+  ['USB-C side +Z',    60,30,50,2.5, [{axis:2,side:1,cp:0,cq:0,ap:4.5,aq:1.6,rc:1.6}]],
+  ['USB-C side +X',    50,40,60,3,   [{axis:0,side:1,cp:0,cq:0,ap:4.5,aq:1.6,rc:1.6}]],
+  ['slot side -Z',     70,40,50,3,   [{axis:2,side:-1,cp:10,cq:-4,ap:8,aq:2,rc:2}]],
+  ['circle bottom -Y', 50,40,50,3,   [{axis:1,side:-1,cp:0,cq:0,r:5}]],
+  ['two walls',        70,40,70,3,   [{axis:2,side:1,cp:0,cq:2,ap:4.5,aq:1.6,rc:1.6},{axis:0,side:1,cp:0,cq:0,r:5}]],
+]) { const tr=buildHollowBoxWithPorts(w,h,d,t,ports); const mc=manifoldCheck(tr,4);
+  chk(name+': watertight', mc.watertight && !hasNaN(tr) && signedVol(tr)>0, {open:mc.openEdges,bad:mc.badEdges}); }
+// A port removes material vs the plain hollow container.
+{ const noP=signedVol(buildHollowBoxWithPorts(60,36,50,2.5,[]));
+  const withP=signedVol(buildHollowBoxWithPorts(60,36,50,2.5,[{axis:2,side:1,cp:0,cq:0,ap:6,aq:2.5,rc:1.5}]));
+  chk('port opens the wall (less material)', withP < noP - 5, {noP:noP|0,withP:withP|0}); }
+// Two ports on the SAME wall → second dropped; open top (+Y) never pierced.
+{ const tr=buildHollowBoxWithPorts(60,40,50,3,[{axis:2,side:1,cp:-10,cq:0,r:4},{axis:2,side:1,cp:10,cq:0,r:4}]);
+  chk('dup wall port dropped, watertight', manifoldCheck(tr,4).watertight);
+  const a=buildHollowBoxWithPorts(60,40,50,3,[{axis:1,side:1,cp:0,cq:0,r:5}]).length;
+  const b=buildHollowBoxWithPorts(60,40,50,3,[]).length;
+  chk('open-top (+Y) port ignored', a===b, {a,b}); }
+// Extreme centre clamped into the wall, still watertight.
+{ const tr=buildHollowBoxWithPorts(60,40,50,3,[{axis:2,side:1,cp:999,cq:999,ap:4.5,aq:1.6,rc:1.6}]);
+  chk('extreme centre clamped, watertight', manifoldCheck(tr,4).watertight); }
+
+console.log('\n=== dispatcher: hollow single-wall ports (gated to plain hollow) ===');
+base({width:60,height:36,depth:50,hollow:true,wallThickness:2.5}); boxHoles.length=0;
+boxHoles.push({id:31,face:'+Z',u0:0,v0:0,shape:'rrect',portW:9,portH:3.2,cornerR:1.6}); clampHoleToFace(boxHoles[0]);
+chk('hollow + USB-C port: watertight', wt(buildTrisForShape('box',paramState.box)));
+base({width:60,height:40,depth:50,hollow:true,wallThickness:3,taperXPlus:8,taperZMinus:-6}); boxHoles.length=0;
+boxHoles.push({id:32,face:'+X',u0:0,v0:0,shape:'rrect',portW:9,portH:3.2,cornerR:1.6}); clampHoleToFace(boxHoles[0]);
+chk('hollow + port + taper: watertight', wt(buildTrisForShape('box',paramState.box)));
+// gate: hollow + inner fillet + hole → port builder NOT used (rounded path builds, non-empty)
+base({width:60,height:40,depth:50,hollow:true,wallThickness:3,filletInnerFloor:3}); boxHoles.length=0;
+boxHoles.push({id:33,face:'+Z',u0:0,v0:0,diameter:6}); clampHoleToFace(boxHoles[0]);
+{ const t=buildTrisForShape('box',paramState.box); chk('hollow + fillet: port gated off (still builds)', t.length>0 && !hasNaN(t)); }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

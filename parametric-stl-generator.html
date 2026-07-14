@@ -636,7 +636,7 @@
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Сквозное отверстие насквозь по нормали выбранной грани (вентиляция / кабель / винт / порт). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). Работает ТОЛЬКО на сплошном кубе без скругления, squircle, выгиба и логотипов (при любом из них отверстия игнорируются — плоская стенка нужна для герметичности выреза). Наклон стенок допустим (отверстие наклоняется вместе со стенкой). Положение задаётся в координатах грани, размеры — в мм; несколько отверстий можно ставить на любые грани.</div>
+      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере (без скругления, squircle, выгиба, решётки и логотипов) отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); на каждую стенку — по одному порту, верх (+Y) открыт и не пробивается. Наклон стенок допустим (порт наклоняется вместе со стенкой). Положение — в координатах грани, размеры — в мм. При скруглении/squircle/выгибе/решётке/логотипах или в режиме «борт» отверстия игнорируются (нужна плоская стенка для герметичности выреза).</div>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -3388,6 +3388,109 @@ function holesForBuilder(p){
     }
     return { axis:ax, cp:H.u0, cq:H.v0, r:Math.max(0.3, (H.diameter||6)/2) }; });
 }
+// Convert UI holes → single-wall PORTS for a hollow container: {axis, side, cp, cq, …profile}. Same
+// face→(axis,offset-sign) mapping as FACE_AXES, and u/v already match HOLE_AXIS_PQ's (p,q). The open top
+// (+Y) can't be pierced, so it's dropped here (buildHollowBoxWithPorts also guards it).
+function portsForBuilder(p){
+  return (boxHoles||[]).map(H=>{
+    const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
+    const ax = fa[2], side = fa[3] >= 0 ? 1 : -1;
+    const base = { axis:ax, side, cp:H.u0, cq:H.v0 };
+    if (H.shape === 'rrect') {
+      const ap=Math.max(0.3,(H.portW||9)/2), aq=Math.max(0.3,(H.portH||3.2)/2);
+      return Object.assign(base, { ap, aq, rc:Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq))) });
+    }
+    return Object.assign(base, { r:Math.max(0.3, (H.diameter||6)/2) });
+  }).filter(pt => !(pt.axis===1 && pt.side===1));
+}
+
+// ---- Single-wall ports on a PLAIN hollow container (USB-C etc. pierce ONE wall into the cavity) --------
+// Watertight strategy: the outer faces and inner cavity walls sample the SAME per-axis position arrays
+// (inner wall = mid-slice). Each port injects identical window sub-lines into those arrays, so the pierced
+// outer face and the pierced inner wall build their cutout ring at the SAME angles → the bore tube joining
+// them is a clean prism (k→k). Gated to plain hollow (no logos / lattice / bulge / fillet / squircle) — a
+// flat wall is what keeps the two cutouts congruent. Prototype + 585-config manifold sweep:
+// scratchpad/hollowport.js (all watertight, incl. taper, dedupe, edge-clamp).
+function hpUniqSorted(vals){ const a=vals.slice().sort((x,y)=>x-y); const o=[a[0]]; for(let i=1;i<a.length;i++) if(a[i]>o[o.length-1]+1e-6) o.push(a[i]); return o; }
+function hpWindowLines(center, hs, cs){ const n=Math.max(2, Math.ceil((2*hs)/Math.max(1e-3,cs))); const o=[]; for(let i=0;i<=n;i++) o.push(center-hs+(2*hs)*i/n); return o; }
+function hpMidSlice(arr, lo, hi){ return arr.filter(v=>v>=lo-1e-6 && v<=hi+1e-6); }
+// A flat face over position arrays with an optional rounded-rect port cut out (border-ring→cutout annulus).
+function buildFaceWithPort(uAxis,vAxis,nAxis,nOffset, uPos, vPos, outward, port, tf){
+  const nu=uPos.length, nv=vPos.length, T = tf || (q=>q);
+  const P=(iu,iv)=>{ const c=[0,0,0]; c[uAxis]=uPos[iu]; c[vAxis]=vPos[iv]; c[nAxis]=nOffset; return T(c); };
+  const tris=[]; const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C],outward)); tris.push(orient([A,C,D],outward)); };
+  if(!port){ for(let i=0;i<nu-1;i++)for(let j=0;j<nv-1;j++) pushQ(P(i,j),P(i+1,j),P(i+1,j+1),P(i,j+1)); return {tris}; }
+  const e=holeHalfExtents(port), cp=port.cp, cq=port.cq, hsU=e.ap*1.7, hsV=e.aq*1.7;
+  const iu0=uPos.findIndex(x=>x>=cp-hsU-1e-4); let iu1=iu0; for(let i=uPos.length-1;i>=0;i--){ if(uPos[i]<=cp+hsU+1e-4){ iu1=i; break; } }
+  const iv0=vPos.findIndex(x=>x>=cq-hsV-1e-4); let iv1=iv0; for(let j=vPos.length-1;j>=0;j--){ if(vPos[j]<=cq+hsV+1e-4){ iv1=j; break; } }
+  const inBlock=(i,j)=> i>=iu0&&i<iu1 && j>=iv0&&j<iv1;
+  for(let i=0;i<nu-1;i++)for(let j=0;j<nv-1;j++){ if(inBlock(i,j)) continue; pushQ(P(i,j),P(i+1,j),P(i+1,j+1),P(i,j+1)); }
+  const border=[];
+  for(let i=iu0;i<iu1;i++) border.push([i,iv0]);
+  for(let j=iv0;j<iv1;j++) border.push([iu1,j]);
+  for(let i=iu1;i>iu0;i--) border.push([i,iv1]);
+  for(let j=iv1;j>iv0;j--) border.push([iu0,j]);
+  const B=border.length, bpts=[], angs=[];
+  for(const [i,j] of border){ const raw=[0,0,0]; raw[uAxis]=uPos[i]; raw[vAxis]=vPos[j]; raw[nAxis]=nOffset; bpts.push(T(raw)); angs.push(Math.atan2(vPos[j]-cq, uPos[i]-cp)); }
+  const cutAt=ang=>{ const rr=holeRadiusAt(port,ang); const c=[0,0,0]; c[uAxis]=cp+rr*Math.cos(ang); c[vAxis]=cq+rr*Math.sin(ang); c[nAxis]=nOffset; return T(c); };
+  const cutPts=angs.map(cutAt);
+  for(let k=0;k<B;k++){ const k1=(k+1)%B; pushQ(bpts[k],bpts[k1],cutPts[k1],cutPts[k]); }
+  return {tris, angs};
+}
+// ports: [{axis, side, cp, cq, r | ap,aq,rc}]. axis 0/2 = side walls (side ±1); axis 1 side -1 = bottom.
+function buildHollowBoxWithPorts(w,h,d,t, ports, tf){
+  const hw=w/2, hh=h/2, hd=d/2, half=[hw,hh,hd], T = tf || (q=>q);
+  // One port per wall (a 2nd cutout on the same face would double the tube); the open top (+Y) never pierces.
+  { const seen=new Set(), keep=[]; for(const pt of ports){ if(pt.axis===1&&(pt.side||1)===1) continue; const k=pt.axis+':'+(pt.side||1); if(seen.has(k))continue; seen.add(k); keep.push(pt); } ports=keep; }
+  // Clamp each port so its window fits the INNER wall region on BOTH face axes (else outer/inner cutouts
+  // diverge and the tube tears). Vertical axis (y=1) runs floor→opening: [-(hh-t), hh].
+  const innerRange=axis=> axis===1 ? [-(hh-t), hh] : [-(half[axis]-t), half[axis]-t];
+  ports = ports.map(pt=>{ const [p,q]=HOLE_AXIS_PQ[pt.axis], e=holeHalfExtents(pt), hsU=e.ap*1.7, hsV=e.aq*1.7, rp=innerRange(p), rq=innerRange(q);
+    return Object.assign({}, pt, { cp:Math.max(rp[0]+hsU, Math.min(rp[1]-hsU, pt.cp)), cq:Math.max(rq[0]+hsV, Math.min(rq[1]-hsV, pt.cq)) });
+  }).filter(pt=>{ const [p,q]=HOLE_AXIS_PQ[pt.axis], e=holeHalfExtents(pt), rp=innerRange(p), rq=innerRange(q);
+    return (rp[1]-rp[0]) > 2*e.ap*1.7 + 0.2 && (rq[1]-rq[0]) > 2*e.aq*1.7 + 0.2; }); // drop ports too big for the wall
+  const cs = Math.max(w,h,d)/24;
+  const X=[-hw,hw,-(hw-t),hw-t], Y=[-hh,hh,-(hh-t)], Z=[-hd,hd,-(hd-t),hd-t];
+  for(const pt of ports){ const [p,q]=HOLE_AXIS_PQ[pt.axis], e=holeHalfExtents(pt);
+    const addTo=(axis,center,hs)=>{ const L=hpWindowLines(center,hs,cs); if(axis===0)X.push(...L); else if(axis===1)Y.push(...L); else Z.push(...L); };
+    addTo(p, pt.cp, e.ap*1.7); addTo(q, pt.cq, e.aq*1.7);
+  }
+  const xP=hpUniqSorted(X), yP=hpUniqSorted(Y), zP=hpUniqSorted(Z);
+  const xMid=hpMidSlice(xP,-(hw-t),hw-t), zMid=hpMidSlice(zP,-(hd-t),hd-t), yInner=yP.filter(v=>v>=-(hh-t)-1e-6);
+  const tris=[]; const add=a=>{ for(const x of a) tris.push(x); };
+  const portFor=(a,s)=> ports.find(pt=>pt.axis===a && (pt.side||1)===s) || null;
+  // outer side/bottom faces (+Y open)
+  add(buildFaceWithPort(1,2,0,-hw, yP, zP, [-1,0,0], portFor(0,-1), T).tris);
+  add(buildFaceWithPort(1,2,0, hw, yP, zP, [ 1,0,0], portFor(0, 1), T).tris);
+  add(buildFaceWithPort(0,1,2,-hd, xP, yP, [0,0,-1], portFor(2,-1), T).tris);
+  add(buildFaceWithPort(0,1,2, hd, xP, yP, [0,0, 1], portFor(2, 1), T).tris);
+  add(buildFaceWithPort(0,2,1,-hh, xP, zP, [0,-1,0], portFor(1,-1), T).tris);
+  // inner cavity walls (mid-slices) + floor
+  add(buildFaceWithPort(1,2,0, -(hw-t), yInner, zMid, [ 1,0,0], portFor(0,-1), T).tris);
+  add(buildFaceWithPort(1,2,0,  (hw-t), yInner, zMid, [-1,0,0], portFor(0, 1), T).tris);
+  add(buildFaceWithPort(0,1,2, -(hd-t), xMid, yInner, [0,0, 1], portFor(2,-1), T).tris);
+  add(buildFaceWithPort(0,1,2,  (hd-t), xMid, yInner, [0,0,-1], portFor(2, 1), T).tris);
+  add(buildFaceWithPort(0,2,1, -(hh-t), xMid, zMid, [0,1,0], portFor(1,-1), T).tris);
+  // bore tubes: outer cutout (n=s·half) → inner cutout (n=s·(half−t))
+  for(const pt of ports){ const a=pt.axis, s=(pt.side||1), [p,q]=HOLE_AXIS_PQ[a], ha=half[a];
+    let uAx,vAx,uArr,vArr,nOff,outw;
+    if(a===0){ uAx=1; vAx=2; uArr=yP; vArr=zP; nOff=s*hw; outw=[s,0,0]; }
+    else if(a===2){ uAx=0; vAx=1; uArr=xP; vArr=yP; nOff=s*hd; outw=[0,0,s]; }
+    else { uAx=0; vAx=2; uArr=xP; vArr=zP; nOff=s*hh; outw=[0,s,0]; }
+    const angs=buildFaceWithPort(uAx,vAx,a,nOff, uArr, vArr, outw, pt, q2=>q2).angs, B=angs.length, innerN=s*(ha-t);
+    const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(pt,ang); const c=[0,0,0]; c[a]=ca; c[p]=pt.cp+rr*Math.cos(ang); c[q]=pt.cq+rr*Math.sin(ang); return T(c); };
+    for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+      const Ao=ptAt(a0,s*ha), Bo=ptAt(a1,s*ha), Ai=ptAt(a0,innerN), Bi=ptAt(a1,innerN);
+      const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+      tris.push(orient([Ao,Bo,Bi],refIn)); tris.push(orient([Ao,Bi,Ai],refIn)); }
+  }
+  // top rim (y=hh): annulus outer perimeter → cavity opening, 3×3 bands minus centre
+  const xLoB=hpMidSlice(xP,-hw,-(hw-t)), xHiB=hpMidSlice(xP,hw-t,hw), zLoB=hpMidSlice(zP,-hd,-(hd-t)), zHiB=hpMidSlice(zP,hd-t,hd);
+  const xBands=[xLoB,xMid,xHiB], zBands=[zLoB,zMid,zHiB];
+  for(let bi=0;bi<3;bi++)for(let bj=0;bj<3;bj++){ if(bi===1&&bj===1)continue;
+    add(buildFaceFromPositionsTapered(0,2,1, hh, xBands[bi], zBands[bj], [0,1,0], null, T)); }
+  return tris.filter(tri=>{ const n=cross(sub(tri[1],tri[0]),sub(tri[2],tri[0])); return vlength(n)>1e-9; });
+}
 
 // Axial (flat-region) grid density for the asym rounded builders. `filletSeg` sets the ARC smoothness;
 // this is the SEPARATE control for how finely the flat spans between rounded edges are sampled. 0 = auto
@@ -3412,6 +3515,19 @@ function buildTrisForShape(shape, p) {
     }
 
     if (p.hollow) {
+      // Single-wall ports (USB-C etc.): each hole pierces ONLY its own wall into the cavity. Plain hollow
+      // only (no logos / lattice / bulge / fillet / squircle) — a flat wall keeps the outer + inner cutouts
+      // congruent so the bore tube stays watertight. Taper is applied afterwards (per-vertex map).
+      const ports = hasHoles ? portsForBuilder(p) : [];
+      const plainHollow = !(p.squircle>0) && !hasWallBulge(p) && logos.length===0 && !p.latticeFloor &&
+        !(p.filletTop>0 || p.filletBottom>0 || p.filletVert>0 || p.filletRadius>0 ||
+          p.filletInnerFloor>0 || p.filletInnerVert>0 || p.filletInnerLip>0);
+      if (ports.length && plainHollow) {
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const tris = buildHollowBoxWithPorts(p.width, p.height, p.depth, tW, ports);
+        return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+          p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+      }
       // Squircle container: superellipse shell with a thin floor. Overrides corner fillet + lattice
       // (squircle IS the corner treatment). squircleVBot rounds the BOTTOM (superellipsoid lower half) — the
       // open top / flat rim stays (squircleVTop is a solid-cube-only control). Logos ride the curved outer

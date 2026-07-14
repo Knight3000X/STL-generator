@@ -1738,6 +1738,25 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
     const uu=(cx+cz)/pitch, vv=(cx-cz)/pitch;
     solid[i][j] = Math.abs(uu-Math.round(uu))<rh || Math.abs(vv-Math.round(vv))<rh;
   }
+  // Floor-logo compatibility: fill in solid ONLY where the cavity-floor ('-Y-inner') relief actually is —
+  // i.e. the logo's SHAPE (the fork), not its whole bounding square — so the relief rides ON the net
+  // background instead of a solid tile. A cell becomes solid if floorFn is non-zero at any corner/centre
+  // (so thin strokes are captured). Done BEFORE pinch removal so any checkerboard the shape creates with
+  // the net gets cleaned up. solidRects is a fallback (force a whole rect) if no floorFn is supplied.
+  if (floorFn) {
+    const rel=(x,z)=>Math.abs(floorFn(x, z, [x, yt, z])||0)>1e-6;
+    for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
+      if (solid[i][j]) continue;
+      const xm=(xMid[i]+xMid[i+1])/2, zm=(zMid[j]+zMid[j+1])/2;
+      if (rel(xMid[i],zMid[j])||rel(xMid[i+1],zMid[j])||rel(xMid[i],zMid[j+1])||rel(xMid[i+1],zMid[j+1])||rel(xm,zm)) solid[i][j]=true;
+    }
+  } else if (solidRects && solidRects.length) {
+    for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
+      if (solid[i][j]) continue;
+      const cx=(xMid[i]+xMid[i+1])/2, cz=(zMid[j]+zMid[j+1])/2;
+      for (const r of solidRects) if (cx>=r.x0&&cx<=r.x1&&cz>=r.z0&&cz<=r.z1) { solid[i][j]=true; break; }
+    }
+  }
   // pinch removal: fill one hole of each 2×2 checkerboard (non-manifold corner touch). Monotone.
   let changed=true;
   while (changed) { changed=false;
@@ -1745,17 +1764,6 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
       const a=solid[i][j], c1=solid[i+1][j], c2=solid[i][j+1], d=solid[i+1][j+1];
       if (a&&d&&!c1&&!c2) { solid[i+1][j]=true; changed=true; }
       else if (c1&&c2&&!a&&!d) { solid[i][j]=true; changed=true; }
-    }
-  }
-  // Floor-logo compatibility: force a SOLID patch under each cavity-floor ('-Y-inner') logo footprint, so
-  // the relief has a continuous surface (the perforated net can't carry an emboss). Adding solid is
-  // monotone (fills holes → never creates a new checkerboard), so it's safe after pinch removal, and it
-  // runs BEFORE the dome BFS so the patch reads as solid there too.
-  if (solidRects && solidRects.length) {
-    for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
-      if (solid[i][j]) continue;
-      const cx=(xMid[i]+xMid[i+1])/2, cz=(zMid[j]+zMid[j+1])/2;
-      for (const r of solidRects) if (cx>=r.x0&&cx<=r.x1&&cz>=r.z0&&cz<=r.z1) { solid[i][j]=true; break; }
     }
   }
   const S=(i,j)=> (i<0||j<0||i>=nx||j>=nz) ? true : solid[i][j]; // outside = solid (container closes it)

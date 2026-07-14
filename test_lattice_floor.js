@@ -120,6 +120,19 @@ console.log('=== cavity-floor logo ON the lattice: solid patch + relief, waterti
 // floor logo + wall logo together on the lattice
 { base({...L, wallThickness:4, latticeCell:8}); addLogo({face:'-Y-inner',u0:0,v0:0,w:14,h:14}, true); addLogo({face:'+X',u0:0,v0:0,w:14,h:14}, true);
   const t=buildTrisForShape('box',paramState.box); chk('floor logo + wall logo + lattice: watertight', !hasNaN(t)&&manifoldCheck(t,5).watertight, manifoldCheck(t,5)); }
+// the RELIEF SHAPE is solid, the background stays NET (not a solid square tile): a SHAPE logo (synthHM,
+// ring+bar) leaves more through-holes under its footprint than a FULL-coverage logo of the same size.
+{ const outerBottomAreaInBbox=(tris,half)=>{ let a=0; const yb=-30; // 60^3 → outer bottom at -30
+    for(const tr of tris){ const ys=(tr[0][1]+tr[1][1]+tr[2][1])/3; if(Math.abs(ys-yb)>0.05) continue;
+      const cx=(tr[0][0]+tr[1][0]+tr[2][0])/3, cz=(tr[0][2]+tr[1][2]+tr[2][2])/3; if(Math.abs(cx)>half||Math.abs(cz)>half) continue;
+      a+=Math.abs((tr[1][0]-tr[0][0])*(tr[2][2]-tr[0][2])-(tr[2][0]-tr[0][0])*(tr[1][2]-tr[0][2]))/2; } return a; };
+  const FULL=new Float32Array(LOGO_HM_SIZE*LOGO_HM_SIZE).fill(1);
+  base({...L, wallThickness:4, latticeCell:6, latticeRib:1.6, latticeBorder:2}); addLogo({face:'-Y-inner',u0:0,v0:0,w:30,h:30,heightmap:FULL}, true);
+  const full=buildTrisForShape('box',paramState.box);
+  base({...L, wallThickness:4, latticeCell:6, latticeRib:1.6, latticeBorder:2}); addLogo({face:'-Y-inner',u0:0,v0:0,w:30,h:30}, true); // HM = synthHM (ring+bar)
+  const shape=buildTrisForShape('box',paramState.box);
+  const fA=outerBottomAreaInBbox(full,15), sA=outerBottomAreaInBbox(shape,15);
+  chk('shape logo leaves NET background (less solid than a full tile)', sA < fA*0.95, {shapeArea:sA|0, fullArea:fA|0}); }
 
 console.log('=== ROUNDED rib profile: continuous domed top, still watertight ===');
 const R = {hollow:true, latticeFloor:true, latticeRound:true};

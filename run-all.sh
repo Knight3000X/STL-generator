@@ -23,8 +23,9 @@ trap 'rm -rf "$TMP"' EXIT
 LIB="$TMP/lib.js"
 LIB_STUBBED="$TMP/lib_stubbed.js"
 
-# 1) Extract the page's <script> body, dropping the final init() call (no DOM in Node).
-awk '/<script>/{f=1;next}/<\/script>/{f=0}f' "$HTML" | sed '$ { /^init();$/d }' > "$LIB"
+# 1) Extract the page's MAIN <script> body (the 2nd script block — the 1st is the inlined Three.js
+#    library, which the Node geometry tests don't need), dropping the final init() call (no DOM in Node).
+awk '/<script>/{c++;f=1;next}/<\/script>/{f=0;next} f && c>=2' "$HTML" | sed '$ { /^init();$/d }' > "$LIB"
 
 # 2) test_debounce_flow.js exercises the debounce/token wiring, so it needs the real
 #    regenerate()/applyRotationOnly() swapped for call counters.

@@ -91,9 +91,13 @@ logoResolution = 200; // crank detail high: the zonal grid must keep the shell c
 // A logo'd shell densifies ONLY its footprint (coarse base + local zone), so it costs FAR less than the
 // uniform no-logo shell at the same high detail — that gap is the whole point of the zonal grid.
 baseHollow({hollow:true}); addWallLogo({face:'+Z', w:12, h:12}); const logoH = buildTrisForShape('box', paramState.box);
-baseHollow({hollow:true}); const plainH = buildTrisForShape('box', paramState.box); // no logo → uniform dense
+baseHollow({hollow:true}); const plainH = buildTrisForShape('box', paramState.box); // no logo → coarse capped shell (fix 0001)
+// The uniform-dense reference is built directly (dispFns non-null bypasses the plainShell cap),
+// since through the UI a logo-free shell no longer inherits the detail slider as grid density.
+const denseH = buildHollowBox(80, 50, 60, 4, logoResolution, buildCombinedLogoDispFns(q => q));
 check('flat hollow wall logo: watertight', manifoldCheck(logoH,4).watertight, manifoldCheck(logoH,4));
-check('flat hollow: zonal logo shell far cheaper than the uniform shell at the same detail', logoH.length < plainH.length*0.6, {zonal:logoH.length, uniform:plainH.length});
+check('flat hollow: zonal logo shell far cheaper than a uniform-dense shell at the same detail', logoH.length < denseH.length*0.6, {zonal:logoH.length, dense:denseH.length});
+check('flat hollow: no-logo shell stays coarse even at high detail (fix 0001)', plainH.length < logoH.length && plainH.length < 10000, {plain:plainH.length, zonal:logoH.length});
 // logo hard against a vertical edge (its zone spills into the top-rim corner band) must stay watertight
 baseHollow({hollow:true}); addWallLogo({face:'+Z', u0:34, v0:20, w:10, h:10}); const cornerH = buildTrisForShape('box', paramState.box);
 check('flat hollow corner logo: watertight (rim corner band aligned)', manifoldCheck(cornerH,4).watertight, manifoldCheck(cornerH,4));
@@ -103,8 +107,10 @@ check('flat hollow bulge + wall logo: watertight', manifoldCheck(bulgeH,4).water
 // rim / tray wall logo: zonal + watertight
 baseHollow({rim:true, rimHeight:12}); addWallLogo({face:'+Z', w:12, h:12}); const logoR = buildTrisForShape('box', paramState.box);
 baseHollow({rim:true, rimHeight:12}); const plainR = buildTrisForShape('box', paramState.box);
+const denseR = buildRimBox(80, 50, 60, 4, 12, logoResolution, buildCombinedLogoDispFns(q => q));
 check('flat tray wall logo: watertight', manifoldCheck(logoR,4).watertight, manifoldCheck(logoR,4));
-check('flat tray: zonal logo shell far cheaper than the uniform shell at the same detail', logoR.length < plainR.length*0.6, {zonal:logoR.length, uniform:plainR.length});
+check('flat tray: zonal logo shell far cheaper than a uniform-dense shell at the same detail', logoR.length < denseR.length*0.6, {zonal:logoR.length, dense:denseR.length});
+check('flat tray: no-logo shell stays coarse even at high detail (fix 0001)', plainR.length < logoR.length && plainR.length < 10000, {plain:plainR.length, zonal:logoR.length});
 logoResolution = saveLR;
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

@@ -1980,7 +1980,11 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // so the dome still gets a full-face grid. zonesByAxis are in flat (pre-taper) axis space, matching the
   // position arrays; taper is applied per-vertex afterwards.
   const zonal = !lat && zonesByAxis;
-  const baseRes = zonal ? Math.min(res, 4) : res;
+  // A shell with no logos / bulge / lattice is just flat (or ruled, under taper) walls — it must NOT
+  // inherit the logo-detail slider as its uniform grid density, or deleting the last logo (or a
+  // container/tray preset) at a high slider value jumps the mesh to millions of triangles.
+  const plainShell = !zonal && !lat && !zonesByAxis && !logoDispFnsByFace && !bulgeAmpsByFace;
+  const baseRes = zonal ? Math.min(res, 4) : (plainShell ? Math.min(res, 24) : res);
   const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], baseRes);
   const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], baseRes);
   const yPositions = buildAxisPositions(hh, [], baseRes);
@@ -2053,7 +2057,10 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   // Zonal grid for wall logos: coarse flat shell + fine subdivisions only under each logo (see
   // buildHollowBox). Bulge passes full-span zones so its dome still gets a full-face grid.
   const zonal = !!zonesByAxis;
-  const baseRes = zonal ? Math.min(res, 4) : res;
+  // Same guard as buildHollowBox: a logo-/bulge-free tray is flat walls — don't let the
+  // logo-detail slider drive a uniform full-density grid over them.
+  const plainShell = !zonal && !logoDispFnsByFace;
+  const baseRes = zonal ? Math.min(res, 4) : (plainShell ? Math.min(res, 24) : res);
   const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], baseRes);
   const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], baseRes);
   const yPositions = buildAxisPositions(hh, [], baseRes);
@@ -3918,8 +3925,11 @@ function attachEventListeners() {
     const t = e.target;
     if (t.matches('.param-number') && t.dataset.shape) {
       const shape = t.dataset.shape, key = t.dataset.key;
-      const val = parseFloat(t.value);
-      if (Number.isNaN(val)) return; // mid-edit (e.g. field cleared) — wait for a usable value
+      const rawVal = parseFloat(t.value);
+      if (Number.isNaN(rawVal)) return; // mid-edit (e.g. field cleared) — wait for a usable value
+      // Clamp what goes into paramState right away (the field itself is only snapped on change/blur):
+      // otherwise an out-of-range mid-edit value regenerates unclamped if apply fires before blur.
+      const val = clampParam(SHAPE_PARAMS[shape].find(p => p.key === key), rawVal);
       paramState[shape][key] = val;
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && boxHoles.length) { boxHoles.forEach(clampHoleToFace); renderHoleCards(); }
@@ -4290,7 +4300,9 @@ function attachLogoEventListeners() {
   const resInput = document.getElementById('logo-resolution');
   resInput.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
-    if (!Number.isNaN(v)) { logoResolution = v; if (currentShape === 'box' && logos.length > 0) markPending(); }
+    // Clamp into the variable immediately (the field itself is snapped on change/blur) — an
+    // unclamped typed value (e.g. 5000) must never reach the builders as a grid density.
+    if (!Number.isNaN(v)) { logoResolution = Math.max(10, Math.min(500, v)); if (currentShape === 'box' && logos.length > 0) markPending(); }
   });
   resInput.addEventListener('change', (e) => {
     let v = parseInt(e.target.value, 10);

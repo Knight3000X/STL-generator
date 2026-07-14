@@ -151,6 +151,21 @@
     font-size:13px; line-height:1; cursor:pointer;
   }
   .theme-toggle:hover{ border-color:var(--ink); }
+  /* "new version available" bar (PWA update prompt) */
+  #update-banner{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:50;
+    display:flex; align-items:center; gap:10px;
+    background:var(--ink); color:var(--paper);
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px;
+    padding:9px 10px 9px 14px; border-radius:4px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.35);
+  }
+  #update-banner button{
+    border:none; border-radius:3px; cursor:pointer; font-family:inherit; font-weight:600;
+  }
+  #update-banner #update-reload{ background:var(--redline); color:#fff; font-size:12.5px; padding:6px 12px; }
+  #update-banner #update-reload:hover{ background:var(--redline-dark); }
+  #update-banner #update-dismiss{ background:transparent; color:var(--paper); font-size:14px; line-height:1; padding:4px 6px; }
 
   .section-label{
     font-size:11px;
@@ -4979,6 +4994,20 @@ function setupTheme() {
   });
 }
 
+// A fresh build is live. Show a one-tap "update" bar rather than reloading automatically — reloading would
+// throw away the in-memory assembly (which lives only in RAM until exported). Idempotent: shown at most once.
+function showUpdateBanner() {
+  if (document.getElementById('update-banner')) return;
+  const bar = document.createElement('div');
+  bar.id = 'update-banner';
+  bar.innerHTML = '<span>Доступна новая версия</span>' +
+    '<button id="update-reload">Обновить</button>' +
+    '<button id="update-dismiss" title="Позже" aria-label="Позже">✕</button>';
+  document.body.appendChild(bar);
+  document.getElementById('update-reload').onclick = () => location.reload();
+  document.getElementById('update-dismiss').onclick = () => bar.remove();
+}
+
 // ---- PWA: register the service worker + wire the "Install app" button --------------------------------
 // Installation only works over http(s) (GitHub Pages etc.) — browsers don't install file:// pages. The
 // single HTML still runs fully from a local file; this just adds home-screen/desktop install when hosted.
@@ -4990,7 +5019,24 @@ function setupPWA() {
   const note = document.getElementById('pwa-note');
 
   if (isHttp && 'serviceWorker' in navigator) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        reg.update().catch(() => {});
+        // A new build is live: show a non-intrusive "update" banner instead of reloading silently, so an
+        // in-progress model is never lost. It only appears when a NEW worker installs over an existing one
+        // (reg.installing while a controller already runs) — not on the first-ever install.
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing; if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+          });
+        });
+      }).catch(() => {});
+      // Re-check for a new build whenever the app is brought back to the foreground (installed PWA / tab switch).
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+      });
+    });
   }
   if (standalone || !section) return; // already installed → nothing to offer
 

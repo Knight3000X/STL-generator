@@ -7,7 +7,7 @@
      - Static assets (icons, manifest): CACHE-FIRST with a background refresh (stale-while-revalidate).
    Bump CACHE_VERSION to ship a new build (the activate step drops old caches). Only runs over http(s);
    it is never registered on file://. */
-const CACHE_VERSION = 'stl-gen-v2';
+const CACHE_VERSION = 'stl-gen-v3';
 const SHELL = [
   './',
   'index.html',
@@ -41,10 +41,12 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
 
-  // NETWORK-FIRST for HTML so fresh deploys win; cache is only the offline fallback.
+  // NETWORK-FIRST for HTML so fresh deploys win; cache is only the offline fallback. `cache: 'no-store'`
+  // bypasses the browser's HTTP cache (GitHub Pages sends max-age=600) so a reload always pulls the very
+  // latest HTML from the network, not a copy that's up to ~10 min stale.
   if (isHtmlRequest(req)) {
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(req, { cache: 'no-store' }).then((res) => {
         if (res && res.ok && new URL(req.url).origin === self.location.origin) {
           const copy = res.clone(); caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
         }

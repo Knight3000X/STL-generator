@@ -166,23 +166,32 @@ wt('rounded coarse pitch20',      {...R, wallThickness:4, latticeCell:20, lattic
   chk('rounded floor still watertight vs flat (both build)', flat.length>0 && round.length>0);
   chk('rounded top domes between yb and yt', round.some(tr=>tr.some(p=>p[1]>yb+1e-3 && p[1]<yt-1e-3)), {yb,yt}); }
 
-// ---- enclosed logo holes (letter counters) are filled solid on the lattice, not left as net -----------
-console.log('\n=== lattice: an enclosed logo counter is filled solid (no net inside), a C-gap is not ===');
+// ---- enclosed logo holes (letter counters) stay OPEN with no net inside; a C-gap keeps its net ---------
+console.log('\n=== lattice: an enclosed logo counter is a clean opening (net removed), a C-gap keeps net ===');
 function ringHM(gap){ const N=LOGO_HM_SIZE, hm=new Float32Array(N*N);
   for(let y=0;y<N;y++)for(let x=0;x<N;x++){ const fx=x/N-0.5, fy=y/N-0.5, r=Math.hypot(fx,fy), ang=Math.atan2(fy,fx);
     let on = r>0.20 && r<0.40;
     if(gap && ang>-0.5 && ang<0.5) on=false; // open a mouth → the centre is NOT enclosed
     hm[y*N+x]=on?1:0; } return hm; }
-function svol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
-function buildRing(gap){ base({...L, width:70, depth:70, height:30, wallThickness:2.5, latticeCell:6, latticeRib:2, latticeBorder:1});
-  const l=addLogo({face:'-Y-inner',u0:0,v0:0,w:34,h:34,depth:1.5}, true); l.heightmap=ringHM(gap);
+function discHM(){ const N=LOGO_HM_SIZE, hm=new Float32Array(N*N);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){ const fx=x/N-0.5, fy=y/N-0.5; hm[y*N+x]=(Math.hypot(fx,fy)<0.40)?1:0; } return hm; }
+function buildLogoFloor(hmfn){ base({...L, width:70, depth:70, height:30, wallThickness:2.5, latticeCell:6, latticeRib:2, latticeBorder:1});
+  const l=addLogo({face:'-Y-inner',u0:0,v0:0,w:34,h:34,depth:1.5}, true); l.heightmap=hmfn();
   return buildTrisForShape('box',paramState.box); }
-const ringClosed=buildRing(false), ringOpen=buildRing(true);
+// count UP-facing floor triangles whose centroid sits over the logo CENTRE — present for a solid top,
+// absent for a clean opening (which has no floor there, only vertical hole walls).
+function centreTopTris(tris, yt, rad){ let n=0; for(const t of tris){
+  const c=[(t[0][0]+t[1][0]+t[2][0])/3,(t[0][1]+t[1][1]+t[2][1])/3,(t[0][2]+t[1][2]+t[2][2])/3];
+  if(c[1]>yt-0.5 && (c[0]*c[0]+c[2]*c[2])<rad*rad){ const nrm=faceNormal(t); if(nrm[1]>0.8) n++; } } return n; }
+const yt = -(30/2 - clampWallThickness(70,30,70,2.5));
+const ringClosed=buildLogoFloor(()=>ringHM(false)), ringOpen=buildLogoFloor(()=>ringHM(true)), disc=buildLogoFloor(discHM);
 chk('closed-ring logo on lattice: watertight', manifoldCheck(ringClosed,5).watertight && !hasNaN(ringClosed), manifoldCheck(ringClosed,5));
 chk('C-gap ring on lattice: watertight', manifoldCheck(ringOpen,5).watertight && !hasNaN(ringOpen), manifoldCheck(ringOpen,5));
-// The closed ring fills its enclosed counter (perforations there are closed) → more material than the C,
-// whose centre opens to the outside and stays lattice.
-chk('closed counter filled → more solid than the open C', svol(ringClosed) > svol(ringOpen) + 200, {closed:svol(ringClosed)|0, open:svol(ringOpen)|0});
+chk('solid-disc logo on lattice: watertight', manifoldCheck(disc,5).watertight && !hasNaN(disc), manifoldCheck(disc,5));
+// The closed ring's counter is a CLEAN OPENING → almost no top-floor material at the centre, unlike a solid
+// disc whose centre is the logo itself (fully covered on top).
+const cRing=centreTopTris(ringClosed,yt,5), cDisc=centreTopTris(disc,yt,5);
+chk('enclosed counter is an OPENING (few centre top tris) vs a solid disc (many)', cRing < cDisc*0.34, {ring:cRing, disc:cDisc});
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail>0) process.exit(1);

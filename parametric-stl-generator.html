@@ -1914,10 +1914,11 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
       const xm=(xMid[i]+xMid[i+1])/2, zm=(zMid[j]+zMid[j+1])/2;
       if (rel(xMid[i],zMid[j])||rel(xMid[i+1],zMid[j])||rel(xMid[i],zMid[j+1])||rel(xMid[i+1],zMid[j+1])||rel(xm,zm)) { logoShape[i][j]=true; solid[i][j]=true; }
     }
-    // Fill ENCLOSED holes of the logo (letter counters — the middle of O / A / D): a background cell inside
-    // the logo's bbox that can't reach the bbox border through other background cells is ringed by the
-    // logo's strokes, so leaving the lattice net there looks wrong. Flood-fill runs over the logo SHAPE
-    // (not the net), so it fills exactly those counters and nothing else — a logo without counters is
+    // ENCLOSED holes of the logo (letter counters — the middle of O / A / D, a skull's eyes): a background
+    // cell inside the logo's bbox that can't reach the bbox border through other background cells is ringed
+    // by the logo's strokes. Those stay OPEN — but as a CLEAN opening, with the diamond net suppressed
+    // inside them (forced non-solid), so the counter reads as a hole, not a patch of net. Flood-fill runs
+    // over the logo SHAPE (not the net), so it touches exactly the counters; a logo without counters is
     // unchanged. Confined to each logo's own bbox (solidRects).
     if (solidRects && solidRects.length) {
       const cxOf=i=>(xMid[i]+xMid[i+1])/2, czOf=j=>(zMid[j]+zMid[j+1])/2;
@@ -1931,7 +1932,7 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
         for (let i=i0;i<=i1;i++){ mark(i,j0); mark(i,j1); }
         for (let j=j0;j<=j1;j++){ mark(i0,j); mark(i1,j); }
         while(q.length){ const [i,j]=q.pop(); mark(i-1,j); mark(i+1,j); mark(i,j-1); mark(i,j+1); }
-        for (let i=i0;i<=i1;i++) for (let j=j0;j<=j1;j++) if(!logoShape[i][j] && !reach[i-i0][j-j0]) solid[i][j]=true; // enclosed counter → solid
+        for (let i=i0;i<=i1;i++) for (let j=j0;j<=j1;j++) if(!logoShape[i][j] && !reach[i-i0][j-j0]) solid[i][j]=false; // enclosed counter → clean opening (no net)
       }
     }
   } else if (solidRects && solidRects.length) {

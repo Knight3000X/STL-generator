@@ -5,12 +5,13 @@ name: Mirror to self-hosted git
 # authenticated push URL, e.g.:
 #   https://<user>:<token>@suren96.duckdns.org/git/Knight3000X/STL-generator.git
 # (Settings -> Secrets and variables -> Actions -> New repository secret.)
+# Auto-mirroring on push/delete is DISABLED; this workflow now runs only on manual dispatch.
+# To re-enable automatic mirroring, restore the push/delete triggers below:
+#   push:
+#     branches: ['**']
+#     tags: ['**']
+#   delete:
 on:
-  push:
-    branches: ['**']
-    tags: ['**']
-  # Propagate branch/tag deletions to the mirror as well.
-  delete:
   workflow_dispatch:
 
 # Don't overlap mirror pushes; let one finish before the next.

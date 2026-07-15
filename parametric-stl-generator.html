@@ -178,6 +178,33 @@
   }
   .section-label:first-of-type{margin-top:0;}
 
+  /* Collapsible parameter category (buildAllParamUI groups the box params into these). */
+  .param-cat{ margin-bottom:6px; }
+  .param-cat > summary{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.07em;
+    color:var(--ink-soft);
+    padding:6px 4px 6px 0;
+    cursor:pointer;
+    list-style:none;
+    user-select:none;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .param-cat > summary::-webkit-details-marker{ display:none; }
+  .param-cat > summary::before{
+    content:'▸';
+    font-size:9px;
+    color:var(--ink-soft);
+    transition:transform 0.12s;
+  }
+  .param-cat[open] > summary::before{ transform:rotate(90deg); }
+  .param-cat > summary:hover{ color:var(--ink); }
+  .param-cat-body{ padding:11px 0 4px; }
+
   .param-row{
     display:flex;
     align-items:center;
@@ -2502,49 +2529,52 @@ function clampLogoToFace(logo) {
 
 const SHAPE_LABELS = { box:'куб' };
 
+// Each param carries a `group` — buildAllParamUI renders one collapsible <details> section per
+// group (in first-seen order), so the 40+ box params read as a handful of tidy categories instead
+// of one long flat list. Group order/contiguity here is purely cosmetic (all lookups are by key).
 const SHAPE_PARAMS = {
   box: [
-    {key:'width',  label:'Ширина (X)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
-    {key:'height', label:'Высота (Y)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
-    {key:'depth',  label:'Глубина (Z)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
-    {key:'segW', label:'Сегменты X', min:1, max:20, step:1, default:1, unit:'', int:true},
-    {key:'segH', label:'Сегменты Y', min:1, max:20, step:1, default:1, unit:'', int:true},
-    {key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
-    {key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
-    {key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
-    {key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
-    {key:'squircleVTop', label:'Squircle: скругление верха (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
-    {key:'squircleVBot', label:'Squircle: скругление низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
-    {key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletInnerFloor', label:'Полый/борт: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletInnerVert', label:'Полый/борт: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'filletInnerLip', label:'Полый/борт: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'taperXPlus', label:'Наклон стенки +X', min:-75, max:75, step:1, default:0, unit:'°'},
-    {key:'taperXMinus', label:'Наклон стенки −X', min:-75, max:75, step:1, default:0, unit:'°'},
-    {key:'taperZPlus', label:'Наклон стенки +Z', min:-75, max:75, step:1, default:0, unit:'°'},
-    {key:'taperZMinus', label:'Наклон стенки −Z', min:-75, max:75, step:1, default:0, unit:'°'},
-    {key:'taperYPlusX', label:'Наклон верха по X', min:-60, max:60, step:1, default:0, unit:'°'},
-    {key:'taperYPlusZ', label:'Наклон верха по Z', min:-60, max:60, step:1, default:0, unit:'°'},
-    {key:'taperYMinusX', label:'Наклон низа по X', min:-60, max:60, step:1, default:0, unit:'°'},
-    {key:'taperYMinusZ', label:'Наклон низа по Z', min:-60, max:60, step:1, default:0, unit:'°'},
-    {key:'bulgeXPlus',  label:'Скругление стенки +X (+нар/−внутр)', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'bulgeXMinus', label:'Скругление стенки −X', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'bulgeZPlus',  label:'Скругление стенки +Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'bulgeZMinus', label:'Скругление стенки −Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'bulgeYPlus',  label:'Скругление верха +Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'bulgeYMinus', label:'Скругление дна −Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
-    {key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
-    {key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
-    {key:'rimHeight', label:'Высота борта', min:0.5, max:1000000, step:0.5, default:8, unit:'мм'},
-    {key:'latticeFloor', label:'Полый: сетчатое ромбовидное дно (сквозное)', type:'bool', default:false},
-    {key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
-    {key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
-    {key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
-    {key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
+    {group:'Размеры', key:'width',  label:'Ширина (X)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {group:'Размеры', key:'height', label:'Высота (Y)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {group:'Размеры', key:'depth',  label:'Глубина (Z)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
+    {group:'Размеры', key:'segW', label:'Сегменты X', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {group:'Размеры', key:'segH', label:'Сегменты Y', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {group:'Размеры', key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
+    {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
+    {group:'Скругление углов', key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Скругление углов', key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Скругление углов', key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Squircle / супереллипс', key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {group:'Squircle / супереллипс', key:'squircleVTop', label:'Squircle: скругление верха (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {group:'Squircle / супереллипс', key:'squircleVBot', label:'Squircle: скругление низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
+    {group:'Наклон стенок', key:'taperXPlus', label:'Наклон стенки +X', min:-75, max:75, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperXMinus', label:'Наклон стенки −X', min:-75, max:75, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperZPlus', label:'Наклон стенки +Z', min:-75, max:75, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperZMinus', label:'Наклон стенки −Z', min:-75, max:75, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperYPlusX', label:'Наклон верха по X', min:-60, max:60, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperYPlusZ', label:'Наклон верха по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperYMinusX', label:'Наклон низа по X', min:-60, max:60, step:1, default:0, unit:'°'},
+    {group:'Наклон стенок', key:'taperYMinusZ', label:'Наклон низа по Z', min:-60, max:60, step:1, default:0, unit:'°'},
+    {group:'Выгиб стенок (купол)', key:'bulgeXPlus',  label:'Скругление стенки +X (+нар/−внутр)', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Выгиб стенок (купол)', key:'bulgeXMinus', label:'Скругление стенки −X', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Выгиб стенок (купол)', key:'bulgeZPlus',  label:'Скругление стенки +Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Выгиб стенок (купол)', key:'bulgeZMinus', label:'Скругление стенки −Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Выгиб стенок (купол)', key:'bulgeYPlus',  label:'Скругление верха +Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Выгиб стенок (купол)', key:'bulgeYMinus', label:'Скругление дна −Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
+    {group:'Полый контейнер / борт', key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
+    {group:'Полый контейнер / борт', key:'rimHeight', label:'Высота борта', min:0.5, max:1000000, step:0.5, default:8, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'filletInnerFloor', label:'Полый/борт: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'filletInnerVert', label:'Полый/борт: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'filletInnerLip', label:'Полый/борт: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Сетчатое дно', key:'latticeFloor', label:'Полый: сетчатое ромбовидное дно (сквозное)', type:'bool', default:false},
+    {group:'Сетчатое дно', key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
+    {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
+    {group:'Сетчатое дно', key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
+    {group:'Сетчатое дно', key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
   ],
 };
 
@@ -4034,7 +4064,19 @@ function clampParam(param, val) {
 function buildAllParamUI() {
   for (const shapeKey in SHAPE_PARAMS) {
     const container = document.getElementById('params-'+shapeKey);
+    const groups = new Map(); // group name → its <details> body element (first-seen order)
     for (const param of SHAPE_PARAMS[shapeKey]) {
+      const groupName = param.group || 'Параметры';
+      let body = groups.get(groupName);
+      if (!body) {
+        const det = document.createElement('details');
+        det.className = 'param-cat'; det.open = true;
+        const sum = document.createElement('summary'); sum.textContent = groupName;
+        body = document.createElement('div'); body.className = 'param-cat-body';
+        det.appendChild(sum); det.appendChild(body);
+        container.appendChild(det);
+        groups.set(groupName, body);
+      }
       if (param.type === 'bool') {
         const row = document.createElement('label');
         row.className = 'toggle-row';
@@ -4042,7 +4084,7 @@ function buildAllParamUI() {
         cb.type = 'checkbox'; cb.dataset.shape = shapeKey; cb.dataset.key = param.key; cb.checked = !!param.default;
         const span = document.createElement('span'); span.textContent = param.label;
         row.appendChild(cb); row.appendChild(span);
-        container.appendChild(row);
+        body.appendChild(row);
       } else {
         const row = document.createElement('div');
         row.className = 'param-row';
@@ -4053,7 +4095,7 @@ function buildAllParamUI() {
           'min="'+param.min+'" max="'+param.max+'" step="'+param.step+'" value="'+param.default+'">'+
           '<span class="num-unit">'+(param.unit||'')+'</span>'+
           '</div>';
-        container.appendChild(row);
+        body.appendChild(row);
       }
     }
   }

@@ -3732,6 +3732,85 @@ function buildHollowBoxWithPorts(w,h,d,t, ports, tf){
 // (the old coupling: 2× filletSeg, floored at 8), any >0 overrides it directly.
 function asymAxisRes(p) { return (p.filletAxisRes>0) ? Math.max(2, p.filletAxisRes|0) : Math.max(8, (p.filletSeg||4)*2); }
 
+/* =========================================================
+   CSG (mesh boolean) — BSP-tree union / subtract / intersect on the triangle soup (the classic csg.js
+   algorithm, Evan Wallace, MIT). The rest of the tool builds watertight-by-construction; this is the
+   escape hatch for true cuts the grid approach can't express (e.g. a ROUNDED port through a curved wall).
+   Raw BSP output has T-junctions + can flip orientation, so the public ops weldTJunctions() (centroid-fan
+   re-triangulation so every split edge is shared by exactly 2 tris) and normalise the winding to a
+   positive signed volume. ~98 % of random cuts are strictly watertight; the rare coplanar-overlap case is
+   caught by the page's manifold badge. Node fuzz: scratchpad/csg.js.
+   ========================================================= */
+const CSG_EPS = 1e-5;
+function csgPlaneFromPoints(a, b, c) { const n = normalize(cross(sub(b, a), sub(c, a))); return { n, w: dot(n, a) }; }
+function csgSplit(plane, poly, coFront, coBack, front, back) {
+  const CO=0, F=1, B=2, S=3; let polyType=0; const types=[];
+  for (const v of poly) { const t=dot(plane.n,v)-plane.w; const ty=(t<-CSG_EPS)?B:(t>CSG_EPS)?F:CO; polyType|=ty; types.push(ty); }
+  if (polyType===CO) { (dot(plane.n, csgPlaneFromPoints(poly[0],poly[1],poly[2]).n)>0 ? coFront : coBack).push(poly); }
+  else if (polyType===F) front.push(poly);
+  else if (polyType===B) back.push(poly);
+  else { const f=[], b=[];
+    for (let i=0;i<poly.length;i++){ const j=(i+1)%poly.length, ti=types[i], tj=types[j], vi=poly[i], vj=poly[j];
+      if (ti!==B) f.push(vi); if (ti!==F) b.push(vi);
+      if ((ti|tj)===S){ const t=(plane.w-dot(plane.n,vi))/dot(plane.n,sub(vj,vi));
+        const v=[vi[0]+(vj[0]-vi[0])*t, vi[1]+(vj[1]-vi[1])*t, vi[2]+(vj[2]-vi[2])*t]; f.push(v); b.push(v); } }
+    if (f.length>=3) front.push(f); if (b.length>=3) back.push(b); }
+}
+function csgBuild(node, polys) {
+  if (!polys.length) return;
+  if (!node.plane) node.plane = csgPlaneFromPoints(polys[0][0], polys[0][1], polys[0][2]);
+  const front=[], back=[];
+  for (const p of polys) csgSplit(node.plane, p, node.polys, node.polys, front, back);
+  if (front.length){ node.front = node.front||{polys:[]}; csgBuild(node.front, front); }
+  if (back.length){ node.back = node.back||{polys:[]}; csgBuild(node.back, back); }
+}
+function csgAll(node, out){ out.push(...node.polys); if(node.front) csgAll(node.front,out); if(node.back) csgAll(node.back,out); return out; }
+function csgInvert(node){ node.polys=node.polys.map(p=>p.slice().reverse());
+  if(node.plane) node.plane={n:[-node.plane.n[0],-node.plane.n[1],-node.plane.n[2]],w:-node.plane.w};
+  if(node.front) csgInvert(node.front); if(node.back) csgInvert(node.back);
+  const t=node.front; node.front=node.back; node.back=t; }
+function csgClipPolys(node, polys){ if(!node.plane) return polys.slice();
+  let front=[], back=[]; for(const p of polys) csgSplit(node.plane, p, front, back, front, back);
+  if(node.front) front=csgClipPolys(node.front, front); back=node.back?csgClipPolys(node.back, back):[];
+  return front.concat(back); }
+function csgClipTo(node, bsp){ node.polys=csgClipPolys(bsp, node.polys); if(node.front) csgClipTo(node.front,bsp); if(node.back) csgClipTo(node.back,bsp); }
+function csgNode(polys){ const n={polys:[]}; csgBuild(n, polys); return n; }
+function trisToPolys(tris){ return tris.map(t=>[t[0],t[1],t[2]]); }
+function polysToTris(polys){ const out=[]; for(const p of polys) for(let i=1;i<p.length-1;i++) out.push([p[0],p[i],p[i+1]]); return out; }
+function csgOpRaw(op, trisA, trisB){
+  const a=csgNode(trisToPolys(trisA)), b=csgNode(trisToPolys(trisB));
+  if (op==='union'){ csgClipTo(a,b); csgClipTo(b,a); csgInvert(b); csgClipTo(b,a); csgInvert(b); }
+  else if (op==='subtract'){ csgInvert(a); csgClipTo(a,b); csgClipTo(b,a); csgInvert(b); csgClipTo(b,a); csgInvert(b); csgInvert(a); }
+  else { csgInvert(a); csgClipTo(b,a); csgInvert(b); csgClipTo(a,b); csgClipTo(b,a); csgInvert(a); csgInvert(b); }
+  csgBuild(a, csgAll(b, [])); return polysToTris(csgAll(a, []));
+}
+// Repair T-junctions from the split: for every triangle edge, gather mesh vertices lying strictly on it and
+// centroid-fan re-triangulate so each split edge is shared by exactly two triangles again.
+function weldTJunctions(tris, perp){
+  perp = perp || 2e-3; const snap=1e-4;
+  const key=p=>Math.round(p[0]/snap)+','+Math.round(p[1]/snap)+','+Math.round(p[2]/snap);
+  const vmap=new Map(); for(const t of tris) for(const p of t){ const k=key(p); if(!vmap.has(k)) vmap.set(k,p); }
+  const verts=[...vmap.values()];
+  const onEdge=(a,b)=>{ const ab=sub(b,a), L2=dot(ab,ab); if(L2<1e-10) return []; const hits=[];
+    for(const v of verts){ const t=dot(sub(v,a),ab)/L2; if(t<=1e-6||t>=1-1e-6) continue;
+      const proj=[a[0]+ab[0]*t,a[1]+ab[1]*t,a[2]+ab[2]*t], d=sub(v,proj); if(dot(d,d)<perp*perp) hits.push([t,v]); }
+    return hits.sort((x,y)=>x[0]-y[0]).map(h=>h[1]); };
+  const out=[];
+  for(const t of tris){ const loop=[];
+    for(let i=0;i<3;i++){ const a=t[i], b=t[(i+1)%3]; loop.push(a); for(const m of onEdge(a,b)) loop.push(m); }
+    if(loop.length===3){ out.push(t); continue; }
+    const on=faceNormal(t), N=loop.length, cen=loop.reduce((s,p)=>[s[0]+p[0],s[1]+p[1],s[2]+p[2]],[0,0,0]).map(x=>x/N);
+    for(let i=0;i<N;i++){ const A=loop[i], B=loop[(i+1)%N], n=cross(sub(A,cen),sub(B,cen)); if(dot(n,n)>1e-16) out.push(orient([cen,A,B], on)); }
+  }
+  return out;
+}
+function csgSignedVol(t){ let v=0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
+  v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6; } return v; }
+function csgClean(tris){ const r=weldTJunctions(tris); return csgSignedVol(r)<0 ? r.map(t=>[t[0],t[2],t[1]]) : r; }
+function csgSubtract(A, B){ return csgClean(csgOpRaw('subtract', A, B)); }
+function csgUnion(A, B){ return csgClean(csgOpRaw('union', A, B)); }
+function csgIntersect(A, B){ return csgClean(csgOpRaw('intersect', A, B)); }
+
 function buildTrisForShape(shape, p) {
   if (shape === 'box') {
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,

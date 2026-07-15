@@ -1992,10 +1992,22 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   }
 }
 
-function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace, zonesByAxis, logoRes) {
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace, zonesByAxis, logoRes, chamferOpts) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const res = Math.max(1, resolution||1);
+  // Top-outer chamfer (bevel on the upper outer edge, where the outer wall meets the top rim).
+  // width = horizontal setback (clamped < wall thickness so it never eats the cavity opening);
+  // angle = bevel angle from the horizontal top plane, so the vertical drop v = setback*tan(angle).
+  // The outer walls stop at y=hh-v and a sloped ring (emitted below) carries the top from ±hw down-
+  // and-in to ±(hw-setback) at y=hh; the flat rim then runs from there to the opening.
+  const chW = (chamferOpts && chamferOpts.width > 0) ? chamferOpts.width : 0;
+  const chS = chW > 0 ? Math.max(0, Math.min(chW, t, hw*0.49, hd*0.49)) : 0;
+  const chAng = Math.max(15, Math.min(80, (chamferOpts && chamferOpts.angle) || 45));
+  let chV = chS > 0 ? chS*Math.tan(chAng*Math.PI/180) : 0;
+  chV = Math.min(chV, 2*hh - t - 0.5, 2*hh*0.9);
+  const chamfer = chS > 1e-6 && chV > 1e-6;
+  const yTop = chamfer ? hh - chV : hh;
   let tris = [];
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
@@ -2022,9 +2034,15 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // container/tray preset) at a high slider value jumps the mesh to millions of triangles.
   const plainShell = !zonal && !lat && !zonesByAxis && !logoDispFnsByFace && !bulgeAmpsByFace;
   const baseRes = zonal ? Math.min(res, 4) : (plainShell ? Math.min(res, 24) : res);
-  const xPositions = buildAxisPositions(hw, [-(hw-t),hw-t], baseRes);
-  const zPositions = buildAxisPositions(hd, [-(hd-t),hd-t], baseRes);
-  const yPositions = buildAxisPositions(hh, [], baseRes);
+  // Chamfer adds a breakpoint at ±(half - setback) so the flat-rim / bevel transition is a crisp edge.
+  const xReq = chamfer ? [-(hw-t),hw-t,-(hw-chS),hw-chS] : [-(hw-t),hw-t];
+  const zReq = chamfer ? [-(hd-t),hd-t,-(hd-chS),hd-chS] : [-(hd-t),hd-t];
+  const xPositions = buildAxisPositions(hw, xReq, baseRes);
+  const zPositions = buildAxisPositions(hd, zReq, baseRes);
+  // Outer walls stop at yTop (=hh-v under a chamfer, else hh); the sloped top ring fills hh-v..hh.
+  let yPositions;
+  if (chamfer) { yPositions = []; const ny = Math.max(1, baseRes); for (let i=0;i<=ny;i++) yPositions.push(-hh + (yTop+hh)*i/ny); }
+  else yPositions = buildAxisPositions(hh, [], baseRes);
   if (zonal) {
     const lr = Math.max(1, logoRes||res);
     addLogoZonesToAxis(xPositions, hw, zonesByAxis[0], lr);
@@ -2055,17 +2073,43 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
   if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], addDisp(dfn['-Y-inner'], cav(bx['-Y'],xLo,xHi,zLo,zHi)), tf));
 
-  // Top rim (y=hh): the annulus between the outer top edge and the cavity opening, tiled as a 3×3
-  // grid of position bands (minus the centre = the opening). Using the ACTUAL banded slices of
-  // xPositions/zPositions (not fixed 2-point corners) keeps every rim vertex aligned with the walls'
-  // top edges even after zonal densification adds interior points in a corner band — otherwise those
-  // extra wall-edge points would T-junction against a single-quad corner.
-  const xLoB = midSlice(xPositions, -hw, -(hw-t)), xHiB = midSlice(xPositions, hw-t, hw);
-  const zLoB = midSlice(zPositions, -hd, -(hd-t)), zHiB = midSlice(zPositions, hd-t, hd);
-  const xBands = [xLoB, xMid, xHiB], zBands = [zLoB, zMid, zHiB];
-  for (let bi=0; bi<3; bi++) for (let bj=0; bj<3; bj++) {
-    if (bi===1 && bj===1) continue; // the cavity opening
-    tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xBands[bi], zBands[bj], [0,1,0], null, tf));
+  if (!chamfer) {
+    // Top rim (y=hh): the annulus between the outer top edge and the cavity opening, tiled as a 3×3
+    // grid of position bands (minus the centre = the opening). Using the ACTUAL banded slices of
+    // xPositions/zPositions (not fixed 2-point corners) keeps every rim vertex aligned with the walls'
+    // top edges even after zonal densification adds interior points in a corner band — otherwise those
+    // extra wall-edge points would T-junction against a single-quad corner.
+    const xLoB = midSlice(xPositions, -hw, -(hw-t)), xHiB = midSlice(xPositions, hw-t, hw);
+    const zLoB = midSlice(zPositions, -hd, -(hd-t)), zHiB = midSlice(zPositions, hd-t, hd);
+    const xBands = [xLoB, xMid, xHiB], zBands = [zLoB, zMid, zHiB];
+    for (let bi=0; bi<3; bi++) for (let bj=0; bj<3; bj++) {
+      if (bi===1 && bj===1) continue; // the cavity opening
+      tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh, xBands[bi], zBands[bj], [0,1,0], null, tf));
+    }
+  } else {
+    // Chamfered top: one continuous surface over the whole top annulus (minus the cavity opening),
+    // where each vertex's height is hh - v·max(dx,dz)/s — so it is flat (=hh) inside ±(half-setback)
+    // and slopes down to yTop at ±half. The outer boundary (±hw/±hd) lands exactly on yTop, matching
+    // the lowered outer-wall tops; the inner boundary (the opening ±(hw-t)/±(hd-t)) matches the cavity
+    // wall tops (shared xMid/zMid). Corner cells are folded along whichever diagonal spans the larger
+    // Δy so the two bevel facets meet in a clean mitred ridge.
+    const chamferY = (x,z) => {
+      const dx = Math.max(0, Math.abs(x) - (hw-chS)), dz = Math.max(0, Math.abs(z) - (hd-chS));
+      return hh - chV*Math.max(dx,dz)/chS;
+    };
+    const P = (x,z) => tf([x, chamferY(x,z), z]);
+    const openX = (hw-t)+1e-7, openZ = (hd-t)+1e-7;
+    for (let i=0; i<xPositions.length-1; i++) for (let j=0; j<zPositions.length-1; j++) {
+      const x0=xPositions[i], x1=xPositions[i+1], z0=zPositions[j], z1=zPositions[j+1];
+      if (Math.max(Math.abs(x0),Math.abs(x1))<=openX && Math.max(Math.abs(z0),Math.abs(z1))<=openZ) continue; // opening
+      const a=P(x0,z0), b=P(x1,z0), c=P(x1,z1), dd=P(x0,z1);
+      const fold = Math.abs(a[1]-c[1]) >= Math.abs(b[1]-dd[1]) ? [[a,b,c],[a,c,dd]] : [[a,b,dd],[b,c,dd]];
+      for (const tri of fold) {
+        const n = cross(sub(tri[1],tri[0]), sub(tri[2],tri[0]));
+        if (n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-16) continue; // drop degenerate slivers
+        tris.push(dot(n,[0,1,0]) < 0 ? [tri[0],tri[2],tri[1]] : tri);
+      }
+    }
   }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
@@ -2570,6 +2614,8 @@ const SHAPE_PARAMS = {
     {group:'Полый контейнер / борт', key:'filletInnerFloor', label:'Полый/борт: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Полый контейнер / борт', key:'filletInnerVert', label:'Полый/борт: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Полый контейнер / борт', key:'filletInnerLip', label:'Полый/борт: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'chamferTop', label:'Полый: фаска верхнего внешнего канта (ширина, 0=нет)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер / борт', key:'chamferAngle', label:'Полый: угол фаски канта (от горизонтали)', min:15, max:80, step:1, default:45, unit:'°'},
     {group:'Сетчатое дно', key:'latticeFloor', label:'Полый: сетчатое ромбовидное дно (сквозное)', type:'bool', default:false},
     {group:'Сетчатое дно', key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
     {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
@@ -3915,7 +3961,11 @@ function buildTrisForShape(shape, p) {
       // keeps its uniform grid. Bulge adds full-span zones so its dome still gets a full-face grid.
       const logoZones = logos.length > 0 ? computeLogoZonesByAxis(taperFn) : null;
       const zones = logoZones ? (bAmts ? mergeZones(logoZones, computeWallBulgeZones(p, bAmts)) : logoZones) : null;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolution, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolution);
+      // Top-outer chamfer: plain flat container only (no logos / bulge — those complicate the wall top).
+      // Compatible with the lattice floor (different region). Ports / squircle / fillet take earlier paths.
+      const chamferOpts = ((p.chamferTop||0) > 0 && logos.length === 0 && !hasWallBulge(p))
+        ? { width: p.chamferTop, angle: p.chamferAngle||45 } : null;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolution, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolution, chamferOpts);
     }
 
     if (p.rim) {

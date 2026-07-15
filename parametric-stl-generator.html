@@ -3401,6 +3401,15 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
 // by construction (shared vertices, no arbitrary boolean clipping). Only used on the plain solid box:
 // taper / fillet / squircle / bulge / hollow all override it (a flat wall is what keeps the bore exact).
 const HOLE_AXIS_PQ = { 0:[1,2], 1:[0,2], 2:[0,1] }; // bore axis -> the face's (u,v) world axes (match FACE_AXES)
+// Map a rounded-rect port's WIDTH (always horizontal) and HEIGHT (always vertical = world-Y on a side wall)
+// to half-extents along the face's own (u,v)=HOLE_AXIS_PQ axes. On +X/-X the u-axis IS world-Y, so width and
+// height land on the OPPOSITE axes than on +Z/-Z. Without this a 9×3.2 USB-C rotated 90° whenever it was
+// moved between a front/back face and a left/right face. Top/bottom (+Y/-Y) have no Y axis → width=u.
+function rrectHalfExtents(axis, portW, portH){
+  const uIsVertical = HOLE_AXIS_PQ[axis][0] === 1; // u-axis is world-Y (the side walls +X / -X)
+  const uE = uIsVertical ? portH : portW, vE = uIsVertical ? portW : portH;
+  return { ap: Math.max(0.3, uE/2), aq: Math.max(0.3, vE/2) };
+}
 // Hole cross-section as a rounded rectangle in the face's (p,q) plane: half-extents (ap,aq) along p/q and a
 // corner radius rc. This one primitive spells every supported shape — circle (ap=aq=rc=r), pill/slot
 // (rc=min(ap,aq)), USB-C / rounded rectangle (rc<min), sharp rectangle (rc≈0). A builder-hole may instead
@@ -3574,7 +3583,7 @@ function holesForBuilder(p){
   return (boxHoles||[]).map(H=>{ const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
     const ax = fa[2];
     if (H.shape === 'rrect') {
-      const ap=Math.max(0.3,(H.portW||9)/2), aq=Math.max(0.3,(H.portH||3.2)/2);
+      const { ap, aq } = rrectHalfExtents(ax, H.portW||9, H.portH||3.2); // width=horizontal, height=vertical
       const rc=Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq)));
       return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc }; // rounded rect: no head (screw seats are round)
     }
@@ -3596,7 +3605,7 @@ function portsForBuilder(p){
     const ax = fa[2], side = fa[3] >= 0 ? 1 : -1;
     const base = { axis:ax, side, cp:H.u0, cq:H.v0 };
     if (H.shape === 'rrect') {
-      const ap=Math.max(0.3,(H.portW||9)/2), aq=Math.max(0.3,(H.portH||3.2)/2);
+      const { ap, aq } = rrectHalfExtents(ax, H.portW||9, H.portH||3.2); // width=horizontal, height=vertical
       return Object.assign(base, { ap, aq, rc:Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq))) });
     }
     return Object.assign(base, { r:Math.max(0.3, (H.diameter||6)/2) });
@@ -4185,12 +4194,16 @@ function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
   const hu = dims.uLen/2, hv = dims.vLen/2;
   if (hole.shape === 'rrect') {
-    // Block half is (portW/2)*1.7 along u and (portH/2)*1.7 along v — each must fit inside the face.
-    const maxW = Math.max(1, (hu * 0.9 / 1.7) * 2), maxH = Math.max(1, (hv * 0.9 / 1.7) * 2);
-    hole.portW = Math.max(1, Math.min(hole.portW || 9, maxW));
-    hole.portH = Math.max(1, Math.min(hole.portH || 3.2, maxH));
+    // width=horizontal, height=vertical: map to the face's (u,v) extents (u is world-Y on +X/-X), clamp each
+    // to the face, then map back — so a port keeps its shape and stays inside the face on every wall.
+    const axis = FACE_AXES[hole.face] ? FACE_AXES[hole.face](p)[2] : 2;
+    const uIsVertical = HOLE_AXIS_PQ[axis][0] === 1;
+    const maxU = Math.max(1, (hu * 0.9 / 1.7) * 2), maxV = Math.max(1, (hv * 0.9 / 1.7) * 2);
+    let uE = Math.max(1, Math.min(uIsVertical ? (hole.portH || 3.2) : (hole.portW || 9), maxU));
+    let vE = Math.max(1, Math.min(uIsVertical ? (hole.portW || 9) : (hole.portH || 3.2), maxV));
+    if (uIsVertical) { hole.portH = uE; hole.portW = vE; } else { hole.portW = uE; hole.portH = vE; }
     hole.cornerR = Math.max(0, Math.min(hole.cornerR === undefined ? 1.6 : hole.cornerR, Math.min(hole.portW, hole.portH) / 2));
-    const hsU = (hole.portW/2) * 1.7, hsV = (hole.portH/2) * 1.7;
+    const hsU = (uE/2) * 1.7, hsV = (vE/2) * 1.7;
     hole.u0 = Math.max(-(hu-hsU), Math.min(hu-hsU, hole.u0 || 0));
     hole.v0 = Math.max(-(hv-hsV), Math.min(hv-hsV, hole.v0 || 0));
     return;

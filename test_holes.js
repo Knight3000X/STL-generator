@@ -209,5 +209,24 @@ base({width:40,height:30,depth:40}); boxHoles.length=0;
   chk('oversized head clamped', ho.headDiameter<=40 && ho.headDepth<=40 && ho.headDiameter>ho.diameter, ho);
   boxHoles.length=0; boxHoles.push(ho); chk('clamped head watertight', wt(buildTrisForShape('box',paramState.box))); }
 
+console.log('\n=== TYPE-C width=horizontal / height=vertical is consistent on every face (no 90° swap) ===');
+function rrectYHor(face){
+  base({width:60,height:50,depth:70}); boxHoles.length=0;
+  boxHoles.push({id:1,face,u0:0,v0:0,shape:'rrect',portW:12,portH:4,cornerR:1}); clampHoleToFace(boxHoles[0]);
+  const H=holesForBuilder(paramState.box)[0], [pp,qq]=HOLE_AXIS_PQ[H.axis];
+  const ext=a=>a===pp?H.ap:(a===qq?H.aq:null);
+  const horAxis=pp===1?qq:pp;
+  return { yExt:ext(1), horExt:ext(horAxis) };
+}
+for (const f of ['+Z','-Z','+X','-X']) { const {yExt,horExt}=rrectYHor(f);
+  chk(f+': height→Y(2), width→horizontal(6)', Math.abs(yExt-2)<1e-6 && Math.abs(horExt-6)<1e-6, {yExt,horExt}); }
+// the previously-swapped left/right faces stay watertight (solid + hollow port)
+base({width:60,height:50,depth:70}); boxHoles.length=0;
+boxHoles.push({id:2,face:'+X',u0:0,v0:0,shape:'rrect',portW:14,portH:5,cornerR:2}); clampHoleToFace(boxHoles[0]);
+chk('+X solid USB-C watertight', wt(buildTrisForShape('box',paramState.box)));
+base({width:60,height:50,depth:70,hollow:true,wallThickness:3}); boxHoles.length=0;
+boxHoles.push({id:3,face:'+X',u0:0,v0:0,shape:'rrect',portW:14,portH:5,cornerR:2}); clampHoleToFace(boxHoles[0]);
+chk('+X hollow USB-C port watertight', wt(buildTrisForShape('box',paramState.box)));
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -369,6 +369,18 @@
     line-height:1.35;
     text-align:center;
   }
+  /* Long how-it-works paragraphs fold away behind a small "ⓘ справка" toggle so the panel stays
+     compact; the text is still one tap away. */
+  .note-fold{ margin:4px 0 8px; }
+  .note-fold > summary{
+    list-style:none; cursor:pointer;
+    display:inline-block;
+    font-size:11px; color:var(--ink-soft);
+    border-bottom:1px dotted var(--ink-soft);
+    user-select:none;
+  }
+  .note-fold > summary::-webkit-details-marker{ display:none; }
+  .note-fold[open] > summary{ color:var(--ink); }
   .export-note{
     font-size:10.5px;
     color:var(--ink-soft);
@@ -659,11 +671,11 @@
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
     <button id="btn-add-lid">+ Крышка для активной</button>
-    <div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div>
+    <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div></details>
 
     <div class="section-label">Параметры</div>
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола задаётся общей настройкой «Детализация логотипов».</div></div>
+    <div class="param-group" data-shape="box"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола задаётся общей настройкой «Детализация логотипов».</div></details></div>
     <div id="logo-section" class="param-group" data-shape="box">
       <div class="section-label">Логотипы (рельеф на гранях)</div>
       <div class="param-row">
@@ -677,14 +689,14 @@
         <button id="btn-add-text">+ Текст</button>
       </div>
       <div id="logo-cards"></div>
-      <div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div></details>
     </div>
 
     <div id="holes-section" class="param-group" data-shape="box">
       <div class="section-label">Отверстия (сквозные)</div>
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
-      <div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle, в т.ч. со скруглённым дном (суперэллипсоид) — порт садится на прямую верхнюю стенку над скруглением; окно прямоугольное с прямыми углами (кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle, в т.ч. со скруглённым дном (суперэллипсоид) — порт садится на прямую верхнюю стенку над скруглением; окно прямоугольное с прямыми углами (кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div></details>
     </div>
 
     <div class="section-label">Позиция модели (в сборке)</div>
@@ -2397,7 +2409,10 @@ function loadLogoImageFile(file, cb) {
       ctx.drawImage(img, 0, 0, size, size); // stretch to fit; logo W/H controls handle aspect on the model
       const data = ctx.getImageData(0, 0, size, size).data;
       const { heightmap, suggestedInvert } = analyzeLogoImageData(data, size);
-      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert });
+      // Native aspect (w/h) of the uploaded image: the heightmap itself is square-stretched, so the
+      // aspect must ride along for the "link W/H" proportions lock on the logo card.
+      const aspect = (img.naturalWidth || img.width || 1) / (img.naturalHeight || img.height || 1);
+      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect });
     };
     img.onerror = () => cb(null);
     img.src = dataUrl;
@@ -2424,7 +2439,10 @@ function makeTextLogoResult(text, bold) {
   ctx.font = weight + ' ' + Math.round(fs) + 'px ' + family;
   ctx.fillText(text, size / 2, size / 2);
   const { heightmap, suggestedInvert } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
-  return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert };
+  // Visible aspect of the rendered line: measured width over ~cap height (≈0.72 em) — drives the
+  // proportions lock so "TEXT" defaults to a wide, not square, footprint.
+  const aspect = (ctx.measureText(text).width || 1) / (Math.round(fs) * 0.72);
+  return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect };
 }
 
 function sampleHeightmap(hm, u01, v01) {
@@ -4646,6 +4664,8 @@ function renderLogoCards() {
         '<div class="logo-field"><label>Порог %</label><input type="number" data-field="thresholdPct" step="1" min="1" max="99" value="'+Math.round(logo.threshold*100)+'"></div>'+
         '<div class="logo-field"><label>Поворот °</label><input type="number" data-field="rotation" step="1" min="-180" max="180" value="'+(logo.rotation||0)+'"></div>'+
       '</div>'+
+      (logo.aspect > 0 ?
+        '<label class="logo-invert-row"><input type="checkbox" data-field="lockAspect" '+(logo.lockAspect?'checked':'')+'> Связать Ш/В (пропорции исходника)</label>' : '')+
       '<label class="logo-invert-row"><input type="checkbox" data-field="invert" '+(logo.invert?'checked':'')+'> Инвертировать (фон выпуклый, а не сам рисунок)</label>';
     container.appendChild(card);
   }
@@ -4794,10 +4814,13 @@ function addLogoFromResult(result) {
   const usedFaces = new Set(logos.map(l => l.face));
   const face = ALL_FACES.find(f => !usedFaces.has(f)) || '+Z';
   const dims = BOX_FACE_DIMS[face](paramState.box);
+  const aspect = result.aspect > 0 ? result.aspect : 1;
+  const w = Math.max(2, Math.min(dims.uLen*0.4, dims.uLen-3));
   const logo = {
     id: nextLogoId++, face, u0: 0, v0: 0,
-    w: Math.max(2, Math.min(dims.uLen*0.4, dims.uLen-3)),
-    h: Math.max(2, Math.min(dims.vLen*0.4, dims.vLen-3)),
+    w,
+    h: Math.max(2, Math.min(Math.round(w / aspect * 10) / 10, dims.vLen-3)),
+    aspect, lockAspect: true,
     depth: 2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
   };
   clampLogoToFace(logo);
@@ -4841,8 +4864,26 @@ function attachLogoEventListeners() {
     if (!logo) return;
     if (field === 'face') logo.face = e.target.value;
     else if (field === 'invert') logo.invert = e.target.checked;
+    else if (field === 'lockAspect') {
+      logo.lockAspect = e.target.checked;
+      if (logo.lockAspect && logo.aspect > 0) { // snap height to the source proportions right away
+        logo.h = Math.max(1, Math.round(logo.w / logo.aspect * 10) / 10);
+        clampLogoToFace(logo); renderLogoCards();
+      }
+    }
     else if (field === 'thresholdPct') { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo.threshold = Math.max(0.01, Math.min(0.99, v/100)); }
-    else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) logo[field] = v; }
+    else {
+      const v = parseFloat(e.target.value); if (!Number.isNaN(v)) {
+        logo[field] = v;
+        // Proportions lock: editing one size drives the other (and its input, live).
+        if (logo.lockAspect && logo.aspect > 0 && (field === 'w' || field === 'h')) {
+          const other = field === 'w' ? 'h' : 'w';
+          logo[other] = Math.max(1, Math.round((field === 'w' ? v / logo.aspect : v * logo.aspect) * 10) / 10);
+          const sib = card.querySelector('input[data-field="'+other+'"]');
+          if (sib) sib.value = logo[other];
+        }
+      }
+    }
     if (currentShape === 'box') markPending();
   });
 
@@ -5319,7 +5360,8 @@ function exportAssemblyJSON() {
       name: m.name, params: m.params, rx:m.rx, ry:m.ry, rz:m.rz, px:m.px, py:m.py, pz:m.pz,
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
-        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl })),
+        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl,
+        aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth }))
     }))
   };
@@ -5337,7 +5379,8 @@ function restoreLogoFromDef(ld) {
       const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
       const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size);
       res({ id: nextLogoId++, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
-        threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl });
+        threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl,
+        aspect: ld.aspect > 0 ? ld.aspect : undefined, lockAspect: !!ld.lockAspect });
     };
     img.onerror = () => res(null);
     img.src = ld.previewUrl;

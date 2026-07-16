@@ -537,6 +537,12 @@
   }
   #undo-bar button:hover{ border-color:var(--ink); }
   #undo-bar button:disabled{ opacity:0.35; cursor:default; }
+  #btn-auto-orient{
+    width:100%; margin-top:2px; padding:8px 0;
+    background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
+    color:var(--ink-soft); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  }
+  #btn-auto-orient:hover{ border-color:var(--ink); color:var(--ink); }
   .logo-grid{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -758,6 +764,7 @@
       <label class="param-label">Вокруг Z</label>
       <div class="num-field"><input type="number" class="param-number" id="rz" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
     </div>
+    <button id="btn-auto-orient" title="Перебирает 6 ориентаций (какой гранью вниз) и ставит модель так, чтобы площадь нависаний круче 45° была минимальной">⟳ Автоориентация (мин. поддержек)</button>
 
     <div class="section-label">Отображение</div>
     <div class="shading-toggle">
@@ -781,6 +788,8 @@
       <div class="stats-row"><span class="k">Объём детали</span><span class="v mono" id="stat-volume">—</span></div>
       <div class="stats-row"><span class="k">Вес (PLA / PETG)</span><span class="v mono" id="stat-weight">—</span></div>
       <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
+      <div class="stats-row"><span class="k">Нависания &gt;45°</span><span class="v mono" id="stat-overhang">—</span></div>
+      <div class="stats-row"><span class="k">Печатаемость</span><span class="v mono" id="stat-printable">—</span></div>
     </div>
 
     <div class="section-label">Экспорт</div>
@@ -5040,6 +5049,14 @@ function attachEventListeners() {
     });
   });
 
+  document.getElementById('btn-auto-orient').addEventListener('click', () => {
+    if (pendingChanges) applyPendingNow();
+    if (!cachedRawTris || !cachedRawTris.length) return;
+    const best = bestOrientation(cachedRawTris);
+    transformState.rx = best.rx; transformState.ry = 0; transformState.rz = best.rz;
+    ['rx','ry','rz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = transformState[a]; });
+    rotateOnlySoon();
+  });
   document.getElementById('shade-flat').addEventListener('click', () => setShading(false));
   document.getElementById('shade-smooth').addEventListener('click', () => setShading(true));
 
@@ -5819,6 +5836,47 @@ function paintWatertight(el, mc) {
   else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
 }
 
+/* ---- Print-readiness analysis: overhangs + thin features + auto-orientation ------------------ */
+// Area (mm²) of downward faces steeper than 45° that are NOT resting on the bed (above minY) —
+// i.e. the surface a slicer would ask supports for.
+function overhangArea(tris){
+  let minY = Infinity;
+  for (const t of tris) for (const p of t) minY = Math.min(minY, p[1]);
+  let area = 0;
+  for (const t of tris){
+    const n = cross(sub(t[1],t[0]), sub(t[2],t[0])), L = vlength(n);
+    if (L < 1e-12) continue;
+    if (n[1]/L < -0.7072) { // faces down, steeper than 45°
+      const maxPy = Math.max(t[0][1], t[1][1], t[2][1]);
+      if (maxPy > minY + 0.5) area += L/2;
+    }
+  }
+  return area;
+}
+// The 6 face-down candidates; returns the (rx,rz) with the least overhang area (ties → the
+// earlier candidate, so the current upright orientation wins when it's already optimal).
+const ORIENT_CANDIDATES = [[0,0],[180,0],[90,0],[-90,0],[0,90],[0,-90]];
+function bestOrientation(rawTris){
+  let best = [0,0], bestA = Infinity;
+  for (const [rx,rz] of ORIENT_CANDIDATES){
+    const a = overhangArea(rotateTris(rawTris, rx, 0, rz));
+    if (a < bestA - 1e-9) { bestA = a; best = [rx,rz]; }
+  }
+  return { rx: best[0], rz: best[1], area: bestA };
+}
+// Parameter-level thin-feature warnings (the parametric source of truth beats probing the mesh).
+function collectPrintWarnings(p){
+  const w = [];
+  if ((p.hollow || p.rim)) {
+    const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness || 2);
+    if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
+  }
+  if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
+  if (typeof logos !== 'undefined')
+    for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
+  return w;
+}
 // Signed mesh volume (divergence theorem, mm³). Valid for closed, consistently-oriented meshes —
 // exactly what this generator produces; |.| guards against a flipped orientation.
 function meshVolume(tris){
@@ -5839,6 +5897,20 @@ function updatePrintStats(tris){
   document.getElementById('stat-weight').textContent = '≈ '+gPLA.toFixed(gPLA<10?1:0)+' / '+gPETG.toFixed(gPETG<10?1:0)+' г';
   const hh = Math.floor(hours), mm = Math.round((hours-hh)*60);
   document.getElementById('stat-time').textContent = hours < 1/60 ? '<1 мин' : '≈ '+(hh>0? hh+' ч ':'')+mm+' мин';
+  // overhangs (of the CURRENT on-screen orientation) + thin-feature warnings
+  const ovEl = document.getElementById('stat-overhang');
+  if (ovEl) {
+    const a = overhangArea(tris)/100; // см²
+    ovEl.textContent = a < 0.02 ? 'нет' : '≈ '+(a<1? a.toFixed(2) : a.toFixed(1))+' см² — нужны поддержки';
+    ovEl.className = 'v mono' + (a < 0.02 ? ' ok' : ' warn');
+  }
+  const prEl = document.getElementById('stat-printable');
+  if (prEl) {
+    const warns = collectPrintWarnings(paramState.box);
+    prEl.textContent = warns.length ? warns[0] : 'ок';
+    prEl.title = warns.join('; ');
+    prEl.className = 'v mono' + (warns.length ? ' warn' : ' ok');
+  }
 }
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;

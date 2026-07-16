@@ -3610,10 +3610,18 @@ function squirclePreparePort(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW
   const ports = Array.isArray(port) ? port.filter(Boolean) : (port ? [port] : []);
   if(!ports.length) return { skip:null, finish:()=>[] };
   const wins=[];
-  for(const pt of ports){
+  for(let pt of ports){
     const rounded = (pt.rc||0) > 0.3, f = rounded ? 1.4 : 1.0;
+    // Keep the WHOLE window inside the wall's straight run by shifting the port centre, never by
+    // truncating the window: a truncated window can leave the centre outside it (e.g. a hole at
+    // y=0 on a rounded-bottom container, whose straight wall spans [0, hh]) — the rounded-rect
+    // loop then gets a negative half-height and the "cut" degenerates into an inside-out sliver.
+    const halfW = pt.yH*f;
+    if (yHiLim - yLoLim < 2*halfW + 0.1) continue; // straight run too short for this hole at all
+    const yCc = Math.max(yLoLim + halfW, Math.min(yHiLim - halfW, pt.yC));
+    if (yCc !== pt.yC) pt = Object.assign({}, pt, { yC: yCc });
     const arc = squirclePortArc(ringO, rnO, pt.faceAxis, pt.faceSign, pt.hOff, pt.hH*f);
-    const ylo = Math.max(yLoLim, pt.yC-pt.yH*f), yhi = Math.min(yHiLim, pt.yC+pt.yH*f);
+    const ylo = yCc - halfW, yhi = yCc + halfW;
     if(!arc || yhi<=ylo+0.5) continue;
     const cols = new Set(arc.slice(0,-1));
     if (wins.some(w => !(yhi < w.ylo - 1e-6 || ylo > w.yhi + 1e-6) && arc.some(i => w.cols.has(i)))) continue;

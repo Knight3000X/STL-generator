@@ -103,6 +103,30 @@ console.log('\n=== MULTIPLE holes on one squircle container (array of ports) ===
   chk('rounded bottom + 2 ports: watertight', mRB.watertight && sv(trisRB)>0, {open:mRB.openEdges,bad:mRB.badEdges});
 }
 
+console.log('\n=== Port centred at/beyond the straight-run edge is SHIFTED in, not degenerated ===');
+{
+  // Regression (user report): rounded-bottom container, USB-C at v0=0 — the straight wall spans
+  // [0,hh], so the old truncation left the port centre OUTSIDE the window → inside-out sliver that
+  // ADDED volume instead of cutting. The centre must be shifted into the run and cut the full port.
+  const cut = (eV, yC) => {
+    const base = build(40,40,40, 0.6, eV, 2, null);
+    const tris = build(40,40,40, 0.6, eV, 2, port(2,1, 0, yC, 4.5, 1.6, 1.6));
+    const m = manifoldCheck(tris,4);
+    return { d: sv(base)-sv(tris), wt: m.watertight, m };
+  };
+  const flat = cut(0, 0);           // reference: mid-wall port on a flat bottom
+  chk('reference flat-bottom cut is a real cut', flat.wt && flat.d > 10, {cut:+flat.d.toFixed(2)});
+  const rb = cut(0.6, 0);           // rounded bottom, port asked at y=0 (below the run)
+  chk('rounded bottom + port at y=0: watertight', rb.wt, rb.m);
+  chk('rounded bottom + port at y=0: cuts the SAME volume as the reference', Math.abs(rb.d - flat.d) < 0.5, {ref:+flat.d.toFixed(2), got:+rb.d.toFixed(2)});
+  const top = cut(0, 19);           // asked right at the top edge → shifted down, full cut
+  chk('port at the top edge: shifted in, full cut', top.wt && Math.abs(top.d - flat.d) < 0.5, {ref:+flat.d.toFixed(2), got:+top.d.toFixed(2)});
+  // straight run too short for the hole → port skipped cleanly (no cut, mesh closed)
+  const shortB = build(40,6,40, 0.6, 0.8, 1.5, null);
+  const shortT = build(40,6,40, 0.6, 0.8, 1.5, port(2,1, 0, 0, 4.5, 1.6, 1.6));
+  chk('run too short: port skipped cleanly', manifoldCheck(shortT,4).watertight && Math.abs(sv(shortB)-sv(shortT)) < 1e-6, {d:+(sv(shortB)-sv(shortT)).toFixed(3)});
+}
+
 console.log('\n=== fuzz: 40 random MULTI-hole squircle containers ===');
 {
   let seed=99; const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};

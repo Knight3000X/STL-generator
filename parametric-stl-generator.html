@@ -3401,7 +3401,8 @@ function squircleWall(ring, rn, N, ySamp, sign, wallDispFns, skip){
   // Optional single-wall port: skip the rectangular block of cells (arc columns × [ylo,yhi]) — the cavity
   // wall skips the SAME block so both cutout rings coincide and the tube (built in buildSquircleHollow) is
   // watertight. skip.cols = ring indices i whose cell (i→i+1) is inside the port arc.
-  const inBlock=(i,j)=> skip && skip.cols.has(i) && ySamp[j]>=skip.ylo-1e-6 && ySamp[j+1]<=skip.yhi+1e-6;
+  const skips = Array.isArray(skip) ? skip : (skip ? [skip] : []);
+  const inBlock=(i,j)=> skips.some(s=> s.cols.has(i) && ySamp[j]>=s.ylo-1e-6 && ySamp[j+1]<=s.yhi+1e-6);
   const tris=[];
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){ if(inBlock(i,j)) continue; const k=(i+1)%N;
     const ref=[(ring[i][0]+ring[k][0])*sign, 0, (ring[i][1]+ring[k][1])*sign];
@@ -3485,20 +3486,23 @@ function superellipseDomeCapped(ring, g, aSamp, bSamp, N, poleY, invEv, outwardS
 // tube. Shared by every bottom style (flat, rounded/superellipsoid, tray) — only the straight-wall y-range
 // [yLoLim, yHiLim] differs, so the same trick applies while the rounded dome below stays untouched. Mutates
 // ySampO/ySampI (reseats them to identical y-samples inside the window) and returns {skip, tube}.
-function squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim){
-  const arc=squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH);
-  let ylo=Math.max(yLoLim, port.yC-port.yH), yhi=Math.min(yHiLim, port.yC+port.yH);
+function squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim, pre){
+  const arc = pre ? pre.arc : squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH);
+  let ylo = pre ? pre.ylo : Math.max(yLoLim, port.yC-port.yH), yhi = pre ? pre.yhi : Math.min(yHiLim, port.yC+port.yH);
   if (!arc || yhi<=ylo+0.5) return { skip:null, tube:[] };
   // Drop originals within half a coarse cell of the window (else a near-duplicate row folds into overlapping
   // triangles), lay the window lines, dedupe. Both walls run this identically → identical samples in [ylo,yhi].
   // ALWAYS keep the array endpoints: they are the wall's top/bottom edge rows that seam to the rim / cap /
   // dome, so a port sitting near an edge (rounded-bottom wall starts at y=0) must not delete them.
-  const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
-    const a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || v<=ylo-mgn || v>=yhi+mgn)
-      .concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
-    a.sort((x,y)=>x-y);
-    return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
-  const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  // (`pre` set = the multi-port caller already ran a COMBINED reseat for every window — skip it here.)
+  if (!pre) {
+    const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
+      const a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || v<=ylo-mgn || v>=yhi+mgn)
+        .concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
+      a.sort((x,y)=>x-y);
+      return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
+    const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  }
   const skip={ cols:new Set(arc.slice(0,-1)), ylo, yhi };
   const yList=ySampO.filter(v=>v>=ylo-1e-6 && v<=yhi+1e-6), bnd=[];
   for(const i of arc) bnd.push([i, yList[0]]);
@@ -3522,20 +3526,21 @@ function squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yL
 // equal length and the tube is a clean k→k prism. A curved wall can't be cut by a plane watertight, so the
 // window is placed ON the wall surface: its horizontal coordinate is interpolated along the ring, its
 // vertical is plain y. Corners round via roundedRectDist — the same primitive the flat holes use.
-function squircleRoundedPortPrep(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim){
+function squircleRoundedPortPrep(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim, pre){
   const hAxis = port.faceAxis===0 ? 1 : 0;
   // Block spans ~1.4× the port so the annulus has width all round (window sits well inside), clamped to
   // the wall's straight-run height. arc = the block's ring columns (monotonic-horizontal, no corner wrap).
-  const blkHH = port.hH*1.4;
-  const arc = squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, blkHH);
-  let ylo=Math.max(yLoLim, port.yC-port.yH*1.4), yhi=Math.min(yHiLim, port.yC+port.yH*1.4);
+  const arc = pre ? pre.arc : squirclePortArc(ringO, rnO, port.faceAxis, port.faceSign, port.hOff, port.hH*1.4);
+  let ylo = pre ? pre.ylo : Math.max(yLoLim, port.yC-port.yH*1.4), yhi = pre ? pre.yhi : Math.min(yHiLim, port.yC+port.yH*1.4);
   if(!arc || yhi<=ylo+0.5) return null;
-  const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
-    const a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || v<=ylo-mgn || v>=yhi+mgn)
-      .concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
-    a.sort((x,y)=>x-y);
-    return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
-  const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  if (!pre) { // multi-port caller (`pre` set) already ran a combined reseat for every window
+    const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
+      const a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || v<=ylo-mgn || v>=yhi+mgn)
+        .concat(hpWindowLines((ylo+yhi)/2,(yhi-ylo)/2,coarseW));
+      a.sort((x,y)=>x-y);
+      return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
+    const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  }
   const skip={ cols:new Set(arc.slice(0,-1)), ylo, yhi };
   const build=(gridO, gridI, ySO, ySI)=>{
     const rowsIn=(yS)=>{ const r=[]; for(let j=0;j<yS.length;j++) if(yS[j]>=ylo-1e-6 && yS[j]<=yhi+1e-6) r.push(j); return r; };
@@ -3596,13 +3601,42 @@ function squirclePortWallLoop(ring, grid, arc, rows, ySamp, hAxis, port, sign){
 // window. Returns the skip block + a finish(gridO,gridI) that yields the tube (rounded builds it from the
 // walls' grids; square returns its precomputed tube). Keeps the two call sites (flat / rounded bottom) DRY.
 function squirclePreparePort(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim){
-  if(!port) return { skip:null, finish:()=>[] };
-  if((port.rc||0) > 0.3){
-    const rp=squircleRoundedPortPrep(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim);
-    if(rp) return { skip:rp.skip, finish:rp.build };
+  // Accepts one port or an ARRAY of ports (multiple holes on the squircle walls at once). Strategy:
+  // 1) compute every port's block (arc columns × y-range) up front, dropping any port whose block
+  //    collides with an already-accepted one (two cuts through the same cells can't both be stitched);
+  // 2) run ONE combined reseat that drops original y-rows near ANY window and lays every window's
+  //    lines — so each port's rows exist in both walls no matter how the windows interleave in y;
+  // 3) build each port's skip block + tube from the final shared arrays.
+  const ports = Array.isArray(port) ? port.filter(Boolean) : (port ? [port] : []);
+  if(!ports.length) return { skip:null, finish:()=>[] };
+  const wins=[];
+  for(const pt of ports){
+    const rounded = (pt.rc||0) > 0.3, f = rounded ? 1.4 : 1.0;
+    const arc = squirclePortArc(ringO, rnO, pt.faceAxis, pt.faceSign, pt.hOff, pt.hH*f);
+    const ylo = Math.max(yLoLim, pt.yC-pt.yH*f), yhi = Math.min(yHiLim, pt.yC+pt.yH*f);
+    if(!arc || yhi<=ylo+0.5) continue;
+    const cols = new Set(arc.slice(0,-1));
+    if (wins.some(w => !(yhi < w.ylo - 1e-6 || ylo > w.yhi + 1e-6) && arc.some(i => w.cols.has(i)))) continue;
+    wins.push({ port: pt, rounded, arc, cols, ylo, yhi, pre:{arc, ylo, yhi} });
   }
-  const r=squirclePortCut(port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim);
-  return { skip:r.skip, finish:()=>r.tube };
+  if(!wins.length) return { skip:null, finish:()=>[] };
+  const reseat=arr=>{ const mgn=coarseW*0.5, lo=arr[0], hi=arr[arr.length-1];
+    let a=arr.filter(v=> Math.abs(v-lo)<1e-9 || Math.abs(v-hi)<1e-9 || wins.every(w=> v<=w.ylo-mgn || v>=w.yhi+mgn));
+    for(const w of wins) a=a.concat(hpWindowLines((w.ylo+w.yhi)/2,(w.yhi-w.ylo)/2,coarseW));
+    a.sort((x,y)=>x-y);
+    return a.filter((v,k)=>k===0 || v>a[k-1]+1e-4); };
+  const nO=reseat(ySampO), nI=reseat(ySampI); ySampO.length=0; ySampO.push(...nO); ySampI.length=0; ySampI.push(...nI);
+  const skips=[], finishers=[];
+  for(const w of wins){
+    if(w.rounded){
+      const rp=squircleRoundedPortPrep(w.port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim, w.pre);
+      if(rp){ skips.push(rp.skip); finishers.push(rp.build); continue; }
+    }
+    const r=squirclePortCut(w.port, ringO, ringI, rnO, N, ySampO, ySampI, coarseW, yLoLim, yHiLim, w.pre);
+    if(r.skip){ skips.push(r.skip); finishers.push(()=>r.tube); }
+  }
+  if(!skips.length) return { skip:null, finish:()=>[] };
+  return { skip:skips, finish:(gO,gI,ySO,ySI)=>{ const out=[]; for(const f of finishers) for(const t of f(gO,gI,ySO,ySI)) out.push(t); return out; } };
 }
 function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, floorFn, logoRes, seg, innerDome, port){
   const hw=w/2, hh=h/2, hd=d/2, maxDim=Math.max(w,h,d);
@@ -4109,8 +4143,10 @@ function buildTrisForShape(shape, p) {
         // Single-wall port on a plain squircle container — flat OR rounded bottom (superellipsoid): the port
         // rides the straight upper wall, so squircleVBot doesn't block it. First side-wall hole, no logos.
         // USB-C / rounded-rect corners are honoured (border→rounded-window annulus, see squircleRoundedPortPrep).
+        // ALL side-wall holes are honoured at once (squirclePreparePort combines their windows); holes
+        // on the top/bottom (axis 1) still don't apply to a squircle container.
         const sqPort = (hasHoles && logos.length===0)
-          ? (ports=>ports.length?squirclePortParams(ports[0]):null)(portsForBuilder(p).filter(pt=>pt.axis!==1))
+          ? portsForBuilder(p).filter(pt=>pt.axis!==1).map(squirclePortParams)
           : null;
         const tris = buildSquircleHollow(p.width, p.height, p.depth, eH, eV, tW, -p.height/2 + tW,
           all, all ? all['-Y'] : null, all ? all['-Y-inner'] : null, logoResolution, p.filletSeg||4, true, sqPort);

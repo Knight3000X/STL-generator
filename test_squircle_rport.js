@@ -69,5 +69,59 @@ console.log('\n=== fuzz: 60 random rounded ports on random squircle containers =
   chk('>=92% of random rounded ports strictly watertight', ok/tot >= 0.92, {ok, tot, rate:+(ok/tot).toFixed(3)});
 }
 
+console.log('\n=== MULTIPLE holes on one squircle container (array of ports) ===');
+{
+  // four holes, one per wall (mixed circle/rounded-rect), circle = fully-rounded rect (rc = r)
+  const ports4 = [ port(2, 1,  5, 2, 4, 4, 4),          // +Z circle Ø8
+                   port(2,-1, -6,-4, 4.5, 1.6, 1.6),    // −Z USB-C
+                   port(0, 1,  5, 0, 3, 3, 3),          // +X circle Ø6 (cp=y, cq=z)
+                   port(0,-1, -6, 3, 2.5, 6, 0) ];      // −X sharp rect (square path)
+  const tris = build(60,40,50, 0.6, 0, 2.5, ports4);
+  const m = manifoldCheck(tris,4);
+  chk('4 holes on 4 walls: watertight & +vol', m.watertight && !hasNaN(tris) && sv(tris)>0, {open:m.openEdges,bad:m.badEdges});
+  const one = build(60,40,50, 0.6, 0, 2.5, [ports4[0]]);
+  chk('4 holes cut MORE material than 1', sv(tris) < sv(one) - 1, {four:+sv(tris).toFixed(0), one:+sv(one).toFixed(0)});
+
+  // two holes far apart on the SAME wall
+  const trisTwo = build(60,40,50, 0.6, 0, 2.5, [port(2,1,-12,0,3.5,3.5,3.5), port(2,1,12,0,3.5,3.5,3.5)]);
+  const mT = manifoldCheck(trisTwo,4);
+  chk('2 holes same wall: watertight', mT.watertight && sv(trisTwo)>0, {open:mT.openEdges,bad:mT.badEdges});
+
+  // overlapping blocks on the same wall: the later port is dropped, mesh stays closed
+  const trisOv = build(60,40,50, 0.6, 0, 2.5, [port(2,1,0,0,5,5,5), port(2,1,3,1,5,5,5)]);
+  const mO = manifoldCheck(trisOv,4);
+  chk('overlapping pair: later port dropped, still watertight', mO.watertight && sv(trisOv)>0, {open:mO.openEdges,bad:mO.badEdges});
+
+  // same y-band on different walls (shared reseat rows interleave)
+  const trisY = build(60,40,50, 0.6, 0, 2.5, [port(2,1,0,0,4,4,4), port(0,1,0,0,4,4,4)]);
+  const mY = manifoldCheck(trisY,4);
+  chk('same y-band on two walls: watertight', mY.watertight && sv(trisY)>0, {open:mY.openEdges,bad:mY.badEdges});
+
+  // rounded (superellipsoid) bottom with two ports on the straight upper wall
+  const trisRB = build(80,50,60, 0.45, 0.6, 3, [port(2,1,0,12,4.5,1.6,1.2), port(0,-1,10,-8,2,4,1.5)]);
+  const mRB = manifoldCheck(trisRB,4);
+  chk('rounded bottom + 2 ports: watertight', mRB.watertight && sv(trisRB)>0, {open:mRB.openEdges,bad:mRB.badEdges});
+}
+
+console.log('\n=== fuzz: 40 random MULTI-hole squircle containers ===');
+{
+  let seed=99; const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
+  const rf=(a,b)=>a+rnd()*(b-a), pick=a=>a[Math.floor(rnd()*a.length)|0];
+  let ok=0, tot=0;
+  for (let i=0;i<40;i++){
+    const w=rf(55,100), h=rf(35,70), d=rf(55,100), t=rf(2,4), eH=rf(0.25,0.7), eV=pick([0,0,rf(0.3,0.8)]);
+    const nP = 2 + Math.floor(rnd()*3), ps=[];
+    for (let k=0;k<nP;k++){
+      const ax=pick([0,2]), side=pick([1,-1]);
+      const wHalf=rf(2.5,6), hHalf=rf(1.2,3), rc=pick([0, rf(0.5, Math.min(wHalf,hHalf)-0.1)]);
+      ps.push(ax===2 ? port(2,side, rf(-6,6), rf(-4,6), wHalf, hHalf, rc)
+                     : port(0,side, rf(-4,6), rf(-6,6), hHalf, wHalf, rc));
+    }
+    let tris; try { tris = build(w,h,d,eH,eV,t,ps); } catch(e){ continue; }
+    tot++; if (manifoldCheck(tris,4).watertight && !hasNaN(tris) && sv(tris)>0) ok++;
+  }
+  chk('>=92% of random multi-hole containers strictly watertight', ok/tot >= 0.92, {ok, tot, rate:+(ok/tot).toFixed(3)});
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -4395,14 +4395,16 @@ function buildStackFeet(p) {
    (divZ−1) across Z, each a thin closed box welded ~1mm into the floor and the side walls (the same
    overlapping-shells technique as the hinge/feet). On a squircle container each divider's length is
    clamped to the CAVITY superellipse chord at its position (+weld, capped inside the outer shell),
-   so nothing pokes through the curved wall. Skipped for curved floors (rounded squircle bottom),
-   lattice nets, wall bulge and taper (a straight box can't follow those safely). */
+   so nothing pokes through the curved wall. Works over a LATTICE NET floor too: the slab is welded
+   into the side walls along its whole length regardless, and its bottom sinks into the net's rib
+   layer (embed < wall, so never below the net), fusing with every rib it crosses. Skipped for
+   curved bottoms (rounded squircle), wall bulge and taper (a straight box can't follow those). */
 function buildDividers(p) {
   const nX = Math.max(1, Math.round(p.divX || 1)), nZ = Math.max(1, Math.round(p.divZ || 1));
   if (nX <= 1 && nZ <= 1) return [];
   const isHollow = !!p.hollow, isRim = !p.hollow && !!p.rim;
   if (!isHollow && !isRim) return [];
-  if (p.squircleVBot > 0 || p.latticeFloor || hasWallBulge(p) || p.logo3d) return [];
+  if (p.squircleVBot > 0 || hasWallBulge(p) || p.logo3d) return [];
   if (p.taperXPlus||p.taperXMinus||p.taperZPlus||p.taperZMinus||p.taperYPlusX||p.taperYPlusZ||p.taperYMinusX||p.taperYMinusZ) return [];
   const sq = p.squircle > 0 ? Math.max(0.02, Math.min(1, p.squircle/100)) : 0;
   if (isRim && sq) return []; // the rim tray has no squircle mode

@@ -91,11 +91,25 @@ console.log('\n=== Squircle container: chord-clamped dividers stay inside the cu
   check('squircle dividers actually added', tris.length > base.length, {extra: tris.length - base.length});
 }
 
-console.log('\n=== Guards: curved floor / lattice / bulge / taper skip dividers ===');
+console.log('\n=== Dividers over a LATTICE NET floor ===');
+{
+  const base = setBox({ latticeFloor:true });
+  const tris = setBox({ latticeFloor:true, divX:3, divZ:2 });
+  const mc = manifoldCheck(tris, 4);
+  check('lattice + dividers: watertight', mc.watertight, mc);
+  check('lattice: 3 slabs added', tris.length - base.length === 3*12, {extra: tris.length - base.length});
+  // slab bottoms sink into the rib layer but never below the net (y >= -H/2)
+  let slabBot = 1e9;
+  for (const tr of tris) for (const p of tr)
+    if (Math.abs(p[0]) > 2 && Math.abs(p[0]) < 20 && Math.abs(p[2]) > 23 && Math.abs(p[2]) < 24.4)
+      slabBot = Math.min(slabBot, p[1]);
+  check('lattice: slab bottom inside the net layer', slabBot >= -20 - 1e-9 && slabBot < -17.5 + 1e-9, {slabBot});
+}
+
+console.log('\n=== Guards: curved floor / bulge / taper skip dividers ===');
 {
   for (const [name, over] of [
     ['rounded squircle bottom', { squircle:60, squircleVBot:50, divX:2 }],
-    ['lattice floor',           { latticeFloor:true, divX:2 }],
     ['wall bulge',              { bulgeXPlus:6, divX:2 }],
     ['taper',                   { taperXPlus:15, divX:2 }],
     ['solid box (no cavity)',   { hollow:false, divX:2 }],

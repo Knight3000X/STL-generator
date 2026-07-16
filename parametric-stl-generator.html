@@ -3992,8 +3992,53 @@ function buildBoxWithHoles(w,h,d, holes){
 // Convert a UI hole to the builder's {axis,cp,cq, …profile}. Circle → {r}; rounded rectangle (USB-C etc.)
 // → {ap,aq,rc}. Through-hole → the sign of the face doesn't matter; (u0,v0) are already in the face's
 // (u,v) = HOLE_AXIS_PQ order (u along p, v along q), so portW maps to ap and portH to aq.
+// Expand each UI hole into its PATTERN copies (grid n×m with a pitch / n around a circle), both
+// centred on the hole's own position. Copies whose grid block would leave the face, or would
+// overlap an earlier copy's block on the same face, are dropped — the builders assume disjoint
+// in-face blocks (single holes get this via clampHoleToFace; the pattern must self-police).
+function expandHolePatterns(p){
+  const out=[];
+  const blockOf = (H) => { // half-extents of the builder block around a hole copy
+    if (H.shape === 'rrect') {
+      const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
+      const { ap, aq } = rrectHalfExtents(fa[2], H.portW||9, H.portH||3.2);
+      return { hu: ap*1.7, hv: aq*1.7 };
+    }
+    const r = ((H.head==='sink'||H.head==='bore') ? Math.max(H.diameter||6, H.headDiameter||0) : (H.diameter||6)) / 2;
+    return { hu: r*1.7, hv: r*1.7 };
+  };
+  const faceHalf = (H) => {
+    const dims = BOX_FACE_DIMS[H.face] ? BOX_FACE_DIMS[H.face](p) : { uLen:p.width, vLen:p.height };
+    return { hu: dims.uLen/2, hv: dims.vLen/2 };
+  };
+  const accepted=[]; // kept copies (for the overlap check), per call
+  const push = (H) => {
+    const b = blockOf(H), f = faceHalf(H);
+    if (Math.abs(H.u0) + b.hu > f.hu - 0.2 || Math.abs(H.v0) + b.hv > f.hv - 0.2) return; // off the face
+    for (const A of accepted) {
+      if (A.face !== H.face) continue;
+      const ab = blockOf(A);
+      if (Math.abs(A.u0 - H.u0) < ab.hu + b.hu && Math.abs(A.v0 - H.v0) < ab.hv + b.hv) return; // overlap
+    }
+    accepted.push(H); out.push(H);
+  };
+  for (const h of (boxHoles||[])) {
+    if (!h.pattern || h.pattern === 'none') { push(h); continue; }
+    if (h.pattern === 'grid') {
+      const nu = Math.max(1, Math.min(6, Math.round(h.gridNU || 2))), nv = Math.max(1, Math.min(6, Math.round(h.gridNV || 2)));
+      const pu = Math.max(1, h.gridPU || 10), pv = Math.max(1, h.gridPV || 10);
+      for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++)
+        push(Object.assign({}, h, { u0: (h.u0||0) + (i-(nu-1)/2)*pu, v0: (h.v0||0) + (j-(nv-1)/2)*pv }));
+    } else if (h.pattern === 'circle') {
+      const n = Math.max(2, Math.min(12, Math.round(h.circN || 6))), R = Math.max(0.5, h.circR || 10);
+      for (let k = 0; k < n; k++) { const a = k*2*Math.PI/n;
+        push(Object.assign({}, h, { u0: (h.u0||0) + R*Math.cos(a), v0: (h.v0||0) + R*Math.sin(a) })); }
+    }
+  }
+  return out;
+}
 function holesForBuilder(p){
-  return (boxHoles||[]).map(H=>{ const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
+  return expandHolePatterns(p).map(H=>{ const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
     const ax = fa[2];
     if (H.shape === 'rrect') {
       const { ap, aq } = rrectHalfExtents(ax, H.portW||9, H.portH||3.2); // width=horizontal, height=vertical
@@ -4013,7 +4058,7 @@ function holesForBuilder(p){
 // face→(axis,offset-sign) mapping as FACE_AXES, and u/v already match HOLE_AXIS_PQ's (p,q). The open top
 // (+Y) can't be pierced, so it's dropped here (buildHollowBoxWithPorts also guards it).
 function portsForBuilder(p){
-  return (boxHoles||[]).map(H=>{
+  return expandHolePatterns(p).map(H=>{
     const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
     const ax = fa[2], side = fa[3] >= 0 ? 1 : -1;
     const base = { axis:ax, side, cp:H.u0, cq:H.v0 };
@@ -4880,6 +4925,18 @@ function renderLogoCards() {
 
 // ---- Through-holes: state helpers + card UI (mirrors the logo cards, but plain params) --------------
 const HOLE_FACES = ['+Z','-Z','+X','-X','+Y','-Y'];
+// One-shot connector presets for the hole card: standard cutout sizes incl. ~0.4mm print slack.
+// Picking one overwrites the hole's shape/dimensions; everything stays editable afterwards.
+const HOLE_PRESETS = {
+  'usb-c':    { label:'USB-C',        shape:'rrect',  w:9.2,  h:3.4, r:1.7 },
+  'usb-a':    { label:'USB-A',        shape:'rrect',  w:13.4, h:6.0, r:0.8 },
+  'micro-usb':{ label:'micro-USB',    shape:'rrect',  w:8.2,  h:3.2, r:1.2 },
+  'hdmi':     { label:'HDMI',         shape:'rrect',  w:15.6, h:6.2, r:1.0 },
+  'jack35':   { label:'Jack 3.5 мм',  shape:'circle', d:6.5 },
+  'dc-barrel':{ label:'DC barrel 5.5',shape:'circle', d:8.0 },
+  'sd':       { label:'SD-карта',     shape:'rrect',  w:24.6, h:2.8, r:0.5 },
+  'microsd':  { label:'microSD',      shape:'rrect',  w:11.4, h:1.6, r:0.4 },
+};
 function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
   const hu = dims.uLen/2, hv = dims.vLen/2;
@@ -4923,6 +4980,7 @@ function renderHoleCards() {
     card.dataset.holeId = hole.id;
     const isR = hole.shape === 'rrect';
     const head = hole.head || 'none';
+    const pat = hole.pattern || 'none';
     const dimFields = isR
       ? '<label>Ширина</label><input type="number" data-field="portW" step="0.5" min="1" value="'+(hole.portW ?? 9)+'">'+
         '<label>Высота</label><input type="number" data-field="portH" step="0.5" min="1" value="'+(hole.portH ?? 3.2)+'">'+
@@ -4953,6 +5011,31 @@ function renderHoleCards() {
           '<option value="rrect"'+(isR?' selected':'')+'>Скруг. прямоугольник (USB-C)</option>'+
         '</select>'+
       '</div>'+
+      '<div class="hole-shape-row">'+
+        '<select data-field="preset">'+
+          '<option value="" selected>Пресет разъёма…</option>'+
+          Object.keys(HOLE_PRESETS).map(k=>'<option value="'+k+'">'+HOLE_PRESETS[k].label+'</option>').join('')+
+        '</select>'+
+      '</div>'+
+      '<div class="hole-shape-row">'+
+        '<select data-field="pattern">'+
+          '<option value="none"'+(pat==='none'?' selected':'')+'>Без массива</option>'+
+          '<option value="grid"'+(pat==='grid'?' selected':'')+'>Массив: сетка</option>'+
+          '<option value="circle"'+(pat==='circle'?' selected':'')+'>Массив: по кругу</option>'+
+        '</select>'+
+      '</div>'+
+      (pat==='grid' ?
+        '<div class="hole-grid">'+
+          '<label>Кол-во '+labels[0]+'</label><input type="number" data-field="gridNU" step="1" min="1" max="6" value="'+(hole.gridNU ?? 2)+'">'+
+          '<label>Кол-во '+labels[1]+'</label><input type="number" data-field="gridNV" step="1" min="1" max="6" value="'+(hole.gridNV ?? 2)+'">'+
+          '<label>Шаг '+labels[0]+'</label><input type="number" data-field="gridPU" step="0.5" min="1" value="'+(hole.gridPU ?? 10)+'">'+
+          '<label>Шаг '+labels[1]+'</label><input type="number" data-field="gridPV" step="0.5" min="1" value="'+(hole.gridPV ?? 10)+'">'+
+        '</div>' : '')+
+      (pat==='circle' ?
+        '<div class="hole-grid">'+
+          '<label>Кол-во</label><input type="number" data-field="circN" step="1" min="2" max="12" value="'+(hole.circN ?? 6)+'">'+
+          '<label>Радиус</label><input type="number" data-field="circR" step="0.5" min="0.5" value="'+(hole.circR ?? 10)+'">'+
+        '</div>' : '')+
       '<div class="hole-grid">'+
         '<label>Смещ. '+labels[0]+'</label><input type="number" data-field="u0" step="0.5" value="'+hole.u0+'">'+
         '<label>Смещ. '+labels[1]+'</label><input type="number" data-field="v0" step="0.5" value="'+hole.v0+'">'+
@@ -4996,6 +5079,19 @@ function attachHoleEventListeners() {
       if (hole.head && hole.headDiameter === undefined) hole.headDiameter = (hole.diameter || 6) + 4;
       if (hole.head && hole.headDepth === undefined) hole.headDepth = 3;
       commit = true; // shows/hides the head dimension fields
+    }
+    else if (field === 'pattern') {
+      hole.pattern = e.target.value === 'none' ? undefined : e.target.value;
+      commit = true; // shows/hides the pattern dimension fields
+    }
+    else if (field === 'preset') {
+      const ps = HOLE_PRESETS[e.target.value];
+      if (ps) {
+        hole.shape = ps.shape;
+        if (ps.shape === 'rrect') { hole.portW = ps.w; hole.portH = ps.h; hole.cornerR = ps.r; hole.head = undefined; }
+        else { hole.diameter = ps.d; }
+        commit = true;
+      }
     }
     else { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) hole[field] = v; }
     if (commit) { clampHoleToFace(hole); renderHoleCards(); }
@@ -5579,7 +5675,8 @@ function exportAssemblyJSON() {
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl,
         aspect:l.aspect, lockAspect:l.lockAspect })),
-      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth }))
+      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
+        pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR }))
     }))
   };
   const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
@@ -5621,7 +5718,8 @@ function importAssemblyJSON(file) {
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
-        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth }));
+        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
+          pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR }));
         models.push(rec);
       });
       // Build geometry for each model (mirrors addModel: make it active, then regenerate).

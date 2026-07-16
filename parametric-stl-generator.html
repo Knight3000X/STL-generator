@@ -425,18 +425,23 @@
   }
   #btn-add-logo:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-logo:disabled{ opacity:0.4; cursor:not-allowed; }
-  #logo-text-row, #logo-qr-row{ display:flex; gap:6px; margin-bottom:10px; }
+  #logo-text-row, #logo-qr-row, #logo-tex-row{ display:flex; gap:6px; margin-bottom:10px; }
+  #texture-kind{
+    flex:1; min-width:0; padding:7px 8px;
+    border:1.5px solid var(--ink-soft); border-radius:2px;
+    background:var(--field-bg); font-family:inherit; font-size:12.5px; color:var(--ink);
+  }
   #logo-text-input, #logo-qr-input{
     flex:1; min-width:0; padding:7px 8px;
     border:1.5px solid var(--ink-soft); border-radius:2px;
     font-family:inherit; font-size:12.5px; color:var(--ink);
   }
-  #btn-add-text, #btn-add-qr{
+  #btn-add-text, #btn-add-qr, #btn-add-texture{
     flex:0 0 auto; padding:0 12px;
     background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
     color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
   }
-  #btn-add-text:hover, #btn-add-qr:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-text:hover, #btn-add-qr:hover, #btn-add-texture:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-hole{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
@@ -710,6 +715,10 @@
       <div id="logo-qr-row">
         <input type="text" id="logo-qr-input" placeholder="QR: текст или ссылка…" maxlength="100" spellcheck="false">
         <button id="btn-add-qr" title="Добавить QR-код рельефом (кнопкой «3D» на карточке — отдельной моделью)">+ QR</button>
+      </div>
+      <div id="logo-tex-row">
+        <select id="texture-kind"></select>
+        <button id="btn-add-texture" title="Процедурная текстура рельефом: размер логотипа задаёт шаг узора">+ Текстура</button>
       </div>
       <div id="logo-cards"></div>
       <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div></details>
@@ -2630,6 +2639,45 @@ function makeQrLogoResult(text){
       previewUrl=c.toDataURL('image/png'); }
   }catch(e){}
   return { heightmap: hm, previewUrl, suggestedInvert:false, aspect:1 };
+}
+
+/* Procedural surface TEXTURES («рифление / точки / решётка») as ordinary logo heightmaps: a
+   repeating binary pattern poured into the standard 256² map — so a texture rides the whole logo
+   pipeline (any face, size = physical pitch control, rotation, JSON, зональная сетка). */
+const TEXTURE_KINDS = {
+  'ribs-v':  { label:'Рифление (вертикальное)' },
+  'ribs-h':  { label:'Рифление (горизонтальное)' },
+  'dots':    { label:'Точечный паттерн' },
+  'lattice': { label:'Решётка (треугольные соты)' },
+};
+function makeTextureLogoResult(kind){
+  if (!TEXTURE_KINDS[kind]) return null;
+  const S = LOGO_HM_SIZE, hm = new Float32Array(S*S), rep = 12, lw = 0.14;
+  const saw = t => { const f = ((t % 1) + 1) % 1; return Math.min(f, 1 - f); }; // distance to nearest line
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const u = (x + 0.5) / S, v = (y + 0.5) / S;
+    let val = 0;
+    if (kind === 'ribs-v') val = ((u * rep) % 1) < 0.5 ? 1 : 0;
+    else if (kind === 'ribs-h') val = ((v * rep) % 1) < 0.5 ? 1 : 0;
+    else if (kind === 'dots') {
+      const fu = ((u * rep) % 1) - 0.5, fv = ((v * rep) % 1) - 0.5;
+      val = Math.hypot(fu, fv) < 0.3 ? 1 : 0;
+    } else if (kind === 'lattice') {
+      // three line families at 0°/60°/120° → a triangular honeycomb of raised ribs
+      const n = rep * 0.75;
+      val = (saw(v * n) < lw || saw((u * 0.866 + v * 0.5) * n) < lw || saw((u * 0.866 - v * 0.5) * n) < lw) ? 1 : 0;
+    }
+    hm[y * S + x] = val;
+  }
+  let previewUrl = '';
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext && c.getContext('2d');
+    if (ctx) { const im = ctx.createImageData(S, S);
+      for (let i = 0; i < S*S; i++) { const g = hm[i] ? 40 : 235; im.data[i*4]=g; im.data[i*4+1]=g; im.data[i*4+2]=g; im.data[i*4+3]=255; }
+      ctx.putImageData(im, 0, 0); previewUrl = c.toDataURL('image/png'); }
+  } catch(e) {}
+  return { heightmap: hm, previewUrl, suggestedInvert: false, aspect: 1 };
 }
 
 function sampleHeightmap(hm, u01, v01) {
@@ -5505,6 +5553,23 @@ function attachLogoEventListeners() {
   };
   document.getElementById('btn-add-qr').addEventListener('click', addQr);
   document.getElementById('logo-qr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQr(); } });
+
+  const texSel = document.getElementById('texture-kind');
+  texSel.innerHTML = Object.keys(TEXTURE_KINDS).map(k=>'<option value="'+k+'">'+TEXTURE_KINDS[k].label+'</option>').join('');
+  document.getElementById('btn-add-texture').addEventListener('click', () => {
+    if (logos.length >= 18) return;
+    const result = makeTextureLogoResult(texSel.value);
+    if (!result) return;
+    addLogoFromResult(result);
+    const l = logos[logos.length-1];
+    if (l) { l.depth = 0.8; }  // texture relief prints best shallow
+    if (logoResolution < 120) { // fine grid keeps the pattern's edges crisp
+      logoResolution = 120;
+      const el = document.getElementById('logo-resolution'); if (el) el.value = 120;
+    }
+    renderLogoCards();
+    if (currentShape === 'box') markPending();
+  });
 
   document.getElementById('logo-cards').addEventListener('input', (e) => {
     const card = e.target.closest('.logo-card');

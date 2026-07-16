@@ -379,13 +379,13 @@
   }
 
   /* ---------- logo / relief cards ---------- */
-  #btn-add-model, #btn-add-lid, #btn-add-lid-clips{
+  #btn-add-model, #btn-add-lid, #btn-add-lid-clips, #btn-add-lid-hinge{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
     cursor:pointer; margin-bottom:10px;
   }
-  #btn-add-model:hover, #btn-add-lid:hover, #btn-add-lid-clips:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-lid-clips:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-model:hover, #btn-add-lid:hover, #btn-add-lid-clips:hover, #btn-add-lid-hinge:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-lid-clips:disabled, #btn-add-lid-hinge:disabled{ opacity:0.4; cursor:not-allowed; }
   .model-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -658,6 +658,7 @@
     <button id="btn-add-model">+ Добавить модель</button>
     <button id="btn-add-lid">+ Крышка для активной</button>
     <button id="btn-add-lid-clips" title="Крышка + защёлки: бампы на стенках контейнера и ответные окна в юбке крышки">+ Крышка с защёлками</button>
+    <button id="btn-add-lid-hinge" title="Откидная крышка: проушины на задней стенке + пластина с ответной проушиной; ось — кусочек филамента 1.75 в отверстиях Ø2">+ Откидная крышка (петля)</button>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div></details>
 
     <div class="section-label">Параметры</div>
@@ -2864,6 +2865,38 @@ function addLidForActive(withClips){
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
+// Flip-lid hinge («откидная крышка»): marks the ACTIVE container as the hinge 'cup' (two knuckles
+// grow on its back wall, see buildHingeKnuckles) and adds a companion flat lid plate carrying the
+// matching centre knuckle. Assembled with a piece of 1.75mm filament as the pin (bores are Ø2).
+function addHingeLidForActive(){
+  if (models.length >= MAX_MODELS) return;
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const src = getActiveModel(); if (!src) return;
+  const sp = src.params;
+  if (sp.hingeRole !== 'cup') {
+    paramState.box.hingeRole = 'cup';
+    paramState.box.hingePinD = sp.hingePinD || 2;
+    regenerate();          // regrow the container with its knuckles
+    saveActiveModel();
+  }
+  const params = defaultBoxParams();
+  params.width  = (sp.width || 40) + 2;  // plate overhangs 1mm per side
+  params.height = 3;                     // plate thickness
+  params.depth  = (sp.depth || 40);      // same depth → shared knuckle-z convention (see buildHingeKnuckles)
+  params.hingeRole = 'lid';
+  params.hingePinD = sp.hingePinD || 2;
+  const rec = makeModelRecord('Крышка (петля)', params);
+  rec.color = src.color;
+  let right = -Infinity;
+  for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
+  rec.px = (right === -Infinity) ? 0 : Math.round(right + params.width/2 + 10);
+  models.push(rec);
+  loadModel(rec);
+  regenerate();
+  renderModelCards();
+  if (scene3DReady) frameCamera(sceneUnionBBox());
+}
 // #8: turn a wall-relief logo into its own STANDALONE extruded model (silhouette-by-threshold,
 // see buildLogoExtrudeTris). The new record is an ordinary assembly model whose params carry
 // logo3d:true — width/depth are the footprint, height the extrusion thickness; the artwork
@@ -4164,7 +4197,45 @@ function csgSubtract(A, B){ return csgClean(csgOpRaw('subtract', A, B)); }
 function csgUnion(A, B){ return csgClean(csgOpRaw('union', A, B)); }
 function csgIntersect(A, B){ return csgClean(csgOpRaw('intersect', A, B)); }
 
+/* ---- Filament-pin hinge («откидная крышка») -------------------------------------------------
+   Two knuckles on the container's back (−Z) wall + one centre knuckle under the flat lid plate,
+   each a small solid box with a Ø~2mm bore along X (buildBoxWithHoles — watertight). The user
+   threads a piece of 1.75mm filament through all three bores as the hinge pin. Knuckles are
+   appended as EXTRA closed shells overlapping their parent body (weld ≥1mm) — every shell is
+   watertight on its own, and slicers union overlapping shells of one part. Shared conventions:
+   knuckle 7×7×5 mm, embedded 1.2 mm into the wall; pin axis y = H/2 − 3.5, z = −D/2 − 1.3. */
+const HINGE_KX = 7, HINGE_KY = 7, HINGE_KZ = 5, HINGE_EMBED = 1.2;
+function buildHingeKnuckles(p) {
+  const pinR = Math.max(0.6, (p.hingePinD || 2) / 2);
+  const out = [];
+  const knuckle = (cx, cy, cz, holeYoff) => {
+    const tris = buildBoxWithHoles(HINGE_KX, HINGE_KY, HINGE_KZ, [{ axis: 0, cp: holeYoff, cq: 0, r: pinR }]);
+    for (const t of tris) out.push([ [t[0][0]+cx, t[0][1]+cy, t[0][2]+cz],
+                                     [t[1][0]+cx, t[1][1]+cy, t[1][2]+cz],
+                                     [t[2][0]+cx, t[2][1]+cy, t[2][2]+cz] ]);
+  };
+  const zK = -p.depth/2 - HINGE_KZ/2 + HINGE_EMBED; // both roles share this: pin z is identical when closed
+  if (p.hingeRole === 'cup') {
+    // Two knuckles, top flush with the rim; inner faces at ±4 leave an 8mm slot for the lid's 7mm knuckle.
+    const yK = p.height/2 - HINGE_KY/2, xK = HINGE_KX/2 + 4;
+    knuckle(-xK, yK, zK, 0);
+    knuckle(+xK, yK, zK, 0);
+  } else {
+    // Lid: one centre knuckle hanging below the plate's back edge, welded 1mm up into the plate.
+    // Bore is offset −1 so that with the closed plate resting on the rim the pin lines up exactly
+    // with the cup bores (worldY = H/2 − ky/2 for both).
+    const yK = -HINGE_KY/2 - p.height/2 + 1;
+    knuckle(0, yK, zK, -1);
+  }
+  return out;
+}
 function buildTrisForShape(shape, p) {
+  let tris = buildTrisForShapeCore(shape, p);
+  if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
+    tris = tris.concat(buildHingeKnuckles(p));
+  return tris;
+}
+function buildTrisForShapeCore(shape, p) {
   if (shape === 'box') {
     // #8: standalone extruded-silhouette logo model. width/depth = footprint, height = extrusion
     // thickness; the artwork lives in the model's logos[0]. All other box params are ignored.
@@ -4636,11 +4707,13 @@ function renderModelCards() {
   const btn = document.getElementById('btn-add-model'); if (btn) btn.disabled = full;
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
   const lidC = document.getElementById('btn-add-lid-clips'); if (lidC) lidC.disabled = full;
+  const lidH = document.getElementById('btn-add-lid-hinge'); if (lidH) lidH.disabled = full;
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
   document.getElementById('btn-add-lid').addEventListener('click', () => addLidForActive(false));
   document.getElementById('btn-add-lid-clips').addEventListener('click', () => addLidForActive(true));
+  document.getElementById('btn-add-lid-hinge').addEventListener('click', addHingeLidForActive);
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {
     const card = e.target.closest('.model-card');

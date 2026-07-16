@@ -518,6 +518,20 @@
     cursor:pointer;
   }
   .hole-svg-load:hover{ border-color:var(--ink); }
+  #undo-bar{ display:flex; gap:8px; margin:2px 0 8px; }
+  #undo-bar button{
+    flex:1;
+    padding:6px 0;
+    border:1.5px solid var(--ink-soft);
+    background:transparent;
+    color:var(--ink);
+    border-radius:2px;
+    font-family:inherit;
+    font-size:11.5px;
+    cursor:pointer;
+  }
+  #undo-bar button:hover{ border-color:var(--ink); }
+  #undo-bar button:disabled{ opacity:0.35; cursor:default; }
   .logo-grid{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -662,6 +676,11 @@
       <span class="tag">ЛИСТ 1 ИЗ 1</span>
       <h1>STL-ГЕНЕРАТОР</h1>
       <div class="sub">параметрические тела → экспорт STL · форма: <span id="active-shape-name" class="mono">—</span></div>
+    </div>
+
+    <div id="undo-bar">
+      <button id="btn-undo" disabled title="Отменить изменение параметров (Ctrl+Z)">↶ Отменить</button>
+      <button id="btn-redo" disabled title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)">↷ Вернуть</button>
     </div>
 
     <div class="section-label">Модели (сборка)</div>
@@ -2804,6 +2823,7 @@ function activateModel(id){
   if (pendingChanges) applyPendingNow(); // commit staged edits to the OUTGOING model first
   saveActiveModel();
   loadModel(target);
+  if (typeof clearUndoHistory === 'function') clearUndoHistory(); // history is per-model
 }
 function addModel(){
   if (models.length >= MAX_MODELS) return;
@@ -4846,6 +4866,7 @@ function attachEventListeners() {
   document.getElementById('stale-badge').addEventListener('click', () => { if (pendingChanges) applyPending(); });
   updateApplyButton();
   attachSplitHandle();
+  attachUndoListeners();
 }
 
 // Mobile-only preview resize: dragging the grip between the preview and the panel changes the
@@ -5028,6 +5049,9 @@ const HOLE_PRESETS = {
   'dc-barrel':{ label:'DC barrel 5.5',shape:'circle', d:8.0 },
   'sd':       { label:'SD-карта',     shape:'rrect',  w:24.6, h:2.8, r:0.5 },
   'microsd':  { label:'microSD',      shape:'rrect',  w:11.4, h:1.6, r:0.4 },
+  // Ventilation: a pill slot pre-armed with a grid pattern — a one-click louvre field on any wall.
+  'vent':     { label:'Вентиляция (щели 5×)', shape:'rrect', w:14, h:2, r:1,
+                pattern:'grid', gridNU:1, gridNV:5, gridPU:10, gridPV:6 },
 };
 function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
@@ -5206,6 +5230,8 @@ function attachHoleEventListeners() {
         hole.shape = ps.shape;
         if (ps.shape === 'rrect') { hole.portW = ps.w; hole.portH = ps.h; hole.cornerR = ps.r; hole.head = undefined; }
         else { hole.diameter = ps.d; }
+        if (ps.pattern) { hole.pattern = ps.pattern;
+          hole.gridNU = ps.gridNU; hole.gridNV = ps.gridNV; hole.gridPU = ps.gridPU; hole.gridPV = ps.gridPV; }
         commit = true;
       }
     }
@@ -5812,6 +5838,82 @@ function applyPending() {
   pendingChanges = false;
   updateApplyButton();
   regenerateSoon();
+}
+/* =========================================================
+   UNDO / REDO for the ACTIVE model's parameters, logos and holes. A snapshot of the pre-edit
+   state is captured on focus/pointerdown inside the panel (i.e. right BEFORE a change can
+   happen) and pushed only if it differs from the stack top; Ctrl+Z / Ctrl+Shift+Z (или Ctrl+Y)
+   and the ↶/↷ buttons walk the stacks. History is per-active-model and clears on model switch.
+   ========================================================= */
+const undoStack = [], redoStack = [];
+const UNDO_LIMIT = 60;
+function undoSnapshot(){
+  return { params: deepCopyParams(paramState.box),
+    logos: logos.map(l => Object.assign({}, l)),      // heightmaps ride by reference (immutable)
+    holes: boxHoles.map(h => Object.assign({}, h)) };
+}
+// Cheap state fingerprint for "did anything actually change" (heightmaps/previews excluded).
+function undoFingerprint(s){
+  return JSON.stringify([s.params, s.logos.map(l => { const o = Object.assign({}, l); delete o.heightmap; delete o.previewUrl; return o; }),
+    s.holes.map(h => { const o = Object.assign({}, h); delete o.svgRU; delete o.svgPreview; return o; })
+      .concat(s.holes.map(h => h.svgRU ? h.svgRU.length : 0))]);
+}
+function maybeCaptureUndo(){
+  const s = undoSnapshot(), fp = undoFingerprint(s);
+  if (undoStack.length && undoStack[undoStack.length-1].fp === fp) return;
+  s.fp = fp;
+  undoStack.push(s);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoButtons();
+}
+function applyUndoState(s){
+  Object.assign(paramState.box, deepCopyParams(s.params));
+  logos.length = 0; for (const l of s.logos) logos.push(Object.assign({}, l));
+  boxHoles.length = 0; for (const h of s.holes) boxHoles.push(Object.assign({}, h));
+  refreshActiveModelUI();
+  renderLogoCards();
+  renderHoleCards();
+  markPending();
+  updateUndoButtons();
+}
+function doUndo(){
+  if (!undoStack.length) return;
+  const cur = undoSnapshot(); cur.fp = undoFingerprint(cur);
+  let s = undoStack.pop();
+  if (s.fp === cur.fp && undoStack.length) s = undoStack.pop(); // top may equal current (captured pre-edit)
+  if (s.fp === cur.fp) { updateUndoButtons(); return; }
+  redoStack.push(cur);
+  applyUndoState(s);
+}
+function doRedo(){
+  if (!redoStack.length) return;
+  const cur = undoSnapshot(); cur.fp = undoFingerprint(cur);
+  undoStack.push(cur);
+  applyUndoState(redoStack.pop());
+}
+function clearUndoHistory(){ undoStack.length = 0; redoStack.length = 0; updateUndoButtons(); }
+function updateUndoButtons(){
+  const u = document.getElementById('btn-undo'), r = document.getElementById('btn-redo');
+  if (u) u.disabled = undoStack.length === 0;
+  if (r) r.disabled = redoStack.length === 0;
+}
+function attachUndoListeners(){
+  const capture = (e) => { if (e.target && e.target.closest && e.target.closest('#panel')) maybeCaptureUndo(); };
+  document.addEventListener('focusin', capture, true);
+  document.addEventListener('pointerdown', capture, true);
+  const u = document.getElementById('btn-undo'), r = document.getElementById('btn-redo');
+  if (u) u.addEventListener('click', doUndo);
+  if (r) r.addEventListener('click', doRedo);
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const t = e.target;
+    if (t && (t.id === 'filename' || t.id === 'logo-text-input')) return; // let text fields keep native undo
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); }
+    else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); }
+  });
+  updateUndoButtons();
 }
 // Apply staged edits synchronously (used before export, so currentTris is up to date immediately).
 function applyPendingNow() {

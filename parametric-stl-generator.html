@@ -177,6 +177,21 @@
     padding-bottom:5px;
   }
   .section-label:first-of-type{margin-top:0;}
+  /* Every panel section is a collapsible <details class="panel-fold"> whose summary IS the old
+     section label; the ▸ marker rotates when open, state persists in localStorage. */
+  .panel-fold > summary.section-label{
+    list-style:none;
+    cursor:pointer;
+    user-select:none;
+  }
+  .panel-fold > summary.section-label::-webkit-details-marker{ display:none; }
+  .panel-fold > summary.section-label::before{
+    content:'▸';
+    display:inline-block;
+    margin-right:6px;
+    transition:transform 0.12s;
+  }
+  .panel-fold[open] > summary.section-label::before{ transform:rotate(90deg); }
 
   /* Collapsible parameter category (buildAllParamUI groups the box params into these). */
   .param-cat{ margin-bottom:6px; }
@@ -694,19 +709,25 @@
       <button id="btn-redo" disabled title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)">↷ Вернуть</button>
     </div>
 
-    <div class="section-label">Модели (сборка)</div>
+    <details class="panel-fold" open data-fold="Модели (сборка)"><summary class="section-label">Модели (сборка)</summary>
+
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
     <button id="btn-add-lid">+ Крышка для активной</button>
     <button id="btn-add-lid-clips" title="Крышка + защёлки: бампы на стенках контейнера и ответные окна в юбке крышки">+ Крышка с защёлками</button>
     <button id="btn-add-lid-hinge" title="Откидная крышка: проушины на задней стенке + пластина с ответной проушиной; ось — кусочек филамента 1.75 в отверстиях Ø2">+ Откидная крышка (петля)</button>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div></details>
+    </details>
 
-    <div class="section-label">Параметры</div>
+    <details class="panel-fold" open data-fold="Параметры"><summary class="section-label">Параметры</summary>
+
     <div id="params-box" class="param-group" data-shape="box"></div>
     <div class="param-group" data-shape="box"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола задаётся общей настройкой «Детализация логотипов».</div></details></div>
+    </details>
+
     <div id="logo-section" class="param-group" data-shape="box">
-      <div class="section-label">Логотипы (рельеф на гранях)</div>
+      <details class="panel-fold" open data-fold="Логотипы (рельеф на гранях)"><summary class="section-label">Логотипы (рельеф на гранях)</summary>
+
       <div class="param-row">
         <label class="param-label">Детализация логотипов</label>
         <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
@@ -728,16 +749,20 @@
       </div>
       <div id="logo-cards"></div>
       <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div></details>
+    </details>
     </div>
 
     <div id="holes-section" class="param-group" data-shape="box">
-      <div class="section-label">Отверстия (сквозные)</div>
+      <details class="panel-fold" open data-fold="Отверстия (сквозные)"><summary class="section-label">Отверстия (сквозные)</summary>
+
       <button id="btn-add-hole">+ Добавить отверстие</button>
       <div id="hole-cards"></div>
       <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Отверстие / порт по нормали выбранной грани (вентиляция / кабель / винт / USB-C). Форма: круг (диаметр) или скруглённый прямоугольник — по умолчанию под USB-C (ширина × высота × радиус угла; тем же полем задаются щель-паз при радиусе = половине высоты и произвольный прямоугольный вырез). На СПЛОШНОМ кубе отверстие идёт НАСКВОЗЬ. На ПОЛОМ контейнере отверстие пробивает ТОЛЬКО одну стенку — открывается в полость (порт для разъёма в корпусе); верх (+Y) открыт и не пробивается. Работает на плоском полом контейнере и на полом squircle, в т.ч. со скруглённым дном (суперэллипсоид) — порт садится на прямую верхнюю стенку над скруглением; окно прямоугольное с прямыми углами (кривую стенку нельзя вырезать со скруглением герметично). На СПЛОШНОМ кубе со скруглёнными УГЛАМИ (fillet) отверстие идёт насквозь через плоские грани. Для круглых отверстий на сплошном кубе есть потай под головку винта у входной грани: «зенковка» (конус) или «цекование» (цилиндр с плоским уступом) — задаётся Ø головки и глубина. Наклон стенок допустим. Положение — в координатах грани, размеры — в мм. Отверстия игнорируются при логотипах, решётке, выгибе стенок, при внутреннем скруглении полого/скруглённом канте и в режиме «борт» (нужна плоская зона для герметичности выреза).</div></details>
+    </details>
     </div>
 
-    <div class="section-label">Позиция модели (в сборке)</div>
+    <details class="panel-fold" open data-fold="Позиция модели (в сборке)"><summary class="section-label">Позиция модели (в сборке)</summary>
+
     <div class="param-row">
       <label class="param-label">Смещение X</label>
       <div class="num-field"><input type="number" class="param-number" id="px" step="1" value="0"><span class="num-unit">мм</span></div>
@@ -750,8 +775,10 @@
       <label class="param-label">Смещение Z</label>
       <div class="num-field"><input type="number" class="param-number" id="pz" step="1" value="0"><span class="num-unit">мм</span></div>
     </div>
+    </details>
 
-    <div class="section-label">Поворот (для печати)</div>
+    <details class="panel-fold" open data-fold="Поворот (для печати)"><summary class="section-label">Поворот (для печати)</summary>
+
     <div class="param-row">
       <label class="param-label">Вокруг X</label>
       <div class="num-field"><input type="number" class="param-number" id="rx" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
@@ -765,8 +792,10 @@
       <div class="num-field"><input type="number" class="param-number" id="rz" min="-180" max="180" step="1" value="0"><span class="num-unit">°</span></div>
     </div>
     <button id="btn-auto-orient" title="Перебирает 6 ориентаций (какой гранью вниз) и ставит модель так, чтобы площадь нависаний круче 45° была минимальной">⟳ Автоориентация (мин. поддержек)</button>
+    </details>
 
-    <div class="section-label">Отображение</div>
+    <details class="panel-fold" open data-fold="Отображение"><summary class="section-label">Отображение</summary>
+
     <div class="shading-toggle">
       <button id="shade-flat" class="active" data-mode="flat">Плоское</button>
       <button id="shade-smooth" data-mode="smooth">Гладкое</button>
@@ -777,8 +806,10 @@
       <input type="color" id="color-picker" value="#b9c5cd">
       <label for="color-picker">Цвет модели (только превью)</label>
     </div>
+    </details>
 
-    <div class="section-label">Сводка</div>
+    <details class="panel-fold" open data-fold="Сводка"><summary class="section-label">Сводка</summary>
+
     <div class="stats-box">
       <div class="stats-row"><span class="k">Треугольники (активная)</span><span class="v mono" id="stat-tris">—</span></div>
       <div class="stats-row"><span class="k">Треугольники (экспорт)</span><span class="v mono" id="stat-tris-total">—</span></div>
@@ -791,22 +822,29 @@
       <div class="stats-row"><span class="k">Нависания &gt;45°</span><span class="v mono" id="stat-overhang">—</span></div>
       <div class="stats-row"><span class="k">Печатаемость</span><span class="v mono" id="stat-printable">—</span></div>
     </div>
+    </details>
 
-    <div class="section-label">Экспорт</div>
+    <details class="panel-fold" open data-fold="Экспорт"><summary class="section-label">Экспорт</summary>
+
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
+    </details>
 
-    <div class="section-label">Конфигурация сборки</div>
+    <details class="panel-fold" open data-fold="Конфигурация сборки"><summary class="section-label">Конфигурация сборки</summary>
+
     <button id="btn-save-config">💾 Сохранить (JSON)</button>
     <button id="btn-load-config">📂 Загрузить (JSON)</button>
     <input type="file" id="config-file-input" accept="application/json,.json" style="display:none">
     <div class="export-note">Сохраняет всю сборку (модели, параметры, позиции, цвета и логотипы) в JSON и загружает обратно. Логотипы восстанавливаются из встроенного превью-изображения.</div>
+    </details>
 
     <div id="pwa-section" style="display:none">
-      <div class="section-label">Приложение</div>
+      <details class="panel-fold" open data-fold="Приложение"><summary class="section-label">Приложение</summary>
+
       <button id="btn-install-app">⤓ Установить приложение</button>
       <div class="export-note" id="pwa-note">Установить генератор как приложение на ПК/телефон (иконка на рабочем столе, запуск в своём окне, работает офлайн).</div>
+    </details>
     </div>
   </div>
 
@@ -4667,6 +4705,55 @@ function buildDividers(p) {
   }
   return out;
 }
+// Final safety weld: vertices closer than WELD_TOL (5e-5 mm — three orders below any printable
+// feature) are unified to one representative (the FIRST-seen original vertex — nothing moves), and
+// triangles that collapse onto a repeated vertex are dropped. Rationale: the same intended
+// coordinate can be computed through two different float paths (zonal grids on rounded shells),
+// differing by 1e-15…1e-5; that pair makes an invisible sliver quad the 4-decimal manifold check
+// reports as doubled edges. TRUE clustering (not grid rounding, which splits pairs straddling a
+// cell boundary) merges the pair, the sliver's two degenerate triangles vanish, and the neighbours'
+// edges line up exactly.
+const WELD_TOL = 5e-5;
+function snapWeldTris(tris){
+  // Nested numeric-key maps throughout — string keys made this pass dominate big builds.
+  const exact = new Map(); // x -> y -> z -> rep: bitwise-identical vertices (the vast majority)
+  const cells = new Map(); // cx -> cy -> cz -> [reps]: spatial hash for the near-duplicate probe
+  const S = 1/(WELD_TOL*2);
+  const nget = (m, k) => m.get(k);
+  const nsub = (m, k) => { let s = m.get(k); if (!s) { s = new Map(); m.set(k, s); } return s; };
+  const repOf = (p) => {
+    const mx = nget(exact, p[0]), my = mx && nget(mx, p[1]);
+    const hit = my && nget(my, p[2]);
+    if (hit) return hit;
+    const r = repSlow(p);
+    nsub(nsub(exact, p[0]), p[1]).set(p[2], r);
+    return r;
+  };
+  const repSlow = (p) => {
+    // probe every cell the ±tol cube around p can touch (≤8 at this cell size)
+    const x0 = Math.floor((p[0]-WELD_TOL)*S), x1 = Math.floor((p[0]+WELD_TOL)*S);
+    const y0 = Math.floor((p[1]-WELD_TOL)*S), y1 = Math.floor((p[1]+WELD_TOL)*S);
+    const z0 = Math.floor((p[2]-WELD_TOL)*S), z1 = Math.floor((p[2]+WELD_TOL)*S);
+    for (let cx=x0; cx<=x1; cx++){ const mx = nget(cells, cx); if (!mx) continue;
+      for (let cy=y0; cy<=y1; cy++){ const my = nget(mx, cy); if (!my) continue;
+        for (let cz=z0; cz<=z1; cz++){ const arr = nget(my, cz); if (!arr) continue;
+          for (const r of arr)
+            if (Math.abs(r[0]-p[0])<=WELD_TOL && Math.abs(r[1]-p[1])<=WELD_TOL && Math.abs(r[2]-p[2])<=WELD_TOL) return r;
+        } } }
+    const my = nsub(nsub(cells, Math.floor(p[0]*S)), Math.floor(p[1]*S));
+    const cz = Math.floor(p[2]*S);
+    let arr = my.get(cz); if (!arr){ arr = []; my.set(cz, arr); }
+    arr.push(p);
+    return p;
+  };
+  const out = [];
+  for (const t of tris){
+    const a = repOf(t[0]), b = repOf(t[1]), c = repOf(t[2]);
+    if (a === b || a === c || b === c) continue; // collapsed sliver
+    out.push((a === t[0] && b === t[1] && c === t[2]) ? t : [a, b, c]);
+  }
+  return out;
+}
 function buildTrisForShape(shape, p) {
   let tris = buildTrisForShapeCore(shape, p);
   if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
@@ -4675,7 +4762,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  return tris;
+  return snapWeldTris(tris);
 }
 function buildTrisForShapeCore(shape, p) {
   if (shape === 'box') {
@@ -5099,6 +5186,24 @@ function attachEventListeners() {
   updateApplyButton();
   attachSplitHandle();
   attachUndoListeners();
+  attachPanelFolds();
+}
+
+// Every panel section is collapsible; remember which ones the user closed (localStorage, keyed by
+// the section's data-fold name) and restore on load.
+function attachPanelFolds() {
+  let closed = [];
+  try { closed = JSON.parse(localStorage.getItem('stl-folds-closed') || '[]'); } catch(e) {}
+  document.querySelectorAll('details.panel-fold').forEach(det => {
+    const key = det.dataset.fold || '';
+    if (closed.includes(key)) det.open = false;
+    det.addEventListener('toggle', () => {
+      const set = new Set(closed);
+      if (det.open) set.delete(key); else set.add(key);
+      closed = [...set];
+      try { localStorage.setItem('stl-folds-closed', JSON.stringify(closed)); } catch(e) {}
+    });
+  });
 }
 
 // Mobile-only preview resize: dragging the grip between the preview and the panel changes the
@@ -6147,7 +6252,12 @@ function updateApplyButton() {
   if (!badge) return;
   badge.style.display = (pendingChanges && !previewIsLive()) ? 'flex' : 'none';
 }
-const autoApplyDebounced = debounce(() => { if (pendingChanges) applyPending(); }, 300);
+// Re-check the live/deferred mode at FIRE time too: a timer armed while the model was still cheap
+// must not force a rebuild after the mode has flipped to heavy — leave the stale badge instead.
+const autoApplyDebounced = debounce(() => {
+  if (!pendingChanges) return;
+  if (previewIsLive()) applyPending(); else updateApplyButton();
+}, 300);
 function markPending() {
   pendingChanges = true;
   updateApplyButton();

@@ -70,5 +70,29 @@ console.log('\n=== collectPrintWarnings ===');
   logos.length = 0;
 }
 
+console.log('\n=== snapWeldTris (final safety weld) ===');
+{
+  // a sliver quad whose two long edges are 1e-6 apart must vanish entirely
+  const sliver = [
+    [[0,0,0],[10,0,0],[10,1e-6,0]],
+    [[0,0,0],[10,1e-6,0],[0,1e-6,0]],
+  ];
+  check('sliver quad collapses to nothing', snapWeldTris(sliver).length === 0, snapWeldTris(sliver).length);
+  // a normal closed box passes through untouched (12 tris, same coordinates)
+  const box = plainBoxShellTris(10, 6, 4);
+  const welded = snapWeldTris(box);
+  check('plain box: 12 tris survive unchanged', welded.length === 12 &&
+    JSON.stringify(welded) === JSON.stringify(box), welded.length);
+  // near-duplicate vertices (1e-9 apart) are unified to ONE representative object
+  const t2 = snapWeldTris([
+    [[0,0,0],[5,0,0],[0,5,0]],
+    [[5,0,0],[1e-9,0,0],[0,0,5]],
+  ]);
+  check('1e-9-apart vertices weld to one representative', t2.length === 2 && t2[0][0] === t2[1][1]);
+  // distinct vertices well above the tolerance are NOT merged
+  const t3 = snapWeldTris([[[0,0,0],[0.001,0,0],[0,0.001,0]]]);
+  check('0.001mm features stay intact', t3.length === 1);
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

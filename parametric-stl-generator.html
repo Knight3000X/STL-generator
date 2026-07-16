@@ -492,6 +492,19 @@
     cursor:pointer;
   }
   .btn-remove-logo:hover{ background:var(--redline); color:var(--on-accent); }
+  .btn-logo3d{
+    flex:0 0 auto;
+    height:24px; padding:0 6px;
+    border:1.5px solid var(--ink-soft);
+    background:transparent;
+    color:var(--ink);
+    border-radius:2px;
+    font-size:11px;
+    font-weight:600;
+    line-height:1;
+    cursor:pointer;
+  }
+  .btn-logo3d:hover{ background:var(--ink); color:var(--paper, #fff); border-color:var(--ink); }
   .logo-grid{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -2463,6 +2476,64 @@ function makeLogoMaskFn(logo, frame) {
   };
 }
 
+/* ---- #8: standalone extruded-silhouette logo model ("объёмный логотип") -------------------
+   The logo's image is thresholded into a binary silhouette on an N×N cell grid, then extruded
+   into a watertight solid: per-cell top/bottom quads plus vertical wall quads on every
+   filled↔empty cell boundary. All vertex coordinates come from the same X(i)/Z(j) expressions,
+   so shared edges are bitwise identical — watertight by construction, no CSG. */
+function buildLogoSilhouetteMask(logo, N) {
+  const mask = new Uint8Array(N * N);
+  const rad = (logo.rotation || 0) * Math.PI / 180;
+  const cosR = Math.cos(-rad), sinR = Math.sin(-rad); // inverse rotation: model plane -> image space
+  let count = 0;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const cu = (i + 0.5) / N - 0.5, cv = (j + 0.5) / N - 0.5;      // cell centre, centred [-0.5..0.5]
+    const lu = cu * cosR - cv * sinR, lv = cu * sinR + cv * cosR;  // rotate into image space
+    if (Math.abs(lu) > 0.5 || Math.abs(lv) > 0.5) continue;        // rotated sample fell off the image
+    let val = sampleHeightmap(logo.heightmap, lu + 0.5, lv + 0.5);
+    if (logo.invert) val = 1 - val;
+    if (val > logo.threshold) { mask[j * N + i] = 1; count++; }
+  }
+  return count ? mask : null; // null = threshold left nothing (caller falls back to a solid plate)
+}
+// Extrude the silhouette into a solid: footprint sizeX×sizeZ (XZ plane, image top away from the
+// viewer), thickness along Y, centred at the origin like every other model. Lies flat — prints
+// support-free as-is.
+function buildLogoExtrudeTris(logo, sizeX, sizeZ, thickness, N) {
+  N = Math.max(16, Math.min(256, Math.round(N || 160)));
+  const t = Math.max(0.2, thickness);
+  let mask = (logo && logo.heightmap) ? buildLogoSilhouetteMask(logo, N) : null;
+  if (!mask) { mask = new Uint8Array(N * N); mask.fill(1); } // no artwork / empty silhouette -> solid plate
+  // Cells touching only at a CORNER (checkerboard pair) would share one vertical edge between four
+  // wall quads — non-manifold. Dissolve every such corner by filling one of the two empty
+  // neighbours; repeat until clean (each pass only ADDS cells, so it terminates).
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let j = 0; j + 1 < N; j++) for (let i = 0; i + 1 < N; i++) {
+      const a = mask[j*N+i], b = mask[j*N+i+1], c = mask[(j+1)*N+i], d = mask[(j+1)*N+i+1];
+      if (a && d && !b && !c) { mask[j*N+i+1] = 1; changed = true; }
+      else if (b && c && !a && !d) { mask[j*N+i] = 1; changed = true; }
+    }
+  }
+  const X = i => (i / N - 0.5) * sizeX, Z = j => (j / N - 0.5) * sizeZ;
+  const yb = -t / 2, yt = t / 2;
+  const at = (i, j) => (i >= 0 && j >= 0 && i < N && j < N) ? mask[j * N + i] : 0;
+  const tris = [];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    if (!mask[j * N + i]) continue;
+    const x0 = X(i), x1 = X(i + 1), z0 = Z(j), z1 = Z(j + 1);
+    // top (+Y) and bottom (−Y) caps of this cell
+    tris.push([[x0,yt,z0],[x0,yt,z1],[x1,yt,z1]], [[x0,yt,z0],[x1,yt,z1],[x1,yt,z0]]);
+    tris.push([[x0,yb,z0],[x1,yb,z1],[x0,yb,z1]], [[x0,yb,z0],[x1,yb,z0],[x1,yb,z1]]);
+    // vertical walls on filled↔empty boundaries (outward normals)
+    if (!at(i+1,j)) tris.push([[x1,yb,z0],[x1,yt,z0],[x1,yt,z1]], [[x1,yb,z0],[x1,yt,z1],[x1,yb,z1]]); // +X
+    if (!at(i-1,j)) tris.push([[x0,yb,z0],[x0,yt,z1],[x0,yt,z0]], [[x0,yb,z0],[x0,yb,z1],[x0,yt,z1]]); // −X
+    if (!at(i,j+1)) tris.push([[x0,yb,z1],[x1,yb,z1],[x1,yt,z1]], [[x0,yb,z1],[x1,yt,z1],[x0,yt,z1]]); // +Z
+    if (!at(i,j-1)) tris.push([[x0,yb,z0],[x1,yt,z0],[x1,yb,z0]], [[x0,yb,z0],[x0,yt,z0],[x1,yt,z0]]); // −Z
+  }
+  return tris;
+}
+
 // Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
 // (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
 // the extra room its corners sweep into, not just its unrotated w/h.
@@ -2731,6 +2802,30 @@ function addLidForActive(){
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
+// #8: turn a wall-relief logo into its own STANDALONE extruded model (silhouette-by-threshold,
+// see buildLogoExtrudeTris). The new record is an ordinary assembly model whose params carry
+// logo3d:true — width/depth are the footprint, height the extrusion thickness; the artwork
+// (heightmap + threshold/invert/rotation) travels in the record's logos[0] and keeps its edit card.
+function addLogoModelFromLogo(logo){
+  if (models.length >= MAX_MODELS || !logo || !logo.heightmap) return;
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const params = defaultBoxParams();
+  params.logo3d = true;
+  params.width  = Math.max(1, logo.w || 30);
+  params.depth  = Math.max(1, logo.h || 30);
+  params.height = 3; // extrusion thickness
+  const rec = makeModelRecord('Лого 3D', params);
+  rec.logos = [Object.assign({}, logo, { id: nextLogoId++ })];
+  let right = -Infinity;
+  for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
+  rec.px = (right === -Infinity) ? 0 : Math.round(right + params.width/2 + 10);
+  models.push(rec);
+  loadModel(rec);
+  regenerate();
+  renderModelCards();
+  if (scene3DReady) frameCamera(sceneUnionBBox());
+}
 function duplicateModel(id){
   if (models.length >= MAX_MODELS) return;
   if (id === activeModelId) { if (pendingChanges) applyPendingNow(); saveActiveModel(); }
@@ -2821,6 +2916,17 @@ function refreshActiveModelUI(){
   ['px','py','pz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = positionState[a]; });
   const m = getActiveModel(), cp = document.getElementById('color-picker');
   if (m && cp) cp.value = m.color;
+  // #8: an extruded-logo model only uses width/depth (footprint) + height (thickness) — hide
+  // every other param group (and the segment counters) while such a model is active.
+  const isLogo3d = !!paramState.box.logo3d;
+  document.querySelectorAll('#params-box details.param-cat').forEach(det => {
+    det.style.display = (!isLogo3d || det.dataset.group === 'Размеры') ? '' : 'none';
+  });
+  document.querySelectorAll('#params-box .param-number[data-key]').forEach(inp => {
+    if (!['segW','segH','segD'].includes(inp.dataset.key)) return;
+    const row = inp.closest('.param-row');
+    if (row) row.style.display = isLogo3d ? 'none' : '';
+  });
 }
 
 const logos = []; // {id, face, u0, v0, w, h, depth, threshold, invert, rotation, heightmap, previewUrl}
@@ -3956,6 +4062,13 @@ function csgIntersect(A, B){ return csgClean(csgOpRaw('intersect', A, B)); }
 
 function buildTrisForShape(shape, p) {
   if (shape === 'box') {
+    // #8: standalone extruded-silhouette logo model. width/depth = footprint, height = extrusion
+    // thickness; the artwork lives in the model's logos[0]. All other box params are ignored.
+    if (p.logo3d) {
+      const lg = (typeof logos !== 'undefined' && logos.length) ? logos.find(l => l.heightmap) : null;
+      const res = (typeof logoResolution !== 'undefined') ? Math.max(48, Math.min(256, logoResolution * 3)) : 160;
+      return buildLogoExtrudeTris(lg, p.width, p.depth, p.height, res);
+    }
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
       p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
 
@@ -4213,6 +4326,7 @@ function buildAllParamUI() {
       if (!body) {
         const det = document.createElement('details');
         det.className = 'param-cat'; det.open = true;
+        det.dataset.group = groupName; // lets refreshActiveModelUI hide irrelevant groups per model kind
         const sum = document.createElement('summary'); sum.textContent = groupName;
         body = document.createElement('div'); body.className = 'param-cat-body';
         det.appendChild(sum); det.appendChild(body);
@@ -4426,6 +4540,7 @@ function renderLogoCards() {
         '<select class="logo-face-select" data-field="face">'+
           ALL_FACES.map(f=>'<option value="'+f+'" '+(f===logo.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('')+
         '</select>'+
+        '<button class="btn-logo3d" data-action="make3d" title="Экструзия силуэта отдельной 3D-моделью">3D</button>'+
         '<button class="btn-remove-logo" data-action="remove" title="Удалить">✕</button>'+
       '</div>'+
       '<div class="logo-grid">'+
@@ -4651,9 +4766,15 @@ function attachLogoEventListeners() {
   });
 
   document.getElementById('logo-cards').addEventListener('click', (e) => {
-    if (e.target.dataset.action !== 'remove') return;
+    const action = e.target.dataset.action;
+    if (action !== 'remove' && action !== 'make3d') return;
     const card = e.target.closest('.logo-card');
     const id = Number(card.dataset.logoId);
+    if (action === 'make3d') { // #8: spin the logo off into its own extruded model
+      const logo = logos.find(l => l.id === id);
+      if (logo) addLogoModelFromLogo(logo);
+      return;
+    }
     const idx = logos.findIndex(l => l.id === id);
     if (idx >= 0) logos.splice(idx, 1);
     renderLogoCards();

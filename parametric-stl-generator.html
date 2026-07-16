@@ -379,13 +379,13 @@
   }
 
   /* ---------- logo / relief cards ---------- */
-  #btn-add-model, #btn-add-lid{
+  #btn-add-model, #btn-add-lid, #btn-add-lid-clips{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
     cursor:pointer; margin-bottom:10px;
   }
-  #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-model:disabled, #btn-add-lid:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-model:hover, #btn-add-lid:hover, #btn-add-lid-clips:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-lid-clips:disabled{ opacity:0.4; cursor:not-allowed; }
   .model-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -657,6 +657,7 @@
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
     <button id="btn-add-lid">+ Крышка для активной</button>
+    <button id="btn-add-lid-clips" title="Крышка + защёлки: бампы на стенках контейнера и ответные окна в юбке крышки">+ Крышка с защёлками</button>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div></details>
 
     <div class="section-label">Параметры</div>
@@ -2795,10 +2796,28 @@ function addModel(){
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
+// A full-rectangle (all-ones) relief "logo" — the building block for functional bumps (snap-clip
+// ridges, stacking feet): a w×h pad standing `depth` mm proud of `face`, riding the ordinary logo
+// displacement machinery (zonal grid, clamping, JSON save via the white preview image).
+function makeBumpPadLogo(face, u0, v0, w, h, depth){
+  const size = LOGO_HM_SIZE, hm = new Float32Array(size*size); hm.fill(1);
+  let previewUrl = '';
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext && c.getContext('2d');
+    if (ctx) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size); previewUrl = c.toDataURL('image/png'); }
+  } catch(e) {}
+  return { id: nextLogoId++, face, u0, v0, w, h,
+    depth, threshold: 0.5, invert: false, rotation: 0, heightmap: hm, previewUrl };
+}
 // Adds a companion "lid" model auto-sized to cap OVER the active container: a shallow hollow box flipped
 // open-side-down (rx=180), whose inner cavity clears the container's outer footprint (+ wall + a small
 // print clearance per side) so it slides over the top. Reuses buildHollowBox → always watertight.
-function addLidForActive(){
+// withClips === true additionally makes it a SNAP lid: bump ridges on the container's ±X walls
+// (relief pads) + matching windows punched through the lid skirt (single-wall ports). The bump stands
+// 0.7 mm proud vs the 0.4 mm slip clearance, so the skirt flexes over it and clicks into the window.
+function addLidForActive(withClips){
+  withClips = withClips === true; // guard: this is also a raw click handler (first arg = Event)
   if (models.length >= MAX_MODELS) return;
   if (pendingChanges) applyPendingNow();
   saveActiveModel();
@@ -2806,16 +2825,36 @@ function addLidForActive(){
   const sp = src.params;
   const wall = Math.max(0.8, sp.wallThickness || 2);
   const clearance = 0.4;   // per-side slip fit
-  const lipDepth = 6;      // how far the skirt overlaps the container wall
+  const lipDepth = withClips ? 8 : 6; // clip lids get a deeper skirt so the window has margins
+  // Clip pair geometry (shared by the container bumps and the lid windows).
+  const clipLen = Math.max(6, Math.min(14, (sp.depth || 40) * 0.3)); // horizontal (Z) ridge length
+  const clipH = 2.6, clipProud = 0.7;
+  if (withClips) {
+    // Bumps ride the ACTIVE container: mid-skirt engagement height when the lid sits closed.
+    const bumpY = (sp.height || 40)/2 - lipDepth/2;
+    for (const face of ['+X','-X'])
+      logos.push(makeBumpPadLogo(face, bumpY, 0, clipH, clipLen, clipProud)); // ±X faces: u=Y, v=Z
+    logos.forEach(clampLogoToFace);
+    renderLogoCards();
+    regenerate();          // rebuild the container with its new ridges
+    saveActiveModel();
+  }
   const params = defaultBoxParams();
   params.hollow = true;
   params.wallThickness = wall;
   params.width  = (sp.width  || 40) + 2*wall + 2*clearance;
   params.depth  = (sp.depth  || 40) + 2*wall + 2*clearance;
   params.height = lipDepth + wall;
-  const rec = makeModelRecord('Крышка', params);
+  const rec = makeModelRecord(withClips ? 'Крышка (защёлки)' : 'Крышка', params);
   rec.rx = 180;            // flip so the open side faces DOWN — a cap, not a cup
   rec.color = src.color;
+  if (withClips) {
+    // Windows through the skirt (±X), sized clip+0.4 all round. Local centre y = wall/2 maps to the
+    // container's bump height when closed: worldY = Yc − y_local with the flipped lid's plate resting
+    // on the container rim (Yc = H/2 − H_lid/2 + wall) → worldY = H/2 − lip/2 = bumpY.
+    rec.holes = ['+X','-X'].map(f => ({ id: nextHoleId++, face: f, u0: wall/2, v0: 0,
+      shape: 'rrect', portW: clipLen + 0.8, portH: clipH + 0.8, cornerR: 1.0 }));
+  }
   let right = -Infinity;
   for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
   rec.px = (right === -Infinity) ? 0 : Math.round(right + params.width/2 + 10);
@@ -4596,10 +4635,12 @@ function renderModelCards() {
   const full = models.length >= MAX_MODELS;
   const btn = document.getElementById('btn-add-model'); if (btn) btn.disabled = full;
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
+  const lidC = document.getElementById('btn-add-lid-clips'); if (lidC) lidC.disabled = full;
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
-  document.getElementById('btn-add-lid').addEventListener('click', addLidForActive);
+  document.getElementById('btn-add-lid').addEventListener('click', () => addLidForActive(false));
+  document.getElementById('btn-add-lid-clips').addEventListener('click', () => addLidForActive(true));
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {
     const card = e.target.closest('.model-card');

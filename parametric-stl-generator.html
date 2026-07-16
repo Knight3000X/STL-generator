@@ -2717,6 +2717,9 @@ const SHAPE_PARAMS = {
     {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
     {group:'Сетчатое дно', key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
     {group:'Сетчатое дно', key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
+    {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
+    {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
+    {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
   ],
 };
 
@@ -4229,10 +4232,41 @@ function buildHingeKnuckles(p) {
   }
   return out;
 }
+/* ---- Stacking feet («штабелируемость») ------------------------------------------------------
+   Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
+   INTO the open cavity of an identical box underneath — the boxes stack without sliding, the upper
+   bottom rests on the lower rim. Edge middles (not corners) keep the pads on solid material for any
+   squircle/fillet corner treatment. Appended as plain closed box shells welded up into the floor
+   (like the hinge knuckles). Skipped for curved/na bottoms (rounded squircle bottom, bottom bulge,
+   lattice net) and for boxes too small to fit a pad. */
+function buildStackFeet(p) {
+  if (p.squircleVBot > 0 || p.bulgeYMinus || p.latticeFloor) return [];
+  const W = p.width, H = p.height, D = p.depth;
+  const wall = clampWallThickness(W, H, D, p.wallThickness || 2);
+  const uni = p.filletRadius || 0, oBot = p.filletBottom > 0 ? p.filletBottom : uni;
+  const rim = Math.max(wall, oBot);                       // stay clear of wall AND bottom rounding
+  const clear = Math.max(0.2, Math.min(2, p.stackClear || 0.6));
+  const fh = Math.max(0.5, Math.min(5, p.stackFootH || 1.6));
+  const foot = Math.min(8, (W - 2*rim - 2*clear) * 0.3, (D - 2*rim - 2*clear) * 0.3);
+  if (foot < 2) return [];                                // no room for a useful pad
+  const embed = Math.max(0.4, Math.min(1, wall * 0.5));   // weld into the floor, never through it
+  const inset = rim + clear + foot/2;
+  const cy = -H/2 + (embed - fh)/2, hgt = fh + embed;
+  const out = [];
+  for (const [cx, cz] of [[W/2 - inset, 0], [-(W/2 - inset), 0], [0, D/2 - inset], [0, -(D/2 - inset)]]) {
+    const tris = buildBoxWithHoles(foot, hgt, foot, []);
+    for (const t of tris) out.push([ [t[0][0]+cx, t[0][1]+cy, t[0][2]+cz],
+                                     [t[1][0]+cx, t[1][1]+cy, t[1][2]+cz],
+                                     [t[2][0]+cx, t[2][1]+cy, t[2][2]+cz] ]);
+  }
+  return out;
+}
 function buildTrisForShape(shape, p) {
   let tris = buildTrisForShapeCore(shape, p);
   if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
     tris = tris.concat(buildHingeKnuckles(p));
+  if (shape === 'box' && p.stackFeet && !p.logo3d)
+    tris = tris.concat(buildStackFeet(p));
   return tris;
 }
 function buildTrisForShapeCore(shape, p) {

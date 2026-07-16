@@ -2720,6 +2720,10 @@ const SHAPE_PARAMS = {
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
+    {group:'Перегородки (полый/борт)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
+    {group:'Перегородки (полый/борт)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
+    {group:'Перегородки (полый/борт)', key:'divT', label:'Толщина перегородки', min:0.4, max:5, step:0.1, default:1.2, unit:'мм'},
+    {group:'Перегородки (полый/борт)', key:'divH', label:'Высота перегородок (% высоты полости)', min:10, max:100, step:5, default:100, unit:'%', int:true},
   ],
 };
 
@@ -4207,6 +4211,19 @@ function csgIntersect(A, B){ return csgClean(csgOpRaw('intersect', A, B)); }
    appended as EXTRA closed shells overlapping their parent body (weld ≥1mm) — every shell is
    watertight on its own, and slicers union overlapping shells of one part. Shared conventions:
    knuckle 7×7×5 mm, embedded 1.2 mm into the wall; pin axis y = H/2 − 3.5, z = −D/2 − 1.3. */
+// A minimal 12-triangle closed box shell (for welded-on functional bodies: feet, dividers) —
+// buildBoxWithHoles would grid every face densely, which these plain slabs don't need.
+function plainBoxShellTris(w, h, d){
+  const x=w/2, y=h/2, z=d/2, out=[];
+  const q=(A,B,C,D2,ref)=>{ out.push(orient([A,B,C],ref)); out.push(orient([A,C,D2],ref)); };
+  q([-x,-y,-z],[-x,-y, z],[-x, y, z],[-x, y,-z], [-1,0,0]);
+  q([ x,-y,-z],[ x,-y, z],[ x, y, z],[ x, y,-z], [ 1,0,0]);
+  q([-x,-y,-z],[ x,-y,-z],[ x,-y, z],[-x,-y, z], [0,-1,0]);
+  q([-x, y,-z],[ x, y,-z],[ x, y, z],[-x, y, z], [0, 1,0]);
+  q([-x,-y,-z],[ x,-y,-z],[ x, y,-z],[-x, y,-z], [0,0,-1]);
+  q([-x,-y, z],[ x,-y, z],[ x, y, z],[-x, y, z], [0,0, 1]);
+  return out;
+}
 const HINGE_KX = 7, HINGE_KY = 7, HINGE_KZ = 5, HINGE_EMBED = 1.2;
 function buildHingeKnuckles(p) {
   const pinR = Math.max(0.6, (p.hingePinD || 2) / 2);
@@ -4254,10 +4271,63 @@ function buildStackFeet(p) {
   const cy = -H/2 + (embed - fh)/2, hgt = fh + embed;
   const out = [];
   for (const [cx, cz] of [[W/2 - inset, 0], [-(W/2 - inset), 0], [0, D/2 - inset], [0, -(D/2 - inset)]]) {
-    const tris = buildBoxWithHoles(foot, hgt, foot, []);
+    const tris = plainBoxShellTris(foot, hgt, foot);
     for (const t of tris) out.push([ [t[0][0]+cx, t[0][1]+cy, t[0][2]+cz],
                                      [t[1][0]+cx, t[1][1]+cy, t[1][2]+cz],
                                      [t[2][0]+cx, t[2][1]+cy, t[2][2]+cz] ]);
+  }
+  return out;
+}
+/* ---- Cavity dividers («перегородки/секции», organizer grid) ---------------------------------
+   divX×divZ cells inside the hollow container (or the rim tray pocket): (divX−1) walls across X and
+   (divZ−1) across Z, each a thin closed box welded ~1mm into the floor and the side walls (the same
+   overlapping-shells technique as the hinge/feet). On a squircle container each divider's length is
+   clamped to the CAVITY superellipse chord at its position (+weld, capped inside the outer shell),
+   so nothing pokes through the curved wall. Skipped for curved floors (rounded squircle bottom),
+   lattice nets, wall bulge and taper (a straight box can't follow those safely). */
+function buildDividers(p) {
+  const nX = Math.max(1, Math.round(p.divX || 1)), nZ = Math.max(1, Math.round(p.divZ || 1));
+  if (nX <= 1 && nZ <= 1) return [];
+  const isHollow = !!p.hollow, isRim = !p.hollow && !!p.rim;
+  if (!isHollow && !isRim) return [];
+  if (p.squircleVBot > 0 || p.latticeFloor || hasWallBulge(p) || p.logo3d) return [];
+  if (p.taperXPlus||p.taperXMinus||p.taperZPlus||p.taperZMinus||p.taperYPlusX||p.taperYPlusZ||p.taperYMinusX||p.taperYMinusZ) return [];
+  const sq = p.squircle > 0 ? Math.max(0.02, Math.min(1, p.squircle/100)) : 0;
+  if (isRim && sq) return []; // the rim tray has no squircle mode
+  const W = p.width, H = p.height, D = p.depth;
+  const t = clampWallThickness(W, H, D, p.wallThickness || 2);
+  const floorY = isHollow ? -H/2 + t : H/2 - clampRimHeight(H, p.rimHeight);
+  const cavH = H/2 - floorY;
+  if (cavH < 1) return [];
+  const dT = Math.max(0.4, Math.min(5, p.divT || 1.2));
+  const hDiv = cavH * Math.max(10, Math.min(100, p.divH === undefined ? 100 : p.divH)) / 100;
+  const embed = Math.max(0.4, Math.min(1, t * 0.6));
+  const aI = W/2 - t, bI = D/2 - t;          // rectangular cavity half-extents
+  const e = sq ? 2/sq : 0;
+  // Cavity / outer superellipse half-chords at a given coordinate (rect mode: constant).
+  const chord = (v, halfU, halfV) => !sq ? halfV :
+    halfV * Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, Math.abs(v)/halfU), e)), sq/2);
+  const out = [];
+  const slab = (cx, cz, sx, sz) => {
+    const tris = plainBoxShellTris(sx, hDiv + embed, sz);
+    const cy = floorY + (hDiv - embed)/2;
+    for (const t3 of tris) out.push([ [t3[0][0]+cx, t3[0][1]+cy, t3[0][2]+cz],
+                                      [t3[1][0]+cx, t3[1][1]+cy, t3[1][2]+cz],
+                                      [t3[2][0]+cx, t3[2][1]+cy, t3[2][2]+cz] ]);
+  };
+  for (let k = 1; k < nX; k++) {              // walls across X (spanning Z)
+    const xi = -aI + k * (2*aI/nX), xe = Math.abs(xi) + dT/2;
+    const cIn = chord(xe, aI, bI);
+    if (sq && cIn < dT) continue;             // too close to the curved wall — no room
+    const half = Math.min(cIn + embed, chord(xe, W/2, D/2) - 0.3 || Infinity);
+    slab(xi, 0, dT, 2 * (sq ? half : bI + embed));
+  }
+  for (let k = 1; k < nZ; k++) {              // walls across Z (spanning X)
+    const zi = -bI + k * (2*bI/nZ), ze = Math.abs(zi) + dT/2;
+    const cIn = chord(ze, bI, aI);
+    if (sq && cIn < dT) continue;
+    const half = Math.min(cIn + embed, chord(ze, D/2, W/2) - 0.3 || Infinity);
+    slab(0, zi, 2 * (sq ? half : aI + embed), dT);
   }
   return out;
 }
@@ -4267,6 +4337,8 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildHingeKnuckles(p));
   if (shape === 'box' && p.stackFeet && !p.logo3d)
     tris = tris.concat(buildStackFeet(p));
+  if (shape === 'box' && !p.logo3d && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+    tris = tris.concat(buildDividers(p));
   return tris;
 }
 function buildTrisForShapeCore(shape, p) {

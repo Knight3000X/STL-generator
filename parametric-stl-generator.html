@@ -601,16 +601,33 @@
   #btn-reset-view:hover{ background:rgba(111,183,219,0.18); }
 
   /* ---------- responsive: stack on narrow screens ---------- */
+  /* Drag handle between the preview and the panel (mobile only): lets the user resize the preview. */
+  #split-handle{ display:none; }
   @media (max-width: 860px){
     body{ flex-direction:column; }
     #panel{
       width:100%; min-width:0;
-      order:2;
+      order:3;
       border-right:none;
-      border-top:2px solid var(--ink);
-      max-height:54vh;
+      max-height:none;      /* height is whatever the preview leaves; the handle drives the split */
+      flex:1;
+      min-height:0;
     }
     #viewport-wrap{ order:1; height:46vh; flex:none; }
+    #split-handle{
+      display:flex; order:2;
+      align-items:center; justify-content:center;
+      height:20px; flex:none;
+      background:var(--paper);
+      border-top:2px solid var(--ink);
+      cursor:ns-resize;
+      touch-action:none;    /* the handle itself pans nothing — vertical drags resize the preview */
+    }
+    #split-handle::before{
+      content:'';
+      width:44px; height:4px; border-radius:2px;
+      background:var(--ink-soft);
+    }
   }
 </style>
 </head>
@@ -622,6 +639,8 @@
     <button id="btn-reset-view">⤾ сбросить вид</button>
     <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
   </div>
+
+  <div id="split-handle" title="Потяните, чтобы изменить высоту предпросмотра" aria-label="Изменить высоту предпросмотра"></div>
 
   <div id="panel">
     <div class="titleblock">
@@ -4514,6 +4533,37 @@ function attachEventListeners() {
 
   document.getElementById('btn-apply').addEventListener('click', () => { if (pendingChanges) applyPending(); });
   updateApplyButton();
+  attachSplitHandle();
+}
+
+// Mobile-only preview resize: dragging the grip between the preview and the panel changes the
+// preview's height (persisted). Desktop (>860px) ignores it — the media query hides the handle and
+// we clear the inline height so the flex-row layout is never constrained by a stale value.
+function attachSplitHandle() {
+  const handle = document.getElementById('split-handle');
+  const wrap = document.getElementById('viewport-wrap');
+  const mq = window.matchMedia('(max-width: 860px)');
+  const clampH = h => Math.max(110, Math.min(window.innerHeight - 180, h));
+  const applyH = h => { wrap.style.height = clampH(h) + 'px'; if (scene3DReady) onResize(); };
+  const saved = () => { try { return parseFloat(localStorage.getItem('stl-preview-h')); } catch(e){ return NaN; } };
+  const syncMode = () => {
+    if (mq.matches) { const h = saved(); if (!Number.isNaN(h)) applyH(h); }
+    else if (wrap.style.height) { wrap.style.height = ''; if (scene3DReady) onResize(); }
+  };
+  let startY = 0, startH = 0, dragging = false;
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true; startY = e.clientY; startH = wrap.getBoundingClientRect().height;
+    handle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => { if (dragging) applyH(startH + (e.clientY - startY)); });
+  const endDrag = () => { if (!dragging) return; dragging = false;
+    try { localStorage.setItem('stl-preview-h', String(wrap.getBoundingClientRect().height)); } catch(e){} };
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  if (mq.addEventListener) mq.addEventListener('change', syncMode);
+  window.addEventListener('resize', () => { if (mq.matches && wrap.style.height) applyH(parseFloat(wrap.style.height)); });
+  syncMode();
 }
 
 const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};

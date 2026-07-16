@@ -507,6 +507,17 @@
     cursor:pointer;
   }
   .btn-logo3d:hover{ background:var(--ink); color:var(--paper, #fff); border-color:var(--ink); }
+  .hole-svg-load{
+    padding:4px 6px;
+    border:1.5px dashed var(--ink-soft);
+    background:transparent;
+    color:var(--ink);
+    border-radius:2px;
+    font-family:inherit;
+    font-size:11px;
+    cursor:pointer;
+  }
+  .hole-svg-load:hover{ border-color:var(--ink); }
   .logo-grid{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -672,6 +683,7 @@
       </div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
+      <input type="file" id="svg-hole-input" accept=".svg,image/svg+xml" style="display:none">
       <div id="logo-text-row">
         <input type="text" id="logo-text-input" placeholder="Текст рельефом…" maxlength="40" spellcheck="false">
         <button id="btn-add-text">+ Текст</button>
@@ -3831,6 +3843,10 @@ function rrectHalfExtents(axis, portW, portH){
 // (rc=min(ap,aq)), USB-C / rounded rectangle (rc<min), sharp rectangle (rc≈0). A builder-hole may instead
 // carry a plain {r} (legacy circle); holeHalfExtents normalises both.
 function holeHalfExtents(H){
+  if (H.svgR && H.svgR.length) { // SVG contour: precomputed unit extents along the face's p/q axes
+    const s = H.svgScale || 1;
+    return { ap: Math.max(0.3, (H.svgApU || 1) * s), aq: Math.max(0.3, (H.svgAqU || 1) * s), rc: 0 };
+  }
   if (H.ap !== undefined) {
     const ap=Math.max(0.3,H.ap), aq=Math.max(0.3,H.aq);
     const rc=Math.max(0, Math.min(H.rc===undefined?Math.min(ap,aq):H.rc, Math.min(ap,aq)));
@@ -3855,7 +3871,19 @@ function roundedRectDist(ap, aq, rc, ang){
   const b=acx*Cx + asy*Cy, c=Cx*Cx+Cy*Cy - rc*rc; // acx^2+asy^2 = 1
   return b + Math.sqrt(Math.max(0, b*b - c));
 }
-function holeRadiusAt(H, ang){ const e=holeHalfExtents(H); return roundedRectDist(e.ap, e.aq, e.rc, ang); }
+function holeRadiusAt(H, ang){
+  // SVG-contour hole: radius comes from the imported shape's polar table (unit radii indexed by the
+  // MATH angle from +horizontal). On side walls the face's p-axis is world-Y (vertical), so the
+  // sample angle is remapped (π/2 − ang) to keep the artwork upright.
+  if (H.svgR && H.svgR.length) {
+    const M = H.svgR.length, TWO = 2*Math.PI;
+    const a = H.svgVertU ? (Math.PI/2 - ang) : ang;
+    let t = ((a % TWO) + TWO) % TWO / TWO * M;
+    const i = Math.floor(t) % M, f = t - Math.floor(t);
+    return Math.max(0.05, (H.svgR[i]*(1-f) + H.svgR[(i+1)%M]*f) * (H.svgScale || 1));
+  }
+  const e=holeHalfExtents(H); return roundedRectDist(e.ap, e.aq, e.rc, ang);
+}
 // Grid-block extents for a hole. A countersunk/counterbored (head) hole widens at the entry face to headR,
 // so its block must enclose that larger circle on BOTH faces (same block ⇒ matching border rings ⇒ the
 // stepped bore stays watertight). Head is circle-only, so the block is square at max(r, headR).
@@ -4002,6 +4030,13 @@ function buildBoxWithHoles(w,h,d, holes){
 function expandHolePatterns(p){
   const out=[];
   const blockOf = (H) => { // half-extents of the builder block around a hole copy
+    if (H.shape === 'svg') {
+      const s = Math.max(1, H.svgWidth || 20) / 2 / Math.max(0.05, H.svgApU_img || 1);
+      const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
+      const vert = HOLE_AXIS_PQ[fa[2]][0] === 1;
+      const ap = (vert ? H.svgAqU_img : H.svgApU_img) || 1, aq = (vert ? H.svgApU_img : H.svgAqU_img) || 1;
+      return { hu: ap*s*1.7, hv: aq*s*1.7 };
+    }
     if (H.shape === 'rrect') {
       const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
       const { ap, aq } = rrectHalfExtents(fa[2], H.portW||9, H.portH||3.2);
@@ -4043,6 +4078,14 @@ function expandHolePatterns(p){
 function holesForBuilder(p){
   return expandHolePatterns(p).map(H=>{ const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
     const ax = fa[2];
+    if (H.shape === 'svg') { // imported SVG contour (through-cut on the solid box)
+      if (!H.svgRU || !H.svgRU.length) return null;
+      const uIsVertical = HOLE_AXIS_PQ[ax][0] === 1;
+      const scale = Math.max(1, H.svgWidth || 20) / 2 / Math.max(0.05, H.svgApU_img || 1);
+      return { axis:ax, cp:H.u0, cq:H.v0, svgR:H.svgRU, svgScale:scale, svgVertU:uIsVertical,
+        svgApU: uIsVertical ? H.svgAqU_img : H.svgApU_img,
+        svgAqU: uIsVertical ? H.svgApU_img : H.svgAqU_img };
+    }
     if (H.shape === 'rrect') {
       const { ap, aq } = rrectHalfExtents(ax, H.portW||9, H.portH||3.2); // width=horizontal, height=vertical
       const rc=Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq)));
@@ -4055,13 +4098,14 @@ function holesForBuilder(p){
       out.head=H.head; out.headR=Math.max(r+0.3, (H.headDiameter||r*2+4)/2);
       out.headDepth=Math.max(0.3, H.headDepth||3); out.headSide=fa[3]>=0?1:-1;
     }
-    return out; });
+    return out; }).filter(Boolean);
 }
 // Convert UI holes → single-wall PORTS for a hollow container: {axis, side, cp, cq, …profile}. Same
 // face→(axis,offset-sign) mapping as FACE_AXES, and u/v already match HOLE_AXIS_PQ's (p,q). The open top
 // (+Y) can't be pierced, so it's dropped here (buildHollowBoxWithPorts also guards it).
 function portsForBuilder(p){
-  return expandHolePatterns(p).map(H=>{
+  // SVG-contour holes are through-cuts on the SOLID box only — they don't map to wall ports.
+  return expandHolePatterns(p).filter(H=>H.shape!=='svg').map(H=>{
     const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
     const ax = fa[2], side = fa[3] >= 0 ? 1 : -1;
     const base = { axis:ax, side, cp:H.u0, cq:H.v0 };
@@ -4930,6 +4974,51 @@ function renderLogoCards() {
 const HOLE_FACES = ['+Z','-Z','+X','-X','+Y','-Y'];
 // One-shot connector presets for the hole card: standard cutout sizes incl. ~0.4mm print slack.
 // Picking one overwrites the hole's shape/dimensions; everything stays editable afterwards.
+// Import an SVG file as a cut CONTOUR: the browser rasterises the SVG onto a canvas, the filled
+// silhouette is reduced to a polar radius table r(θ) marched from the centroid (its star-shaped
+// core — concave lobes beyond a 2px gap along a ray are dropped), lightly smoothed. The hole
+// builders then cut it exactly like a circle/USB-C, just with a per-angle radius.
+function loadSvgHoleFile(file, cb){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const S = 384, canvas = document.createElement('canvas'); canvas.width = S; canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, S, S);
+      const iw = img.naturalWidth || S, ih = img.naturalHeight || S, k = Math.min(S/iw, S/ih);
+      ctx.drawImage(img, (S-iw*k)/2, (S-ih*k)/2, iw*k, ih*k);
+      const data = ctx.getImageData(0, 0, S, S).data;
+      const filled = (x,y) => x>=0 && y>=0 && x<S && y<S && data[(y*S+x)*4+3] > 60;
+      let sx=0, sy=0, n=0;
+      for (let y=0; y<S; y++) for (let x=0; x<S; x++) if (filled(x,y)) { sx+=x; sy+=y; n++; }
+      if (!n) { cb(null); return; }
+      const cx = sx/n, cy = sy/n, M = 360, r = new Array(M).fill(0);
+      for (let a=0; a<M; a++) {
+        const th = a*2*Math.PI/M, dx = Math.cos(th), dy = -Math.sin(th); // image y-down → math orientation
+        let rr = 0, gap = 0;
+        for (let t=1; t<S; t++) {
+          if (filled(Math.round(cx+dx*t), Math.round(cy+dy*t))) { rr = t; gap = 0; }
+          else if (++gap > 2 && rr > 0) break;
+          else if (gap > 40) break;
+        }
+        r[a] = rr;
+      }
+      const maxR = Math.max(...r);
+      if (maxR < 3) { cb(null); return; }
+      let unit = r.map(v => Math.max(0.02, v/maxR));
+      for (let pass=0; pass<2; pass++)   // light 3-tap smoothing against pixel noise
+        unit = unit.map((v,i) => (unit[(i+M-1)%M] + 2*v + unit[(i+1)%M]) / 4);
+      let apU = 0, aqU = 0;
+      for (let a=0; a<M; a++) { const th = a*2*Math.PI/M;
+        apU = Math.max(apU, Math.abs(unit[a]*Math.cos(th))); aqU = Math.max(aqU, Math.abs(unit[a]*Math.sin(th))); }
+      cb({ rUnit: unit, apU, aqU, previewUrl: canvas.toDataURL('image/png') });
+    };
+    img.onerror = () => cb(null);
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(e.target.result)));
+  };
+  reader.readAsText(file);
+}
 const HOLE_PRESETS = {
   'usb-c':    { label:'USB-C',        shape:'rrect',  w:9.2,  h:3.4, r:1.7 },
   'usb-a':    { label:'USB-A',        shape:'rrect',  w:13.4, h:6.0, r:0.8 },
@@ -4943,6 +5032,21 @@ const HOLE_PRESETS = {
 function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
   const hu = dims.uLen/2, hv = dims.vLen/2;
+  if (hole.shape === 'svg') {
+    // SVG contour: clamp the requested WIDTH so the shape's block fits the face, then clamp position.
+    if (!hole.svgRU) return;
+    const axis = FACE_AXES[hole.face] ? FACE_AXES[hole.face](p)[2] : 2;
+    const vert = HOLE_AXIS_PQ[axis][0] === 1;
+    const apI = Math.max(0.05, hole.svgApU_img || 1), aqI = Math.max(0.05, hole.svgAqU_img || 1);
+    const uU = vert ? aqI : apI, vU = vert ? apI : aqI;    // unit extents along the face's u/v
+    // width (mm) spans 2*apI*scale; block = extent*1.7 must fit inside 0.9*face
+    const maxW = Math.min((hu*0.9/1.7)/uU, (hv*0.9/1.7)/vU) * 2 * apI;
+    hole.svgWidth = Math.max(2, Math.min(hole.svgWidth || 20, maxW));
+    const s = (hole.svgWidth/2) / apI, hsU = uU*s*1.7, hsV = vU*s*1.7;
+    hole.u0 = Math.max(-(hu-hsU), Math.min(hu-hsU, hole.u0 || 0));
+    hole.v0 = Math.max(-(hv-hsV), Math.min(hv-hsV, hole.v0 || 0));
+    return;
+  }
   if (hole.shape === 'rrect') {
     // width=horizontal, height=vertical: map to the face's (u,v) extents (u is world-Y on +X/-X), clamp each
     // to the face, then map back — so a port keeps its shape and stays inside the face on every wall.
@@ -4984,13 +5088,17 @@ function renderHoleCards() {
     const isR = hole.shape === 'rrect';
     const head = hole.head || 'none';
     const pat = hole.pattern || 'none';
-    const dimFields = isR
+    const isSvg = hole.shape === 'svg';
+    const dimFields = isSvg
+      ? '<label>Ширина</label><input type="number" data-field="svgWidth" step="0.5" min="2" value="'+(hole.svgWidth ?? 20)+'">'+
+        '<label>Контур</label><button class="hole-svg-load" data-action="loadsvg">'+(hole.svgRU ? 'заменить SVG' : 'загрузить SVG…')+'</button>'
+      : isR
       ? '<label>Ширина</label><input type="number" data-field="portW" step="0.5" min="1" value="'+(hole.portW ?? 9)+'">'+
         '<label>Высота</label><input type="number" data-field="portH" step="0.5" min="1" value="'+(hole.portH ?? 3.2)+'">'+
         '<label>Радиус</label><input type="number" data-field="cornerR" step="0.2" min="0" value="'+(hole.cornerR ?? 1.6)+'"><label></label><span></span>'
       : '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+(hole.diameter ?? 6)+'"><label></label><span></span>';
     // Countersink / counterbore head (circle holes only): a recessed seat for a screw head at the entry face.
-    const headRow = isR ? '' :
+    const headRow = (isR || isSvg) ? '' :
       '<div class="hole-shape-row">'+
         '<select data-field="head">'+
           '<option value="none"'+(head==='none'?' selected':'')+'>Без потая</option>'+
@@ -5010,8 +5118,9 @@ function renderHoleCards() {
       '</div>'+
       '<div class="hole-shape-row">'+
         '<select data-field="shape">'+
-          '<option value="circle"'+(!isR?' selected':'')+'>Круг</option>'+
+          '<option value="circle"'+(!isR&&!isSvg?' selected':'')+'>Круг</option>'+
           '<option value="rrect"'+(isR?' selected':'')+'>Скруг. прямоугольник (USB-C)</option>'+
+          '<option value="svg"'+(isSvg?' selected':'')+'>SVG-контур (свой)</option>'+
         '</select>'+
       '</div>'+
       '<div class="hole-shape-row">'+
@@ -5075,6 +5184,10 @@ function attachHoleEventListeners() {
         if (hole.cornerR === undefined) hole.cornerR = 1.6;
         hole.head = 'none'; // a rounded rectangle can't take a round screw-head seat
       }
+      if (hole.shape === 'svg') {
+        if (hole.svgWidth === undefined) hole.svgWidth = 20;
+        hole.head = undefined; // no screw-head seat on an arbitrary contour
+      }
       commit = true; // the field set changes → always re-clamp + re-render
     }
     else if (field === 'head') {
@@ -5103,14 +5216,37 @@ function attachHoleEventListeners() {
   cards.addEventListener('input', (e) => onEdit(e, false));
   cards.addEventListener('change', (e) => onEdit(e, true));
   cards.addEventListener('click', (e) => {
-    if (e.target.dataset.action !== 'remove') return;
+    const action = e.target.dataset.action;
+    if (action === 'loadsvg') { // pick an SVG contour for this hole
+      const card = e.target.closest('.hole-card');
+      svgHoleTargetId = Number(card.dataset.holeId);
+      document.getElementById('svg-hole-input').click();
+      return;
+    }
+    if (action !== 'remove') return;
     const card = e.target.closest('.hole-card'); const id = Number(card.dataset.holeId);
     const idx = boxHoles.findIndex(h => h.id === id);
     if (idx >= 0) boxHoles.splice(idx, 1);
     renderHoleCards();
     if (currentShape === 'box') markPending();
   });
+  document.getElementById('svg-hole-input').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const hole = boxHoles.find(h => h.id === svgHoleTargetId);
+    if (!hole) return;
+    loadSvgHoleFile(file, (res) => {
+      if (!res) { alert('Не удалось прочитать SVG (нужен файл с заполненным контуром).'); return; }
+      hole.svgRU = res.rUnit; hole.svgApU_img = res.apU; hole.svgAqU_img = res.aqU;
+      hole.svgPreview = res.previewUrl;
+      clampHoleToFace(hole);
+      renderHoleCards();
+      if (currentShape === 'box') markPending();
+    });
+  });
 }
+let svgHoleTargetId = null;
 
 // Turn a {heightmap, previewUrl, suggestedInvert} result (image OR text) into a logo on a free face.
 function addLogoFromResult(result) {
@@ -5701,7 +5837,9 @@ function exportAssemblyJSON() {
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl,
         aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
-        pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR }))
+        pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
+        svgWidth:h.svgWidth, svgApU_img:h.svgApU_img, svgAqU_img:h.svgAqU_img,
+        svgRU: h.svgRU ? Array.from(h.svgRU, v=>Math.round(v*1000)/1000) : undefined }))
     }))
   };
   const name = (document.getElementById('filename').value.trim() || 'assembly').replace(/\.(json|stl)$/i,'');
@@ -5744,7 +5882,8 @@ function importAssemblyJSON(file) {
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
         rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
-          pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR }));
+          pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
+          svgWidth:h.svgWidth, svgApU_img:h.svgApU_img, svgAqU_img:h.svgAqU_img, svgRU:h.svgRU }));
         models.push(rec);
       });
       // Build geometry for each model (mirrors addModel: make it active, then regenerate).

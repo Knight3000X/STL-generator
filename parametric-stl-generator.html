@@ -734,6 +734,9 @@
       <div class="stats-row"><span class="k">Вершины</span><span class="v mono" id="stat-verts">—</span></div>
       <div class="stats-row"><span class="k">Габариты (Ш×В×Г)</span><span class="v mono" id="stat-size">—</span></div>
       <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
+      <div class="stats-row"><span class="k">Объём детали</span><span class="v mono" id="stat-volume">—</span></div>
+      <div class="stats-row"><span class="k">Вес (PLA / PETG)</span><span class="v mono" id="stat-weight">—</span></div>
+      <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
     </div>
 
     <div class="section-label">Экспорт</div>
@@ -5406,9 +5409,31 @@ function paintWatertight(el, mc) {
   else { el.textContent = 'открытый ⚠ ('+mc.openEdges+' кромок)'; el.className = 'v mono warn'; }
 }
 
+// Signed mesh volume (divergence theorem, mm³). Valid for closed, consistently-oriented meshes —
+// exactly what this generator produces; |.| guards against a flipped orientation.
+function meshVolume(tris){
+  let v = 0;
+  for (const t of tris){ const a=t[0], b=t[1], c=t[2];
+    v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; }
+  return Math.abs(v);
+}
+// Rough print estimates from the SOLID volume: the mesh already models the walls/cavities, so its
+// volume ≈ extruded material at 100% infill; weight = volume × density (PLA 1.24, PETG 1.27 г/см³),
+// time from a typical 0.4mm-nozzle throughput ≈ 12 г/ч at 0.2mm layers. Order-of-magnitude only.
+function updatePrintStats(tris){
+  const cc = meshVolume(tris)/1000; // см³
+  const gPLA = cc*1.24, gPETG = cc*1.27, hours = gPLA/12;
+  const volEl = document.getElementById('stat-volume');
+  if (!volEl) return;
+  volEl.textContent = cc >= 100 ? cc.toFixed(0)+' см³' : cc.toFixed(2)+' см³';
+  document.getElementById('stat-weight').textContent = '≈ '+gPLA.toFixed(gPLA<10?1:0)+' / '+gPETG.toFixed(gPETG<10?1:0)+' г';
+  const hh = Math.floor(hours), mm = Math.round((hours-hh)*60);
+  document.getElementById('stat-time').textContent = hours < 1/60 ? '<1 мин' : '≈ '+(hh>0? hh+' ч ':'')+mm+' мин';
+}
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;
   document.getElementById('stat-verts').textContent = tris.length*3;
+  updatePrintStats(tris);
   document.getElementById('stat-size').textContent =
     (bbox.maxX-bbox.minX).toFixed(1)+' × '+(bbox.maxY-bbox.minY).toFixed(1)+' × '+(bbox.maxZ-bbox.minZ).toFixed(1)+' мм';
   const el = document.getElementById('stat-watertight');

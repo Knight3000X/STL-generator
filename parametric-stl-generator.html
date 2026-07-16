@@ -425,18 +425,18 @@
   }
   #btn-add-logo:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-logo:disabled{ opacity:0.4; cursor:not-allowed; }
-  #logo-text-row{ display:flex; gap:6px; margin-bottom:10px; }
-  #logo-text-input{
+  #logo-text-row, #logo-qr-row{ display:flex; gap:6px; margin-bottom:10px; }
+  #logo-text-input, #logo-qr-input{
     flex:1; min-width:0; padding:7px 8px;
     border:1.5px solid var(--ink-soft); border-radius:2px;
     font-family:inherit; font-size:12.5px; color:var(--ink);
   }
-  #btn-add-text{
+  #btn-add-text, #btn-add-qr{
     flex:0 0 auto; padding:0 12px;
     background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
     color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
   }
-  #btn-add-text:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-text:hover, #btn-add-qr:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-hole{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
@@ -706,6 +706,10 @@
       <div id="logo-text-row">
         <input type="text" id="logo-text-input" placeholder="Текст рельефом…" maxlength="40" spellcheck="false">
         <button id="btn-add-text">+ Текст</button>
+      </div>
+      <div id="logo-qr-row">
+        <input type="text" id="logo-qr-input" placeholder="QR: текст или ссылка…" maxlength="100" spellcheck="false">
+        <button id="btn-add-qr" title="Добавить QR-код рельефом (кнопкой «3D» на карточке — отдельной моделью)">+ QR</button>
       </div>
       <div id="logo-cards"></div>
       <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки (кнопка «+ Добавить логотип») ИЛИ из текста (поле «Текст рельефом…» + «+ Текст»): текст рисуется в тот же heightmap, что и картинка, поэтому ведёт себя как обычный логотип (любая грань, поворот, все режимы, сохраняется в JSON-конфиг). До 18 логотипов, можно несколько на одну грань (при перекрытии приоритет у добавленного раньше) и поворачивать каждый отдельно. При активном логотипе скругление углов и сегменты граней куба не используются — рельеф строится на простой грани с собственной детализацией. Сетка сгущается зонально вокруг каждого логотипа (во всех режимах — сплошной, полый контейнер, борт/лоток), а не по всей грани, поэтому детализацию (общая настройка «Детализация логотипов») можно поднимать высоко без взрыва числа треугольников. Наклон стенок работает во всех режимах и не искажает рисунок логотипа (рельеф поднимается перпендикулярно поверхности). Логотипы также работают с «полым контейнером» и с «бортом»: снаружи на стенках и дне, и изнутри на дне через грань «−Y изнутри» (виден только когда включён один из этих двух режимов — без них на этой грани ничего не отрисуется); скругление углов ни с тем, ни с другим пока не сочетается.</div></details>
@@ -2465,6 +2469,167 @@ function makeTextLogoResult(text, bold) {
   // proportions lock so "TEXT" defaults to a wide, not square, footprint.
   const aspect = (ctx.measureText(text).width || 1) / (Math.round(fs) * 0.72);
   return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect };
+}
+
+/* =========================================================
+   SELF-CONTAINED QR ENCODER (byte mode, versions 1–6, ECC level M, full mask selection by the
+   four standard penalty rules). No external libraries — the whole app stays a single file. The
+   encoded matrix is poured into the ordinary logo heightmap, so a QR rides the ENTIRE existing
+   pipeline: relief on any face, rotation, JSON save, and «3D» (standalone extruded model).
+   ========================================================= */
+const QR_GF_EXP = new Uint8Array(512), QR_GF_LOG = new Uint8Array(256);
+(function(){ let x=1; for(let i=0;i<255;i++){ QR_GF_EXP[i]=x; QR_GF_LOG[x]=i; x<<=1; if(x&0x100) x^=0x11d; }
+  for(let i=255;i<512;i++) QR_GF_EXP[i]=QR_GF_EXP[i-255]; })();
+function qrGfMul(a,b){ return (a&&b) ? QR_GF_EXP[QR_GF_LOG[a]+QR_GF_LOG[b]] : 0; }
+function qrRSEncode(data, nEcc){
+  // generator poly of degree nEcc
+  let gen=[1];
+  for(let i=0;i<nEcc;i++){ const next=new Array(gen.length+1).fill(0);
+    for(let j=0;j<gen.length;j++){ next[j]^=qrGfMul(gen[j], QR_GF_EXP[i]); next[j+1]^=gen[j]; }
+    gen=next; }
+  gen.reverse(); // built lowest-degree-first; the LFSR below wants gen[0]=1 (highest term) first
+  const res=new Uint8Array(nEcc);
+  for(const d of data){ const f=d^res[0];
+    res.copyWithin(0,1); res[nEcc-1]=0;
+    if(f) for(let j=0;j<nEcc;j++) res[j]^=qrGfMul(gen[j+1], f); }
+  return res;
+}
+// version(1..6) at ECC M: [total codewords, ecc per block, number of blocks, data cw per block]
+const QR_M_TABLE = { 1:[26,10,1,16], 2:[44,16,1,28], 3:[70,26,1,44], 4:[100,18,2,32], 5:[134,24,2,43], 6:[172,16,4,27] };
+const QR_ALIGN = { 1:[], 2:[6,18], 3:[6,22], 4:[6,26], 5:[6,30], 6:[6,34] };
+// Zigzag data-module coordinate order for a matrix with `fnMask` marking function modules.
+function qrDataCoords(size, fnMask){
+  const coords=[]; let up=true;
+  for(let col=size-1; col>0; col-=2){
+    if(col===6) col--;
+    for(let k=0;k<size;k++){ const r = up ? size-1-k : k;
+      for(const c of [col, col-1]) if(!fnMask[r*size+c]) coords.push([r,c]); }
+    up=!up;
+  }
+  return coords;
+}
+const QR_MASKS = [
+  (r,c)=>(r+c)%2===0, (r,c)=>r%2===0, (r,c)=>c%3===0, (r,c)=>(r+c)%3===0,
+  (r,c)=>(((r/2)|0)+((c/3)|0))%2===0, (r,c)=>(r*c)%2+(r*c)%3===0,
+  (r,c)=>((r*c)%2+(r*c)%3)%2===0, (r,c)=>((r+c)%2+(r*c)%3)%2===0,
+];
+function qrPenalty(m, size){
+  let p=0;
+  for(let pass=0; pass<2; pass++){ // rows, then columns (N1 runs + N3 patterns)
+    for(let r=0;r<size;r++){
+      let run=1;
+      for(let c=1;c<=size;c++){
+        const cur = c<size ? (pass? m[c*size+r] : m[r*size+c]) : -1;
+        const prev = pass? m[(c-1)*size+r] : m[r*size+c-1];
+        if(cur===prev) run++;
+        else { if(run>=5) p+=3+(run-5); run=1; }
+      }
+      for(let c=0;c+11<=size;c++){ // N3: 1011101 with 4 light on either side
+        let pat=0; for(let k=0;k<11;k++) pat=(pat<<1)|(pass? m[(c+k)*size+r] : m[r*size+c+k]);
+        if(pat===0x5D0 || pat===0x05D) p+=40;
+      }
+    }
+  }
+  for(let r=0;r+1<size;r++) for(let c=0;c+1<size;c++){ // N2: 2×2 blocks
+    const v=m[r*size+c];
+    if(v===m[r*size+c+1] && v===m[(r+1)*size+c] && v===m[(r+1)*size+c+1]) p+=3;
+  }
+  let dark=0; for(let i=0;i<size*size;i++) dark+=m[i]; // N4: dark proportion
+  p += 10*Math.floor(Math.abs(dark*100/(size*size)-50)/5);
+  return p;
+}
+// Encode text (UTF-8 bytes) → { size, modules: Uint8Array(size²) 0/1, version } or null if too long.
+function qrEncode(text){
+  const bytes = (typeof TextEncoder!=='undefined') ? new TextEncoder().encode(text)
+    : Uint8Array.from(unescape(encodeURIComponent(text)), ch=>ch.charCodeAt(0));
+  let version=0;
+  for(let v=1;v<=6;v++){ const [,,nb,dcw]=QR_M_TABLE[v]; if(bytes.length <= nb*dcw-2){ version=v; break; } }
+  if(!version) return null;
+  const [total, nEcc, nBlocks, dcw] = QR_M_TABLE[version], nData=nBlocks*dcw;
+  // bit stream: mode 0100, count(8), data, terminator, pad
+  const bits=[];
+  const pushBits=(val,n)=>{ for(let i=n-1;i>=0;i--) bits.push((val>>i)&1); };
+  pushBits(4,4); pushBits(bytes.length,8);
+  for(const b of bytes) pushBits(b,8);
+  pushBits(0, Math.min(4, nData*8-bits.length));
+  while(bits.length%8) bits.push(0);
+  const data=[];
+  for(let i=0;i<bits.length;i+=8){ let b=0; for(let k=0;k<8;k++) b=(b<<1)|bits[i+k]; data.push(b); }
+  for(let pad=0xEC; data.length<nData;) { data.push(pad); pad = pad===0xEC ? 0x11 : 0xEC; }
+  // split into blocks, RS per block, interleave
+  const blocks=[], eccs=[];
+  for(let b=0;b<nBlocks;b++){ const d=data.slice(b*dcw,(b+1)*dcw); blocks.push(d); eccs.push(qrRSEncode(d,nEcc)); }
+  const cw=[];
+  for(let i=0;i<dcw;i++) for(let b=0;b<nBlocks;b++) cw.push(blocks[b][i]);
+  for(let i=0;i<nEcc;i++) for(let b=0;b<nBlocks;b++) cw.push(eccs[b][i]);
+  // matrix + function patterns
+  const size=17+4*version, m=new Uint8Array(size*size), fn=new Uint8Array(size*size);
+  const set=(r,c,v)=>{ m[r*size+c]=v?1:0; fn[r*size+c]=1; };
+  const finder=(r0,c0)=>{ for(let r=-1;r<8;r++) for(let c=-1;c<8;c++){
+    const rr=r0+r, cc=c0+c; if(rr<0||cc<0||rr>=size||cc>=size) continue;
+    const inF = r>=0&&r<7&&c>=0&&c<7;
+    set(rr,cc, inF && (r===0||r===6||c===0||c===6 || (r>=2&&r<=4&&c>=2&&c<=4))); } };
+  finder(0,0); finder(0,size-7); finder(size-7,0);
+  for(let i=8;i<size-8;i++){ if(!fn[6*size+i]) set(6,i, i%2===0); if(!fn[i*size+6]) set(i,6, i%2===0); }
+  for(const ar of QR_ALIGN[version]) for(const ac of QR_ALIGN[version]){
+    if(fn[ar*size+ac]) continue; // overlaps a finder
+    for(let r=-2;r<=2;r++) for(let c=-2;c<=2;c++)
+      set(ar+r, ac+c, Math.max(Math.abs(r),Math.abs(c))!==1);
+  }
+  set(4*version+9, 8, 1); // dark module
+  // reserve format areas
+  for(let i=0;i<9;i++){ if(!fn[8*size+i]) set(8,i,0); if(!fn[i*size+8]) set(i,8,0); }
+  for(let i=0;i<8;i++){ if(!fn[(size-1-i)*size+8]) set(size-1-i,8,0); if(!fn[8*size+size-1-i]) set(8,size-1-i,0); }
+  // pour data bits
+  const coords=qrDataCoords(size, fn);
+  for(let i=0;i<coords.length;i++){
+    const bit = i < cw.length*8 ? (cw[i>>3]>>(7-(i&7)))&1 : 0;
+    const [r,c]=coords[i]; m[r*size+c]=bit;
+  }
+  // choose mask by penalty
+  let best=null, bestP=Infinity, bestMask=0;
+  for(let mk=0;mk<8;mk++){
+    const t=Uint8Array.from(m);
+    for(const [r,c] of coords) if(QR_MASKS[mk](r,c)) t[r*size+c]^=1;
+    // format info (ECC M = 00) — BCH(15,5) xor 0x5412
+    let f=(0<<3)|mk; let rem=f<<10;
+    for(let i=14;i>=10;i--) if((rem>>i)&1) rem^=0x537<<(i-10);
+    const fmt=((f<<10)|rem)^0x5412;
+    const fb=i=>(fmt>>i)&1;
+    const put=(r,c,v)=>{ t[r*size+c]=v; };
+    for(let i=0;i<6;i++) put(8,i,fb(i));
+    put(8,7,fb(6)); put(8,8,fb(7)); put(7,8,fb(8));
+    for(let i=9;i<15;i++) put(14-i,8,fb(i));
+    for(let i=0;i<8;i++) put(size-1-i,8,fb(i));
+    for(let i=8;i<15;i++) put(8,size-15+i,fb(i));
+    const pen=qrPenalty(t,size);
+    if(pen<bestP){ bestP=pen; best=t; bestMask=mk; }
+  }
+  return { size, modules: best, version, mask: bestMask };
+}
+// QR → the standard logo result: dark modules raised (heightmap 1), 2-module quiet zone, sharp
+// nearest sampling straight into the heightmap (no canvas needed → Node-testable); the canvas is
+// only used for the card preview when available.
+function makeQrLogoResult(text){
+  text = (text||'').trim(); if(!text) return null;
+  const qr = qrEncode(text); if(!qr) return null;
+  const quiet=2, n=qr.size+2*quiet, S=LOGO_HM_SIZE;
+  const hm=new Float32Array(S*S);
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){
+    const mc=Math.floor(x*n/S)-quiet, mr=Math.floor(y*n/S)-quiet;
+    hm[y*S+x] = (mr>=0&&mc>=0&&mr<qr.size&&mc<qr.size && qr.modules[mr*qr.size+mc]) ? 1 : 0;
+  }
+  let previewUrl='';
+  try{
+    const c=document.createElement('canvas'); c.width=c.height=S;
+    const ctx=c.getContext && c.getContext('2d');
+    if(ctx){ ctx.fillStyle='#fff'; ctx.fillRect(0,0,S,S); ctx.fillStyle='#000';
+      const cell=S/n;
+      for(let r=0;r<qr.size;r++) for(let cc=0;cc<qr.size;cc++)
+        if(qr.modules[r*qr.size+cc]) ctx.fillRect((cc+quiet)*cell,(r+quiet)*cell, cell+0.5, cell+0.5);
+      previewUrl=c.toDataURL('image/png'); }
+  }catch(e){}
+  return { heightmap: hm, previewUrl, suggestedInvert:false, aspect:1 };
 }
 
 function sampleHeightmap(hm, u01, v01) {
@@ -5324,6 +5489,22 @@ function attachLogoEventListeners() {
   };
   document.getElementById('btn-add-text').addEventListener('click', addText);
   document.getElementById('logo-text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addText(); } });
+
+  const addQr = () => {
+    if (logos.length >= 18) return;
+    const inp = document.getElementById('logo-qr-input');
+    const result = makeQrLogoResult(inp.value);
+    if (!result) { inp.focus(); return; }
+    addLogoFromResult(result);
+    // QR modules need a finer zonal grid than the default to stay square and scannable.
+    if (logoResolution < 160) {
+      logoResolution = 160;
+      const el = document.getElementById('logo-resolution'); if (el) el.value = 160;
+    }
+    inp.value = '';
+  };
+  document.getElementById('btn-add-qr').addEventListener('click', addQr);
+  document.getElementById('logo-qr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQr(); } });
 
   document.getElementById('logo-cards').addEventListener('input', (e) => {
     const card = e.target.closest('.logo-card');

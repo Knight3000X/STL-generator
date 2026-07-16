@@ -65,7 +65,7 @@ run test_logo_zone.js "test_logo_zone.js"
 for t in test_rim_box.js test_hollow_taper.js test_hollow_resolution.js \
          test_hollow_inner_logo.js test_rounded_fillet.js test_fillet_logo.js \
          test_fillet_logo_hollow.js test_lattice_floor.js test_wall_bulge.js test_squircle.js test_holes.js test_e2e_full.js \
-         test_shell_resolution.js test_csg.js test_chamfer.js test_squircle_rport.js test_logo3d.js test_clips.js test_hinge.js test_stack.js test_dividers.js test_hole_patterns.js test_svg_hole.js; do
+         test_shell_resolution.js test_csg.js test_chamfer.js test_squircle_rport.js test_logo3d.js test_clips.js test_hinge.js test_stack.js test_dividers.js test_hole_patterns.js test_svg_hole.js test_qr.js; do
   cat stub_preamble.js "$LIB" "$t" > "$TMP/run.js"
   run "$t" "$TMP/run.js"
 done

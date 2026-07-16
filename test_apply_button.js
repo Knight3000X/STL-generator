@@ -1,18 +1,11 @@
-// Verifies the "staged parameters" control flow behind the Подтвердить (apply) button: parameter
-// and logo edits must NOT rebuild the model live — they only mark it pending — and the model is
-// regenerated exactly when applyPending() (button) or applyPendingNow() (export) is called.
+// Verifies the LIVE / DEFERRED preview control flow (replaced the old "Подтвердить" staged flow):
+// while the model is cheap to rebuild (lastRegenMs < REGEN_HEAVY_MS) parameter edits regenerate
+// automatically (debounced); once a rebuild is measured heavy, edits only mark the preview stale
+// (viewport badge) and the mesh is rebuilt exactly when the badge is tapped (applyPending) or on
+// export/save (applyPendingNow, synchronous).
 //
-// Runs against the REAL file's script (not a re-transcription), with regenerate()/applyRotationOnly()
-// swapped for counters — same recipe as test_debounce_flow.js. Run via ../run-all.sh, or manually:
-//
-//   awk '/<script>/{f=1;next}/<\/script>/{f=0}f' parametric-stl-generator.html \
-//     | sed '$ { /^init();$/d }' > /tmp/lib.js
-//   node -e '
-//     const fs=require("fs"); let s=fs.readFileSync("/tmp/lib.js","utf8");
-//     s=s.replace(/function regenerate\(\) \{[\s\S]*?\n\}\n/,"function regenerate(){__regenerateCalls++;}\n");
-//     s=s.replace(/function applyRotationOnly\(\) \{[\s\S]*?\n\}\n/,"function applyRotationOnly(){__rotateOnlyCalls++;}\n");
-//     fs.writeFileSync("/tmp/lib_stubbed.js",s);'
-//   cat stub_preamble.js /tmp/lib_stubbed.js test_apply_button.js > /tmp/run.js && node /tmp/run.js
+// Runs against the REAL file's script with regenerate()/applyRotationOnly() swapped for counters —
+// same recipe as test_debounce_flow.js; see run-all.sh.
 
 async function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -22,44 +15,56 @@ async function main() {
     if (cond) { pass++; console.log('  OK  ', name); }
     else { fail++; console.log('  FAIL', name, extra !== undefined ? JSON.stringify(extra) : ''); }
   }
-  const btn = document.getElementById('btn-apply');
+  const badge = document.getElementById('stale-badge');
 
   updateApplyButton();
-  check('initial: button disabled', btn.disabled === true, btn.disabled);
-  check('initial: text = "Изменения применены"', btn.textContent === 'Изменения применены', btn.textContent);
-  check('initial: no has-pending class', btn.classList.contains('has-pending') === false);
+  check('initial: badge hidden', badge.style.display === 'none', badge.style.display);
+  check('initial: preview counts as live (lastRegenMs=0)', previewIsLive() === true);
 
-  // Staging edits must not rebuild the model.
+  // LIVE mode: edits auto-apply (debounced) — a burst regenerates exactly once.
+  __regenerateCalls = 0;
+  markPending(); markPending(); markPending();
+  check('live: pending set immediately', pendingChanges === true);
+  check('live: no badge (auto-apply is coming)', badge.style.display === 'none', badge.style.display);
+  check('live: not regenerated synchronously', __regenerateCalls === 0, __regenerateCalls);
+  await wait(420); // 300ms debounce + 2 rAF (16ms stubs)
+  check('live: burst auto-applied exactly once', __regenerateCalls === 1, __regenerateCalls);
+  check('live: pending cleared by auto-apply', pendingChanges === false);
+
+  // HEAVY mode: a slow rebuild switches edits to stale-badge-only.
+  lastRegenMs = 5000;
+  check('heavy: preview no longer live', previewIsLive() === false);
   __regenerateCalls = 0;
   markPending(); markPending();
-  check('markPending: pendingChanges = true', pendingChanges === true);
-  check('markPending: button enabled', btn.disabled === false);
-  check('markPending: has-pending class set', btn.classList.contains('has-pending') === true);
-  check('markPending: text = "Подтвердить изменения"', btn.textContent === 'Подтвердить изменения', btn.textContent);
-  check('markPending: model NOT regenerated live', __regenerateCalls === 0, __regenerateCalls);
+  await wait(420);
+  check('heavy: edits do NOT regenerate', __regenerateCalls === 0, __regenerateCalls);
+  check('heavy: pending stays set', pendingChanges === true);
+  check('heavy: stale badge shown', badge.style.display === 'flex', badge.style.display);
 
-  // Pressing Подтвердить applies once (deferred via rAF) and clears pending.
+  // Badge tap: rebuild once, badge hides.
   __regenerateCalls = 0;
-  applyPending();
-  check('applyPending: pending cleared immediately', pendingChanges === false);
-  check('applyPending: button disabled again', btn.disabled === true);
-  await wait(60);
-  check('applyPending: regenerate() ran exactly once', __regenerateCalls === 1, __regenerateCalls);
+  if (pendingChanges) applyPending();
+  check('badge tap: pending cleared immediately', pendingChanges === false);
+  check('badge tap: badge hidden again', badge.style.display === 'none', badge.style.display);
+  await wait(80);
+  check('badge tap: regenerate() ran exactly once', __regenerateCalls === 1, __regenerateCalls);
 
-  // A second press with nothing staged does nothing (button is the only trigger).
-  __regenerateCalls = 0;
-  markPending(); applyPending(); await wait(60);
-  const afterFirst = __regenerateCalls;
-  applyPending(); await wait(60); // pending already false -> still schedules regenerateSoon once; assert idempotent clear
-  check('applyPending twice: pending stays cleared', pendingChanges === false);
-
-  // Export commits staged edits synchronously so the file matches the panel.
+  // Export path: synchronous flush regardless of mode.
   markPending();
   __regenerateCalls = 0;
   if (pendingChanges) applyPendingNow();
   check('export path: applyPendingNow regenerates synchronously', __regenerateCalls === 1, __regenerateCalls);
   check('export path: pending cleared', pendingChanges === false);
-  check('export path: button disabled', btn.disabled === true);
+  await wait(420);
+  check('export path: no stray auto-apply afterwards', __regenerateCalls === 1, __regenerateCalls);
+
+  // Back to a fast model -> live behaviour returns.
+  lastRegenMs = 100;
+  __regenerateCalls = 0;
+  markPending();
+  check('fast again: badge stays hidden', badge.style.display === 'none', badge.style.display);
+  await wait(420);
+  check('fast again: edits auto-apply', __regenerateCalls === 1, __regenerateCalls);
 
   console.log('\n=== APPLY-BUTTON TOTAL:', pass, 'passed,', fail, 'failed ===');
   process.exit(fail > 0 ? 1 : 0);

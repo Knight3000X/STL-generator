@@ -337,38 +337,28 @@
     transition:background 0.12s;
   }
   #btn-install-app:hover{ background:var(--redline-dark); }
-  /* sticky "apply changes" bar — parameter edits are staged, not live, until confirmed */
-  #apply-bar{
-    position:sticky; top:0; z-index:6;
-    background:var(--paper);
-    padding:8px 0 10px;
-    margin-bottom:2px;
-    border-bottom:1px solid var(--paper-line);
-  }
-  #btn-apply{
-    width:100%;
-    padding:11px 0;
-    background:var(--ink);
+  /* "Preview is stale" badge (viewport overlay): parameter edits regenerate LIVE while the model is
+     cheap to rebuild; once a rebuild gets heavy the app stops re-rendering per edit and this badge
+     appears instead — tap it (or export) to refresh the preview. */
+  #stale-badge{
+    position:absolute;
+    top:12px; left:50%;
+    transform:translateX(-50%);
+    display:none;
+    align-items:center; gap:7px;
+    background:var(--redline);
     border:none;
+    color:var(--on-accent);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.02em;
+    padding:7px 12px;
     border-radius:2px;
-    color:var(--paper);
-    font-family:inherit;
-    font-size:14px;
-    font-weight:700;
-    letter-spacing:0.04em;
     cursor:pointer;
-    transition:background 0.12s, opacity 0.12s;
+    z-index:5;
   }
-  #btn-apply:disabled{ opacity:0.4; cursor:default; }
-  #btn-apply.has-pending{ background:var(--redline); color:var(--on-accent); }
-  #btn-apply.has-pending:hover{ background:var(--redline-dark); }
-  #apply-hint{
-    font-size:10.5px;
-    color:var(--ink-soft);
-    margin-top:6px;
-    line-height:1.35;
-    text-align:center;
-  }
+  #stale-badge:hover{ background:var(--redline-dark); }
   /* Long how-it-works paragraphs fold away behind a small "ⓘ справка" toggle so the panel stays
      compact; the text is still one tap away. */
   .note-fold{ margin:4px 0 8px; }
@@ -649,6 +639,7 @@
     <div id="viewport"></div>
     <div id="busy-indicator" class="busy-indicator"><span class="busy-dot"></span>ГЕНЕРАЦИЯ…</div>
     <button id="btn-reset-view">⤾ сбросить вид</button>
+    <button id="stale-badge" title="Модель тяжёлая — превью обновляется по этой кнопке или при экспорте">превью устарело — обновить</button>
     <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
   </div>
 
@@ -660,11 +651,6 @@
       <span class="tag">ЛИСТ 1 ИЗ 1</span>
       <h1>STL-ГЕНЕРАТОР</h1>
       <div class="sub">параметрические тела → экспорт STL · форма: <span id="active-shape-name" class="mono">—</span></div>
-    </div>
-
-    <div id="apply-bar">
-      <button id="btn-apply" disabled>Изменения применены</button>
-      <div id="apply-hint">Правки параметров и логотипов применяются к модели только по этой кнопке. Поворот — сразу.</div>
     </div>
 
     <div class="section-label">Модели (сборка)</div>
@@ -4549,7 +4535,7 @@ function attachEventListeners() {
     if (scene3DReady) frameCamera(sceneUnionBBox());
   });
 
-  document.getElementById('btn-apply').addEventListener('click', () => { if (pendingChanges) applyPending(); });
+  document.getElementById('stale-badge').addEventListener('click', () => { if (pendingChanges) applyPending(); });
   updateApplyButton();
   attachSplitHandle();
 }
@@ -5235,8 +5221,10 @@ function updateScene3D(tris, bbox) {
 }
 
 function regenerate() {
+  const t0 = Date.now();
   const bbox = computeGeometry();
   if (scene3DReady) updateScene3D(currentTris, bbox);
+  lastRegenMs = Date.now() - t0; // drives the live-vs-deferred preview decision (see markPending)
 }
 
 /* =========================================================
@@ -5317,24 +5305,32 @@ function flushPendingRegenerate() {
 }
 
 /* =========================================================
-   STAGED PARAMETERS: parameter/logo edits update state only and are shown on the model
-   solely when the user presses "Подтвердить". This keeps a heavy rounded-hollow rebuild from
-   firing on every keystroke/drag (the mobile freeze). Rotation stays live (cheap rotate-only
-   path). pendingChanges tracks whether the on-screen model is behind the current inputs.
+   LIVE / DEFERRED PREVIEW (replaces the old "Подтвердить" staged flow): parameter and logo
+   edits apply in near-real-time (debounced auto-regenerate) as long as the model is CHEAP to
+   rebuild. Once a rebuild crosses REGEN_HEAVY_MS the app stops re-rendering per edit — edits
+   only mark the preview stale (badge in the viewport), and the mesh is rebuilt when the user
+   taps the badge or exports/saves (applyPendingNow keeps the STL always in sync). Rotation is
+   always live (cheap rotate-only path). pendingChanges tracks whether the on-screen model is
+   behind the current inputs.
    ========================================================= */
 let pendingChanges = false;
+let lastRegenMs = 0;             // duration of the most recent full rebuild
+const REGEN_HEAVY_MS = 900;      // above this, per-edit auto-regeneration switches off
+function previewIsLive() { return lastRegenMs < REGEN_HEAVY_MS; }
+// Kept name from the staged-flow era (called from every model/import/export path): now it just
+// syncs the stale badge with pendingChanges.
 function updateApplyButton() {
-  const btn = document.getElementById('btn-apply');
-  if (!btn) return;
-  btn.disabled = !pendingChanges;
-  btn.classList.toggle('has-pending', pendingChanges);
-  btn.textContent = pendingChanges ? 'Подтвердить изменения' : 'Изменения применены';
+  const badge = document.getElementById('stale-badge');
+  if (!badge) return;
+  badge.style.display = (pendingChanges && !previewIsLive()) ? 'flex' : 'none';
 }
+const autoApplyDebounced = debounce(() => { if (pendingChanges) applyPending(); }, 300);
 function markPending() {
   pendingChanges = true;
   updateApplyButton();
+  if (previewIsLive()) autoApplyDebounced(); // real-time preview while rebuilds are cheap
 }
-// Apply staged edits with the busy indicator (interactive button press).
+// Rebuild the preview (badge tap / auto-apply): deferred via rAF with the busy indicator.
 function applyPending() {
   pendingChanges = false;
   updateApplyButton();
@@ -5342,6 +5338,7 @@ function applyPending() {
 }
 // Apply staged edits synchronously (used before export, so currentTris is up to date immediately).
 function applyPendingNow() {
+  autoApplyDebounced.cancel();
   pendingChanges = false;
   updateApplyButton();
   flushPendingRegenerate();

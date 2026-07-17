@@ -2052,7 +2052,39 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
 // hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
 // then taperFn'd, so seams match after taper. Proven watertight in Node across
 // sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
-function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded, solidRects, floorFn, floorMask) {
+// Rib-membership test for a lattice cell centre (cx,cz), pitch & rib in mm. `pattern` picks the hole
+// shape; ALL the rest of the perforation machinery (membranes, tubes, pinch removal, rounding, seams)
+// is pattern-agnostic, so a new pattern is just a new test here. Used by the floor AND wall lattices.
+//   diamond — ±45° ribs, diamond holes (the original)   square — axis-aligned grid, square holes
+//   triangle — 3 line families at 60°, triangular holes   hex — honeycomb (Voronoi of a triangular
+//   point lattice), hexagonal holes
+function latticeSolidAt(cx, cz, pitch, rib, pattern){
+  const near = (t, rh) => Math.abs(t - Math.round(t)) < rh;   // within rh of an integer line
+  if (pattern === 'square') {
+    const rh = (rib/2)/pitch;
+    return near(cx/pitch, rh) || near(cz/pitch, rh);
+  }
+  if (pattern === 'triangle') {
+    const rh = (rib/2)/pitch, s = Math.sqrt(3)/2;             // three families: normals 0°, 60°, 120°
+    return near(cz/pitch, rh) || near((cx*s + cz*0.5)/pitch, rh) || near((cx*s - cz*0.5)/pitch, rh);
+  }
+  if (pattern === 'hex') {
+    // honeycomb = Voronoi edges of a triangular point lattice → a cell is a rib if its two nearest
+    // lattice points are nearly equidistant (|d1−d2| < rib). Lattice: rows offset by pitch/2.
+    const rowH = pitch * Math.sqrt(3)/2;
+    const j0 = Math.round(cz / rowH), d1d2 = [];
+    for (let jj = j0 - 1; jj <= j0 + 1; jj++) {
+      const off = (jj & 1) ? pitch/2 : 0, i0 = Math.round((cx - off) / pitch);
+      for (let ii = i0 - 1; ii <= i0 + 1; ii++)
+        d1d2.push(Math.hypot(cx - (ii*pitch + off), cz - jj*rowH));
+    }
+    d1d2.sort((a,b)=>a-b);
+    return (d1d2[1] - d1d2[0]) < rib;
+  }
+  const rh = (rib/2)*Math.SQRT2/pitch;                        // diamond (default): ±45° ribs
+  return near((cx + cz)/pitch, rh) || near((cx - cz)/pitch, rh);
+}
+function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, borderCells, tf, rounded, solidRects, floorFn, floorMask, pattern) {
   tf = tf || ((p)=>p);
   const pitch = Math.max(1e-3, cellWorld);
   const UP=[0,1,0], DN=[0,-1,0];
@@ -2069,13 +2101,11 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   // at least 1 solid rim cell — a hole touching the inner boundary would leave the ring/cavity
   // edge unmatched (open). Higher = wider solid margin.
   const b=Math.min(Math.max(1,borderCells|0), Math.floor(nx/2), Math.floor(nz/2));
-  const rh=(rib/2)*Math.SQRT2/pitch;  // rib half-width, in uu/vv units
   const solid=Array.from({length:nx},()=>new Array(nz).fill(false));
   for (let i=0;i<nx;i++) for (let j=0;j<nz;j++) {
     if (i<b||i>=nx-b||j<b||j>=nz-b) { solid[i][j]=true; continue; } // rim
     const cx=(xMid[i]+xMid[i+1])/2 - xi0, cz=(zMid[j]+zMid[j+1])/2 - zi0;
-    const uu=(cx+cz)/pitch, vv=(cx-cz)/pitch;
-    solid[i][j] = Math.abs(uu-Math.round(uu))<rh || Math.abs(vv-Math.round(vv))<rh;
+    solid[i][j] = latticeSolidAt(cx, cz, pitch, rib, pattern);
   }
   // Floor-logo compatibility: fill in solid ONLY where the cavity-floor ('-Y-inner') logo's SHAPE is —
   // i.e. the fork itself, not its whole bounding square — so it rides ON the net background, not a solid
@@ -2289,7 +2319,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   }
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
-  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn, lat.floorMask);
+  if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn, lat.floorMask, lat.pattern);
 
   return tris;
 }
@@ -3160,6 +3190,8 @@ const SHAPE_PARAMS = {
     {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
     {group:'Сетчатое дно', key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
     {group:'Сетчатое дно', key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
+    {group:'Сетчатое дно', key:'latticePattern', label:'Сетка: узор', type:'select', default:'diamond',
+      options:[{v:'diamond',t:'ромб (±45°)'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты (шестигранник)'}]},
     {group:'Сетчатое дно', key:'latticeRes', label:'Сетка: детализация дна', min:10, max:500, step:1, default:50, unit:'', int:true},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
@@ -3701,6 +3733,7 @@ function makeLatticeOpts(p) {
     cell: Math.max(1, p.latticeCell||8),
     borderCells: Math.max(0, Math.round(p.latticeBorder||0)),
     rounded: !!p.latticeRound,
+    pattern: p.latticePattern || 'diamond',
   };
 }
 

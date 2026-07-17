@@ -193,5 +193,18 @@ chk('solid-disc logo on lattice: watertight', manifoldCheck(disc,5).watertight &
 const cRing=centreTopTris(ringClosed,yt,5), cDisc=centreTopTris(disc,yt,5);
 chk('enclosed counter is an OPENING (few centre top tris) vs a solid disc (many)', cRing < cDisc*0.34, {ring:cRing, disc:cDisc});
 
+console.log('\n=== floor lattice PATTERNS (diamond/square/triangle/hex) watertight ===');
+for (const pat of ['diamond','square','triangle','hex']) {
+  wt('pattern '+pat, {...L, width:70, height:24, depth:60, wallThickness:2.5, latticeCell:10, latticeRib:1.8, latticeBorder:2, latticePattern:pat});
+  wt('pattern '+pat+' rounded', {...L, width:70, height:24, depth:60, wallThickness:2.5, latticeCell:10, latticeRib:1.8, latticeBorder:2, latticeRound:true, latticePattern:pat});
+}
+// each pattern actually differs from the diamond default (different hole layout → different mesh)
+{
+  const mk = pat => { base({...L, width:70, height:24, depth:60, wallThickness:2.5, latticeCell:10, latticeRib:1.8, latticeBorder:2, latticePattern:pat});
+    return buildTrisForShape('box', paramState.box).length; };
+  const d = mk('diamond'), sq = mk('square'), tr = mk('triangle'), hx = mk('hex');
+  chk('patterns produce distinct meshes', new Set([d,sq,tr,hx]).size >= 3, {d,sq,tr,hx});
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail>0) process.exit(1);

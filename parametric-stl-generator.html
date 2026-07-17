@@ -406,6 +406,11 @@
     cursor:pointer; margin-bottom:10px;
   }
   #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-baseplate{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
+    border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
+    font-size:12px; cursor:pointer; }
+  #btn-add-baseplate:hover{ border-color:var(--ink); }
+  #btn-add-baseplate:disabled{ opacity:0.4; cursor:not-allowed; }
   #lid-row{ display:flex; gap:6px; margin-bottom:8px; }
   #lid-row #btn-add-lid{ flex:0 0 auto; width:auto; padding:9px 14px; margin-bottom:0; }
   #lid-kind{
@@ -749,6 +754,7 @@
       </select>
       <button id="btn-add-lid" title="Накидная — колпак внахлёст; защёлки — бампы на стенках + окна в юбке; петля — проушины сзади + пластина, ось из филамента 1.75">+ Крышка</button>
     </div>
+    <button id="btn-add-baseplate" title="Отдельная модель: Gridfinity-базплейт (сетка гнёзд под ножки бинов)">+ Базплейт (Gridfinity)</button>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель отдельным объектом (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
     </details>
 
@@ -3179,6 +3185,7 @@ const SHAPE_PARAMS = {
     {group:'Gridfinity', key:'gfU', label:'Высота (юнитов по 7 мм)', min:2, max:12, step:1, default:3, unit:'', int:true},
     {group:'Gridfinity', key:'gfLip', label:'Стекинг-губа сверху (бины ставятся друг на друга)', type:'bool', default:true},
     {group:'Gridfinity', key:'gfMagnets', label:'Отверстия под магниты 6×2 (4 на ячейку)', type:'bool', default:false},
+    {group:'Gridfinity', key:'gfBaseThk', label:'Базплейт: толщина основания под гнёздами', min:0.8, max:1000000, step:0.2, default:1.2, unit:'мм'},
   ],
 };
 
@@ -3360,6 +3367,29 @@ function addHingeLidForActive(){
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
+// Gridfinity baseplate as a NEW assembly model (params.gfBaseplate). Grid gfX×gfY (defaults from
+// the active bin if it is one). buildTrisForShapeCore returns the socket-grid plate for the flag.
+function addGridfinityBaseplate(){
+  if (models.length >= MAX_MODELS) return;
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const src = getActiveModel();
+  const params = defaultBoxParams();
+  params.gfBaseplate = true;
+  params.gfX = (src && src.params.gfOn) ? (src.params.gfX || 1) : 2;
+  params.gfY = (src && src.params.gfOn) ? (src.params.gfY || 1) : 2;
+  params.gfBaseThk = 1.2;
+  const rec = makeModelRecord('Базплейт Gridfinity', params);
+  if (src) rec.color = src.color;
+  let right = -Infinity;
+  for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
+  rec.px = (right === -Infinity) ? 0 : Math.round(right + params.gfX*42/2 + 12);
+  models.push(rec);
+  loadModel(rec);
+  regenerate();
+  renderModelCards();
+  if (scene3DReady) frameCamera(sceneUnionBBox());
+}
 // #8: turn a wall-relief logo into its own STANDALONE extruded model (silhouette-by-threshold,
 // see buildLogoExtrudeTris). The new record is an ordinary assembly model whose params carry
 // logo3d:true — width/depth are the footprint, height the extrusion thickness; the artwork
@@ -3480,8 +3510,9 @@ function refreshActiveModelUI(){
   if (m && cp) cp.value = m.color;
   // #8: an extruded-logo model only uses width/depth (footprint) + height (thickness) — hide
   // every other param group (and the segment counters) while such a model is active.
-  const isLogo3d = !!paramState.box.logo3d;
+  const isLogo3d = !!paramState.box.logo3d, isBasePlate = !!paramState.box.gfBaseplate;
   document.querySelectorAll('#params-box details.param-cat').forEach(det => {
+    if (isBasePlate) { det.style.display = det.dataset.group === 'Gridfinity' ? '' : 'none'; return; }
     det.style.display = (!isLogo3d || det.dataset.group === 'Размеры') ? '' : 'none';
   });
   document.querySelectorAll('#params-box .param-number[data-key]').forEach(inp => {
@@ -5131,8 +5162,68 @@ function buildGridfinityLip(p){
   }
   return out;
 }
+/* ---- Gridfinity BASEPLATE (a separate assembly model, flag gfBaseplate): a gfX×gfY grid of female
+   sockets that receive bin feet so bins drop in and can't slide. Each 42×42 cell is a stepped
+   rounded-square recess (mirror of the foot profile: opening 41.5 top → 45° → straight → 45° → floor
+   35.6), and the top of each cell is a frame annulus from the cell's 42×42 boundary to the socket
+   opening — adjacent cells share that boundary edge, so the thin inter-cell walls close by
+   construction. Optional Ø6.5×2.4 magnet pockets in the socket floors (±13 like the bin). All from
+   roundedRectDist rings → watertight, no CSG. */
+const GFB_PROFILE = [ // [depth below top, half-size, corner radius] — mirror of the foot, +0.1 clearance
+  [0, 41.6/2, 3.75], [2.15, 37.3/2, 1.6], [3.95, 37.3/2, 1.6], [4.75, 35.7/2, 0.8],
+];
+function buildGridfinityBaseplate(p){
+  const n = Math.max(1, Math.min(7, Math.round(p.gfX||1))), m = Math.max(1, Math.min(7, Math.round(p.gfY||1)));
+  const pitch = 42, socketD = 4.75, baseThk = Math.max(0.8, Math.min(p.gfBaseThk > 0 ? p.gfBaseThk : 1.2, 6));
+  const Htot = socketD + baseThk, yTop = Htot/2, yBot = -Htot/2, yFloor = yTop - socketD;
+  const fhx = n*pitch/2, fhz = m*pitch/2, G = 8, N = 4*G;
+  const out = [];
+  const q = (A,B,C,Dp,ref) => { out.push(orient([A,B,C],ref)); out.push(orient([A,C,Dp],ref)); };
+  // 4 outer walls, SUBDIVIDED to n·G / m·G so their top edge shares every cell-boundary vertex the
+  // top annulus places on the perimeter (else T-junctions open the seam). The perimeter point list
+  // (at yBot) is collected so the bottom face fans to the SAME points (no bottom T-junctions).
+  const nGX = n*G, nGZ = m*G, perim = [];
+  const wall = (x0,z0,x1,z1,steps,ref) => { for (let s=0;s<steps;s++){ const t0=s/steps, t1=(s+1)/steps;
+    const xa=x0+(x1-x0)*t0, za=z0+(z1-z0)*t0, xb=x0+(x1-x0)*t1, zb=z0+(z1-z0)*t1;
+    q([xa,yBot,za],[xa,yTop,za],[xb,yTop,zb],[xb,yBot,zb], ref);
+    perim.push([xa,yBot,za]); } };
+  wall(-fhx,-fhz, fhx,-fhz, nGX, [0,0,-1]);   // −Z
+  wall(fhx,-fhz, fhx,fhz, nGZ, [1,0,0]);      // +X
+  wall(fhx,fhz, -fhx,fhz, nGX, [0,0,1]);      // +Z
+  wall(-fhx,fhz, -fhx,-fhz, nGZ, [-1,0,0]);   // −X
+  for (let k = 0; k < perim.length; k++) {    // bottom face: fan from centre to the perimeter loop
+    const k1 = (k+1)%perim.length;
+    out.push(orient([[0,yBot,0], perim[k1], perim[k]], [0,-1,0]));
+  }
+  const magR = 3.25, magD = 2.4, magOff = 13;
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+    const cx = (i - (n-1)/2)*pitch, cz = (j - (m-1)/2)*pitch;
+    const border = rectPerimWalk(pitch/2, pitch/2, G);        // the cell's 42×42 boundary (shared with neighbours)
+    const angs = border.map(pt => Math.atan2(pt[1], pt[0]));
+    const ring = (half, rc, y) => angs.map(a => { const r = roundedRectDist(half, half, rc, a);
+      return [cx + r*Math.cos(a), y, cz + r*Math.sin(a)]; });
+    void magR; void magD; void magOff;                       // reserved for a future magnet variant
+    const rings = GFB_PROFILE.map(([dy, half, rc]) => ring(half, rc, yTop - dy));
+    // top frame annulus: cell boundary → socket opening (L0)
+    const bpts = border.map(pt => [cx+pt[0], yTop, cz+pt[1]]);
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+      q(bpts[k], bpts[k1], rings[0][k1], rings[0][k], [0,1,0]); }
+    // socket side walls (opening → floor), facing into the recess (toward the cell axis)
+    for (let L = 0; L < rings.length - 1; L++) { const A = rings[L], B2 = rings[L+1];
+      for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+        const ref = [-(A[k][0]-cx), 0, -(A[k][2]-cz)];
+        out.push(orient([A[k], A[k1], B2[k1]], ref)); out.push(orient([A[k], B2[k1], B2[k]], ref)); } }
+    // socket floor: fan from the cell centre to the floor ring (normal up, into the recess).
+    // (v1: no baseplate magnet pockets — the ring/grid resolutions don't share a seam cleanly;
+    //  bin-side magnets already cover that need. Deferred.)
+    const floor = rings[rings.length-1];
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N; out.push(orient([[cx,yFloor,cz], floor[k], floor[k1]], [0,1,0])); }
+  }
+  return out;
+}
 function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
+  if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   const gf = shape === 'box' && p.gfOn && !p.logo3d;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -5676,6 +5767,7 @@ function renderModelCards() {
   const full = models.length >= MAX_MODELS;
   const btn = document.getElementById('btn-add-model'); if (btn) btn.disabled = full;
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
+  const bp = document.getElementById('btn-add-baseplate'); if (bp) bp.disabled = full;
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
@@ -5684,6 +5776,7 @@ function attachModelEventListeners() {
     if (kind === 'hinge') addHingeLidForActive();
     else addLidForActive(kind === 'clips');
   });
+  document.getElementById('btn-add-baseplate').addEventListener('click', addGridfinityBaseplate);
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {
     const card = e.target.closest('.model-card');

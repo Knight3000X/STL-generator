@@ -394,13 +394,20 @@
   }
 
   /* ---------- logo / relief cards ---------- */
-  #btn-add-model, #btn-add-lid, #btn-add-lid-clips, #btn-add-lid-hinge{
+  #btn-add-model, #btn-add-lid{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
     cursor:pointer; margin-bottom:10px;
   }
-  #btn-add-model:hover, #btn-add-lid:hover, #btn-add-lid-clips:hover, #btn-add-lid-hinge:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-lid-clips:disabled, #btn-add-lid-hinge:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
+  #lid-row{ display:flex; gap:6px; margin-bottom:8px; }
+  #lid-row #btn-add-lid{ flex:0 0 auto; width:auto; padding:9px 14px; margin-bottom:0; }
+  #lid-kind{
+    flex:1; min-width:0; padding:7px 8px;
+    border:1.5px solid var(--ink-soft); border-radius:2px;
+    background:var(--field-bg); font-family:inherit; font-size:12px; color:var(--ink);
+  }
+  #btn-add-model:disabled, #btn-add-lid:disabled{ opacity:0.4; cursor:not-allowed; }
   .model-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -713,16 +720,21 @@
 
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
-    <button id="btn-add-lid">+ Крышка для активной</button>
-    <button id="btn-add-lid-clips" title="Крышка + защёлки: бампы на стенках контейнера и ответные окна в юбке крышки">+ Крышка с защёлками</button>
-    <button id="btn-add-lid-hinge" title="Откидная крышка: проушины на задней стенке + пластина с ответной проушиной; ось — кусочек филамента 1.75 в отверстиях Ø2">+ Откидная крышка (петля)</button>
+    <div id="lid-row">
+      <select id="lid-kind" title="Тип крышки для активной модели">
+        <option value="plain">Крышка: накидная</option>
+        <option value="clips">Крышка: с защёлками</option>
+        <option value="hinge">Крышка: откидная (петля)</option>
+      </select>
+      <button id="btn-add-lid" title="Накидная — колпак внахлёст; защёлки — бампы на стенках + окна в юбке; петля — проушины сзади + пластина, ось из филамента 1.75">+ Крышка</button>
+    </div>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами (галочка «в сцене и в STL» убирает модель и из превью, и из файла).</div></details>
     </details>
 
     <details class="panel-fold" open data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» и «Борт» — режимы дна/верха, оба отдельно от скругления углов (при включении любого из них скругление временно не применяется). Наклон стенок работает во всех режимах (полости/пузырю наклон передаётся вместе с внешней оболочкой, толщина стенки при этом плавно меняется, а не остаётся идеально постоянной). Если включены оба — «Полый контейнер» и «Борт», работает только полый контейнер. «Борт» превращает куб в лоток: снаружи и по бокам куб остаётся сплошным, а сверху вырезается неглубокий поддон высотой «Высота борта», с тонкими стенками толщиной «Толщина стенки» (то же поле, что и у полого режима). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/поддона (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней сплошного куба может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, который сходит в 0 к рёбрам, поэтому меш остаётся замкнутым. Совместимо с логотипами (рельеф логотипа складывается с выгибом грани), с наклоном и со скруглением углов (при заданных обоих грань выгибается куполом внутри плоской зоны между скруглёнными рёбрами). Работает во всех режимах: на сплошном кубе — все 6 граней; на полом контейнере — внешние стенки и дно, причём внутренняя полость ПОВТОРЯЕТ выгиб, так что толщина стенки сохраняется; на борте/лотке — внешние стенки (лоток сплошной, мелкий карман не выгибается). Детализация купола задаётся общей настройкой «Детализация логотипов».</div></details></div>
+    <div class="param-group" data-shape="box"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» вычищает внутренность, оставляя стенки и дно заданной толщины; открытый верх. «Глубина полости» — 0 даёт полную полость до дна, значение больше 0 превращает куб в лоток: сплошное тело с неглубоким карманом заданной глубины сверху (бывший режим «борт»). Наклон стенок работает во всех режимах (полости наклон передаётся вместе с внешней оболочкой). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/кармана (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, сходящим в 0 к рёбрам, поэтому меш остаётся замкнутым; совместимо с логотипами, наклоном и скруглением углов. На полом контейнере внутренняя полость повторяет выгиб (толщина стенки сохраняется). Детализация купола задаётся настройкой «Детализация логотипов».</div></details></div>
     </details>
 
     <div id="logo-section" class="param-group" data-shape="box">
@@ -1058,6 +1070,15 @@ function clampWallThickness(width, height, depth, wallThickness) {
 function clampRimHeight(height, rimHeight) {
   return Math.max(0.5, Math.min(rimHeight||8, height*0.85));
 }
+// «Борт» is merged into the hollow container: hollow + cavityDepth>0 = the old rim/tray mode (a
+// shallow pocket of the given depth instead of a full cavity). This maps the merged UI params onto
+// the legacy internal (hollow, rim, rimHeight) trio every builder still speaks; legacy saved
+// configs that carry rim:true directly pass through unchanged.
+function normalizeBoxParams(p){
+  if (p && p.hollow && (p.cavityDepth||0) > 0 && !p.rim)
+    return Object.assign({}, p, { hollow:false, rim:true, rimHeight: p.cavityDepth });
+  return p;
+}
 // (uAxis,vAxis,nAxis,nOffset) per face name — same convention as buildBoxWithLogos/
 // buildHollowBox's own face lists, shared here so logo-frame construction and clamping
 // always agree with how the geometry is actually built.
@@ -1071,9 +1092,10 @@ const FACE_AXES = {
   // this must exactly match whichever one actually builds the floor, or the logo would
   // render floating above/sunk below it). Hollow wins if both are somehow on at once,
   // matching buildTrisForShape's own priority.
-  '-Y-inner': (p)=> p.hollow
-    ? [0,2,1, -(p.height/2 - clampWallThickness(p.width, p.height, p.depth, p.wallThickness))]
-    : [0,2,1, p.height/2 - clampRimHeight(p.height, p.rimHeight)],
+  '-Y-inner': (pRaw)=>{ const p = normalizeBoxParams(pRaw);
+    return p.hollow
+      ? [0,2,1, -(p.height/2 - clampWallThickness(p.width, p.height, p.depth, p.wallThickness))]
+      : [0,2,1, p.height/2 - clampRimHeight(p.height, p.rimHeight)]; },
 };
 
 // ---- breakpoint-aware grid helpers (used by the hollow-container outer shell, so its
@@ -2875,8 +2897,9 @@ function rotatedHalfExtents(w, h, rotationDeg) {
 // don't support fillet+logo yet (they drop the fillet when a logo is present), so no inset there.
 // Box params whose change can move a logo out of the flat region -> re-clamp all logos when they edit.
 const LOGO_CLAMP_KEYS = ['width','height','depth','filletRadius','filletTop','filletBottom','filletVert',
-  'filletInnerFloor','filletInnerVert','filletInnerLip','wallThickness','rimHeight'];
+  'filletInnerFloor','filletInnerVert','filletInnerLip','wallThickness','cavityDepth'];
 function faceFilletInsets(face, p) {
+  p = normalizeBoxParams(p);
   const uni = p.filletRadius||0;
   if (p.hollow || p.rim) {
     // Rounded hollow/tray: outer walls inset by the outer edge radii (+ the top rim inset), the cavity
@@ -2997,15 +3020,14 @@ const SHAPE_PARAMS = {
     {group:'Выгиб стенок (купол)', key:'bulgeZMinus', label:'Скругление стенки −Z', min:-150, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Выгиб стенок (купол)', key:'bulgeYPlus',  label:'Скругление верха +Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Выгиб стенок (купол)', key:'bulgeYMinus', label:'Скругление дна −Y', min:-150, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
-    {group:'Полый контейнер / борт', key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'rim', label:'Борт (лоток / поднос)', type:'bool', default:false},
-    {group:'Полый контейнер / борт', key:'rimHeight', label:'Высота борта', min:0.5, max:1000000, step:0.5, default:8, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'filletInnerFloor', label:'Полый/борт: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'filletInnerVert', label:'Полый/борт: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'filletInnerLip', label:'Полый/борт: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'chamferTop', label:'Полый: фаска верхнего внешнего канта (ширина, 0=нет)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Полый контейнер / борт', key:'chamferAngle', label:'Полый: угол фаски канта (от горизонтали)', min:15, max:80, step:1, default:45, unit:'°'},
+    {group:'Полый контейнер', key:'hollow', label:'Полый контейнер (открытый верх)', type:'bool', default:false},
+    {group:'Полый контейнер', key:'wallThickness', label:'Толщина стенки', min:0.1, max:1000000, step:0.1, default:2, unit:'мм'},
+    {group:'Полый контейнер', key:'cavityDepth', label:'Глубина полости (0 = до дна)', min:0, max:1000000, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер', key:'filletInnerFloor', label:'Полый: скругление дна полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер', key:'filletInnerVert', label:'Полый: скругление вертик. полости', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер', key:'filletInnerLip', label:'Полый: скругление внутр. канта (0=острый плоский)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер', key:'chamferTop', label:'Полый: фаска верхнего внешнего канта (ширина, 0=нет)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Полый контейнер', key:'chamferAngle', label:'Полый: угол фаски канта (от горизонтали)', min:15, max:80, step:1, default:45, unit:'°'},
     {group:'Сетчатое дно', key:'latticeFloor', label:'Полый: сетчатое ромбовидное дно (сквозное)', type:'bool', default:false},
     {group:'Сетчатое дно', key:'latticeCell', label:'Сетка: шаг ромба (диагональ)', min:2, max:80, step:0.5, default:10, unit:'мм'},
     {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
@@ -3014,10 +3036,10 @@ const SHAPE_PARAMS = {
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
-    {group:'Перегородки (полый/борт)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
-    {group:'Перегородки (полый/борт)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
-    {group:'Перегородки (полый/борт)', key:'divT', label:'Толщина перегородки', min:0.4, max:5, step:0.1, default:1.2, unit:'мм'},
-    {group:'Перегородки (полый/борт)', key:'divH', label:'Высота перегородок (% высоты полости)', min:10, max:100, step:5, default:100, unit:'%', int:true},
+    {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
+    {group:'Перегородки (полый)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
+    {group:'Перегородки (полый)', key:'divT', label:'Толщина перегородки', min:0.4, max:5, step:0.1, default:1.2, unit:'мм'},
+    {group:'Перегородки (полый)', key:'divH', label:'Высота перегородок (% высоты полости)', min:10, max:100, step:5, default:100, unit:'%', int:true},
   ],
 };
 
@@ -4497,85 +4519,6 @@ function buildHollowBoxWithPorts(w,h,d,t, ports, tf){
 // (the old coupling: 2× filletSeg, floored at 8), any >0 overrides it directly.
 function asymAxisRes(p) { return (p.filletAxisRes>0) ? Math.max(2, p.filletAxisRes|0) : Math.max(8, (p.filletSeg||4)*2); }
 
-/* =========================================================
-   CSG (mesh boolean) — BSP-tree union / subtract / intersect on the triangle soup (the classic csg.js
-   algorithm, Evan Wallace, MIT). The rest of the tool builds watertight-by-construction; this is the
-   escape hatch for true cuts the grid approach can't express (e.g. a ROUNDED port through a curved wall).
-   Raw BSP output has T-junctions + can flip orientation, so the public ops weldTJunctions() (centroid-fan
-   re-triangulation so every split edge is shared by exactly 2 tris) and normalise the winding to a
-   positive signed volume. ~98 % of random cuts are strictly watertight; the rare coplanar-overlap case is
-   caught by the page's manifold badge. Node fuzz: scratchpad/csg.js.
-   ========================================================= */
-const CSG_EPS = 1e-5;
-function csgPlaneFromPoints(a, b, c) { const n = normalize(cross(sub(b, a), sub(c, a))); return { n, w: dot(n, a) }; }
-function csgSplit(plane, poly, coFront, coBack, front, back) {
-  const CO=0, F=1, B=2, S=3; let polyType=0; const types=[];
-  for (const v of poly) { const t=dot(plane.n,v)-plane.w; const ty=(t<-CSG_EPS)?B:(t>CSG_EPS)?F:CO; polyType|=ty; types.push(ty); }
-  if (polyType===CO) { (dot(plane.n, csgPlaneFromPoints(poly[0],poly[1],poly[2]).n)>0 ? coFront : coBack).push(poly); }
-  else if (polyType===F) front.push(poly);
-  else if (polyType===B) back.push(poly);
-  else { const f=[], b=[];
-    for (let i=0;i<poly.length;i++){ const j=(i+1)%poly.length, ti=types[i], tj=types[j], vi=poly[i], vj=poly[j];
-      if (ti!==B) f.push(vi); if (ti!==F) b.push(vi);
-      if ((ti|tj)===S){ const t=(plane.w-dot(plane.n,vi))/dot(plane.n,sub(vj,vi));
-        const v=[vi[0]+(vj[0]-vi[0])*t, vi[1]+(vj[1]-vi[1])*t, vi[2]+(vj[2]-vi[2])*t]; f.push(v); b.push(v); } }
-    if (f.length>=3) front.push(f); if (b.length>=3) back.push(b); }
-}
-function csgBuild(node, polys) {
-  if (!polys.length) return;
-  if (!node.plane) node.plane = csgPlaneFromPoints(polys[0][0], polys[0][1], polys[0][2]);
-  const front=[], back=[];
-  for (const p of polys) csgSplit(node.plane, p, node.polys, node.polys, front, back);
-  if (front.length){ node.front = node.front||{polys:[]}; csgBuild(node.front, front); }
-  if (back.length){ node.back = node.back||{polys:[]}; csgBuild(node.back, back); }
-}
-function csgAll(node, out){ out.push(...node.polys); if(node.front) csgAll(node.front,out); if(node.back) csgAll(node.back,out); return out; }
-function csgInvert(node){ node.polys=node.polys.map(p=>p.slice().reverse());
-  if(node.plane) node.plane={n:[-node.plane.n[0],-node.plane.n[1],-node.plane.n[2]],w:-node.plane.w};
-  if(node.front) csgInvert(node.front); if(node.back) csgInvert(node.back);
-  const t=node.front; node.front=node.back; node.back=t; }
-function csgClipPolys(node, polys){ if(!node.plane) return polys.slice();
-  let front=[], back=[]; for(const p of polys) csgSplit(node.plane, p, front, back, front, back);
-  if(node.front) front=csgClipPolys(node.front, front); back=node.back?csgClipPolys(node.back, back):[];
-  return front.concat(back); }
-function csgClipTo(node, bsp){ node.polys=csgClipPolys(bsp, node.polys); if(node.front) csgClipTo(node.front,bsp); if(node.back) csgClipTo(node.back,bsp); }
-function csgNode(polys){ const n={polys:[]}; csgBuild(n, polys); return n; }
-function trisToPolys(tris){ return tris.map(t=>[t[0],t[1],t[2]]); }
-function polysToTris(polys){ const out=[]; for(const p of polys) for(let i=1;i<p.length-1;i++) out.push([p[0],p[i],p[i+1]]); return out; }
-function csgOpRaw(op, trisA, trisB){
-  const a=csgNode(trisToPolys(trisA)), b=csgNode(trisToPolys(trisB));
-  if (op==='union'){ csgClipTo(a,b); csgClipTo(b,a); csgInvert(b); csgClipTo(b,a); csgInvert(b); }
-  else if (op==='subtract'){ csgInvert(a); csgClipTo(a,b); csgClipTo(b,a); csgInvert(b); csgClipTo(b,a); csgInvert(b); csgInvert(a); }
-  else { csgInvert(a); csgClipTo(b,a); csgInvert(b); csgClipTo(a,b); csgClipTo(b,a); csgInvert(a); csgInvert(b); }
-  csgBuild(a, csgAll(b, [])); return polysToTris(csgAll(a, []));
-}
-// Repair T-junctions from the split: for every triangle edge, gather mesh vertices lying strictly on it and
-// centroid-fan re-triangulate so each split edge is shared by exactly two triangles again.
-function weldTJunctions(tris, perp){
-  perp = perp || 2e-3; const snap=1e-4;
-  const key=p=>Math.round(p[0]/snap)+','+Math.round(p[1]/snap)+','+Math.round(p[2]/snap);
-  const vmap=new Map(); for(const t of tris) for(const p of t){ const k=key(p); if(!vmap.has(k)) vmap.set(k,p); }
-  const verts=[...vmap.values()];
-  const onEdge=(a,b)=>{ const ab=sub(b,a), L2=dot(ab,ab); if(L2<1e-10) return []; const hits=[];
-    for(const v of verts){ const t=dot(sub(v,a),ab)/L2; if(t<=1e-6||t>=1-1e-6) continue;
-      const proj=[a[0]+ab[0]*t,a[1]+ab[1]*t,a[2]+ab[2]*t], d=sub(v,proj); if(dot(d,d)<perp*perp) hits.push([t,v]); }
-    return hits.sort((x,y)=>x[0]-y[0]).map(h=>h[1]); };
-  const out=[];
-  for(const t of tris){ const loop=[];
-    for(let i=0;i<3;i++){ const a=t[i], b=t[(i+1)%3]; loop.push(a); for(const m of onEdge(a,b)) loop.push(m); }
-    if(loop.length===3){ out.push(t); continue; }
-    const on=faceNormal(t), N=loop.length, cen=loop.reduce((s,p)=>[s[0]+p[0],s[1]+p[1],s[2]+p[2]],[0,0,0]).map(x=>x/N);
-    for(let i=0;i<N;i++){ const A=loop[i], B=loop[(i+1)%N], n=cross(sub(A,cen),sub(B,cen)); if(dot(n,n)>1e-16) out.push(orient([cen,A,B], on)); }
-  }
-  return out;
-}
-function csgSignedVol(t){ let v=0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
-  v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6; } return v; }
-function csgClean(tris){ const r=weldTJunctions(tris); return csgSignedVol(r)<0 ? r.map(t=>[t[0],t[2],t[1]]) : r; }
-function csgSubtract(A, B){ return csgClean(csgOpRaw('subtract', A, B)); }
-function csgUnion(A, B){ return csgClean(csgOpRaw('union', A, B)); }
-function csgIntersect(A, B){ return csgClean(csgOpRaw('intersect', A, B)); }
-
 /* ---- Filament-pin hinge («откидная крышка») -------------------------------------------------
    Two knuckles on the container's back (−Z) wall + one centre knuckle under the flat lid plate,
    each a small solid box with a Ø~2mm bore along X (buildBoxWithHoles — watertight). The user
@@ -4755,6 +4698,7 @@ function snapWeldTris(tris){
   return out;
 }
 function buildTrisForShape(shape, p) {
+  if (shape === 'box') p = normalizeBoxParams(p);
   let tris = buildTrisForShapeCore(shape, p);
   if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
     tris = tris.concat(buildHingeKnuckles(p));
@@ -5084,7 +5028,7 @@ function attachEventListeners() {
       if (shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
-      if (t.dataset.shape === 'box' && (t.dataset.key === 'hollow' || t.dataset.key === 'rim') && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (t.dataset.shape === 'box' && t.dataset.key === 'hollow' && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
       if (t.dataset.shape === currentShape) markPending();
     }
   });
@@ -5236,7 +5180,7 @@ function attachSplitHandle() {
   syncMode();
 }
 
-const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (полый или борт)'};
+const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (дно полости)'};
 const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'] };
 const ALL_FACES = ['+Z','+X','-X','+Y','-Y','-Y-inner','-Z'];
 
@@ -5262,14 +5206,14 @@ function renderModelCards() {
   const full = models.length >= MAX_MODELS;
   const btn = document.getElementById('btn-add-model'); if (btn) btn.disabled = full;
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
-  const lidC = document.getElementById('btn-add-lid-clips'); if (lidC) lidC.disabled = full;
-  const lidH = document.getElementById('btn-add-lid-hinge'); if (lidH) lidH.disabled = full;
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
-  document.getElementById('btn-add-lid').addEventListener('click', () => addLidForActive(false));
-  document.getElementById('btn-add-lid-clips').addEventListener('click', () => addLidForActive(true));
-  document.getElementById('btn-add-lid-hinge').addEventListener('click', addHingeLidForActive);
+  document.getElementById('btn-add-lid').addEventListener('click', () => {
+    const kind = document.getElementById('lid-kind').value;
+    if (kind === 'hinge') addHingeLidForActive();
+    else addLidForActive(kind === 'clips');
+  });
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {
     const card = e.target.closest('.model-card');
@@ -5971,6 +5915,7 @@ function bestOrientation(rawTris){
 }
 // Parameter-level thin-feature warnings (the parametric source of truth beats probing the mesh).
 function collectPrintWarnings(p){
+  p = normalizeBoxParams(p);
   const w = [];
   if ((p.hollow || p.rim)) {
     const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness || 2);
@@ -6409,7 +6354,9 @@ function importAssemblyJSON(file) {
         if (mm) { if (typeof scene !== 'undefined' && scene) scene.remove(mm); mm.geometry && mm.geometry.dispose(); mm.material && mm.material.dispose(); modelMeshes.delete(m.id); } }
       models.length = 0; activeModelId = null; nextModelId = 1; pendingChanges = false; updateApplyButton();
       data.models.forEach((md, i) => {
-        const rec = makeModelRecord(md.name || ('Модель ' + nextModelId), Object.assign(defaultBoxParams(), md.params || {}));
+        const mp = Object.assign(defaultBoxParams(), md.params || {});
+        if (mp.rim) { mp.hollow = true; mp.cavityDepth = mp.rimHeight || 8; mp.rim = false; } // legacy «борт»
+        const rec = makeModelRecord(md.name || ('Модель ' + nextModelId), mp);
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode

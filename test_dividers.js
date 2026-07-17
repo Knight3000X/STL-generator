@@ -65,6 +65,18 @@ console.log('\n=== Half-height dividers + thicker walls ===');
   check('half-height top ≈ 1.25', Math.abs(topAt - 1.25) < 1e-6, {topAt});
 }
 
+console.log('\n=== Merged tray mode: hollow + cavityDepth ≡ legacy rim ===');
+{
+  // the «борт» checkbox is gone — hollow + cavityDepth>0 must produce the IDENTICAL mesh the
+  // legacy rim/rimHeight params still produce internally (saved-config compatibility)
+  const merged = setBox({ hollow:true,  cavityDepth:8, rim:false, rimHeight:8 });
+  const legacy = setBox({ hollow:false, cavityDepth:0, rim:true,  rimHeight:8 });
+  check('merged tray ≡ legacy rim (bit-identical)', JSON.stringify(merged) === JSON.stringify(legacy),
+    {merged: merged.length, legacy: legacy.length});
+  check('cavityDepth=0 keeps the full hollow', Math.abs(sv(setBox({ hollow:true, cavityDepth:0 })) -
+    (60*40*50 - 55*37.5*45)) < 1e-6);
+}
+
 console.log('\n=== Rim tray (борт) gets dividers in its pocket ===');
 {
   const base = setBox({ hollow:false, rim:true });

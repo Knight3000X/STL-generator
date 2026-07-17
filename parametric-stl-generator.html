@@ -2198,7 +2198,77 @@ function emitLatticeFloor(tris, xP, zP, xMid, zMid, yb, yt, rib, cellWorld, bord
   }
 }
 
-function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace, zonesByAxis, logoRes, chamferOpts) {
+// Perforate ONE side wall of a flat hollow box with the lattice net — the same through-hole idea as
+// emitLatticeFloor, but stood up on a vertical wall instead of the floor. The wall is the slab between
+// an OUTER face (at through-coord `outerW`) and the CAVITY face (at `innerW`), separated by the wall
+// thickness `t`. The net lives in the interior rectangle uMid × vMid (uMid = the cavity's horizontal
+// span, vMid = the cavity's vertical span); a SOLID frame of outer-face quads fills everything outside
+// it (corner posts + the floor-thickness band), so the perforated panel's whole perimeter stays solid
+// and seams exactly to the untouched floor, rim, corner posts and cavity floor (whose edges the caller
+// still emits). Axis wiring is passed per-wall so one body drives front/back (normal ±Z) and left/right
+// (normal ±X). Flat profile, no logos — a plain container's net. Solid border cells + pinch removal keep
+// it watertight, same as the floor net.
+function emitLatticeWall(tris, wall, hw, hh, hd, t, xP, yP, zP, xMid, zMid, yTop, opts, tf) {
+  tf = tf || ((p)=>p);
+  const pitch = Math.max(1e-3, opts.cell), rib = opts.rib, pattern = opts.pattern || 'diamond';
+  const xw = (wall === '-X' || wall === '+X');
+  const sign = (wall === '+X' || wall === '+Z') ? 1 : -1;
+  const outerW = xw ? sign*hw : sign*hd;
+  const innerW = xw ? sign*(hw - t) : sign*(hd - t);
+  const outN = xw ? [sign,0,0] : [0,0,sign];
+  const inN  = xw ? [-sign,0,0] : [0,0,-sign];
+  const uAxisVec = xw ? [0,0,1] : [1,0,0];   // world direction of +u (Z for x-walls, X for z-walls)
+  const uPos = [-uAxisVec[0],-uAxisVec[1],-uAxisVec[2]];
+  const uP = xw ? zP : xP;                     // horizontal grid across the wall
+  const uMid = xw ? zMid : xMid;               // the cavity's horizontal span (net columns)
+  const vP = yP;                               // vertical grid (shared with the outer face)
+  const vMid = midSlice(yP, -(hh - t), yTop);  // the cavity's vertical span (net rows)
+  // Place a wall point from (horizontal u, vertical v, through-thickness w) and taper it.
+  const mk = xw ? ((u,v,w)=>[w,v,u]) : ((u,v,w)=>[u,v,w]);
+  const P = (u,v,w) => tf(mk(u,v,w));
+  const face = (pts, ref) => { const q = pts.map(([u,v,w]) => P(u,v,w));
+    tris.push(orient([q[0],q[1],q[2]], ref)); tris.push(orient([q[0],q[2],q[3]], ref)); };
+  const ui0 = uMid[0], ui1 = uMid[uMid.length-1], vi0 = vMid[0], vi1 = vMid[vMid.length-1];
+  // Solid outer-face frame: every uP×vP cell whose centre is OUTSIDE the net rectangle (corner posts and
+  // the floor-thickness band). Emitted flat at outerW — together with the net's outer patches this rebuilds
+  // the complete outer wall face, minus the holes.
+  for (let i=0;i<uP.length-1;i++) for (let j=0;j<vP.length-1;j++) {
+    const cu=(uP[i]+uP[i+1])/2, cv=(vP[j]+vP[j+1])/2;
+    if (cu>ui0-1e-9 && cu<ui1+1e-9 && cv>vi0-1e-9 && cv<vi1+1e-9) continue; // interior → net
+    face([[uP[i],vP[j],outerW],[uP[i+1],vP[j],outerW],[uP[i+1],vP[j+1],outerW],[uP[i],vP[j+1],outerW]], outN);
+  }
+  const nu=uMid.length-1, nv=vMid.length-1;
+  const b=Math.min(Math.max(1,opts.borderCells|0), Math.floor(nu/2), Math.floor(nv/2));
+  const solid=Array.from({length:nu},()=>new Array(nv).fill(false));
+  for (let i=0;i<nu;i++) for (let j=0;j<nv;j++) {
+    if (i<b||i>=nu-b||j<b||j>=nv-b) { solid[i][j]=true; continue; } // solid margin → seams to frame
+    const cu=(uMid[i]+uMid[i+1])/2 - ui0, cv=(vMid[j]+vMid[j+1])/2 - vi0;
+    solid[i][j] = latticeSolidAt(cu, cv, pitch, rib, pattern);
+  }
+  // pinch removal: fill one hole of each 2×2 checkerboard (non-manifold corner touch). Monotone.
+  let changed=true;
+  while (changed) { changed=false;
+    for (let i=0;i<nu-1;i++) for (let j=0;j<nv-1;j++) {
+      const a=solid[i][j], c1=solid[i+1][j], c2=solid[i][j+1], dd=solid[i+1][j+1];
+      if (a&&dd&&!c1&&!c2) { solid[i+1][j]=true; changed=true; }
+      else if (c1&&c2&&!a&&!dd) { solid[i][j]=true; changed=true; }
+    }
+  }
+  const S=(i,j)=> (i<0||j<0||i>=nu||j>=nv) ? true : solid[i][j]; // outside the net = solid (frame closes it)
+  for (let i=0;i<nu;i++) for (let j=0;j<nv;j++) {
+    if (!solid[i][j]) continue;
+    const u0=uMid[i], u1=uMid[i+1], v0=vMid[j], v1=vMid[j+1];
+    face([[u0,v0,outerW],[u1,v0,outerW],[u1,v1,outerW],[u0,v1,outerW]], outN); // outer face patch
+    face([[u0,v0,innerW],[u1,v0,innerW],[u1,v1,innerW],[u0,v1,innerW]], inN);  // cavity face patch
+    // rib tube walls through the thickness where the neighbour is a hole
+    if (!S(i-1,j)) face([[u0,v0,outerW],[u0,v1,outerW],[u0,v1,innerW],[u0,v0,innerW]], uPos);
+    if (!S(i+1,j)) face([[u1,v0,outerW],[u1,v1,outerW],[u1,v1,innerW],[u1,v0,innerW]], uAxisVec);
+    if (!S(i,j-1)) face([[u0,v0,outerW],[u1,v0,outerW],[u1,v0,innerW],[u0,v0,innerW]], [0,-1,0]);
+    if (!S(i,j+1)) face([[u0,v1,outerW],[u1,v1,outerW],[u1,v1,innerW],[u0,v1,innerW]], [0,1,0]);
+  }
+}
+
+function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, taperFn, latticeOpts, bulgeAmpsByFace, zonesByAxis, logoRes, chamferOpts, wallLatticeOpts) {
   const hw=w/2, hh=h/2, hd=d/2;
   const t = clampWallThickness(w, h, d, wallThickness);
   const res = Math.max(1, resolution||1);
@@ -2218,6 +2288,11 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
   const lat = (latticeOpts && latticeOpts.enabled) ? latticeOpts : null;
+  // Lattice on the SIDE walls: perforate the selected side walls with the net (see emitLatticeWall).
+  // Plain flat containers only (no chamfer — the caller also gates out logos / bulge), so the wall
+  // stays planar and the outer/cavity cutouts stay congruent. Which walls are affected:
+  const wlat = (wallLatticeOpts && wallLatticeOpts.walls && wallLatticeOpts.walls !== 'none' && !chamfer) ? wallLatticeOpts : null;
+  const perfWall = new Set(wlat && wlat.walls === 'all' ? ['-X','+X','-Z','+Z'] : []);
   // Cavity-follow bulge: each cavity wall gets a dome that moves it the SAME world direction as the
   // matching outer wall, so the wall thickness is preserved. cav() negates the amp because the cavity
   // wall's outward normal points into the cavity (opposite the outer wall). addDisp merges with logos.
@@ -2238,7 +2313,7 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // A shell with no logos / bulge / lattice is just flat (or ruled, under taper) walls — it must NOT
   // inherit the logo-detail slider as its uniform grid density, or deleting the last logo (or a
   // container/tray preset) at a high slider value jumps the mesh to millions of triangles.
-  const plainShell = !zonal && !lat && !zonesByAxis && !logoDispFnsByFace && !bulgeAmpsByFace;
+  const plainShell = !zonal && !lat && !wlat && !zonesByAxis && !logoDispFnsByFace && !bulgeAmpsByFace;
   const baseRes = zonal ? Math.min(res, 4) : (plainShell ? Math.min(res, 24) : res);
   // Chamfer adds a breakpoint at ±(half - setback) so the flat-rim / bevel transition is a crisp edge.
   const xReq = chamfer ? [-(hw-t),hw-t,-(hw-chS),hw-chS] : [-(hw-t),hw-t];
@@ -2248,6 +2323,14 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // Outer walls stop at yTop (=hh-v under a chamfer, else hh); the sloped top ring fills hh-v..hh.
   let yPositions;
   if (chamfer) { yPositions = []; const ny = Math.max(1, baseRes); for (let i=0;i<=ny;i++) yPositions.push(-hh + (yTop+hh)*i/ny); }
+  else if (wlat) {
+    // Wall net needs a fine grid over the cavity height (-(hh-t)..hh) with a single floor-thickness cell
+    // below it. buildAxisPositions keeps the top/bottom bands coarse when there's one interior breakpoint,
+    // which would leave the cavity band un-subdivided — so build it explicitly here.
+    yPositions = [-hh, -(hh-t)];
+    const ny = Math.max(2, baseRes);
+    for (let i=1;i<=ny;i++) yPositions.push(-(hh-t) + (h-t)*i/ny);
+  }
   else yPositions = buildAxisPositions(hh, [], baseRes);
   if (zonal) {
     const lr = Math.max(1, logoRes||res);
@@ -2263,19 +2346,21 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
   // Lattice mode emits the outer bottom itself (as a RING around the perforated inner region),
   // so skip the flat full-footprint outer bottom here.
   if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1,-hh, xPositions, zPositions, [0,-1,0], dfn['-Y'], tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0,-hw, yPositions, zPositions, [-1,0,0], dfn['-X'], tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, hw, yPositions, zPositions, [1,0,0], dfn['+X'], tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2,-hd, xPositions, yPositions, [0,0,-1], dfn['-Z'], tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, hd, xPositions, yPositions, [0,0,1], dfn['+Z'], tf));
+  // A perforated wall emits its OWN outer + cavity faces (frame + net) via emitLatticeWall below, so skip
+  // the solid pair here for those walls.
+  if (!perfWall.has('-X')) tris = tris.concat(buildFaceFromPositionsTapered(1,2,0,-hw, yPositions, zPositions, [-1,0,0], dfn['-X'], tf));
+  if (!perfWall.has('+X')) tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, hw, yPositions, zPositions, [1,0,0], dfn['+X'], tf));
+  if (!perfWall.has('-Z')) tris = tris.concat(buildFaceFromPositionsTapered(0,1,2,-hd, xPositions, yPositions, [0,0,-1], dfn['-Z'], tf));
+  if (!perfWall.has('+Z')) tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, hd, xPositions, yPositions, [0,0,1], dfn['+Z'], tf));
 
   const xMid = midSlice(xPositions, -(hw-t), hw-t);
   const zMid = midSlice(zPositions, -(hd-t), hd-t);
   // Bulged cavity walls need Y subdivided (a 2-row strip can't show the dome, since it's 0 at both ends).
   const cavityYPositions = cavBulge ? bulgeSubdivRange(cavYLo, cavYHi, res) : [cavYLo, cavYHi];
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], cav(bx['-X'],cavYLo,cavYHi,zLo,zHi), tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], cav(bx['+X'],cavYLo,cavYHi,zLo,zHi), tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], cav(bx['-Z'],xLo,xHi,cavYLo,cavYHi), tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], cav(bx['+Z'],xLo,xHi,cavYLo,cavYHi), tf));
+  if (!perfWall.has('-X')) tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), cavityYPositions, zMid, [1,0,0], cav(bx['-X'],cavYLo,cavYHi,zLo,zHi), tf));
+  if (!perfWall.has('+X')) tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), cavityYPositions, zMid, [-1,0,0], cav(bx['+X'],cavYLo,cavYHi,zLo,zHi), tf));
+  if (!perfWall.has('-Z')) tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, cavityYPositions, [0,0,1], cav(bx['-Z'],xLo,xHi,cavYLo,cavYHi), tf));
+  if (!perfWall.has('+Z')) tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, cavityYPositions, [0,0,-1], cav(bx['+Z'],xLo,xHi,cavYLo,cavYHi), tf));
   // Lattice mode emits the cavity floor as the lattice's top annuli/solid cells, so skip the flat one.
   if (!lat) tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, -(hh-t), xMid, zMid, [0,1,0], addDisp(dfn['-Y-inner'], cav(bx['-Y'],xLo,xHi,zLo,zHi)), tf));
 
@@ -2320,6 +2405,8 @@ function buildHollowBox(w, h, d, wallThickness, resolution, logoDispFnsByFace, t
 
   // Diamond through-hole lattice floor (replaces the flat outer-bottom-inner + cavity floor).
   if (lat) emitLatticeFloor(tris, xPositions, zPositions, xMid, zMid, -hh, -(hh-t), lat.rib, lat.cell, lat.borderCells, tf, lat.rounded, lat.solidRects, lat.floorFn, lat.floorMask, lat.pattern);
+  // Through-hole lattice on the selected side walls (replaces their solid outer + cavity faces).
+  if (wlat) for (const wall of perfWall) emitLatticeWall(tris, wall, hw, hh, hd, t, xPositions, yPositions, zPositions, xMid, zMid, yTop, wlat, tf);
 
   return tris;
 }
@@ -3192,6 +3279,8 @@ const SHAPE_PARAMS = {
     {group:'Сетчатое дно', key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
     {group:'Сетчатое дно', key:'latticePattern', label:'Сетка: узор', type:'select', default:'diamond',
       options:[{v:'diamond',t:'ромб (±45°)'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты (шестигранник)'}]},
+    {group:'Сетчатое дно', key:'latticeWalls', label:'Полый: сетка на боковых стенках (сквозная)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'all',t:'все 4 стенки'}]},
     {group:'Сетчатое дно', key:'latticeRes', label:'Сетка: детализация дна', min:10, max:500, step:1, default:50, unit:'', int:true},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
@@ -5444,10 +5533,16 @@ function buildTrisForShapeCore(shape, p) {
       // Compatible with the lattice floor (different region). Ports / squircle / fillet take earlier paths.
       const chamferOpts = ((p.chamferTop||0) > 0 && logos.length === 0 && !hasWallBulge(p))
         ? { width: p.chamferTop, angle: p.chamferAngle||45 } : null;
+      // Lattice on the side walls: plain flat container only (no logos / bulge / chamfer — a flat wall keeps
+      // the outer + cavity cutouts congruent). Reuses the same rib/cell/border/pattern controls as the net floor.
+      const wallLat = (p.latticeWalls && p.latticeWalls !== 'none' && logos.length === 0 && !hasWallBulge(p) && !chamferOpts)
+        ? { walls: p.latticeWalls, rib: Math.max(0.1, p.latticeRib||2), cell: Math.max(1, p.latticeCell||8),
+            borderCells: Math.max(1, Math.round(p.latticeBorder||0)), pattern: p.latticePattern||'diamond' }
+        : null;
       // The lattice net rides the hollow build's uniform grid, so its own detail slider (up to 500,
-      // как у логотипов) drives the resolution while the net floor is on; otherwise logoResolution.
-      const hollowRes = lat ? Math.max(10, Math.min(500, Math.round(p.latticeRes || 50))) : logoResolution;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, hollowRes, dispFns, taperFn, lat, bAmts||undefined, zones, hollowRes, chamferOpts);
+      // как у логотипов) drives the resolution while a net (floor or walls) is on; otherwise logoResolution.
+      const hollowRes = (lat || wallLat) ? Math.max(10, Math.min(500, Math.round(p.latticeRes || 50))) : logoResolution;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, hollowRes, dispFns, taperFn, lat, bAmts||undefined, zones, hollowRes, chamferOpts, wallLat);
     }
 
     if (p.rim) {

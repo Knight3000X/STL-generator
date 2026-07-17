@@ -4191,11 +4191,14 @@ function holeRadiusAt(H, ang){
 // stepped bore stays watertight). Head is circle-only, so the block is square at max(r, headR).
 function holeBlockExtents(H){ const e=holeHalfExtents(H);
   if (H.head){ const r=Math.max(e.ap, e.aq, H.headR||0); return { ap:r, aq:r }; }
-  return e; }
+  const ch = H.edgeCh || 0; // the chamfered entry is edgeCh wider — the block must enclose it
+  return ch > 0 ? { ap: e.ap + ch, aq: e.aq + ch } : e; }
 // Cutout radius on the face at axis-sign `s`: the head (widened) circle on the entry side, else the bore.
 function holeFaceRadiusAt(H, s, ang){
   if (H.head && s === (H.headSide||1)) return H.headR; // entry face opens at the head diameter
-  return holeRadiusAt(H, ang);
+  // 45° edge chamfer (plain bores only): both faces open edgeCh wider than the bore
+  const ch = (!H.head && H.edgeCh) ? Math.max(0, H.edgeCh) : 0;
+  return holeRadiusAt(H, ang) + ch;
 }
 // Border ring of a hole's rectangular block within given (sorted, deduped) position arrays: the block
 // boundary loop as index pairs + the angle of each boundary point from the hole centre. Shared by the
@@ -4311,13 +4314,22 @@ function buildBoxWithHoles(w,h,d, holes){
         }
         return;
       }
-      const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(H,ang); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
-      for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
-        const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
-        const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2);
-        const refIn=[-mid[0],-mid[1],-mid[2]]; // bore wall faces the void (toward the axis centre-line)
-        tris.push(orient([Ap,Bp,Bm], refIn)); tris.push(orient([Ap,Bm,Am], refIn));
-      }
+      // Plain through-bore, optionally with a 45° edge chamfer at BOTH entries (H.edgeCh): the face
+      // cutout is widened by edgeCh (holeFaceRadiusAt adds it), a conical ring narrows back to the
+      // bore radius edgeCh deep, and the straight bore runs between the two cones. All rings share
+      // `angs`, so every section stays watertight.
+      const ptAt=(ang,ca,extra)=>{ const rr=holeRadiusAt(H,ang)+(extra||0); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
+      const ch = Math.max(0, Math.min(H.edgeCh||0, ha*0.8));
+      const spans = ch > 1e-6
+        ? [[+ha, ch, +ha-ch, 0], [+ha-ch, 0, -ha+ch, 0], [-ha+ch, 0, -ha, ch]]
+        : [[+ha, 0, -ha, 0]];
+      for (const [caA, exA, caB, exB] of spans)
+        for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
+          const Ap=ptAt(a0,caA,exA), Bp=ptAt(a1,caA,exA), Am=ptAt(a0,caB,exB), Bm=ptAt(a1,caB,exB);
+          const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2);
+          const refIn=[-mid[0],-mid[1],-mid[2]]; // bore wall faces the void (toward the axis centre-line)
+          tris.push(orient([Ap,Bp,Bm], refIn)); tris.push(orient([Ap,Bm,Am], refIn));
+        }
     });
   }
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
@@ -4384,17 +4396,17 @@ function holesForBuilder(p){
       if (!H.svgRU || !H.svgRU.length) return null;
       const uIsVertical = HOLE_AXIS_PQ[ax][0] === 1;
       const scale = Math.max(1, H.svgWidth || 20) / 2 / Math.max(0.05, H.svgApU_img || 1);
-      return { axis:ax, cp:H.u0, cq:H.v0, svgR:H.svgRU, svgScale:scale, svgVertU:uIsVertical,
+      return { axis:ax, cp:H.u0, cq:H.v0, edgeCh: H.edgeCh||0, svgR:H.svgRU, svgScale:scale, svgVertU:uIsVertical,
         svgApU: uIsVertical ? H.svgAqU_img : H.svgApU_img,
         svgAqU: uIsVertical ? H.svgApU_img : H.svgAqU_img };
     }
     if (H.shape === 'rrect') {
       const { ap, aq } = rrectHalfExtents(ax, H.portW||9, H.portH||3.2); // width=horizontal, height=vertical
       const rc=Math.max(0, Math.min(H.cornerR===undefined?1.6:H.cornerR, Math.min(ap,aq)));
-      return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc }; // rounded rect: no head (screw seats are round)
+      return { axis:ax, cp:H.u0, cq:H.v0, ap, aq, rc, edgeCh: H.edgeCh||0 }; // rounded rect: no head (screw seats are round)
     }
     const r=Math.max(0.3, (H.diameter||6)/2);
-    const out = { axis:ax, cp:H.u0, cq:H.v0, r };
+    const out = { axis:ax, cp:H.u0, cq:H.v0, r, edgeCh: (H.head==='sink'||H.head==='bore') ? 0 : (H.edgeCh||0) };
     // Countersink / counterbore: a recessed head at the entry face (the face the hole is placed on).
     if (H.head==='sink' || H.head==='bore') {
       out.head=H.head; out.headR=Math.max(r+0.3, (H.headDiameter||r*2+4)/2);
@@ -5376,7 +5388,7 @@ function clampHoleToFace(hole) {
     const axisHalf = hole.face==='+X'||hole.face==='-X' ? p.width/2 : hole.face==='+Y'||hole.face==='-Y' ? p.height/2 : p.depth/2;
     hole.headDepth = Math.max(0.3, Math.min(hole.headDepth || 3, axisHalf * 1.5));
   }
-  const effR = (hole.head==='sink'||hole.head==='bore') ? Math.max(hole.diameter, hole.headDiameter||0)/2 : hole.diameter/2;
+  const effR = ((hole.head==='sink'||hole.head==='bore') ? Math.max(hole.diameter, hole.headDiameter||0)/2 : hole.diameter/2) + (hole.head ? 0 : (hole.edgeCh||0));
   const hs = effR * 1.7;
   hole.u0 = Math.max(-(hu-hs), Math.min(hu-hs, hole.u0 || 0));
   hole.v0 = Math.max(-(hv-hs), Math.min(hv-hs, hole.v0 || 0));
@@ -5396,12 +5408,15 @@ function renderHoleCards() {
     const isSvg = hole.shape === 'svg';
     const dimFields = isSvg
       ? '<label>Ширина</label><input type="number" data-field="svgWidth" step="0.5" min="2" value="'+(hole.svgWidth ?? 20)+'">'+
-        '<label>Контур</label><button class="hole-svg-load" data-action="loadsvg">'+(hole.svgRU ? 'заменить SVG' : 'загрузить SVG…')+'</button>'
+        '<label>Контур</label><button class="hole-svg-load" data-action="loadsvg">'+(hole.svgRU ? 'заменить SVG' : 'загрузить SVG…')+'</button>'+
+        '<label>Фаска</label><input type="number" data-field="edgeCh" step="0.2" min="0" max="5" value="'+(hole.edgeCh ?? 0)+'">'
       : isR
       ? '<label>Ширина</label><input type="number" data-field="portW" step="0.5" min="1" value="'+(hole.portW ?? 9)+'">'+
         '<label>Высота</label><input type="number" data-field="portH" step="0.5" min="1" value="'+(hole.portH ?? 3.2)+'">'+
-        '<label>Радиус</label><input type="number" data-field="cornerR" step="0.2" min="0" value="'+(hole.cornerR ?? 1.6)+'"><label></label><span></span>'
-      : '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+(hole.diameter ?? 6)+'"><label></label><span></span>';
+        '<label>Радиус</label><input type="number" data-field="cornerR" step="0.2" min="0" value="'+(hole.cornerR ?? 1.6)+'">'+
+        '<label>Фаска</label><input type="number" data-field="edgeCh" step="0.2" min="0" max="5" value="'+(hole.edgeCh ?? 0)+'">'
+      : '<label>Диаметр</label><input type="number" data-field="diameter" step="0.5" min="0.6" value="'+(hole.diameter ?? 6)+'">'+
+        '<label>Фаска</label><input type="number" data-field="edgeCh" step="0.2" min="0" max="5" value="'+(hole.edgeCh ?? 0)+'">';
     // Countersink / counterbore head (circle holes only): a recessed seat for a screw head at the entry face.
     const headRow = (isR || isSvg) ? '' :
       '<div class="hole-shape-row">'+
@@ -6313,7 +6328,7 @@ function exportAssemblyJSON() {
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl,
         aspect:l.aspect, lockAspect:l.lockAspect })),
-      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
+      holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
         pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
         svgWidth:h.svgWidth, svgApU_img:h.svgApU_img, svgAqU_img:h.svgAqU_img,
         svgRU: h.svgRU ? Array.from(h.svgRU, v=>Math.round(v*1000)/1000) : undefined }))
@@ -6360,7 +6375,7 @@ function importAssemblyJSON(file) {
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';
         rec.logos = perModelLogos[i].filter(Boolean); // drop any logo whose image failed to decode
-        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth,
+        rec.holes = (md.holes||[]).map(h => ({ id: nextHoleId++, face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
           pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
           svgWidth:h.svgWidth, svgApU_img:h.svgApU_img, svgAqU_img:h.svgAqU_img, svgRU:h.svgRU }));
         models.push(rec);

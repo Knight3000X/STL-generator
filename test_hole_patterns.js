@@ -101,6 +101,36 @@ console.log('\n=== Connector presets carry sane cutouts ===');
   check('SD slot builds watertight', mc.watertight, mc);
 }
 
+console.log('\n=== 45° edge chamfer on hole rims (edgeCh) ===');
+{
+  setBox({ depth:20 });
+  const run = (hole) => { boxHoles.length=0; boxHoles.push(hole);
+    return buildTrisForShape('box', paramState.box); };
+  for (const [name, hole] of [
+    ['circle',  { id:1, face:'+Z', u0:0, v0:0, shape:'circle', diameter:8, edgeCh:1 }],
+    ['rrect',   { id:1, face:'+Z', u0:0, v0:0, shape:'rrect', portW:12, portH:5, cornerR:2, edgeCh:1 }],
+    ['pattern', { id:1, face:'+Z', u0:0, v0:0, shape:'circle', diameter:5, edgeCh:0.8, pattern:'grid', gridNU:2, gridNV:1, gridPU:22, gridPV:10 }],
+    ['side +X', { id:1, face:'+X', u0:0, v0:0, shape:'circle', diameter:8, edgeCh:1 }],
+  ]) {
+    const mc = manifoldCheck(run(hole), 4);
+    check(`edgeCh ${name}: watertight`, mc.watertight, mc);
+  }
+  // the entry opens edgeCh wider than the bore: min ring radius ON the face = r+ch, in the middle = r
+  const tris = run({ id:1, face:'+Z', u0:0, v0:0, shape:'circle', diameter:8, edgeCh:1 });
+  let faceMin = 1e9, midMin = 1e9;
+  for (const tr of tris) for (const p of tr) {
+    const rr = Math.hypot(p[0], p[1]);
+    if (rr > 8) continue; // only ring/bore vertices near the hole
+    if (Math.abs(p[2]) > 10 - 1e-6) faceMin = Math.min(faceMin, rr);
+    else midMin = Math.min(midMin, rr);
+  }
+  check('entry ring at r+ch ≈ 5', Math.abs(faceMin - 5) < 0.05, {faceMin:+faceMin.toFixed(3)});
+  check('bore at r ≈ 4', Math.abs(midMin - 4) < 0.05, {midMin:+midMin.toFixed(3)});
+  // countersink head suppresses the chamfer (its own entry geometry wins) — still watertight
+  const withHead = run({ id:1, face:'+Z', u0:0, v0:0, shape:'circle', diameter:6, head:'sink', headDiameter:10, headDepth:3, edgeCh:2 });
+  check('edgeCh + countersink: chamfer ignored, watertight', manifoldCheck(withHead,4).watertight);
+}
+
 boxHoles.length = 0;
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

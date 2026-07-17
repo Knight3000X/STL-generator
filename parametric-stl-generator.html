@@ -3162,6 +3162,9 @@ const SHAPE_PARAMS = {
     {group:'Перегородки (полый)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
     {group:'Перегородки (полый)', key:'divT', label:'Толщина перегородки', min:0.4, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Перегородки (полый)', key:'divH', label:'Высота перегородок (% высоты полости)', min:10, max:100, step:5, default:100, unit:'%', int:true},
+    {group:'Скат (полый)', key:'scoopDir', label:'Скат дна — сгребать к стенке', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'front',t:'к передней (+Z)'},{v:'back',t:'к задней (−Z)'},{v:'left',t:'к левой (−X)'},{v:'right',t:'к правой (+X)'}]},
+    {group:'Скат (полый)', key:'scoopRadius', label:'Радиус ската (0 = авто)', min:0, max:1000000, step:0.5, default:0, unit:'мм'},
     {group:'Gridfinity', key:'gfOn', label:'Gridfinity-бин (размеры ниже; Ш/В/Г игнорируются)', type:'bool', default:false},
     {group:'Gridfinity', key:'gfX', label:'Ячеек по X (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Gridfinity', key:'gfY', label:'Ячеек по Z (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3458,6 +3461,10 @@ function refreshActiveModelUI(){
     if (!paramState[shape] || paramState[shape][key] === undefined) return;
     if (inp.type === 'checkbox') inp.checked = !!paramState[shape][key];
     else inp.value = paramState[shape][key];
+  });
+  document.querySelectorAll('select.param-select[data-key]').forEach(sel => {
+    const shape = sel.dataset.shape || 'box', key = sel.dataset.key;
+    if (paramState[shape] && paramState[shape][key] !== undefined) sel.value = paramState[shape][key];
   });
   ['rx','ry','rz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = transformState[a]; });
   ['px','py','pz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = positionState[a]; });
@@ -4788,6 +4795,58 @@ function buildDividers(p) {
   }
   return out;
 }
+/* ---- Scoop ramp («скат»): a curved ramp on the cavity floor so parts collect at the low wall and
+   scoop out with one finger. Built as a SOLID prism sitting on the cavity floor (grid-independent,
+   watertight-by-construction, welded into the walls — same appended-shell approach as dividers),
+   so it needs no floor-grid cooperation. `scoopDir` names the LOW wall parts sweep toward; the ramp
+   rises against the OPPOSITE wall following a concave quarter-circle of radius R. Skipped for
+   curved / lattice / squircle / bulge / gridfinity floors. */
+const SCOOP_DIRS = { front:[2,+1], back:[2,-1], left:[0,-1], right:[0,+1] }; // → [horizAxis, lowSign]
+function buildScoopRamp(p){
+  const dir = SCOOP_DIRS[p.scoopDir]; if (!dir) return [];
+  const isHollow = !!p.hollow, isTray = !p.hollow && !!p.rim;
+  if (!isHollow && !isTray) return [];
+  if (p.squircle > 0 || p.latticeFloor || hasWallBulge(p) || p.logo3d || p.gfOn) return [];
+  if (p.filletRadius > 0 || p.filletInnerFloor > 0 || p.filletInnerVert > 0 || p.filletInnerLip > 0) return [];
+  const W = p.width, H = p.height, D = p.depth, t = clampWallThickness(W, H, D, p.wallThickness || 2);
+  const floorY = isHollow ? -H/2 + t : H/2 - clampRimHeight(H, p.rimHeight);
+  const cavH = H/2 - floorY;
+  if (cavH < 2) return [];
+  const [lowAxis, lowSign] = dir, perpAxis = lowAxis === 0 ? 2 : 0;
+  const dims = [W, H, D];
+  const aHalf = dims[lowAxis]/2 - t, bHalf = dims[perpAxis]/2 - t;
+  if (aHalf < 3 || bHalf < 2) return [];
+  const R = Math.max(3, Math.min(p.scoopRadius > 0 ? p.scoopRadius : Math.min(aHalf*0.55, cavH*0.55),
+    2*aHalf*0.95, cavH*0.9));
+  const embed = Math.max(0.4, Math.min(1, t * 0.6));
+  const highS = -lowSign * aHalf;                       // wall the ramp rises against
+  const yBot = floorY - embed, bLo = -bHalf - embed, bHi = bHalf + embed;
+  const M = Math.max(16, Math.round(R * 2));
+  const ribS = [], ribY = [];
+  for (let i = 0; i <= M; i++) {
+    const u = -embed + (R + embed) * i / M;             // distance from the high wall (starts inside it)
+    const h = u <= 0 ? R : R - Math.sqrt(Math.max(0, R*R - (u - R)*(u - R)));
+    ribS.push(highS + lowSign * u);
+    ribY.push(floorY + h);
+  }
+  const P = (s, b, y) => { const c = [0,0,0]; c[lowAxis] = s; c[perpAxis] = b; c[1] = y; return c; };
+  const out = [];
+  const quad = (A,B,C,Dp,ref) => { out.push(orient([A,B,C],ref)); out.push(orient([A,C,Dp],ref)); };
+  for (let i = 0; i < M; i++) {
+    const s0 = ribS[i], s1 = ribS[i+1], y0 = ribY[i], y1 = ribY[i+1];
+    quad(P(s0,bLo,y0), P(s1,bLo,y1), P(s1,bHi,y1), P(s0,bHi,y0), [0,1,0]);          // top (arc)
+    quad(P(s0,bLo,yBot), P(s0,bHi,yBot), P(s1,bHi,yBot), P(s1,bLo,yBot), [0,-1,0]); // bottom
+    const rp = [0,0,0]; rp[perpAxis] = -1;                                          // −perp cap
+    quad(P(s0,bLo,yBot), P(s1,bLo,yBot), P(s1,bLo,y1), P(s0,bLo,y0), rp);
+    const rpP = [0,0,0]; rpP[perpAxis] = 1;                                         // +perp cap
+    quad(P(s0,bHi,yBot), P(s0,bHi,y0), P(s1,bHi,y1), P(s1,bHi,yBot), rpP);
+  }
+  const rb = [0,0,0]; rb[lowAxis] = -lowSign;                                       // back wall (into high wall)
+  quad(P(ribS[0],bLo,yBot), P(ribS[0],bLo,ribY[0]), P(ribS[0],bHi,ribY[0]), P(ribS[0],bHi,yBot), rb);
+  const rf = [0,0,0]; rf[lowAxis] = lowSign;                                        // front lip (yBot..floorY)
+  quad(P(ribS[M],bLo,yBot), P(ribS[M],bHi,yBot), P(ribS[M],bHi,ribY[M]), P(ribS[M],bLo,ribY[M]), rf);
+  return out;
+}
 // Final safety weld: vertices closer than WELD_TOL (5e-5 mm — three orders below any printable
 // feature) are unified to one representative (the FIRST-seen original vertex — nothing moves), and
 // triangles that collapse onto a repeated vertex are dropped. Rationale: the same intended
@@ -5005,6 +5064,8 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
+  if (shape === 'box' && !p.logo3d && p.scoopDir && p.scoopDir !== 'none')
+    tris = tris.concat(buildScoopRamp(p));
   return snapWeldTris(tris);
 }
 function buildTrisForShapeCore(shape, p) {
@@ -5293,6 +5354,15 @@ function buildAllParamUI() {
         const span = document.createElement('span'); span.textContent = param.label;
         row.appendChild(cb); row.appendChild(span);
         body.appendChild(row);
+      } else if (param.type === 'select') {
+        const row = document.createElement('div');
+        row.className = 'param-row';
+        row.innerHTML =
+          '<label class="param-label">'+param.label+'</label>'+
+          '<select class="param-select" data-shape="'+shapeKey+'" data-key="'+param.key+'">'+
+          param.options.map(o=>'<option value="'+o.v+'"'+(o.v===param.default?' selected':'')+'>'+o.t+'</option>').join('')+
+          '</select>';
+        body.appendChild(row);
       } else {
         const row = document.createElement('div');
         row.className = 'param-row';
@@ -5328,6 +5398,9 @@ function attachEventListeners() {
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
       if (shape === 'box' && LOGO_CLAMP_KEYS.includes(key) && boxHoles.length) { boxHoles.forEach(clampHoleToFace); renderHoleCards(); }
       if (shape === currentShape) markPending();
+    } else if (t.matches('select.param-select') && t.dataset.shape) {
+      paramState[t.dataset.shape][t.dataset.key] = t.value;
+      if (t.dataset.shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
       if (t.dataset.shape === 'box' && t.dataset.key === 'hollow' && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }

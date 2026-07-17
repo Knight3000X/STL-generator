@@ -665,6 +665,20 @@
     cursor:pointer;
   }
   #btn-reset-view:hover{ background:rgba(111,183,219,0.18); }
+  #btn-move-mode{
+    position:absolute;
+    top:52px; right:14px;
+    background:rgba(10,34,56,0.7);
+    border:1px solid var(--blueprint-line);
+    color:var(--blueprint-line);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:11.5px;
+    padding:6px 10px;
+    border-radius:2px;
+    cursor:pointer;
+  }
+  #btn-move-mode:hover{ background:rgba(111,183,219,0.18); }
+  #btn-move-mode.active{ background:var(--redline); border-color:var(--redline); color:#fff; }
 
   /* ---------- responsive: stack on narrow screens ---------- */
   /* Drag handle between the preview and the panel (mobile only): lets the user resize the preview. */
@@ -703,6 +717,7 @@
     <div id="viewport"></div>
     <div id="busy-indicator" class="busy-indicator"><span class="busy-dot"></span>ГЕНЕРАЦИЯ…</div>
     <button id="btn-reset-view">⤾ сбросить вид</button>
+    <button id="btn-move-mode" title="Режим перемещения: тяните модель по площадке (вместо вращения камеры)">✥ перемещение</button>
     <button id="stale-badge" title="Модель тяжёлая — превью обновляется по этой кнопке или при экспорте">превью устарело — обновить</button>
     <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
   </div>
@@ -5314,6 +5329,10 @@ function attachEventListeners() {
   });
 
   document.getElementById('stale-badge').addEventListener('click', () => { if (pendingChanges) applyPending(); });
+  document.getElementById('btn-move-mode').addEventListener('click', (e) => {
+    moveMode = !moveMode;
+    e.currentTarget.classList.toggle('active', moveMode);
+  });
   updateApplyButton();
   attachSplitHandle();
   attachUndoListeners();
@@ -5992,6 +6011,51 @@ class SimpleOrbit {
   }
 }
 
+/* ---- Move mode: drag a model across the floor plane instead of orbiting -----------------------
+   The «✥ перемещение» toggle arms it. Handlers sit on the #viewport CONTAINER in the capture
+   phase, so a drag that starts ON a model is consumed before the orbit (bound to the canvas)
+   ever sees it; empty-space drags fall through and rotate the camera as usual. The grabbed model
+   becomes active and slides in the horizontal plane through the grab point (0.5mm snap), driving
+   the same positionState/px/pz fields as manual entry. */
+let moveMode = false;
+function attachModelDrag(){
+  const holder = document.getElementById('viewport');
+  const ray = new THREE.Raycaster();
+  const ndc = (e) => { const r = renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1); };
+  let dragId = null, plane = null, start = null, startP = null;
+  holder.addEventListener('pointerdown', (e) => {
+    if (!moveMode || !scene3DReady) return;
+    ray.setFromCamera(ndc(e), camera);
+    const meshes = [...modelMeshes.values()].filter(mm => mm.visible);
+    const hits = ray.intersectObjects(meshes, false);
+    if (!hits.length) return;              // empty space → the orbit rotates as usual
+    e.stopPropagation(); e.preventDefault();
+    for (const [id, m2] of modelMeshes) if (m2 === hits[0].object) { if (id !== activeModelId) activateModel(id); break; }
+    plane = new THREE.Plane(new THREE.Vector3(0,1,0), -hits[0].point.y);
+    start = hits[0].point.clone();
+    startP = { px: positionState.px, pz: positionState.pz };
+    dragId = e.pointerId;
+    holder.setPointerCapture(dragId);
+  }, true);
+  holder.addEventListener('pointermove', (e) => {
+    if (dragId === null || e.pointerId !== dragId) return;
+    e.stopPropagation();
+    ray.setFromCamera(ndc(e), camera);
+    const p = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, p)) return;
+    positionState.px = Math.round((startP.px + p.x - start.x)*2)/2;
+    positionState.pz = Math.round((startP.pz + p.z - start.z)*2)/2;
+    const ex = document.getElementById('px'), ez = document.getElementById('pz');
+    if (ex) ex.value = positionState.px;
+    if (ez) ez.value = positionState.pz;
+    applyPositionOnly();
+  }, true);
+  const endDrag = (e) => { if (dragId === null || e.pointerId !== dragId) return;
+    e.stopPropagation(); dragId = null; };
+  holder.addEventListener('pointerup', endDrag, true);
+  holder.addEventListener('pointercancel', endDrag, true);
+}
 function frameCamera(bbox) {
   const sizeX = bbox.maxX-bbox.minX, sizeY = bbox.maxY-bbox.minY, sizeZ = bbox.maxZ-bbox.minZ;
   const radius = Math.sqrt(sizeX*sizeX+sizeY*sizeY+sizeZ*sizeZ)/2 || 10;
@@ -6793,6 +6857,7 @@ function initScene3D() {
 
   initDimensionOverlay();
   controls = new SimpleOrbit(camera, renderer.domElement);
+  attachModelDrag();
 }
 
 init();

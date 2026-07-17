@@ -7,7 +7,7 @@
      - Static assets (icons, manifest): CACHE-FIRST with a background refresh (stale-while-revalidate).
    Bump CACHE_VERSION to ship a new build (the activate step drops old caches). Only runs over http(s);
    it is never registered on file://. */
-const CACHE_VERSION = 'stl-gen-v26';
+const CACHE_VERSION = 'stl-gen-v27';
 const SHELL = [
   './',
   'index.html',

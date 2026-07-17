@@ -17,7 +17,7 @@ function setGf(over){
   logos.length = 0; boxHoles.length = 0;
   Object.assign(paramState.box, {
     width:40, height:40, depth:40, hollow:false, rim:false, cavityDepth:0, wallThickness:1.6,
-    gfOn:true, gfX:1, gfY:1, gfU:3,
+    gfOn:true, gfX:1, gfY:1, gfU:3, gfLip:false, gfMagnets:false,
     divX:1, divZ:1, divT:1.2, divH:100, stackFeet:false, latticeFloor:false, chamferTop:0,
     filletRadius:0, filletTop:0, filletBottom:0, filletVert:0, squircle:0, squircleVBot:0,
     taperXPlus:0,taperXMinus:0,taperZPlus:0,taperZMinus:0,taperYPlusX:0,taperYPlusZ:0,taperYMinusX:0,taperYMinusZ:0,
@@ -94,6 +94,52 @@ console.log('\n=== Body features still work on a gf bin ===');
   // gfOn off -> ordinary box untouched
   const off = setGf({ gfOn:false });
   check('gfOn off: plain 40³ box', Math.abs(sv(off) - 40*40*40) < 1e-6, {vol:+sv(off).toFixed(0)});
+}
+
+console.log('\n=== Stacking lip (gfLip) ===');
+{
+  const tris = setGf({ gfLip:true });
+  const mc = manifoldCheck(tris, 4);
+  check('lip: watertight', mc.watertight, mc);
+  const b = bbox(tris);
+  check('lip adds 4.4mm on top (21 → 25.4)', Math.abs((b.hi[1]-b.lo[1]) - 25.4) < 1e-6, {h:+(b.hi[1]-b.lo[1]).toFixed(2)});
+  check('lip stays flush with the footprint', Math.abs((b.hi[0]-b.lo[0]) - 41.5) < 1e-6, {dx:+(b.hi[0]-b.lo[0]).toFixed(3)});
+  // NESTING: simulate inserting a foot until first contact — the seat must be deep (≥4.2 of the
+  // 4.4 lip) and contact must land on the 45° chamfer pair (self-centring), never mid-straight.
+  const lipOpening = d => 20.75 - (d <= 0 ? 0.25 : d < 1.65 ? 0.25 + d : d < 3.3 ? 1.9 : d < 4.1 ? 1.9 + (d - 3.3) : 2.7);
+  const footFromTip = t => t <= 0 ? 17.8 : t < 0.8 ? 17.8 + t : t < 2.6 ? 18.6 : Math.min(20.75, 18.6 + (t - 2.6));
+  let seat = 0;
+  for (let S = 0; S <= 4.4; S += 0.01) {
+    let ok = true;
+    for (let t = 0; t <= S; t += 0.05) if (footFromTip(t) > lipOpening(S - t) + 1e-9) ok = false;
+    if (ok) seat = S;
+  }
+  check('foot seats deep into the lip (≥4.2 of 4.4)', seat >= 4.2, {seat:+seat.toFixed(2)});
+  check('seated foot leaves a small stand-off (stacking pitch)', 4.75 - seat > 0.2 && 4.75 - seat < 0.8,
+    {standOff:+(4.75-seat).toFixed(2)});
+}
+
+console.log('\n=== Magnet pockets (gfMagnets) ===');
+{
+  const plain = setGf({});
+  const tris = setGf({ gfMagnets:true });
+  const mc = manifoldCheck(tris, 4);
+  check('magnets: watertight', mc.watertight, mc);
+  check('magnets remove material (4 pockets)', sv(plain) - sv(tris) > 4*Math.PI*3.25*3.25*2.4*0.7,
+    {cut:+(sv(plain)-sv(tris)).toFixed(1)});
+  const b = bbox(tris), yBot = b.lo[1];
+  // pocket ceiling: highest vertex inside the pocket footprint just above the foot bottom
+  let ceil = -1e9, rimMin = 1e9;
+  for (const tr of tris) for (const p of tr) {
+    const rr = Math.hypot(p[0]-13, p[2]-13);
+    if (rr < 3.3 && p[1] > yBot + 1e-6 && p[1] < yBot + 4) ceil = Math.max(ceil, p[1]);
+    if (Math.abs(p[1]-yBot) < 1e-9 && rr < 3.3) rimMin = Math.min(rimMin, rr);
+  }
+  check('pocket is 2.4mm deep', Math.abs((ceil - yBot) - 2.4) < 1e-6, {d:+(ceil-yBot).toFixed(2)});
+  check('pocket entry ring at r=3.25 (Ø6.5)', Math.abs(rimMin - 3.25) < 1e-6, {rimMin:+rimMin.toFixed(3)});
+  // 2×2: all 16 pockets, still watertight
+  const big = setGf({ gfMagnets:true, gfLip:true, gfX:2, gfY:2 });
+  check('2×2 + lip + magnets: watertight', manifoldCheck(big,4).watertight);
 }
 
 paramState.box.gfOn = false;

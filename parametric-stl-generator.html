@@ -3154,6 +3154,7 @@ const SHAPE_PARAMS = {
     {group:'Сетчатое дно', key:'latticeRib', label:'Сетка: толщина ребра', min:0.3, max:20, step:0.1, default:1.6, unit:'мм'},
     {group:'Сетчатое дно', key:'latticeBorder', label:'Сетка: сплошной кант (ячеек)', min:1, max:12, step:1, default:2, unit:'', int:true},
     {group:'Сетчатое дно', key:'latticeRound', label:'Сетка: скруглённый профиль ребра', type:'bool', default:false},
+    {group:'Сетчатое дно', key:'latticeRes', label:'Сетка: детализация дна', min:10, max:500, step:1, default:50, unit:'', int:true},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
@@ -3165,6 +3166,8 @@ const SHAPE_PARAMS = {
     {group:'Gridfinity', key:'gfX', label:'Ячеек по X (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Gridfinity', key:'gfY', label:'Ячеек по Z (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Gridfinity', key:'gfU', label:'Высота (юнитов по 7 мм)', min:2, max:12, step:1, default:3, unit:'', int:true},
+    {group:'Gridfinity', key:'gfLip', label:'Стекинг-губа сверху (бины ставятся друг на друга)', type:'bool', default:true},
+    {group:'Gridfinity', key:'gfMagnets', label:'Отверстия под магниты 6×2 (4 на ячейку)', type:'bool', default:false},
   ],
 };
 
@@ -4861,20 +4864,36 @@ function gfBodyParams(p){
     bulgeXPlus:0, bulgeXMinus:0, bulgeZPlus:0, bulgeZMinus:0, bulgeYPlus:0, bulgeYMinus:0,
   });
 }
+// CCW walk of a rectangle's perimeter with G points per edge (corners exact) — the shared point
+// order for lip rings and the magnet-cap boundary, so every band is a clean k→k prism.
+function rectPerimWalk(hx, hz, G){
+  const pts = [];
+  for (let i = 0; i < G; i++) pts.push([ -hx + 2*hx*i/G, -hz ]);
+  for (let i = 0; i < G; i++) pts.push([ hx, -hz + 2*hz*i/G ]);
+  for (let i = 0; i < G; i++) pts.push([ hx - 2*hx*i/G, hz ]);
+  for (let i = 0; i < G; i++) pts.push([ -hx, hz - 2*hz*i/G ]);
+  return pts;
+}
 function buildGridfinityFeet(p){
   const n = Math.max(1, Math.round(p.gfX||1)), m = Math.max(1, Math.round(p.gfY||1));
-  const yB = -p.height/2, N = 48, out = [];
-  const ring = (cx, cz, half, rc, y) => {
-    const pts = [];
-    for (let k = 0; k < N; k++) {
-      const ang = k*2*Math.PI/N, r = roundedRectDist(half, half, rc, ang);
-      pts.push([cx + r*Math.cos(ang), y, cz + r*Math.sin(ang)]);
-    }
-    return pts;
-  };
+  const yB = -p.height/2, out = [];
+  const magnets = !!p.gfMagnets;
+  // Angle list: uniform for the plain foot; for the magnet version the square cap's own perimeter
+  // angles, so the cap boundary and the profile rings share vertices exactly.
+  const G = 16, sq = 17.4, cell = 2*sq/G;
+  const sqPerim = rectPerimWalk(sq, sq, G);                 // 64 pts, local (x,z)
+  const angles = magnets ? sqPerim.map(pt => Math.atan2(pt[1], pt[0]))
+                         : Array.from({length: 48}, (_, k) => k*2*Math.PI/48);
+  const N = angles.length;
+  const ring = (cx, cz, half, rc, y) => angles.map(ang => {
+    const r = roundedRectDist(half, half, rc, ang);
+    return [cx + r*Math.cos(ang), y, cz + r*Math.sin(ang)];
+  });
+  const MAG_R = 3.25, MAG_D = 2.4, MAG_OFF = 13, HS = 4.2, NCIR = 20; // Ø6.5×2.4 pockets, 26mm apart
   for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
     const cx = (i - (n-1)/2)*GF_PITCH, cz = (j - (m-1)/2)*GF_PITCH;
-    const rings = GF_PROFILE.map(([dy, half, rc]) => ring(cx, cz, half, rc, yB - GF_FOOT_H + dy));
+    const yBot = yB - GF_FOOT_H;
+    const rings = GF_PROFILE.map(([dy, half, rc]) => ring(cx, cz, half, rc, yBot + dy));
     for (let L = 0; L < rings.length - 1; L++) {          // side bands, outward normals
       const A = rings[L], B2 = rings[L+1];
       for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
@@ -4883,10 +4902,90 @@ function buildGridfinityFeet(p){
         out.push(orient([A[k], B2[k1], B2[k]], ref));
       }
     }
-    const bot = rings[0], top = rings[rings.length-1];    // convex → centre-fan caps
-    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
-      out.push(orient([[cx, bot[0][1], cz], bot[k], bot[k1]], [0,-1,0]));
+    const bot = rings[0], top = rings[rings.length-1];
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;    // top cap (welded inside the floor): fan
       out.push(orient([[cx, top[0][1], cz], top[k], top[k1]], [0, 1,0]));
+    }
+    if (!magnets) {                                       // plain bottom: centre fan
+      for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+        out.push(orient([[cx, bot[0][1], cz], bot[k], bot[k1]], [0,-1,0]));
+      }
+      continue;
+    }
+    // MAGNET CAP: band from the profile's bottom ring to the square-grid perimeter (k→k, same
+    // angles), then a G×G grid square with one hole block per magnet — border→circle annulus +
+    // a blind bore up MAG_D and a ceiling disc (the classic watertight hole pattern).
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+      const P0 = [cx+sqPerim[k][0],  yBot, cz+sqPerim[k][1]], P1 = [cx+sqPerim[k1][0], yBot, cz+sqPerim[k1][1]];
+      out.push(orient([bot[k], bot[k1], P1], [0,-1,0]));
+      out.push(orient([bot[k], P1, P0], [0,-1,0]));
+    }
+    const holes = [[MAG_OFF, MAG_OFF], [-MAG_OFF, MAG_OFF], [MAG_OFF, -MAG_OFF], [-MAG_OFF, -MAG_OFF]];
+    const toI = v => (v + sq)/(2*sq)*G;
+    const blocks = holes.map(([hx, hz]) => ({ hx, hz,
+      i0: Math.max(0, Math.floor(toI(hx - HS))), i1: Math.min(G, Math.ceil(toI(hx + HS))),
+      j0: Math.max(0, Math.floor(toI(hz - HS))), j1: Math.min(G, Math.ceil(toI(hz + HS))) }));
+    const P = (ii, jj) => [cx - sq + cell*ii, yBot, cz - sq + cell*jj];
+    const inBlock = (ci, cj) => blocks.some(b => ci >= b.i0 && ci < b.i1 && cj >= b.j0 && cj < b.j1);
+    for (let ci = 0; ci < G; ci++) for (let cj = 0; cj < G; cj++) {
+      if (inBlock(ci, cj)) continue;
+      out.push(orient([P(ci,cj), P(ci+1,cj), P(ci+1,cj+1)], [0,-1,0]));
+      out.push(orient([P(ci,cj), P(ci+1,cj+1), P(ci,cj+1)], [0,-1,0]));
+    }
+    for (const b of blocks) {
+      const border = [];
+      for (let ii = b.i0; ii < b.i1; ii++) border.push([ii, b.j0]);
+      for (let jj = b.j0; jj < b.j1; jj++) border.push([b.i1, jj]);
+      for (let ii = b.i1; ii > b.i0; ii--) border.push([ii, b.j1]);
+      for (let jj = b.j1; jj > b.j0; jj--) border.push([b.i0, jj]);
+      const hcx = cx + b.hx, hcz = cz + b.hz;
+      const bPts = border.map(([ii,jj]) => P(ii,jj));
+      const cPts = bPts.map(pt => { const ang = Math.atan2(pt[2]-hcz, pt[0]-hcx);
+        return [hcx + MAG_R*Math.cos(ang), yBot, hcz + MAG_R*Math.sin(ang)]; });
+      const BN = bPts.length;
+      for (let k = 0; k < BN; k++) { const k1 = (k+1)%BN;   // annulus border→circle, faces down
+        out.push(orient([bPts[k], bPts[k1], cPts[k1]], [0,-1,0]));
+        out.push(orient([bPts[k], cPts[k1], cPts[k]], [0,-1,0]));
+      }
+      for (let k = 0; k < BN; k++) { const k1 = (k+1)%BN;   // pocket wall up MAG_D, faces the void
+        const T0 = [cPts[k][0],  yBot + MAG_D, cPts[k][2]], T1 = [cPts[k1][0], yBot + MAG_D, cPts[k1][2]];
+        const mid = [ (cPts[k][0]+cPts[k1][0])/2 - hcx, 0, (cPts[k][2]+cPts[k1][2])/2 - hcz ];
+        out.push(orient([cPts[k], cPts[k1], T1], [-mid[0], 0, -mid[2]]));
+        out.push(orient([cPts[k], T1, T0], [-mid[0], 0, -mid[2]]));
+      }
+      for (let k = 0; k < BN; k++) { const k1 = (k+1)%BN;   // pocket ceiling disc, faces down
+        out.push(orient([[hcx, yBot + MAG_D, hcz], [cPts[k][0], yBot + MAG_D, cPts[k][2]], [cPts[k1][0], yBot + MAG_D, cPts[k1][2]]], [0,-1,0]));
+      }
+    }
+  }
+  return out;
+}
+// Stacking lip: a closed frame (torus-like ring-stack) on the bin's top rim whose inner profile
+// mirrors the foot (1.9 chamfer / 1.8 straight / 0.7 chamfer, 4.4 tall) so another bin's feet
+// self-centre into it. Outer surface stays flush with the bin walls (rectPerimWalk corners are
+// exact); the frame sinks 0.5mm into the rim for a solid weld.
+function buildGridfinityLip(p){
+  const hx = p.width/2, hz = p.depth/2, y0 = p.height/2, G = 16;
+  // Inner profile = the FOOT profile offset by the print clearance, mirrored: opening (inset from
+  // the 20.75 outer half) 0.25 at the top → 45° to 1.9 (straight opening 18.85 = foot 18.6 + 0.25)
+  // → 45° to 2.7 (floor opening 18.05 = foot tip 17.8 + 0.25). A foot seats 4.35 deep on the
+  // matching 45° chamfer pair — bins stack self-centred with ~0.4mm stand-off, like the original.
+  const levels = [ // [y, inset] walked outer-bottom → outer-top → inner-top → … → inner-bottom
+    [y0 - 0.5, 0], [y0 + 4.4, 0], [y0 + 4.4, 0.25],
+    [y0 + 2.75, 1.9], [y0 + 1.1, 1.9], [y0 + 0.3, 2.7], [y0 - 0.5, 2.7],
+  ];
+  const rings = levels.map(([y, inset]) => rectPerimWalk(hx - inset, hz - inset, G).map(pt => [pt[0], y, pt[1]]));
+  const N = rings[0].length, out = [];
+  for (let L = 0; L < rings.length; L++) {
+    const A = rings[L], B2 = rings[(L+1) % rings.length];   // last band closes inner-bottom → outer-bottom
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+      // reference direction: outward for the outer wall, +Y top, inward for the inner profile, −Y bottom
+      const ref = L === 0 ? [A[k][0], 0, A[k][2]]
+        : L === 1 ? [0, 1, 0]
+        : L === rings.length - 1 ? [0, -1, 0]
+        : [-A[k][0], 0, -A[k][2]];
+      out.push(orient([A[k], A[k1], B2[k1]], ref));
+      out.push(orient([A[k], B2[k1], B2[k]], ref));
     }
   }
   return out;
@@ -4896,7 +4995,10 @@ function buildTrisForShape(shape, p) {
   const gf = shape === 'box' && p.gfOn && !p.logo3d;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
-  if (gf) tris = tris.concat(buildGridfinityFeet(p));
+  if (gf) {
+    tris = tris.concat(buildGridfinityFeet(p));
+    if (p.gfLip !== false) tris = tris.concat(buildGridfinityLip(p));
+  }
   if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
     tris = tris.concat(buildHingeKnuckles(p));
   if (shape === 'box' && p.stackFeet && !p.logo3d)
@@ -5017,7 +5119,10 @@ function buildTrisForShapeCore(shape, p) {
       // Compatible with the lattice floor (different region). Ports / squircle / fillet take earlier paths.
       const chamferOpts = ((p.chamferTop||0) > 0 && logos.length === 0 && !hasWallBulge(p))
         ? { width: p.chamferTop, angle: p.chamferAngle||45 } : null;
-      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, logoResolution, dispFns, taperFn, lat, bAmts||undefined, zones, logoResolution, chamferOpts);
+      // The lattice net rides the hollow build's uniform grid, so its own detail slider (up to 500,
+      // как у логотипов) drives the resolution while the net floor is on; otherwise logoResolution.
+      const hollowRes = lat ? Math.max(10, Math.min(500, Math.round(p.latticeRes || 50))) : logoResolution;
+      return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, hollowRes, dispFns, taperFn, lat, bAmts||undefined, zones, hollowRes, chamferOpts);
     }
 
     if (p.rim) {

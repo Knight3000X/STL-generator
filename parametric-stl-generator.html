@@ -3179,6 +3179,10 @@ const SHAPE_PARAMS = {
     {group:'Крепёжные уши', key:'mountScrew', label:'Отверстие уха (Ø под винт)', min:2, max:12, step:0.2, default:4, unit:'мм'},
     {group:'Крепёжные уши', key:'mountEarLen', label:'Вылет уха', min:8, max:1000000, step:0.5, default:14, unit:'мм'},
     {group:'Крепёжные уши', key:'mountEarThick', label:'Толщина уха', min:2, max:1000000, step:0.5, default:3, unit:'мм'},
+    {group:'Грип-насечка', key:'gripWall', label:'Скруглённые рёбра-грип на стенке', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'front',t:'передняя (+Z)'},{v:'back',t:'задняя (−Z)'},{v:'left',t:'левая (−X)'},{v:'right',t:'правая (+X)'}]},
+    {group:'Грип-насечка', key:'gripCount', label:'Число рёбер', min:2, max:12, step:1, default:4, unit:'', int:true},
+    {group:'Грип-насечка', key:'gripR', label:'Радиус ребра', min:0.8, max:1000000, step:0.1, default:1.5, unit:'мм'},
     {group:'Gridfinity', key:'gfOn', label:'Gridfinity-бин (размеры ниже; Ш/В/Г игнорируются)', type:'bool', default:false},
     {group:'Gridfinity', key:'gfX', label:'Ячеек по X (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Gridfinity', key:'gfY', label:'Ячеек по Z (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -4886,6 +4890,54 @@ function buildScoopRamp(p){
   quad(P(ribS[M],bLo,yBot), P(ribS[M],bHi,yBot), P(ribS[M],bHi,ribY[M]), P(ribS[M],bLo,ribY[M]), rf);
   return out;
 }
+/* ---- Finger grip («грип-насечка»): a stack of rounded horizontal ridges standing proud of a wall
+   for a comfortable, non-slip grip. Each ridge is a half-cylinder welded into the wall (flat side
+   embedded); appended-shell like the rest, so no wall surgery. Skipped for curved / tapered /
+   gridfinity walls. */
+const GRIP_DIRS = { front:[2,+1], back:[2,-1], left:[0,-1], right:[0,+1] }; // → [wallAxis, wallSign]
+function buildFingerGrip(p){
+  const dir = GRIP_DIRS[p.gripWall]; if (!dir) return [];
+  if (p.squircle > 0 || p.filletRadius > 0 || hasWallBulge(p) || p.logo3d || p.gfOn) return [];
+  if (p.taperXPlus||p.taperXMinus||p.taperZPlus||p.taperZMinus) return [];
+  const W = p.width, H = p.height, D = p.depth, dims = [W, H, D];
+  const [wallAxis, wallSign] = dir, perpAxis = wallAxis === 0 ? 2 : 0;
+  const wallS = wallSign * dims[wallAxis]/2;             // outer wall surface coordinate
+  const nCount = Math.max(2, Math.min(12, Math.round(p.gripCount || 4)));
+  const R = Math.max(0.8, Math.min(p.gripR > 0 ? p.gripR : 1.5, H*0.06));
+  const spacing = Math.max(2*R + 0.6, R*2.2);
+  const stackH = (nCount - 1) * spacing;
+  if (stackH > H*0.85) return buildFingerGrip(Object.assign({}, p, { gripCount: Math.max(2, nCount - 1) }));
+  const gripW = Math.min(dims[perpAxis]*0.6, dims[perpAxis] - 6);
+  if (gripW < 6) return [];
+  const embed = Math.min(R*0.5, 0.8);
+  const nFlat = wallS - wallSign*embed;                  // flat chord embedded in the wall
+  const M = 14, bLo = -gripW/2, bHi = gripW/2, out = [];
+  const P = (n, b, y) => { const c=[0,0,0]; c[wallAxis]=n; c[perpAxis]=b; c[1]=y; return c; };
+  for (let r = 0; r < nCount; r++) {
+    const yc = (r - (nCount-1)/2)*spacing;
+    const arc = [];                                     // semicircle bulging outward (+wallSign)
+    for (let k = 0; k <= M; k++) { const th = -Math.PI/2 + Math.PI*k/M;
+      arc.push([nFlat + wallSign*R*Math.cos(th), yc + R*Math.sin(th)]); }
+    for (let k = 0; k < M; k++) {                       // curved outer skin
+      const a0 = arc[k], a1 = arc[k+1];
+      const ref = [ (a0[0]+a1[0])/2 - nFlat, 0, 0 ]; ref[perpAxis] = 0;
+      const rn = [0,0,0]; rn[wallAxis] = wallSign;
+      out.push(orient([P(a0[0],bLo,a0[1]), P(a1[0],bLo,a1[1]), P(a1[0],bHi,a1[1])], rn));
+      out.push(orient([P(a0[0],bLo,a0[1]), P(a1[0],bHi,a1[1]), P(a0[0],bHi,a0[1])], rn));
+    }
+    // flat back (chord) face at nFlat, into the wall
+    const bk = [0,0,0]; bk[wallAxis] = -wallSign;
+    out.push(orient([P(nFlat,bLo,yc-R), P(nFlat,bLo,yc+R), P(nFlat,bHi,yc+R)], bk));
+    out.push(orient([P(nFlat,bLo,yc-R), P(nFlat,bHi,yc+R), P(nFlat,bHi,yc-R)], bk));
+    // two end caps: fan the half-disk from the arc's first endpoint (on the chord) — no interior
+    // apex, so the cap's chord edge matches the flat back edge exactly (no T-junction).
+    for (const [b, s] of [[bLo,-1],[bHi,1]]) { const cn=[0,0,0]; cn[perpAxis]=s;
+      for (let k = 1; k < M; k++)
+        out.push(orient([P(arc[0][0],b,arc[0][1]), P(arc[k][0],b,arc[k][1]), P(arc[k+1][0],b,arc[k+1][1])], cn));
+    }
+  }
+  return out;
+}
 /* ---- Mounting ears («крепёжные уши»): flat flanges flush with the container base, sticking out
    from the walls, each with a countersunk screw hole — screw the container down onto a shelf / to a
    wall. Built via buildBoxWithHoles (countersink machinery already proven) as appended shells welded
@@ -5243,6 +5295,8 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildLabelTab(p));
   if (shape === 'box' && !p.logo3d && p.mountHoles && p.mountHoles !== 'none')
     tris = tris.concat(buildMountEars(p));
+  if (shape === 'box' && !p.logo3d && p.gripWall && p.gripWall !== 'none')
+    tris = tris.concat(buildFingerGrip(p));
   return snapWeldTris(tris);
 }
 function buildTrisForShapeCore(shape, p) {

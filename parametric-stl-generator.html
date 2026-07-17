@@ -3165,6 +3165,9 @@ const SHAPE_PARAMS = {
     {group:'Скат (полый)', key:'scoopDir', label:'Скат дна — сгребать к стенке', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'front',t:'к передней (+Z)'},{v:'back',t:'к задней (−Z)'},{v:'left',t:'к левой (−X)'},{v:'right',t:'к правой (+X)'}]},
     {group:'Скат (полый)', key:'scoopRadius', label:'Радиус ската (0 = авто)', min:0, max:1000000, step:0.5, default:0, unit:'мм'},
+    {group:'Полка под ярлык (полый)', key:'labelTab', label:'Полка под ярлык на стенке', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'back',t:'задняя (−Z)'},{v:'front',t:'передняя (+Z)'},{v:'left',t:'левая (−X)'},{v:'right',t:'правая (+X)'}]},
+    {group:'Полка под ярлык (полый)', key:'labelDepth', label:'Глубина полки', min:4, max:1000000, step:0.5, default:12, unit:'мм'},
     {group:'Gridfinity', key:'gfOn', label:'Gridfinity-бин (размеры ниже; Ш/В/Г игнорируются)', type:'bool', default:false},
     {group:'Gridfinity', key:'gfX', label:'Ячеек по X (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Gridfinity', key:'gfY', label:'Ячеек по Z (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -4847,6 +4850,45 @@ function buildScoopRamp(p){
   quad(P(ribS[M],bLo,yBot), P(ribS[M],bHi,yBot), P(ribS[M],bHi,ribY[M]), P(ribS[M],bLo,ribY[M]), rf);
   return out;
 }
+/* ---- Label tab («полка под ярлык»): a self-supporting triangular bracket on the top-inner edge of
+   a chosen wall — a horizontal ledge at rim level where a label strip sits, with a 45° underside
+   (prints without support) welded into the wall. Same appended-shell approach. Skipped for curved /
+   bulged / rounded-fillet / gridfinity shapes (a flat prism can't match those rims). */
+const TAB_DIRS = { back:[2,-1], front:[2,+1], left:[0,-1], right:[0,+1] }; // → [wallAxis, wallSign]
+function buildLabelTab(p){
+  const dir = TAB_DIRS[p.labelTab]; if (!dir) return [];
+  const isHollow = !!p.hollow, isTray = !p.hollow && !!p.rim;
+  if (!isHollow && !isTray) return [];
+  if (p.squircle > 0 || hasWallBulge(p) || p.logo3d || p.gfOn) return [];
+  if (p.filletRadius > 0 || p.filletTop > 0 || p.filletVert > 0 || p.filletInnerVert > 0 || p.filletInnerLip > 0) return [];
+  const W = p.width, H = p.height, D = p.depth, t = clampWallThickness(W, H, D, p.wallThickness || 2);
+  const topRim = H/2, dims = [W, H, D];
+  const [wallAxis, wallSign] = dir, perpAxis = wallAxis === 0 ? 2 : 0;
+  const aHalf = dims[wallAxis]/2 - t, bHalf = dims[perpAxis]/2 - t;
+  if (aHalf < 4 || bHalf < 4) return [];
+  const floorY = isHollow ? -H/2 + t : H/2 - clampRimHeight(H, p.rimHeight);
+  const depth = Math.max(4, Math.min(p.labelDepth > 0 ? p.labelDepth : 12, 2*aHalf*0.6, (topRim - floorY) * 0.9));
+  const embed = Math.max(0.4, Math.min(1, t * 0.6));
+  const innerS = wallSign * aHalf;                     // inner wall face
+  const backS = innerS + wallSign * embed;             // embedded into the wall
+  const frontS = innerS - wallSign * depth;            // ledge front edge (into the cavity)
+  const yLedge = topRim, yBot = topRim - depth;        // 45° underside meets the wall `depth` below the rim
+  const bLo = -bHalf - embed, bHi = bHalf + embed;     // full width, welded into both side walls
+  const P = (s, b, y) => { const c = [0,0,0]; c[wallAxis] = s; c[perpAxis] = b; c[1] = y; return c; };
+  const A0=P(backS,bLo,yLedge), B0=P(frontS,bLo,yLedge), C0=P(backS,bLo,yBot);
+  const A1=P(backS,bHi,yLedge), B1=P(frontS,bHi,yLedge), C1=P(backS,bHi,yBot);
+  const out = [];
+  const capN = [0,0,0]; capN[perpAxis] = 1;
+  out.push(orient([A0,B0,C0], [-capN[0],-capN[1],-capN[2]]));   // −perp cap
+  out.push(orient([A1,B1,C1], capN));                          // +perp cap
+  const q = (a,b,c,d,ref)=>{ out.push(orient([a,b,c],ref)); out.push(orient([a,c,d],ref)); };
+  q(A0,B0,B1,A1, [0,1,0]);                                     // top ledge (label rests here)
+  const hy = [0,0,0]; hy[wallAxis] = -wallSign; hy[1] = -1;    // 45° underside faces down-into-cavity
+  q(B0,C0,C1,B1, hy);
+  const bk = [0,0,0]; bk[wallAxis] = wallSign;                 // back face (into the wall)
+  q(C0,A0,A1,C1, bk);
+  return out;
+}
 // Final safety weld: vertices closer than WELD_TOL (5e-5 mm — three orders below any printable
 // feature) are unified to one representative (the FIRST-seen original vertex — nothing moves), and
 // triangles that collapse onto a repeated vertex are dropped. Rationale: the same intended
@@ -5066,6 +5108,8 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildDividers(p));
   if (shape === 'box' && !p.logo3d && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
+  if (shape === 'box' && !p.logo3d && p.labelTab && p.labelTab !== 'none')
+    tris = tris.concat(buildLabelTab(p));
   return snapWeldTris(tris);
 }
 function buildTrisForShapeCore(shape, p) {

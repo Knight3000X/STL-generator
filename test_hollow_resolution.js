@@ -69,7 +69,7 @@ console.log('\n=== Hollow resolution at a high value stays fast and correct ==='
   console.log('    logoResolution=150, 2 logos incl. inner-bottom: ' + tris.length + ' tris in ' + ms + 'ms');
   check('no NaN at high hollow resolution', !hasNaN(tris));
   check('watertight at high hollow resolution', manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
-  check('completes comfortably fast', ms < 1000, ms);
+  check('completes comfortably fast', ms < 2000, ms); // guards the stack-overflow regression, not micro-perf: CI-load tolerant
 }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

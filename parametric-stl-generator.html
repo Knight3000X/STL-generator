@@ -3040,6 +3040,10 @@ const SHAPE_PARAMS = {
     {group:'Перегородки (полый)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
     {group:'Перегородки (полый)', key:'divT', label:'Толщина перегородки', min:0.4, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Перегородки (полый)', key:'divH', label:'Высота перегородок (% высоты полости)', min:10, max:100, step:5, default:100, unit:'%', int:true},
+    {group:'Gridfinity', key:'gfOn', label:'Gridfinity-бин (размеры ниже; Ш/В/Г игнорируются)', type:'bool', default:false},
+    {group:'Gridfinity', key:'gfX', label:'Ячеек по X (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Gridfinity', key:'gfY', label:'Ячеек по Z (×42 мм)', min:1, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Gridfinity', key:'gfU', label:'Высота (юнитов по 7 мм)', min:2, max:12, step:1, default:3, unit:'', int:true},
   ],
 };
 
@@ -4709,9 +4713,69 @@ function snapWeldTris(tris){
   }
   return out;
 }
+/* ---- Gridfinity bin («основание под базплейт») -----------------------------------------------
+   Grid pitch 42×42 mm. The bin body is an ordinary hollow container sized gfX·42−0.5 ×
+   gfY·42−0.5 × (gfU·7 − 4.75); one FOOT per cell protrudes 4.75 mm below it, following the
+   official socket profile bottom-up: 45° chamfer 0.8 (35.6→37.2), straight 1.8, 45° chamfer 2.15
+   (→41.5), corner radius growing 0.8→3.75 with the offset. Each foot is a closed ring-stack shell
+   (rounded-square rings via roundedRectDist, convex → centre-fan caps) welded 1 mm up into the
+   floor. Logos/holes/dividers/lattice of the body keep working — only the outer box dims and the
+   incompatible shape modes are overridden while gfOn. v1: no stacking lip, no magnet holes. */
+const GF_PITCH = 42, GF_CLEAR = 0.5, GF_FOOT_H = 4.75, GF_UNIT_H = 7;
+const GF_PROFILE = [ // [height above foot bottom, half-size, corner radius]
+  [0,    35.6/2, 0.8], [0.8, 37.2/2, 1.6], [2.6, 37.2/2, 1.6], [GF_FOOT_H, 41.5/2, 3.75],
+  [GF_FOOT_H + 1, 41.5/2, 3.75],  // +1mm welded up into the bin floor
+];
+function gfBodyParams(p){
+  const n = Math.max(1, Math.round(p.gfX||1)), m = Math.max(1, Math.round(p.gfY||1));
+  return Object.assign({}, p, {
+    width: n*GF_PITCH - GF_CLEAR, depth: m*GF_PITCH - GF_CLEAR,
+    height: Math.max(2, Math.round(p.gfU||3))*GF_UNIT_H - GF_FOOT_H,
+    hollow: true, rim: false, cavityDepth: 0,
+    squircle: 0, squircleVTop: 0, squircleVBot: 0,
+    filletRadius: 0, filletTop: 0, filletBottom: 0, filletVert: 0,
+    stackFeet: false, hingeRole: undefined, chamferTop: 0,
+    taperXPlus:0, taperXMinus:0, taperZPlus:0, taperZMinus:0,
+    taperYPlusX:0, taperYPlusZ:0, taperYMinusX:0, taperYMinusZ:0,
+    bulgeXPlus:0, bulgeXMinus:0, bulgeZPlus:0, bulgeZMinus:0, bulgeYPlus:0, bulgeYMinus:0,
+  });
+}
+function buildGridfinityFeet(p){
+  const n = Math.max(1, Math.round(p.gfX||1)), m = Math.max(1, Math.round(p.gfY||1));
+  const yB = -p.height/2, N = 48, out = [];
+  const ring = (cx, cz, half, rc, y) => {
+    const pts = [];
+    for (let k = 0; k < N; k++) {
+      const ang = k*2*Math.PI/N, r = roundedRectDist(half, half, rc, ang);
+      pts.push([cx + r*Math.cos(ang), y, cz + r*Math.sin(ang)]);
+    }
+    return pts;
+  };
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+    const cx = (i - (n-1)/2)*GF_PITCH, cz = (j - (m-1)/2)*GF_PITCH;
+    const rings = GF_PROFILE.map(([dy, half, rc]) => ring(cx, cz, half, rc, yB - GF_FOOT_H + dy));
+    for (let L = 0; L < rings.length - 1; L++) {          // side bands, outward normals
+      const A = rings[L], B2 = rings[L+1];
+      for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+        const ref = [ (A[k][0]+A[k1][0])/2 - cx, 0, (A[k][2]+A[k1][2])/2 - cz ];
+        out.push(orient([A[k], A[k1], B2[k1]], ref));
+        out.push(orient([A[k], B2[k1], B2[k]], ref));
+      }
+    }
+    const bot = rings[0], top = rings[rings.length-1];    // convex → centre-fan caps
+    for (let k = 0; k < N; k++) { const k1 = (k+1)%N;
+      out.push(orient([[cx, bot[0][1], cz], bot[k], bot[k1]], [0,-1,0]));
+      out.push(orient([[cx, top[0][1], cz], top[k], top[k1]], [0, 1,0]));
+    }
+  }
+  return out;
+}
 function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
+  const gf = shape === 'box' && p.gfOn && !p.logo3d;
+  if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
+  if (gf) tris = tris.concat(buildGridfinityFeet(p));
   if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
     tris = tris.concat(buildHingeKnuckles(p));
   if (shape === 'box' && p.stackFeet && !p.logo3d)

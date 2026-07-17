@@ -338,6 +338,12 @@
     transition:background 0.12s;
   }
   #btn-export:hover{ background:var(--redline-dark); }
+  #btn-export-3mf{
+    width:100%; margin-top:6px; padding:8px 0;
+    background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
+    color:var(--ink); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  }
+  #btn-export-3mf:hover{ border-color:var(--ink); }
   #btn-save-config, #btn-load-config{
     width:100%; padding:9px 0; margin-bottom:6px;
     background:var(--field-bg); border:1.5px solid var(--ink-soft); border-radius:2px;
@@ -840,6 +846,7 @@
 
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
+    <button id="btn-export-3mf" title="3MF: каждая видимая модель — отдельный объект (в слайсере сборка приедет раздельными деталями)">⬇ Скачать 3MF (детали раздельно)</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
     </details>
 
@@ -2459,6 +2466,105 @@ function trisToBinarySTL(tris) {
   return new Blob([buffer], {type:'application/sla'});
 }
 
+
+/* ---- 3MF export -------------------------------------------------------------------------------
+   3MF = an OPC zip with a Content-Types file, a root relationship and 3D/3dmodel.model (XML).
+   Unlike the merged STL, every VISIBLE model becomes its own <object> (rotation/position baked
+   into its vertices, same coordinates the STL export ships), so slicers see the assembly as
+   separate parts. The zip is written store-only (no deflate) with a real CRC32 — self-contained. */
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) { let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[i] = c >>> 0; }
+  return t;
+})();
+function crc32(data){
+  let c = ~0;
+  for (let i = 0; i < data.length; i++) c = (c >>> 8) ^ CRC32_TABLE[(c ^ data[i]) & 0xFF];
+  return (~c) >>> 0;
+}
+// entries: [{name, text}] → Blob of a stored (uncompressed) zip.
+function makeZipStore(entries){
+  const enc = new TextEncoder(), parts = [], central = [];
+  let offset = 0;
+  for (const e of entries){
+    const nameB = enc.encode(e.name), data = enc.encode(e.text), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, nameB.length, true);
+    parts.push(new Uint8Array(lh.buffer), nameB, data);
+    central.push({ nameB, crc, size: data.length, offset });
+    offset += 30 + nameB.length + data.length;
+  }
+  const cdStart = offset; let cdSize = 0;
+  for (const c of central){
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint32(16, c.crc, true); ch.setUint32(20, c.size, true); ch.setUint32(24, c.size, true);
+    ch.setUint16(28, c.nameB.length, true); ch.setUint32(42, c.offset, true);
+    parts.push(new Uint8Array(ch.buffer), c.nameB);
+    cdSize += 46 + c.nameB.length;
+  }
+  const eo = new DataView(new ArrayBuffer(22));
+  eo.setUint32(0, 0x06054b50, true);
+  eo.setUint16(8, central.length, true); eo.setUint16(10, central.length, true);
+  eo.setUint32(12, cdSize, true); eo.setUint32(16, cdStart, true);
+  parts.push(new Uint8Array(eo.buffer));
+  return new Blob(parts, { type: 'model/3mf' });
+}
+// One model's tris → a 3MF <object> (vertices deduped after 3-decimal rounding; degenerates dropped).
+function tris3MFObject(id, tris){
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const vmap = new Map(), verts = [], faces = [];
+  const idx = (p) => {
+    const x = r3(p[0]), y = r3(p[1]), z = r3(p[2]), k = x + ' ' + y + ' ' + z;
+    let i = vmap.get(k);
+    if (i === undefined) { i = verts.length; verts.push([x, y, z]); vmap.set(k, i); }
+    return i;
+  };
+  for (const t of tris){
+    const a = idx(t[0]), b = idx(t[1]), c = idx(t[2]);
+    if (a !== b && b !== c && a !== c) faces.push(a, b, c);
+  }
+  const s = ['<object id="' + id + '" type="model"><mesh><vertices>'];
+  for (const v of verts) s.push('<vertex x="' + v[0] + '" y="' + v[1] + '" z="' + v[2] + '"/>');
+  s.push('</vertices><triangles>');
+  for (let i = 0; i < faces.length; i += 3)
+    s.push('<triangle v1="' + faces[i] + '" v2="' + faces[i+1] + '" v3="' + faces[i+2] + '"/>');
+  s.push('</triangles></mesh></object>');
+  return s.join('');
+}
+// Every visible model as a separate object, transforms baked (same coords the merged STL exports).
+function assemblyTo3MF(){
+  saveActiveModel();
+  const objects = [], items = [];
+  let id = 1;
+  for (const m of models){
+    if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
+    let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
+    if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
+    objects.push(tris3MFObject(id, tris));
+    items.push('<item objectid="' + id + '"/>');
+    id++;
+  }
+  const model = '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<model unit="millimeter" xml:lang="und" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">' +
+    '<resources>' + objects.join('') + '</resources>' +
+    '<build>' + items.join('') + '</build></model>';
+  return makeZipStore([
+    { name: '[Content_Types].xml', text: '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>' },
+    { name: '_rels/.rels', text: '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Target="/3D/3dmodel.model" Id="rel0" ' +
+      'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>' },
+    { name: '3D/3dmodel.model', text: model },
+  ]);
+}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -5187,6 +5293,11 @@ function attachEventListeners() {
     if (scene3DReady && mesh) mesh.material.color.set(e.target.value);
   });
 
+  document.getElementById('btn-export-3mf').addEventListener('click', () => {
+    if (pendingChanges) applyPendingNow();
+    const nameRaw = document.getElementById('filename').value.trim() || 'model';
+    downloadBlob(assemblyTo3MF(), nameRaw.replace(/\.(stl|3mf)$/i,'') + '.3mf');
+  });
   document.getElementById('btn-export').addEventListener('click', () => {
     // Export commits any staged parameter/logo edits first, so the file always matches the
     // values currently in the panel (and the on-screen model updates to match).

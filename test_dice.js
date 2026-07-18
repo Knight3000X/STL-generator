@@ -54,6 +54,17 @@ console.log('=== relief + taper, + rounded dims ===');
 { base({platonic:'d100',width:50,height:50,depth:50}); for(let f=0;f<20;f++) dieFaces.push({id:nextDieId++,face:f*3,src:'text',depth:0.8,sizeFrac:0.55,rotation:0,invert:false,threshold:0.5,heightmap:blobHM(0.3)});
   chk('d100 partial relief watertight', manifoldCheck(buildTrisForShape('box',paramState.box),4).watertight); }
 
+console.log('=== NEGATIVE depth engraves (recessed) and stays watertight; volume drops below flat body ===');
+for(const k of ['d6','d8','d12','d20','d100']){
+  base({platonic:k}); const flat=vol(buildTrisForShape('box',paramState.box));
+  dieFaces.length=0; for(let f=0;f<DICE[k];f++) dieFaces.push({id:nextDieId++,face:f,src:'text',depth:-1.0,sizeFrac:0.5,rotation:0,invert:false,threshold:0.5,heightmap:blobHM(0.3)});
+  const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,4);
+  chk(k+' engraved (neg depth) watertight', mc.watertight, mc);
+  chk(k+' engraving removes material (vol < flat body)', vol(t) < flat, {flat,engraved:vol(t)});
+}
+{ base({platonic:'d20'}); const flat=vol(buildTrisForShape('box',paramState.box));
+  dieFaces.length=0; dieFaces.push({id:nextDieId++,face:0,src:'text',depth:1.2,sizeFrac:0.5,rotation:0,invert:false,threshold:0.5,heightmap:blobHM(0.3)});
+  chk('d20 emboss (pos depth) adds material (vol > flat body)', vol(buildTrisForShape('box',paramState.box)) > flat, {}); }
 console.log('=== invert (engrave-look silhouette) still watertight; empty threshold falls back ===');
 { base({platonic:'d6'}); dieFaces.push({id:nextDieId++,face:0,src:'text',depth:1.2,sizeFrac:0.5,rotation:0,invert:true,threshold:0.5,heightmap:blobHM()});
   chk('d6 inverted relief watertight', manifoldCheck(buildTrisForShape('box',paramState.box),4).watertight); }

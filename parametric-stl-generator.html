@@ -818,7 +818,7 @@
       </div>
       <input type="file" id="die-file-input" accept="image/*" style="display:none">
       <div id="die-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись выдавливает рельеф (номер, текст или логотип) на ОТДЕЛЬНОЙ грани — рельеф идёт отдельным замкнутым телом, приваренным к кости, поэтому модель остаётся водонепроницаемой и печатается без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа над гранью, «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. Детализация берётся из «Детализация логотипов» выше.</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись кладёт рельеф (номер, текст или логотип) на ОТДЕЛЬНУЮ грань — сама поверхность грани смещается по нормали, поэтому модель остаётся водонепроницаемой без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа: ПОЛОЖИТЕЛЬНАЯ выдавливает символы наружу, ОТРИЦАТЕЛЬНАЯ гравирует (символы утоплены в грань). «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. Детализация берётся из «Детализация логотипов» выше.</div></details>
       </details>
     </div>
 
@@ -4309,13 +4309,14 @@ function diePoly(kind){
 }
 // Number of faces for a die kind (drives the per-face relief submenu).
 function dieFaceCount(kind){ const P=diePoly(kind); return P ? P.polys.length : 0; }
-// Build the die body + per-face frames. faces[i] = { c:centroid, n:outward unit normal, u,v:in-plane
-// basis (right-handed with n so relief maps as a pure rotation → text never mirrors), r:footprint radius }.
-function buildDieBody(kind, hw, hh, hd){
-  const P=diePoly(kind); if(!P) return {tris:[], faces:[]};
+// Per-face polygons (3D) + frames for a die, scaled per-axis into width×height×depth. faces[i] =
+// { c:centroid, n:outward unit normal, u,v:in-plane basis (right-handed with n so relief maps as a pure
+// rotation → text never mirrors), r:footprint radius }.
+function dieFaceGeometry(kind, hw, hh, hd){
+  const P=diePoly(kind); if(!P) return {polys:[], faces:[]};
   let mx=1e-9,my=1e-9,mz=1e-9; for(const v of P.verts){ mx=Math.max(mx,Math.abs(v[0])); my=Math.max(my,Math.abs(v[1])); mz=Math.max(mz,Math.abs(v[2])); }
   const V=P.verts.map(v=>[v[0]/mx*hw, v[1]/my*hh, v[2]/mz*hd]);
-  const tris=[], faces=[];
+  const polys=[], faces=[];
   for(const poly of P.polys){
     const pts=poly.map(i=>V[i]), m=pts.length;
     const c=[0,0,0]; for(const q of pts){ c[0]+=q[0]; c[1]+=q[1]; c[2]+=q[2]; } c[0]/=m; c[1]/=m; c[2]/=m;
@@ -4323,42 +4324,87 @@ function buildDieBody(kind, hw, hh, hd){
       n[0]+=(a[1]-b[1])*(a[2]+b[2]); n[1]+=(a[2]-b[2])*(a[0]+b[0]); n[2]+=(a[0]-b[0])*(a[1]+b[1]); }
     n=normalize(n); if(dot(n,c)<0) n=[-n[0],-n[1],-n[2]];   // die is centred on origin → centroid = outward
     const u=normalize(sub(pts[0], c)), v=normalize(cross(u, n));  // (u,v,n) orientation-preserving map
-    for(let k=0;k<m;k++) tris.push(orient([c, pts[k], pts[(k+1)%m]], c));  // fan from centroid, outward
     let r=0; for(const q of pts) r+=Math.hypot(q[0]-c[0],q[1]-c[1],q[2]-c[2]); r/=m;
-    faces.push({c, n, u, v, r});
+    polys.push(pts); faces.push({c, n, u, v, r});
   }
-  return {tris:polyDropDegen(tris), faces};
+  return {polys, faces};
 }
-// Raised relief (number / logo / text) on ONE die face: a watertight extruded-silhouette slab that
-// straddles the face plane (sunk inside the body, protruding by `depth`). Appended to the die like a
-// divider — interpenetrating closed shells stay manifold and a slicer unions them into the body. `asg`
-// carries a logo-shaped {heightmap, rotation, invert, threshold, depth, sizeFrac}; `face` is a frame.
-function buildDieFaceRelief(face, asg, res){
-  if(!asg || !asg.heightmap) return [];
-  const N=Math.max(24, Math.min(220, Math.round(res||120)));
-  const obj={heightmap:asg.heightmap, rotation:asg.rotation||0, invert:!!asg.invert, threshold:(asg.threshold!=null?asg.threshold:0.5)};
-  const side=Math.max(1, (asg.sizeFrac||0.6)*face.r*2*0.9);   // footprint square on the face
-  const protrude=Math.max(0.2, asg.depth||0.8);
-  const d0=dot(face.c, face.n);                                // how deep the centre sits along the normal
-  const sink=Math.min(Math.max(0.8, protrude), Math.max(0.6, d0*0.6));
-  const local=buildLogoExtrudeTris(obj, side, side, sink+protrude, N);  // XZ footprint, Y thickness
-  const sh=(protrude-sink)/2, U=face.u, Vv=face.v, Nn=face.n, C=face.c;
-  return local.map(t=>t.map(q=>[
-    C[0]+q[0]*U[0]+q[2]*Vv[0]+(q[1]+sh)*Nn[0],
-    C[1]+q[0]*U[1]+q[2]*Vv[1]+(q[1]+sh)*Nn[1],
-    C[2]+q[0]*U[2]+q[2]*Vv[2]+(q[1]+sh)*Nn[2]]));
+// Back-compat: flat die body (no relief) + frames. Fan each polygon from its centroid, oriented outward.
+function buildDieBody(kind, hw, hh, hd){
+  const G=dieFaceGeometry(kind, hw, hh, hd), tris=[];
+  for(let f=0;f<G.polys.length;f++){ const pts=G.polys[f], c=G.faces[f].c, m=pts.length;
+    for(let k=0;k<m;k++) tris.push(orient([c, pts[k], pts[(k+1)%m]], c)); }
+  return {tris:polyDropDegen(tris), faces:G.faces};
 }
-// Whole die (body + every assigned face relief). `assignments` = the dieFaces array (each {face,heightmap,…}).
+// Signed surface-displacement function for one assigned face: fn(pt3D) → how far to move the surface
+// along the face normal at that point. Positive `depth` embosses (raised), NEGATIVE engraves (recessed) —
+// the symbol is cut INTO the face. Binary by threshold, like the flat-box logos. Depth is clamped so an
+// engrave can't punch through the die.
+function dieReliefDispFn(face, asg){
+  if(!asg || !asg.heightmap) return null;
+  const side=Math.max(1, (asg.sizeFrac||0.55)*face.r*2*0.9);
+  let depth=asg.depth||0; const cap=Math.max(0.2, face.r*0.6); depth=Math.max(-cap, Math.min(cap, depth));
+  if(Math.abs(depth)<1e-4) return null;
+  const rot=(asg.rotation||0)*Math.PI/180, cosR=Math.cos(-rot), sinR=Math.sin(-rot);
+  const thr=(asg.threshold!=null?asg.threshold:0.5), inv=!!asg.invert, C=face.c, U=face.u, Vv=face.v, hm=asg.heightmap;
+  return (p)=>{
+    const du=(p[0]-C[0])*U[0]+(p[1]-C[1])*U[1]+(p[2]-C[2])*U[2];
+    const dv=(p[0]-C[0])*Vv[0]+(p[1]-C[1])*Vv[1]+(p[2]-C[2])*Vv[2];
+    const lu=du*cosR-dv*sinR, lv=du*sinR+dv*cosR;
+    if(Math.abs(lu)>side/2 || Math.abs(lv)>side/2) return 0;
+    let val=sampleHeightmap(hm, (lu+side/2)/side, 1-(lv+side/2)/side); if(inv) val=1-val;
+    return val>thr ? depth : 0;
+  };
+}
+// Tessellate one die face into a radial grid (centroid → boundary) and displace it by `dispFn` along the
+// face normal — so the symbol rises out of (or sinks into) the actual surface. Boundary edges are split
+// into `k` shared segments (identical on the neighbouring face) and the outer ring carries ZERO
+// displacement, so the die stays watertight; `R` interior rings carry the relief.
+function buildDieFaceTess(face, poly, dispFn, k, R){
+  const m=poly.length, C=face.c, N=face.n, bnd=[];
+  for(let e=0;e<m;e++){ const a=poly[e], b=poly[(e+1)%m];
+    for(let s=0;s<k;s++){ const t=s/k; bnd.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]); } }
+  const M=bnd.length, disp=(p)=> dispFn?dispFn(p):0;
+  const rings=[];
+  for(let r=1;r<=R;r++){ const row=[], fr=r/R;
+    for(let j=0;j<M;j++){ const bx=C[0]+(bnd[j][0]-C[0])*fr, by=C[1]+(bnd[j][1]-C[1])*fr, bz=C[2]+(bnd[j][2]-C[2])*fr;
+      const d=(r===R)?0:disp([bx,by,bz]);
+      row.push([bx+N[0]*d, by+N[1]*d, bz+N[2]*d]); }
+    rings.push(row); }
+  const dC=disp(C), Cd=[C[0]+N[0]*dC, C[1]+N[1]*dC, C[2]+N[2]*dC], tris=[];
+  for(let j=0;j<M;j++){ const jn=(j+1)%M; tris.push(orient([Cd, rings[0][j], rings[0][jn]], N)); } // centre fan
+  for(let r=0;r<R-1;r++){ const A=rings[r], B=rings[r+1];
+    for(let j=0;j<M;j++){ const jn=(j+1)%M;
+      tris.push(orient([A[j], B[j], B[jn]], N)); tris.push(orient([A[j], B[jn], A[jn]], N)); } }
+  return polyDropDegen(tris);
+}
+// Whole die: flat body when no relief, otherwise every face tessellated (a global edge subdivision so
+// shared edges match) and the assigned faces displaced (emboss or engrave). Watertight by construction.
 function buildDie(kind, hw, hh, hd, assignments, res){
-  const body=buildDieBody(kind, hw, hh, hd);
-  let tris=body.tris;
-  if(assignments && assignments.length && body.faces.length){
-    for(const asg of assignments){
-      const fi=asg.face|0;
-      if(fi>=0 && fi<body.faces.length && asg.heightmap) tris=tris.concat(buildDieFaceRelief(body.faces[fi], asg, res));
+  const G=dieFaceGeometry(kind, hw, hh, hd);
+  const active=(assignments||[]).filter(a=>a && (a.face|0)>=0 && (a.face|0)<G.faces.length && a.heightmap);
+  if(!active.length){
+    const tris=[]; for(let f=0;f<G.polys.length;f++){ const pts=G.polys[f], c=G.faces[f].c;
+      for(let k=0;k<pts.length;k++) tris.push(orient([c, pts[k], pts[(k+1)%pts.length]], c)); }
+    return polyDropDegen(tris);
+  }
+  const byFace=new Map(); for(const a of active) byFace.set(a.face|0, a);   // last assignment on a face wins
+  const perim=Math.max(48, Math.min(240, Math.round(res||120)));
+  const k=Math.max(3, Math.min(28, Math.round(perim/10)));   // GLOBAL edge subdivision (shared → watertight)
+  const R=Math.max(8, Math.min(44, Math.round(perim/6)));
+  let tris=[];
+  for(let f=0;f<G.polys.length;f++){
+    const face=G.faces[f], poly=G.polys[f], asg=byFace.get(f);
+    if(asg) tris=tris.concat(buildDieFaceTess(face, poly, dieReliefDispFn(face, asg), k, R));
+    else {   // unassigned: flat, but boundary split into the SAME k so it welds with assigned neighbours
+      const c=face.c;
+      for(let e=0;e<poly.length;e++){ const a=poly[e], b=poly[(e+1)%poly.length];
+        for(let s=0;s<k;s++){ const t0=s/k, t1=(s+1)/k;
+          tris.push(orient([c, [a[0]+(b[0]-a[0])*t0,a[1]+(b[1]-a[1])*t0,a[2]+(b[2]-a[2])*t0],
+                               [a[0]+(b[0]-a[0])*t1,a[1]+(b[1]-a[1])*t1,a[2]+(b[2]-a[2])*t1]], face.n)); } }
     }
   }
-  return tris;
+  return polyDropDegen(tris);
 }
 
 // Full superellipsoid: the squircle prism with the TOP/BOTTOM edges also rounded. Horizontal exponent
@@ -7219,7 +7265,7 @@ function renderDieCards(){
       '</div>'+
       '<div class="logo-grid">'+
         '<div class="logo-field"><label>Размер %</label><input type="number" data-field="sizePct" step="5" min="10" max="100" value="'+Math.round((a.sizeFrac||0.55)*100)+'"></div>'+
-        '<div class="logo-field"><label>Глубина мм</label><input type="number" data-field="depth" step="0.1" min="0.2" value="'+a.depth+'"></div>'+
+        '<div class="logo-field"><label>Глубина мм (−гравировка)</label><input type="number" data-field="depth" step="0.1" min="-5" max="5" value="'+a.depth+'"></div>'+
         '<div class="logo-field"><label>Поворот °</label><input type="number" data-field="rotation" step="15" min="-180" max="180" value="'+(a.rotation||0)+'"></div>'+
         '<div class="logo-field"><label>Что</label><input type="text" value="'+(a.text? String(a.text).replace(/"/g,'&quot;') : (a.src==='image'?'картинка':'лого'))+'" disabled></div>'+
       '</div>'+

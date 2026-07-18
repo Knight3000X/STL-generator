@@ -7085,7 +7085,7 @@ function addLogoFromResult(result) {
     w,
     h: Math.max(2, Math.min(Math.round(w / aspect * 10) / 10, dims.vLen-3)),
     aspect, lockAspect: true,
-    depth: 2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
+    depth: -0.2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,  // утоплено по умолчанию
   };
   clampLogoToFace(logo);
   logos.push(logo);
@@ -7144,7 +7144,7 @@ function attachLogoEventListeners() {
     if (!result) return;
     addLogoFromResult(result);
     const l = logos[logos.length-1];
-    if (l) { l.depth = 0.8; }  // texture relief prints best shallow
+    if (l) { l.depth = -0.2; }  // утоплено по умолчанию (как остальные логотипы)
     if (logoResolution < 120) { // fine grid keeps the pattern's edges crisp
       logoResolution = 120;
       const el = document.getElementById('logo-resolution'); if (el) el.value = 120;
@@ -7278,7 +7278,7 @@ function addDieAssignmentFromResult(result, src, text){
   const kind = dieActiveKind(); if (!kind) return;
   const n = dieFaceCount(kind);
   dieFaces.push({ id: nextDieId++, face: nextFreeDieFace(n), src: src||'text', text: text||'',
-    depth: 0.9, sizeFrac: 0.55, rotation: 0, invert: !!result.suggestedInvert,
+    depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: !!result.suggestedInvert,   // утоплено по умолчанию
     threshold: 0.5, heightmap: result.heightmap, previewUrl: result.previewUrl });
   renderDieCards();
   if (currentShape === 'box') markPending();
@@ -7292,7 +7292,7 @@ function autoNumberDie(){
     const r = makeTextLogoResult(label(i), true);
     if (!r) continue;
     dieFaces.push({ id: nextDieId++, face: i, src:'text', text: label(i),
-      depth: 0.9, sizeFrac: 0.55, rotation: 0, invert: false, threshold: 0.5,
+      depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: false, threshold: 0.5,   // утоплено по умолчанию
       heightmap: r.heightmap, previewUrl: r.previewUrl });
   }
   renderDieCards();
@@ -8034,7 +8034,7 @@ function restoreDieFromDef(ad) {
       const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
       const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size);
       res({ id: nextDieId++, face: ad.face|0, src: ad.src||'text', text: ad.text||'',
-        depth: ad.depth!=null?ad.depth:0.9, sizeFrac: ad.sizeFrac!=null?ad.sizeFrac:0.55, rotation: ad.rotation||0,
+        depth: ad.depth!=null?ad.depth:-0.2, sizeFrac: ad.sizeFrac!=null?ad.sizeFrac:0.55, rotation: ad.rotation||0,
         invert: !!ad.invert, threshold: ad.threshold!=null?ad.threshold:0.5, heightmap, previewUrl: ad.previewUrl });
     };
     img.onerror = () => res(null);

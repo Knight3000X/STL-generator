@@ -29,5 +29,23 @@ console.log('=== slicing works on a polyhedron ===');
 { const t=base({polyN:6,hollow:true,wallThickness:3}); const {frags}=sliceMeshIntoFragments(t,35,35,35);
   let ok=frags.length>1; for(const f of frags) if(!manifoldCheck(f.tris,4).watertight) ok=false;
   chk('hex container slices into watertight fragments', ok, {n:frags.length}); }
+console.log('=== side logos on N-gon faces (solid + hollow) ===');
+{
+  const HM=()=>{ const N=LOGO_HM_SIZE,h=new Float32Array(N*N); for(let y=0;y<N;y++)for(let x=0;x<N;x++){const fx=x/N-0.5,fy=y/N-0.5;h[y*N+x]=(Math.hypot(fx,fy)<0.35)?1:0;} return h; };
+  const withLogo=(ov,logoOv)=>{ base(ov); const l=Object.assign({id:nextLogoId++,face:'+X',u0:0,v0:0,w:16,h:16,depth:1.5,threshold:0.5,invert:false,rotation:0,heightmap:HM(),previewUrl:null},logoOv); logos.push(l); clampLogoToFace(l); return buildTrisForShape('box',paramState.box); };
+  for(const N of [4,6,8,12]){ const t=withLogo({polyN:N},{face:'+X'}); chk('N='+N+' +X logo watertight',manifoldCheck(t,4).watertight,manifoldCheck(t,4)); }
+  const plain=base({polyN:6}).length, lg=withLogo({polyN:6},{face:'+X',depth:2}).length;
+  chk('logo adds relief (mesh grows)', lg>plain, {plain,lg});
+  for(const N of [4,6,8]){ const t=withLogo({polyN:N,hollow:true,wallThickness:3},{face:'+Z',depth:1.2}); chk('hollow N='+N+' logo watertight',manifoldCheck(t,4).watertight,manifoldCheck(t,4)); }
+  chk('hex logo + taper watertight', manifoldCheck(withLogo({polyN:6,taperXPlus:12},{face:'+X'}),4).watertight);
+}
+console.log('=== single-wall port (hole) through an N-gon face ===');
+{
+  base({polyN:6,hollow:true,wallThickness:3}); boxHoles.length=0;
+  boxHoles.push({id:nextHoleId++,face:'+Z',u0:0,v0:0,shape:'circle',diameter:8,pattern:'single'}); clampHoleToFace(boxHoles[0]);
+  const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,4);
+  chk('hex hollow + Ø8 port watertight (+vol)', mc.watertight && vol(t)>0, mc);
+  boxHoles.length=0;
+}
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

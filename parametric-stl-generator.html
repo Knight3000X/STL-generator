@@ -4003,6 +4003,51 @@ function buildPolyHollow(hw, hd, hh, ring, t, floorY){
     tris.push(orient([Vo(i,hh),Vo(j,hh),Vi(j,hh)],[0,1,0])); tris.push(orient([Vo(i,hh),Vi(j,hh),Vi(i,hh)],[0,1,0])); }
   return polyDropDegen(tris);
 }
+// Denser ring: subdivide every edge so no segment exceeds `maxEdge` — gives a flat face enough horizontal
+// samples to carry a crisp logo (a bare N-gon has only one point per corner).
+function polyRingDense(hw, hd, N, roundR, seg, maxEdge){
+  const base=polyRing(hw, hd, N, roundR, seg), out=[];
+  for(let i=0;i<base.length;i++){ const a=base[i], b=base[(i+1)%base.length];
+    const steps=Math.max(1, Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1])/Math.max(0.2,maxEdge)));
+    for(let s=0;s<steps;s++){ const u=s/steps; out.push([a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u]); } }
+  return out;
+}
+// N-gon prism / container WITH logo relief on the side faces. Reuses the squircle wall (squircleWall +
+// applySurfaceLogo): the ring is one closed loop, so it embosses as a height-field over a closed grid —
+// watertight by construction, and a logo placed on +X/-X/+Z/-Z maps to the polygon face pointing that way
+// (no new face UI). Caps/floor stay flat fans (cap logos aren't embossed here). `port` (optional) cuts a
+// single-wall window through one face, reusing the squircle port machinery (ring-generic).
+function polyLogoYSamp(hh, fineW, lo, hi){ const M=Math.max(2, Math.ceil((hi-lo)/fineW)), s=[]; for(let j=0;j<=M;j++) s.push(lo+(hi-lo)*j/M); return s; }
+function buildPolyPrismLogos(hw, hd, hh, N, roundR, seg, dispFns, logoRes){
+  const maxDim=Math.max(2*hw,2*hh,2*hd), fineW=Math.max(0.4, maxDim/Math.max(12,(logoRes||50)*2));
+  const ring=polyRingDense(hw,hd,N,roundR,seg,fineW), rn=ringNormalsXZ(ring), Nr=ring.length;
+  const ySamp=polyLogoYSamp(hh, fineW, -hh, hh);
+  const wall=squircleWall(ring, rn, Nr, ySamp, +1, dispFns);
+  const tris=[...wall.tris], c=polyRingCentroid(ring), top=wall.grid[ySamp.length-1], bot=wall.grid[0];
+  for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
+    tris.push(orient([[c[0],hh,c[1]], top[i], top[k]],[0,1,0]));
+    tris.push(orient([[c[0],-hh,c[1]], bot[i], bot[k]],[0,-1,0])); }
+  return polyDropDegen(tris);
+}
+function buildPolyHollowLogos(hw, hd, hh, N, roundR, seg, t, floorY, dispFns, logoRes, port){
+  const maxDim=Math.max(2*hw,2*hh,2*hd), fineW=Math.max(0.4, maxDim/Math.max(12,(logoRes||50)*2));
+  const outer=polyRingDense(hw,hd,N,roundR,seg,fineW), inner=polyInsetRing(outer,t);
+  const rnO=ringNormalsXZ(outer), rnI=ringNormalsXZ(inner), Nr=outer.length;
+  const ySampO=polyLogoYSamp(hh, fineW, -hh, hh), ySampI=polyLogoYSamp(hh, Math.max(fineW, (hh-floorY)/2), floorY, hh);
+  const pp = squirclePreparePort(port, outer, inner, rnO, Nr, ySampO, ySampI, fineW, floorY+0.6, hh-0.6);
+  const ow=squircleWall(outer, rnO, Nr, ySampO, +1, dispFns, pp.skip);
+  const iw=squircleWall(inner, rnI, Nr, ySampI, -1, null, pp.skip);
+  const tris=[...ow.tris, ...iw.tris];
+  for(const tr of pp.finish(ow.grid, iw.grid, ySampO, ySampI)) tris.push(tr);
+  const co=polyRingCentroid(outer), ci=polyRingCentroid(inner), obot=ow.grid[0], ifl=iw.grid[0];
+  for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
+    tris.push(orient([[co[0],-hh,co[1]], obot[i], obot[k]],[0,-1,0]));
+    tris.push(orient([[ci[0],floorY,ci[1]], ifl[i], ifl[k]],[0,1,0])); }
+  const otop=ow.grid[ySampO.length-1], itop=iw.grid[ySampI.length-1];
+  for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
+    tris.push(orient([otop[i],otop[k],itop[k]],[0,1,0])); tris.push(orient([otop[i],itop[k],itop[i]],[0,1,0])); }
+  return polyDropDegen(tris);
+}
 const POLY_PHI=(1+Math.sqrt(5))/2;
 const PLATONIC_SOLIDS = {
   tetrahedron: { v:[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]], f:[[0,1,2],[0,3,1],[0,2,3],[1,3,2]] },
@@ -5785,15 +5830,22 @@ function buildTrisForShapeCore(shape, p) {
       return applyTaper(snapWeldTris(buildPlatonic(p.platonic, p.width/2, p.height/2, p.depth/2)));
     }
     if ((p.polyN|0) >= 3) {
-      const hw=p.width/2, hh=p.height/2, hd=p.depth/2;
-      const ring = polyRing(hw, hd, p.polyN, p.polyRound||0, p.filletSeg||4);
+      const hw=p.width/2, hh=p.height/2, hd=p.depth/2, seg=p.filletSeg||4, N=p.polyN, rr=p.polyRound||0;
+      const hasLogos = logos.length > 0;
+      // side-wall logos ride the ring (dominant-normal face pick); a single-wall port pierces one face.
+      const dispFns = hasLogos ? buildCombinedLogoDispFns(q=>q) : null;
       let tris;
       if (p.hollow) {
-        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
-        const floorY = -hh + tW;
-        tris = buildPolyHollow(hw, hd, hh, ring, tW, floorY);
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2), floorY = -hh + tW;
+        const hasHoles = typeof boxHoles !== 'undefined' && boxHoles && boxHoles.length > 0;
+        const port = (hasHoles) ? portsForBuilder(p).filter(pt=>pt.axis!==1).map(squirclePortParams) : null;
+        if (hasLogos || (port && port.length))
+          tris = buildPolyHollowLogos(hw, hd, hh, N, rr, seg, tW, floorY, dispFns, logoResolution, port && port.length ? port : null);
+        else
+          tris = buildPolyHollow(hw, hd, hh, polyRing(hw, hd, N, rr, seg), tW, floorY);
       } else {
-        tris = buildPolyPrism(hw, hd, hh, ring);
+        if (hasLogos) tris = buildPolyPrismLogos(hw, hd, hh, N, rr, seg, dispFns, logoResolution);
+        else tris = buildPolyPrism(hw, hd, hh, polyRing(hw, hd, N, rr, seg));
       }
       return applyTaper(snapWeldTris(tris));
     }

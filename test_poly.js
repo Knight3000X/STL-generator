@@ -57,5 +57,17 @@ console.log('=== through-hole lattice floor on the N-gon container ===');
   chk('lattice + taper wt', manifoldCheck(lat({polyN:6,taperXPlus:8}),4).watertight);
   chk('tiny container: lattice falls back to solid floor, watertight', manifoldCheck(lat({polyN:6,width:24,depth:24}),4).watertight);
 }
+console.log('=== internal dividers on the N-gon container ===');
+{
+  const dv=(ov)=>{ base(Object.assign({width:80,height:36,depth:80,hollow:true,wallThickness:3,polyN:6,divT:1.4},ov)); return buildTrisForShape('box',paramState.box); };
+  for(const [dx,dz] of [[2,1],[1,2],[2,2],[3,2],[3,3]]){ const t=dv({divX:dx,divZ:dz}); chk(`div ${dx}x${dz} wt (+vol)`, manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4)); }
+  chk('dividers add material', vol(dv({divX:3,divZ:3})) > vol(dv({divX:1,divZ:1})), {});
+  for(const N of [4,5,8,12]) chk('N='+N+' 2x2 dividers wt', manifoldCheck(dv({polyN:N,divX:2,divZ:2}),4).watertight);
+  chk('rounded + dividers wt', manifoldCheck(dv({polyN:6,polyRound:6,divX:2,divZ:2}),4).watertight);
+  chk('partial-height dividers wt', manifoldCheck(dv({polyN:6,divX:2,divZ:2,divH:60}),4).watertight);
+  chk('dividers + lattice floor wt', manifoldCheck(dv({polyN:6,divX:2,divZ:2,latticeFloor:true,latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60}),4).watertight);
+  const a=dv({polyN:6,divX:2,divZ:2,taperXPlus:10}).length, b=dv({polyN:6,taperXPlus:10}).length;
+  chk('tapered container: dividers skipped (like the cube)', a===b, {a,b});
+}
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

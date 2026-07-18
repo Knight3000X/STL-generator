@@ -2428,6 +2428,17 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   let tris = [];
   const dfn = logoDispFnsByFace || {};
   const tf = taperFn || ((p)=>p);
+  // Pocket taper: the recess (floor + inner walls) must hang a UNIFORM depth `rh` below the tilted top,
+  // not follow the shell's linear bottom→top interpolation. Under a top tilt (наклон верха) that
+  // interpolation drops the flat floor to a plane that tilts LESS than the top, so the rim wall ends up
+  // taller on one side and can even vanish on the low side. Instead, for a pocket-slice point we take the
+  // tilted TOP height at its (x,z) and drop it by (hh − y) — so the floor is parallel to the top and the
+  // rim is the same height all around. With no Y-tilt this is identical to `tf` (topY===hh → returns tf(p)).
+  const tfPocket = (p) => { const base = tf(p); const topY = tf([p[0], hh, p[2]])[1], botY = tf([p[0], -hh, p[2]])[1];
+    // hang the point a uniform depth below the tilted top, but never below the solid base (keep a thin
+    // floor) — under a very steep tilt the low side runs out of material, so the pocket just gets
+    // shallower there instead of poking through the bottom. Mild tilts never hit the clamp → fully uniform.
+    return [base[0], Math.max(topY - (hh - p[1]), botY + 0.6), base[2]]; };
 
   // Zonal grid for wall logos: coarse flat shell + fine subdivisions only under each logo (see
   // buildHollowBox). Bulge passes full-span zones so its dome still gets a full-face grid.
@@ -2460,11 +2471,11 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
   const xMid = midSlice(xPositions, -(hw-t), hw-t);
   const zMid = midSlice(zPositions, -(hd-t), hd-t);
   const pocketYPositions = [hh-rh, hh];
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), pocketYPositions, zMid, [1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), pocketYPositions, zMid, [-1,0,0], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, pocketYPositions, [0,0,1], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, pocketYPositions, [0,0,-1], null, tf));
-  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh-rh, xMid, zMid, [0,1,0], dfn['-Y-inner'], tf));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, -(hw-t), pocketYPositions, zMid, [1,0,0], null, tfPocket));
+  tris = tris.concat(buildFaceFromPositionsTapered(1,2,0, (hw-t), pocketYPositions, zMid, [-1,0,0], null, tfPocket));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, -(hd-t), xMid, pocketYPositions, [0,0,1], null, tfPocket));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,1,2, (hd-t), xMid, pocketYPositions, [0,0,-1], null, tfPocket));
+  tris = tris.concat(buildFaceFromPositionsTapered(0,2,1, hh-rh, xMid, zMid, [0,1,0], dfn['-Y-inner'], tfPocket));
 
   // Rim frame at y=hh: flat annular border from the outer top edge to the pocket's top edge — the
   // visible "top of the wall" looking straight down at the tray. Tiled as a 3×3 band grid (minus the

@@ -141,5 +141,34 @@ console.log('\n=== Regression: plain solid box (rim=false, hollow=false) unaffec
   check('plain solid box + logo still watertight', manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
 }
 
+console.log('\n=== Top tilt (наклон верха): the rim stays a UNIFORM depth, no inverted/vanishing wall ===');
+{
+  // pocket depth = vertical extent of the pocket wall face at x=±(hw−t); should equal rimHeight on both
+  // sides (the pocket hangs a uniform depth below the tilted top, not a fraction of it).
+  const pocketDepth = (tris, hw, t, sgn) => { let lo=1e9, hi=-1e9;
+    for (const tr of tris) if (tr.every(p => Math.abs(p[0]-sgn*(hw-t)) < 0.3) && Math.abs((tr[0][2]+tr[1][2]+tr[2][2])/3) < 15)
+      for (const p of tr) { lo=Math.min(lo,p[1]); hi=Math.max(hi,p[1]); }
+    return hi-lo; };
+  for (const ang of [10, 20, 26]) {
+    setBox({ width:120, height:40, depth:80, wallThickness:4, rimHeight:12, taperYPlusX:ang }); logos.length = 0;
+    const tris = buildTrisForShape('box', paramState.box);
+    check(`top tilt ${ang}°: watertight`, manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
+    const dP = pocketDepth(tris, 60, 4, 1), dM = pocketDepth(tris, 60, 4, -1);
+    check(`top tilt ${ang}°: rim depth uniform (~12 both sides)`, Math.abs(dP-12)<0.2 && Math.abs(dM-12)<0.2, {plus:+dP.toFixed(2), minus:+dM.toFixed(2)});
+  }
+  // extreme tilt: the low side runs out of material → pocket clamps shallower there, but STILL watertight
+  // (the old bug produced a negative/inverted rim wall and a self-intersection here).
+  setBox({ width:120, height:40, depth:80, wallThickness:4, rimHeight:12, taperYPlusX:45 }); logos.length = 0;
+  const extreme = buildTrisForShape('box', paramState.box);
+  check('extreme top tilt: watertight (no breach through the base)', manifoldCheck(extreme,4).watertight, manifoldCheck(extreme,4));
+  check('extreme top tilt: low-side pocket clamped shallower, never inverted', pocketDepth(extreme,60,4,-1) > 0.5, {minus:+pocketDepth(extreme,60,4,-1).toFixed(2)});
+  // combined with wall taper + a pocket-floor logo, still watertight
+  setBox({ width:120, height:40, depth:80, wallThickness:4, rimHeight:12, taperYPlusX:20, taperYPlusZ:14, taperXPlus:10 }); logos.length = 0;
+  logos.push({ id:1, face:'-Y-inner', u0:0, v0:0, w:20, h:20, depth:1, threshold:0.5, invert:false, rotation:0, heightmap: makeSolidHeightmap(), previewUrl:'' });
+  for (const l of logos) clampLogoToFace(l);
+  check('top+Z tilt + wall taper + floor logo: watertight', manifoldCheck(buildTrisForShape('box', paramState.box),4).watertight);
+  logos.length = 0;
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail > 0 ? 1 : 0);

@@ -3279,6 +3279,10 @@ const SHAPE_PARAMS = {
     {group:'Размеры', key:'segW', label:'Сегменты X', min:1, max:20, step:1, default:1, unit:'', int:true},
     {group:'Размеры', key:'segH', label:'Сегменты Y', min:1, max:20, step:1, default:1, unit:'', int:true},
     {group:'Размеры', key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
+    {group:'Многогранник', key:'polyN', label:'Многогранник: число боковых граней (0 = куб)', min:0, max:64, step:1, default:0, unit:'', int:true},
+    {group:'Многогранник', key:'polyRound', label:'Многогранник: скругление вертикальных рёбер', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Многогранник', key:'platonic', label:'Правильный многогранник (перекрывает призму)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'tetrahedron',t:'тетраэдр (4)'},{v:'octahedron',t:'октаэдр (8)'},{v:'dodecahedron',t:'додекаэдр (12)'},{v:'icosahedron',t:'икосаэдр (20)'}]},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3928,6 +3932,97 @@ function buildSquirclePrism(w, h, d, p, resolution){
     tris.push(orient([botC,V(i,-hh),V(j,-hh)],[0,-1,0]));
   }
   return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; });
+}
+
+/* =========================================================
+   МНОГОГРАННИК: a configurable-face polyhedron. Two families — an N-gon PRISM (a regular N-sided polygon
+   inscribed in width×depth, extruded to height, optional rounded vertical edges; solid or hollow
+   container) and the Platonic SOLIDS (tetra/octa/dodeca/icosa scaled into the box). The prism extrudes a
+   2D ring exactly like the squircle prism; the hollow shell insets that ring by the wall thickness (miter
+   offset, same point count → the rim annulus matches). Watertight by construction. Taper is applied
+   afterwards (taperBoxTris, per-vertex) and slicing / lid / export ride the shared mesh pipeline.
+   ========================================================= */
+const p2sub=(a,b)=>[a[0]-b[0],a[1]-b[1]], p2add=(a,b)=>[a[0]+b[0],a[1]+b[1]], p2mul=(a,s)=>[a[0]*s,a[1]*s];
+const p2dot=(a,b)=>a[0]*b[0]+a[1]*b[1], p2len=a=>Math.hypot(a[0],a[1]), p2norm=a=>{ const l=p2len(a)||1; return [a[0]/l,a[1]/l]; };
+function polyDropDegen(tris){ return tris.filter(t=>{ const n=cross(sub(t[1],t[0]),sub(t[2],t[0])); return vlength(n)>1e-9; }); }
+// regular N-gon ring inscribed in hw×hd (a flat face at the −Z bottom), with optional corner rounding.
+function polyRing(hw, hd, N, roundR, seg){
+  N = Math.max(3, Math.round(N));
+  const phase = -Math.PI/2 + Math.PI/N;
+  const verts=[]; for(let i=0;i<N;i++){ const th=phase + 2*Math.PI*i/N; verts.push([hw*Math.cos(th), hd*Math.sin(th)]); }
+  if(!(roundR>0)) return verts;
+  seg=Math.max(1, Math.round(seg));
+  const ring=[];
+  for(let i=0;i<N;i++){
+    const P=verts[i], A=verts[(i-1+N)%N], B=verts[(i+1)%N];
+    const dA=p2norm(p2sub(A,P)), dB=p2norm(p2sub(B,P));
+    const half=Math.acos(Math.max(-1,Math.min(1,p2dot(dA,dB))))/2;
+    if(half<1e-4 || Math.abs(half-Math.PI/2)<1e-6){ ring.push(P); continue; }
+    const maxOff=Math.min(p2len(p2sub(A,P)), p2len(p2sub(B,P)))*0.5;
+    const off=Math.min(roundR/Math.tan(half), maxOff), r=off*Math.tan(half);
+    const bis=p2norm(p2add(dA,dB)), C=p2add(P, p2mul(bis, r/Math.sin(half)));
+    const t1=p2add(P, p2mul(dA, off)), t2=p2add(P, p2mul(dB, off));
+    let a1=Math.atan2(t1[1]-C[1], t1[0]-C[0]), a2=Math.atan2(t2[1]-C[1], t2[0]-C[0]);
+    let da=a2-a1; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+    for(let s=0;s<=seg;s++){ const a=a1+da*s/seg; ring.push([C[0]+r*Math.cos(a), C[1]+r*Math.sin(a)]); }
+  }
+  return ring;
+}
+function polyRingCentroid(ring){ const N=ring.length; return [ring.reduce((s,p)=>s+p[0],0)/N, ring.reduce((s,p)=>s+p[1],0)/N]; }
+// inset a convex ring inward by t (miter offset), same point count → outer/inner rims stay matched.
+function polyInsetRing(ring, t){
+  const N=ring.length, c=polyRingCentroid(ring), edgeN=[];
+  for(let i=0;i<N;i++){ const a=ring[i], b=ring[(i+1)%N]; let n=p2norm([-(b[1]-a[1]), b[0]-a[0]]);
+    if((n[0]*(c[0]-a[0])+n[1]*(c[1]-a[1]))<0) n=[-n[0],-n[1]]; edgeN.push(n); }
+  const out=[];
+  for(let i=0;i<N;i++){ const nA=edgeN[(i-1+N)%N], nB=edgeN[i], m=p2norm(p2add(nA,nB));
+    const d=t/Math.max(0.2, p2dot(m,nB)); out.push([ring[i][0]+m[0]*d, ring[i][1]+m[1]*d]); }
+  return out;
+}
+function buildPolyPrism(hw, hd, hh, ring){
+  const N=ring.length, tris=[], V=(i,y)=>[ring[i][0], y, ring[i][1]];
+  for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[ring[i][0]+ring[j][0], 0, ring[i][1]+ring[j][1]];
+    tris.push(orient([V(i,-hh),V(j,-hh),V(j,hh)], ref)); tris.push(orient([V(i,-hh),V(j,hh),V(i,hh)], ref)); }
+  const c=polyRingCentroid(ring), topC=[c[0],hh,c[1]], botC=[c[0],-hh,c[1]];
+  for(let i=0;i<N;i++){ const j=(i+1)%N;
+    tris.push(orient([topC,V(i,hh),V(j,hh)],[0,1,0])); tris.push(orient([botC,V(i,-hh),V(j,-hh)],[0,-1,0])); }
+  return polyDropDegen(tris);
+}
+function buildPolyHollow(hw, hd, hh, ring, t, floorY){
+  const inner=polyInsetRing(ring, t), N=ring.length, tris=[];
+  const Vo=(i,y)=>[ring[i][0],y,ring[i][1]], Vi=(i,y)=>[inner[i][0],y,inner[i][1]];
+  for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[ring[i][0]+ring[j][0],0,ring[i][1]+ring[j][1]];
+    tris.push(orient([Vo(i,-hh),Vo(j,-hh),Vo(j,hh)],ref)); tris.push(orient([Vo(i,-hh),Vo(j,hh),Vo(i,hh)],ref)); }
+  for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[-(inner[i][0]+inner[j][0]),0,-(inner[i][1]+inner[j][1])];
+    tris.push(orient([Vi(i,floorY),Vi(j,floorY),Vi(j,hh)],ref)); tris.push(orient([Vi(i,floorY),Vi(j,hh),Vi(i,hh)],ref)); }
+  const co=polyRingCentroid(ring), ci=polyRingCentroid(inner);
+  for(let i=0;i<N;i++){ const j=(i+1)%N;
+    tris.push(orient([[co[0],-hh,co[1]],Vo(i,-hh),Vo(j,-hh)],[0,-1,0]));
+    tris.push(orient([[ci[0],floorY,ci[1]],Vi(i,floorY),Vi(j,floorY)],[0,1,0])); }
+  for(let i=0;i<N;i++){ const j=(i+1)%N;
+    tris.push(orient([Vo(i,hh),Vo(j,hh),Vi(j,hh)],[0,1,0])); tris.push(orient([Vo(i,hh),Vi(j,hh),Vi(i,hh)],[0,1,0])); }
+  return polyDropDegen(tris);
+}
+const POLY_PHI=(1+Math.sqrt(5))/2;
+const PLATONIC_SOLIDS = {
+  tetrahedron: { v:[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]], f:[[0,1,2],[0,3,1],[0,2,3],[1,3,2]] },
+  octahedron:  { v:[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],
+                 f:[[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]] },
+  icosahedron: { v:[[0,1,POLY_PHI],[0,-1,POLY_PHI],[0,1,-POLY_PHI],[0,-1,-POLY_PHI],[1,POLY_PHI,0],[-1,POLY_PHI,0],[1,-POLY_PHI,0],[-1,-POLY_PHI,0],[POLY_PHI,0,1],[-POLY_PHI,0,1],[POLY_PHI,0,-1],[-POLY_PHI,0,-1]],
+                 f:[[0,1,8],[0,8,4],[0,4,5],[0,5,9],[0,9,1],[1,6,8],[8,6,10],[8,10,4],[4,10,2],[4,2,5],[5,2,11],[5,11,9],[9,11,7],[9,7,1],[1,7,6],[3,6,7],[3,7,11],[3,11,2],[3,2,10],[3,10,6]] },
+  dodecahedron:(()=>{ const iP=1/POLY_PHI; const v=[[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1],
+       [0,iP,POLY_PHI],[0,iP,-POLY_PHI],[0,-iP,POLY_PHI],[0,-iP,-POLY_PHI],[iP,POLY_PHI,0],[iP,-POLY_PHI,0],[-iP,POLY_PHI,0],[-iP,-POLY_PHI,0],[POLY_PHI,0,iP],[POLY_PHI,0,-iP],[-POLY_PHI,0,iP],[-POLY_PHI,0,-iP]];
+     const pent=[[0,8,10,2,16],[0,16,17,1,12],[0,12,14,4,8],[8,4,18,6,10],[2,10,6,15,13],[2,13,3,17,16],
+       [1,17,3,11,9],[1,9,5,14,12],[4,14,5,19,18],[6,18,19,7,15],[3,13,15,7,11],[5,9,11,7,19]];
+     const f=[]; for(const p of pent) for(let k=1;k<p.length-1;k++) f.push([p[0],p[k],p[k+1]]); return {v,f}; })(),
+};
+function buildPlatonic(kind, hw, hh, hd){
+  const S=PLATONIC_SOLIDS[kind]; if(!S) return [];
+  let mx=0,my=0,mz=0; for(const p of S.v){ mx=Math.max(mx,Math.abs(p[0])); my=Math.max(my,Math.abs(p[1])); mz=Math.max(mz,Math.abs(p[2])); }
+  const v=S.v.map(p=>[p[0]/mx*hw, p[1]/my*hh, p[2]/mz*hd]);
+  const tris=S.f.map(f=>{ const t=[v[f[0]],v[f[1]],v[f[2]]];
+    const ref=[(t[0][0]+t[1][0]+t[2][0])/3,(t[0][1]+t[1][1]+t[2][1])/3,(t[0][2]+t[1][2]+t[2][2])/3]; return orient(t, ref); });
+  return polyDropDegen(tris);
 }
 
 // Full superellipsoid: the squircle prism with the TOP/BOTTOM edges also rounded. Horizontal exponent
@@ -5643,26 +5738,28 @@ function buildTrisForShape(shape, p) {
   if (p && p.frozenId != null && frozenMeshes.has(p.frozenId)) return frozenMeshes.get(p.frozenId);
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
-  const gf = shape === 'box' && p.gfOn && !p.logo3d;
+  // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.platonic && p.platonic !== 'none'));
+  const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
   if (gf) {
     tris = tris.concat(buildGridfinityFeet(p));
     if (p.gfLip !== false) tris = tris.concat(buildGridfinityLip(p));
   }
-  if (shape === 'box' && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
+  if (shape === 'box' && !poly && (p.hingeRole === 'cup' || p.hingeRole === 'lid'))
     tris = tris.concat(buildHingeKnuckles(p));
-  if (shape === 'box' && p.stackFeet && !p.logo3d)
+  if (shape === 'box' && p.stackFeet && !p.logo3d && !poly)
     tris = tris.concat(buildStackFeet(p));
-  if (shape === 'box' && !p.logo3d && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && p.scoopDir && p.scoopDir !== 'none')
+  if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
-  if (shape === 'box' && !p.logo3d && p.labelTab && p.labelTab !== 'none')
+  if (shape === 'box' && !p.logo3d && !poly && p.labelTab && p.labelTab !== 'none')
     tris = tris.concat(buildLabelTab(p));
-  if (shape === 'box' && !p.logo3d && p.mountHoles && p.mountHoles !== 'none')
+  if (shape === 'box' && !p.logo3d && !poly && p.mountHoles && p.mountHoles !== 'none')
     tris = tris.concat(buildMountEars(p));
-  if (shape === 'box' && !p.logo3d && p.gripWall && p.gripWall !== 'none')
+  if (shape === 'box' && !p.logo3d && !poly && p.gripWall && p.gripWall !== 'none')
     tris = tris.concat(buildFingerGrip(p));
   return snapWeldTris(tris);
 }
@@ -5677,6 +5774,29 @@ function buildTrisForShapeCore(shape, p) {
     }
     const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
       p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+    const applyTaper = (tris) => taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+      p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+
+    // Многогранник: a Platonic solid, or an N-gon prism (solid / hollow container). Taper (наклон/сужение)
+    // rides the shared per-vertex map afterwards; slicing / lid / export come from the mesh pipeline. The
+    // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
+    // off for these in buildTrisForShape — they assume rectangular walls.
+    if (p.platonic && p.platonic !== 'none') {
+      return applyTaper(snapWeldTris(buildPlatonic(p.platonic, p.width/2, p.height/2, p.depth/2)));
+    }
+    if ((p.polyN|0) >= 3) {
+      const hw=p.width/2, hh=p.height/2, hd=p.depth/2;
+      const ring = polyRing(hw, hd, p.polyN, p.polyRound||0, p.filletSeg||4);
+      let tris;
+      if (p.hollow) {
+        const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        const floorY = -hh + tW;
+        tris = buildPolyHollow(hw, hd, hh, ring, tW, floorY);
+      } else {
+        tris = buildPolyPrism(hw, hd, hh, ring);
+      }
+      return applyTaper(snapWeldTris(tris));
+    }
 
     // Cylindrical through-holes: only on the PLAIN solid box (no hollow/rim/squircle/fillet/bulge/logos —
     // a flat wall is what keeps the bore watertight). Taper is fine: taperBoxTris is a per-vertex map, so
@@ -6716,10 +6836,19 @@ function setShading(smooth) {
   document.getElementById('shade-smooth').classList.toggle('active', smooth);
 }
 
+// Header label: reflects the polyhedron family so «форма: …» tracks polyN / platonic, not just 'куб'.
+function activeShapeLabel() {
+  if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
+  const p = paramState.box || {};
+  if (p.platonic && p.platonic !== 'none') return ({tetrahedron:'тетраэдр',octahedron:'октаэдр',dodecahedron:'додекаэдр',icosahedron:'икосаэдр'})[p.platonic] || 'многогранник';
+  if ((p.polyN|0) >= 3) return (p.polyN|0) + '-гранная призма';
+  return 'куб';
+}
+function updateShapeName() { const el = document.getElementById('active-shape-name'); if (el) el.textContent = activeShapeLabel(); }
 function switchShape(shapeKey) {
   currentShape = shapeKey;
   document.querySelectorAll('.param-group').forEach(g => g.style.display = (g.dataset.shape === shapeKey) ? '' : 'none');
-  document.getElementById('active-shape-name').textContent = SHAPE_LABELS[shapeKey];
+  updateShapeName();
   regenerate();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
@@ -7056,6 +7185,7 @@ function computeGeometry() {
   if (am) { am.rawTris = raw; am.bbox = bbox; }
   updateStatsPanel(tris, bbox);
   updateExportTotal();
+  updateShapeName(); // «форма: …» tracks polyN / platonic
   renderModelCards(); // keep per-card triangle counts fresh
   return bbox;
 }

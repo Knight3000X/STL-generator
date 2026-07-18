@@ -4135,6 +4135,61 @@ function buildPolyDividers(p){
     slab((lo+hi)/2, zi, (hi-lo)+2*embed, dT); }
   return out;
 }
+// Through-hole net on the SIDE WALL of an N-gon container: the ring-wall analog of emitLatticeFloor.
+// Perforates the band floorY..hh between the outer ring O and the inner ring I (both N points, matched).
+// The domain is (perimeter u around the ring, height v); the ring WRAPS (i is periodic) so there is no
+// vertical seam, and the top/bottom rows stay solid so the band seams to the rim and the solid base band.
+// Solid cell → outer + inner face quads; hole cell → radial rib walls closing the hole's solid edges.
+function emitPolyWallNet(tris, O, I, ySamp, rib, cell, borderCells, pattern){
+  const N=O.length, M=ySamp.length-1, pitch=Math.max(1e-3, cell);
+  const uMid=[]; let acc=0;
+  for(let i=0;i<N;i++){ const a=O[i], b=O[(i+1)%N]; uMid.push(acc + Math.hypot(b[0]-a[0],b[1]-a[1])/2); acc+=Math.hypot(b[0]-a[0],b[1]-a[1]); }
+  const bb=Math.min(Math.max(1,borderCells|0), Math.floor(M/2));
+  const solid=Array.from({length:N},()=>new Array(M).fill(false));
+  for(let i=0;i<N;i++) for(let j=0;j<M;j++){ if(j<bb||j>=M-bb){ solid[i][j]=true; continue; }
+    solid[i][j]=latticeSolidAt(uMid[i], (ySamp[j]+ySamp[j+1])/2 - ySamp[0], pitch, rib, pattern); }
+  // pinch removal (2×2 checkerboard), i wraps
+  let ch=true; while(ch){ ch=false; for(let i=0;i<N;i++) for(let j=0;j<M-1;j++){ const i2=(i+1)%N;
+    const a=solid[i][j], c1=solid[i2][j], c2=solid[i][j+1], d=solid[i2][j+1];
+    if(a&&d&&!c1&&!c2){ solid[i2][j]=true; ch=true; } else if(c1&&c2&&!a&&!d){ solid[i][j]=true; ch=true; } } }
+  const S=(i,j)=> (j<0||j>=M)?true : solid[((i%N)+N)%N][j];
+  const Op=(i,y)=>{ const k=((i%N)+N)%N; return [O[k][0], y, O[k][1]]; };
+  const Ip=(i,y)=>{ const k=((i%N)+N)%N; return [I[k][0], y, I[k][1]]; };
+  const quad=(a,b,c,d,ref)=>{ tris.push(orient([a,b,c],ref)); tris.push(orient([a,c,d],ref)); };
+  for(let i=0;i<N;i++) for(let j=0;j<M;j++){ if(!solid[i][j]) continue;
+    const y0=ySamp[j], y1=ySamp[j+1], i1=(i+1)%N;
+    const outRef=[O[i][0]+O[i1][0], 0, O[i][1]+O[i1][1]], inRef=[-outRef[0],0,-outRef[2]];
+    quad(Op(i,y0),Op(i1,y0),Op(i1,y1),Op(i,y1), outRef);        // outer face
+    quad(Ip(i,y0),Ip(i1,y0),Ip(i1,y1),Ip(i,y1), inRef);         // cavity face
+    if(!S(i-1,j)){ const r=[O[((i-1+N)%N)][0]-O[i][0],0,O[((i-1+N)%N)][1]-O[i][1]]; quad(Op(i,y0),Op(i,y1),Ip(i,y1),Ip(i,y0), r); }
+    if(!S(i+1,j)){ const r=[O[(i+2)%N][0]-O[i1][0],0,O[(i+2)%N][1]-O[i1][1]]; quad(Op(i1,y0),Ip(i1,y0),Ip(i1,y1),Op(i1,y1), r); }
+    if(!S(i,j-1)) quad(Op(i,y0),Ip(i,y0),Ip(i1,y0),Op(i1,y0), [0,-1,0]);
+    if(!S(i,j+1)) quad(Op(i,y1),Op(i1,y1),Ip(i1,y1),Ip(i,y1), [0,1,0]);
+  }
+}
+// Hollow N-gon container with a perforated SIDE WALL: solid outer base band (−hh..floorY) + perforated
+// band (floorY..hh) + outer bottom + cavity floor (plain fan or its own net) + top rim. Watertight.
+function buildPolyHollowWallLattice(hw, hd, hh, N, roundR, seg, t, floorY, wallLat, floorLat){
+  const fineW=Math.max(0.4, 2*Math.max(hw,hh,hd)/Math.max(12,(wallLat.res||60)));
+  const O=polyRingDense(hw,hd,N,roundR,seg,fineW), I=polyInsetRing(O,t), Nr=O.length, tris=[];
+  const Vo=(i,y)=>[O[i][0],y,O[i][1]];
+  // outer base band (−hh..floorY): solid outer wall below the perforation
+  for(let i=0;i<Nr;i++){ const j=(i+1)%Nr, ref=[O[i][0]+O[j][0],0,O[i][1]+O[j][1]];
+    tris.push(orient([Vo(i,-hh),Vo(j,-hh),Vo(j,floorY)],ref)); tris.push(orient([Vo(i,-hh),Vo(j,floorY),Vo(i,floorY)],ref)); }
+  // perforated wall band floorY..hh
+  const M=Math.max(4, Math.round((hh-floorY)/Math.max(wallLat.cell/2, fineW))); const ySamp=[]; for(let k=0;k<=M;k++) ySamp.push(floorY+(hh-floorY)*k/M);
+  emitPolyWallNet(tris, O, I, ySamp, wallLat.rib, wallLat.cell, wallLat.borderCells, wallLat.pattern);
+  // floor: its own net (emits BOTH outer bottom + cavity floor) if asked, else plain outer-bottom + cavity-floor fans
+  const latOK = floorLat && buildPolyLatticeFloor(tris, O, I, hh, floorY, floorLat.rib, floorLat.cell, floorLat.borderCells, floorLat.pattern, floorLat.res);
+  if(!latOK){ const co=polyRingCentroid(O), ci=polyRingCentroid(I);
+    for(let i=0;i<Nr;i++){ const j=(i+1)%Nr;
+      tris.push(orient([[co[0],-hh,co[1]],Vo(i,-hh),Vo(j,-hh)],[0,-1,0]));
+      tris.push(orient([[ci[0],floorY,ci[1]],[I[i][0],floorY,I[i][1]],[I[j][0],floorY,I[j][1]]],[0,1,0])); } }
+  // top rim annulus
+  for(let i=0;i<Nr;i++){ const j=(i+1)%Nr;
+    tris.push(orient([Vo(i,hh),Vo(j,hh),[I[j][0],hh,I[j][1]]],[0,1,0])); tris.push(orient([Vo(i,hh),[I[j][0],hh,I[j][1]],[I[i][0],hh,I[i][1]]],[0,1,0])); }
+  return polyDropDegen(tris);
+}
 const POLY_PHI=(1+Math.sqrt(5))/2;
 const PLATONIC_SOLIDS = {
   tetrahedron: { v:[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]], f:[[0,1,2],[0,3,1],[0,2,3],[1,3,2]] },
@@ -5931,7 +5986,11 @@ function buildTrisForShapeCore(shape, p) {
         const port = (hasHoles) ? portsForBuilder(p).filter(pt=>pt.axis!==1).map(squirclePortParams) : null;
         const latOpts = p.latticeFloor ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
           borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
-        if (hasLogos || (port && port.length))
+        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
+          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
+        if (wallLat)  // perforated side wall (overrides logos/ports on the wall)
+          tris = buildPolyHollowWallLattice(hw, hd, hh, N, rr, seg, tW, floorY, wallLat, latOpts);
+        else if (hasLogos || (port && port.length))
           tris = buildPolyHollowLogos(hw, hd, hh, N, rr, seg, tW, floorY, dispFns, logoResolution, port && port.length ? port : null, latOpts);
         else
           tris = buildPolyHollow(hw, hd, hh, polyRing(hw, hd, N, rr, seg), tW, floorY, latOpts);

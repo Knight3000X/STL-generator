@@ -807,6 +807,10 @@
     <div id="die-section" class="param-group" data-shape="box" style="display:none">
       <details class="panel-fold" open data-fold="Грани кости (номера / логотипы)"><summary class="section-label">Грани кости (номера / логотипы)</summary>
       <div id="die-face-count" class="export-note" style="margin-bottom:8px"></div>
+      <div class="param-row">
+        <label class="param-label">Детализация граней</label>
+        <div class="num-field"><input type="number" class="param-number" id="die-resolution" min="40" max="400" step="1" value="200"><span class="num-unit"></span></div>
+      </div>
       <div id="die-add-row">
         <input type="text" id="die-text-input" placeholder="Номер или текст на грань…" maxlength="12" spellcheck="false">
         <button id="btn-die-add-text" title="Добавить рельеф на следующую свободную грань">+ На грань</button>
@@ -818,7 +822,7 @@
       </div>
       <input type="file" id="die-file-input" accept="image/*" style="display:none">
       <div id="die-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись кладёт рельеф (номер, текст или логотип) на ОТДЕЛЬНУЮ грань — сама поверхность грани смещается по нормали, поэтому модель остаётся водонепроницаемой без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа: ПОЛОЖИТЕЛЬНАЯ выдавливает символы наружу, ОТРИЦАТЕЛЬНАЯ гравирует (символы утоплены в грань). «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. Детализация берётся из «Детализация логотипов» выше.</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись кладёт рельеф (номер, текст или логотип) на ОТДЕЛЬНУЮ грань — сама поверхность грани смещается по нормали, поэтому модель остаётся водонепроницаемой без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа: ПОЛОЖИТЕЛЬНАЯ выдавливает символы наружу, ОТРИЦАТЕЛЬНАЯ гравирует (символы утоплены в грань). «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. «Детализация граней» — отдельная от логотипов плотность сетки грани (выше = чётче цифры; на D100 автоматически ограничивается, чтобы не раздувать число треугольников).</div></details>
       </details>
     </div>
 
@@ -3777,6 +3781,9 @@ let nextHoleId = 1;
 // (fine only under each logo); for a plain / bulge-only shell and the lattice net grid it still drives
 // the whole-shell/cavity density.
 let logoResolution = 50;
+// Separate detail for die-face relief (numbers/logos on a кость): drives the per-face radial grid density
+// so dice can be crisp without inflating logo-grid triangle counts on every other shape. Higher = sharper.
+let dieResolution = 200;
 
 // Combines however many logos share a face into one dispFn per face (first matching
 // non-zero result wins where footprints overlap — i.e. earlier-added logos take priority).
@@ -4358,7 +4365,9 @@ function dieReliefDispFn(face, asg){
     const dv=(p[0]-C[0])*Vv[0]+(p[1]-C[1])*Vv[1]+(p[2]-C[2])*Vv[2];
     const lu=du*cosR-dv*sinR, lv=du*sinR+dv*cosR;
     if(Math.abs(lu)>side/2 || Math.abs(lv)>side/2) return 0;
-    let val=sampleHeightmap(hm, (lu+side/2)/side, 1-(lv+side/2)/side); if(inv) val=1-val;
+    // (u,v,n) is left-handed (v=cross(u,n) → u×v=−n), so viewed from OUTSIDE the glyph would mirror
+    // horizontally; flip u01 to read correctly on the face.
+    let val=sampleHeightmap(hm, 1-(lu+side/2)/side, 1-(lv+side/2)/side); if(inv) val=1-val;
     return val>thr ? depth : 0;
   };
 }
@@ -4395,9 +4404,13 @@ function buildDie(kind, hw, hh, hd, assignments, res){
     return polyDropDegen(tris);
   }
   const byFace=new Map(); for(const a of active) byFace.set(a.face|0, a);   // last assignment on a face wins
-  const perim=Math.max(48, Math.min(240, Math.round(res||120)));
-  const k=Math.max(3, Math.min(28, Math.round(perim/10)));   // GLOBAL edge subdivision (shared → watertight)
-  const R=Math.max(8, Math.min(44, Math.round(perim/6)));
+  // Detail: a global edge subdivision `k` (shared between neighbours → watertight) + `R` interior rings.
+  // Scaled down a little on many-faced dice (D100) so a high detail setting doesn't explode the triangle
+  // count. Higher `res` (the die-face detail control) → crisper numbers.
+  const nF=G.faces.length, dsc=nF>=60?0.5:(nF>=24?0.75:1);
+  const perim=Math.max(48, Math.min(420, Math.round(res||160)))*dsc;
+  const k=Math.max(4, Math.min(48, Math.round(perim/8)));    // GLOBAL edge subdivision (shared → watertight)
+  const R=Math.max(10, Math.min(72, Math.round(perim/5)));
   let tris=[];
   for(let f=0;f<G.polys.length;f++){
     const face=G.faces[f], poly=G.polys[f], asg=byFace.get(f);
@@ -6174,9 +6187,9 @@ function buildTrisForShapeCore(shape, p) {
     // off for these in buildTrisForShape — they assume rectangular walls.
     if (p.platonic && p.platonic !== 'none') {
       // Dice: D4/D6/D8/D12/D20 (Platonic) or D10/D100 (trapezohedra), with optional per-face relief
-      // (numbers / logos / text) from the dieFaces submenu, each embossed as an appended watertight slab.
+      // (numbers / logos / text) from the dieFaces submenu, displaced into the actual face surface.
       const dieAsg = (typeof dieFaces !== 'undefined' && dieFaces.length) ? dieFaces : null;
-      const dieRes = (typeof logoResolution !== 'undefined' ? logoResolution : 60) * 2;
+      const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
       return applyTaper(snapWeldTris(buildDie(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes)));
     }
     if ((p.polyN|0) >= 3) {
@@ -7354,6 +7367,12 @@ function attachDieEventListeners(){
     const idx = dieFaces.findIndex(x => x.id === id); if (idx >= 0) dieFaces.splice(idx,1);
     renderDieCards(); if (currentShape === 'box') markPending();
   });
+  const dieRes = document.getElementById('die-resolution');
+  const applyDieRes = (snap) => { let v = parseInt(dieRes.value, 10); if (Number.isNaN(v)) v = 200;
+    v = Math.max(40, Math.min(400, v)); if (snap) dieRes.value = v; dieResolution = v;
+    if (currentShape === 'box' && dieActiveKind() && dieFaces.length) markPending(); };
+  dieRes.addEventListener('input', () => applyDieRes(false));
+  dieRes.addEventListener('change', () => applyDieRes(true));
 }
 
 function setShading(smooth) {

@@ -23,9 +23,13 @@ console.log('=== per-axis fill (bbox = width×height×depth) ===');
       {x:b.maxX-b.minX,y:b.maxY-b.minY,z:b.maxZ-b.minZ}); }
 { const t=base({platonic:'d20'}); const b=computeBBox(t); chk('d20 fills 40mm on every axis', Math.abs((b.maxX-b.minX)-40)<0.5 && Math.abs((b.maxY-b.minY)-40)<0.5, {x:b.maxX-b.minX,y:b.maxY-b.minY}); }
 
-console.log('=== D10 / D100 trapezohedra are proper (kite faces, planar-ish) ===');
+console.log('=== D10 trapezohedron / D100 Zocchihedron are proper ===');
 { const P=diePoly('d10'); chk('d10 has 10 kite faces (all quads)', P.polys.length===10 && P.polys.every(p=>p.length===4), {n:P.polys.length}); }
-{ const P=diePoly('d100'); chk('d100 has 100 kite faces (all quads)', P.polys.length===100 && P.polys.every(p=>p.length===4), {n:P.polys.length}); }
+{ const P=diePoly('d100'); chk('d100 (Zocchihedron) has exactly 100 facets', P.polys.length===100, {n:P.polys.length});
+  const sides=P.polys.map(p=>p.length); chk('d100 facets are polygons (pent/hex, not kites)', sides.every(s=>s>=4&&s<=7) && sides.some(s=>s>=5), {min:Math.min(...sides),max:Math.max(...sides)});
+  // near-spherical: every vertex roughly equidistant from centre (unit-ish radius spread is tight)
+  let rmin=1e9,rmax=0; for(const v of P.verts){ const r=Math.hypot(v[0],v[1],v[2]); rmin=Math.min(rmin,r); rmax=Math.max(rmax,r); }
+  chk('d100 is near-spherical (vertex radius spread < 25%)', (rmax-rmin)/rmax < 0.25, {rmin,rmax}); }
 
 console.log('=== per-face relief (numbers/logos) appended, watertight ===');
 { // one relief on one face

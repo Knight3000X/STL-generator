@@ -47,5 +47,15 @@ console.log('=== single-wall port (hole) through an N-gon face ===');
   chk('hex hollow + Ø8 port watertight (+vol)', mc.watertight && vol(t)>0, mc);
   boxHoles.length=0;
 }
+console.log('=== through-hole lattice floor on the N-gon container ===');
+{
+  const lat=(ov)=>{ base(Object.assign({width:70,height:36,depth:70,hollow:true,wallThickness:3,polyN:6,latticeFloor:true,latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60},ov)); return buildTrisForShape('box',paramState.box); };
+  for(const N of [4,6,8,12]){ const t=lat({polyN:N}); chk('N='+N+' lattice floor wt (+vol)', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4)); }
+  for(const pat of ['diamond','square','triangle','hex']){ chk('N=8 '+pat+' lattice wt', manifoldCheck(lat({polyN:8,latticePattern:pat}),4).watertight); }
+  chk('lattice removes material (net floor < solid floor)', vol(lat({polyN:6})) < vol(base({polyN:6,hollow:true,wallThickness:3,width:70,height:36,depth:70})), {});
+  chk('lattice + rounded edges wt', manifoldCheck(lat({polyN:6,polyRound:6}),4).watertight);
+  chk('lattice + taper wt', manifoldCheck(lat({polyN:6,taperXPlus:8}),4).watertight);
+  chk('tiny container: lattice falls back to solid floor, watertight', manifoldCheck(lat({polyN:6,width:24,depth:24}),4).watertight);
+}
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

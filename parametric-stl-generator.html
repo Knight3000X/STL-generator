@@ -3988,17 +3988,19 @@ function buildPolyPrism(hw, hd, hh, ring){
     tris.push(orient([topC,V(i,hh),V(j,hh)],[0,1,0])); tris.push(orient([botC,V(i,-hh),V(j,-hh)],[0,-1,0])); }
   return polyDropDegen(tris);
 }
-function buildPolyHollow(hw, hd, hh, ring, t, floorY){
+function buildPolyHollow(hw, hd, hh, ring, t, floorY, latOpts){
   const inner=polyInsetRing(ring, t), N=ring.length, tris=[];
   const Vo=(i,y)=>[ring[i][0],y,ring[i][1]], Vi=(i,y)=>[inner[i][0],y,inner[i][1]];
   for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[ring[i][0]+ring[j][0],0,ring[i][1]+ring[j][1]];
     tris.push(orient([Vo(i,-hh),Vo(j,-hh),Vo(j,hh)],ref)); tris.push(orient([Vo(i,-hh),Vo(j,hh),Vo(i,hh)],ref)); }
   for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[-(inner[i][0]+inner[j][0]),0,-(inner[i][1]+inner[j][1])];
     tris.push(orient([Vi(i,floorY),Vi(j,floorY),Vi(j,hh)],ref)); tris.push(orient([Vi(i,floorY),Vi(j,hh),Vi(i,hh)],ref)); }
-  const co=polyRingCentroid(ring), ci=polyRingCentroid(inner);
-  for(let i=0;i<N;i++){ const j=(i+1)%N;
-    tris.push(orient([[co[0],-hh,co[1]],Vo(i,-hh),Vo(j,-hh)],[0,-1,0]));
-    tris.push(orient([[ci[0],floorY,ci[1]],Vi(i,floorY),Vi(j,floorY)],[0,1,0])); }
+  // floor: through-hole lattice (net rectangle + solid annulus) when asked, else plain outer-bottom + cavity-floor fans
+  const latOK = latOpts && buildPolyLatticeFloor(tris, ring, inner, hh, floorY, latOpts.rib, latOpts.cell, latOpts.borderCells, latOpts.pattern, latOpts.res);
+  if (!latOK) { const co=polyRingCentroid(ring), ci=polyRingCentroid(inner);
+    for(let i=0;i<N;i++){ const j=(i+1)%N;
+      tris.push(orient([[co[0],-hh,co[1]],Vo(i,-hh),Vo(j,-hh)],[0,-1,0]));
+      tris.push(orient([[ci[0],floorY,ci[1]],Vi(i,floorY),Vi(j,floorY)],[0,1,0])); } }
   for(let i=0;i<N;i++){ const j=(i+1)%N;
     tris.push(orient([Vo(i,hh),Vo(j,hh),Vi(j,hh)],[0,1,0])); tris.push(orient([Vo(i,hh),Vi(j,hh),Vi(i,hh)],[0,1,0])); }
   return polyDropDegen(tris);
@@ -4029,7 +4031,7 @@ function buildPolyPrismLogos(hw, hd, hh, N, roundR, seg, dispFns, logoRes){
     tris.push(orient([[c[0],-hh,c[1]], bot[i], bot[k]],[0,-1,0])); }
   return polyDropDegen(tris);
 }
-function buildPolyHollowLogos(hw, hd, hh, N, roundR, seg, t, floorY, dispFns, logoRes, port){
+function buildPolyHollowLogos(hw, hd, hh, N, roundR, seg, t, floorY, dispFns, logoRes, port, latOpts){
   const maxDim=Math.max(2*hw,2*hh,2*hd), fineW=Math.max(0.4, maxDim/Math.max(12,(logoRes||50)*2));
   const outer=polyRingDense(hw,hd,N,roundR,seg,fineW), inner=polyInsetRing(outer,t);
   const rnO=ringNormalsXZ(outer), rnI=ringNormalsXZ(inner), Nr=outer.length;
@@ -4039,14 +4041,66 @@ function buildPolyHollowLogos(hw, hd, hh, N, roundR, seg, t, floorY, dispFns, lo
   const iw=squircleWall(inner, rnI, Nr, ySampI, -1, null, pp.skip);
   const tris=[...ow.tris, ...iw.tris];
   for(const tr of pp.finish(ow.grid, iw.grid, ySampO, ySampI)) tris.push(tr);
-  const co=polyRingCentroid(outer), ci=polyRingCentroid(inner), obot=ow.grid[0], ifl=iw.grid[0];
-  for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
-    tris.push(orient([[co[0],-hh,co[1]], obot[i], obot[k]],[0,-1,0]));
-    tris.push(orient([[ci[0],floorY,ci[1]], ifl[i], ifl[k]],[0,1,0])); }
+  const latOK = latOpts && buildPolyLatticeFloor(tris, outer, inner, hh, floorY, latOpts.rib, latOpts.cell, latOpts.borderCells, latOpts.pattern, latOpts.res);
+  if (!latOK) { const co=polyRingCentroid(outer), ci=polyRingCentroid(inner), obot=ow.grid[0], ifl=iw.grid[0];
+    for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
+      tris.push(orient([[co[0],-hh,co[1]], obot[i], obot[k]],[0,-1,0]));
+      tris.push(orient([[ci[0],floorY,ci[1]], ifl[i], ifl[k]],[0,1,0])); } }
   const otop=ow.grid[ySampO.length-1], itop=iw.grid[ySampI.length-1];
   for(let i=0;i<Nr;i++){ const k=(i+1)%Nr;
     tris.push(orient([otop[i],otop[k],itop[k]],[0,1,0])); tris.push(orient([otop[i],itop[k],itop[i]],[0,1,0])); }
   return polyDropDegen(tris);
+}
+// Triangulate the annulus between a convex outer ring and a convex, concentric inner ring (a rectangle
+// here). Both are star-shaped about the shared centroid, so a two-ring angular STITCH is bulletproof (no
+// ear-clipping needed): sort each loop by angle about the centroid, then walk both, at each step joining
+// whichever loop's next vertex has the smaller angle — every outer and inner edge is used exactly once, so
+// the strip is watertight and non-overlapping. Winding is fixed by the caller (orient to the wanted normal).
+function polyStitchAnnulus(outer, inner){
+  const c=polyRingCentroid(outer);
+  const ang=p=>{ let a=Math.atan2(p[1]-c[1], p[0]-c[0]); return a<0?a+2*Math.PI:a; };
+  const ccw=lp=>{ let s=0; for(let k=0;k<lp.length;k++){ const p=lp[k],q=lp[(k+1)%lp.length]; s+=p[0]*q[1]-q[0]*p[1]; } return s>0?lp.slice():lp.slice().reverse(); };
+  const rot=lp=>{ let mi=0; for(let k=1;k<lp.length;k++) if(ang(lp[k])<ang(lp[mi])) mi=k; return lp.slice(mi).concat(lp.slice(0,mi)); };
+  const O=rot(ccw(outer)), H=rot(ccw(inner)), No=O.length, Nh=H.length;
+  const oA=[], hA=[];
+  for(let k=0;k<=No;k++) oA.push(ang(O[k%No]) + 2*Math.PI*Math.floor(k/No));   // unwrapped, monotone
+  for(let k=0;k<=Nh;k++) hA.push(ang(H[k%Nh]) + 2*Math.PI*Math.floor(k/Nh));
+  const tris=[]; let i=0, j=0;
+  while(i<No || j<Nh){
+    if(j>=Nh || (i<No && oA[i+1] <= hA[j+1])){ tris.push([O[i%No], O[(i+1)%No], H[j%Nh]]); i++; }
+    else { tris.push([O[i%No], H[(j+1)%Nh], H[j%Nh]]); j++; }
+  }
+  return tris;
+}
+// centred axis-aligned rectangle that fits inside a convex ring (about its centroid), scaled to the ring's
+// aspect so it fills as much of it as possible; then inset by `margin`.
+function polyInscribedRect(ring, margin){
+  const c=polyRingCentroid(ring); let mx=0,mz=0; for(const p of ring){ mx=Math.max(mx,Math.abs(p[0]-c[0])); mz=Math.max(mz,Math.abs(p[1]-c[1])); }
+  const inside=(x,z)=>{ let w=false; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>z)!==(yj>z)) && (x<(xj-xi)*(z-yi)/(yj-yi)+xi)) w=!w; } return w; };
+  let lo=0, hi=1; for(let it=0;it<24;it++){ const s=(lo+hi)/2, rw=mx*s, rz=mz*s;
+    const ok=inside(c[0]+rw,c[1]+rz)&&inside(c[0]-rw,c[1]+rz)&&inside(c[0]+rw,c[1]-rz)&&inside(c[0]-rw,c[1]-rz);
+    if(ok) lo=s; else hi=s; }
+  return { cx:c[0], cz:c[1], rw:Math.max(1, mx*lo-margin), rz:Math.max(1, mz*lo-margin) };
+}
+// Через-сквозная сетка на дне полого многогранника: сетчатый прямоугольник по центру (emitLatticeFloor) +
+// сплошная кольцевая область (annulus) от прямоугольника до стенок — многоугольник-с-прямоугольной-дыркой,
+// триангулированный ушным отсечением. Прямоугольная сетка и края annulus делят одни узлы → водонепроницаемо.
+function buildPolyLatticeFloor(tris, outerRing, innerRing, hh, floorY, rib, cell, borderCells, pattern, res){
+  const maxDim=2*Math.max(...outerRing.map(p=>Math.max(Math.abs(p[0]),Math.abs(p[1]))));
+  const R=polyInscribedRect(innerRing, Math.max(cell, 2)); // margin so the wall base stays solid
+  if(R.rw<cell || R.rz<cell) return false;                 // too small to net → caller keeps the plain floor
+  const step=Math.max(cell/3, maxDim/Math.max(10, Math.min(500, res||60)));
+  const nx=Math.max(4, Math.round(2*R.rw/step)), nz=Math.max(4, Math.round(2*R.rz/step));
+  const xMid=[], zMid=[]; for(let i=0;i<=nx;i++) xMid.push(R.cx-R.rw+2*R.rw*i/nx); for(let j=0;j<=nz;j++) zMid.push(R.cz-R.rz+2*R.rz*j/nz);
+  emitLatticeFloor(tris, xMid, zMid, xMid, zMid, -hh, floorY, rib, cell, borderCells, (p)=>p, false, null, null, null, pattern);
+  // rectangle perimeter with ALL grid points, matching the net's outer edge exactly (shared vertices)
+  const perim=[]; for(let i=0;i<nx;i++) perim.push([xMid[i], zMid[0]]); for(let j=0;j<nz;j++) perim.push([xMid[nx], zMid[j]]);
+  for(let i=nx;i>0;i--) perim.push([xMid[i], zMid[nz]]); for(let j=nz;j>0;j--) perim.push([xMid[0], zMid[j]]);
+  // annulus: cavity floor (floorY, up) = inner ring → rect; outer bottom (−hh, down) = outer ring → rect
+  for(const T of polyStitchAnnulus(innerRing, perim)) { const P=T.map(q=>[q[0],floorY,q[1]]); tris.push(orient(P,[0,1,0])); }
+  for(const T of polyStitchAnnulus(outerRing, perim)) { const P=T.map(q=>[q[0],-hh,q[1]]); tris.push(orient(P,[0,-1,0])); }
+  return true;
 }
 const POLY_PHI=(1+Math.sqrt(5))/2;
 const PLATONIC_SOLIDS = {
@@ -5764,13 +5818,14 @@ const sliceMeshIntoFragments = (function(){
       if(a===b||b===c||a===c) continue; const A=reps[a],B=reps[b],C=reps[c];
       const n=faceNormal(A,B,C); if(n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-14) continue; out.push([A,B,C]); }
     return out; }
-  return function(tris, sizeX, sizeY, sizeZ){
+  const slice = function(tris, sizeX, sizeY, sizeZ){
     const bb=bboxOf(tris);
     const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
     let cells=[tris]; cells=splitAll(cells,0,ix); cells=splitAll(cells,1,iy); cells=splitAll(cells,2,iz);
     const frags=cells.map(c=>weldFragment(c, 1.5e-4)).filter(c=>c.length>=4).map(c=>({tris:c, bb:bboxOf(c)}));
     return {frags, bb};
   };
+  return slice;
 })();
 
 // Frozen fragment meshes: models produced by the slicer are not parametric — they carry a `frozenId`
@@ -5839,10 +5894,12 @@ function buildTrisForShapeCore(shape, p) {
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2), floorY = -hh + tW;
         const hasHoles = typeof boxHoles !== 'undefined' && boxHoles && boxHoles.length > 0;
         const port = (hasHoles) ? portsForBuilder(p).filter(pt=>pt.axis!==1).map(squirclePortParams) : null;
+        const latOpts = p.latticeFloor ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
+          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
         if (hasLogos || (port && port.length))
-          tris = buildPolyHollowLogos(hw, hd, hh, N, rr, seg, tW, floorY, dispFns, logoResolution, port && port.length ? port : null);
+          tris = buildPolyHollowLogos(hw, hd, hh, N, rr, seg, tW, floorY, dispFns, logoResolution, port && port.length ? port : null, latOpts);
         else
-          tris = buildPolyHollow(hw, hd, hh, polyRing(hw, hd, N, rr, seg), tW, floorY);
+          tris = buildPolyHollow(hw, hd, hh, polyRing(hw, hd, N, rr, seg), tW, floorY, latOpts);
       } else {
         if (hasLogos) tris = buildPolyPrismLogos(hw, hd, hh, N, rr, seg, dispFns, logoResolution);
         else tris = buildPolyPrism(hw, hd, hh, polyRing(hw, hd, N, rr, seg));

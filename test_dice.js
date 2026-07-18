@@ -82,5 +82,27 @@ console.log('=== slicing works on a die ===');
   let ok=frags.length>1; for(const f of frags) if(!manifoldCheck(f.tris,4).watertight) ok=false;
   chk('d20 slices into watertight fragments', ok, {n:frags.length}); }
 
+console.log('=== opposite-face-sum numbering (fairness standard) ===');
+for(const [k,n,sumC] of [['d6',6,7],['d8',8,9],['d10',10,9],['d12',12,13],['d20',20,21]]){
+  const G=dieFaceGeometry(k,1,1,1), c=G.faces.map(f=>f.c), val=dieOppositeSumNumbering(k,n).map(Number);
+  let ok=true; for(let i=0;i<n;i++){ let bj=-1,bd=1e9; for(let j=0;j<n;j++){ if(j===i)continue; const dx=c[j][0]+c[i][0],dy=c[j][1]+c[i][1],dz=c[j][2]+c[i][2],d=dx*dx+dy*dy+dz*dz; if(d<bd){bd=d;bj=j;} } if(val[i]+val[bj]!==sumC) ok=false; }
+  const st=(k==='d10')?0:1, set=new Set(val); let all=true; for(let v=st;v<st+n;v++) if(!set.has(v)) all=false;
+  chk(k+' opposite faces sum to '+sumC+' + all values present', ok&&all, {val});
+}
+console.log('=== D4 apex-read corner numbering structure ===');
+{ const P=diePoly('d4'), sets=P.polys.map(poly=>poly.map(i=>i+1).sort().join('')).sort();
+  chk('d4 faces carry {123,124,134,234}', JSON.stringify(sets)===JSON.stringify(['123','124','134','234']), {sets});
+  const cnt={}; for(const poly of P.polys) for(const i of poly) cnt[i+1]=(cnt[i+1]||0)+1;
+  chk('d4 each number appears on 3 faces', [1,2,3,4].every(x=>cnt[x]===3), cnt); }
+console.log('=== multiple reliefs per face (D4 corner style) watertight ===');
+{ base({platonic:'d4'}); const G=dieFaceGeometry('d4',20,20,20); dieFaces.length=0;
+  for(let f=0;f<4;f++){ const face=G.faces[f], pts=G.polys[f];
+    for(let cnr=0;cnr<3;cnr++){ const q=pts[cnr];
+      const du=(q[0]-face.c[0])*face.u[0]+(q[1]-face.c[1])*face.u[1]+(q[2]-face.c[2])*face.u[2];
+      const dv=(q[0]-face.c[0])*face.v[0]+(q[1]-face.c[1])*face.v[1]+(q[2]-face.c[2])*face.v[2];
+      dieFaces.push({id:nextDieId++,face:f,src:'text',depth:-0.3,sizeFrac:0.28,rotation:0,invert:false,threshold:0.5,offU:du/face.r*0.56,offV:dv/face.r*0.56,heightmap:blobHM(0.3)}); } }
+  const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,4);
+  chk('d4 with 3 reliefs/face (12 total) watertight', mc.watertight, mc); dieFaces.length=0; }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

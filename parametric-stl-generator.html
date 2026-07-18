@@ -4359,7 +4359,10 @@ function dieReliefDispFn(face, asg){
   let depth=asg.depth||0; const cap=Math.max(0.2, face.r*0.6); depth=Math.max(-cap, Math.min(cap, depth));
   if(Math.abs(depth)<1e-4) return null;
   const rot=(asg.rotation||0)*Math.PI/180, cosR=Math.cos(-rot), sinR=Math.sin(-rot);
-  const thr=(asg.threshold!=null?asg.threshold:0.5), inv=!!asg.invert, C=face.c, U=face.u, Vv=face.v, hm=asg.heightmap;
+  const thr=(asg.threshold!=null?asg.threshold:0.5), inv=!!asg.invert, U=face.u, Vv=face.v, hm=asg.heightmap;
+  // optional in-plane offset (fractions of the face radius) — used for D4 corner numbers
+  const offU=(asg.offU||0)*face.r, offV=(asg.offV||0)*face.r;
+  const C=[face.c[0]+offU*U[0]+offV*Vv[0], face.c[1]+offU*U[1]+offV*Vv[1], face.c[2]+offU*U[2]+offV*Vv[2]];
   return (p)=>{
     const du=(p[0]-C[0])*U[0]+(p[1]-C[1])*U[1]+(p[2]-C[2])*U[2];
     const dv=(p[0]-C[0])*Vv[0]+(p[1]-C[1])*Vv[1]+(p[2]-C[2])*Vv[2];
@@ -4403,7 +4406,7 @@ function buildDie(kind, hw, hh, hd, assignments, res){
       for(let k=0;k<pts.length;k++) tris.push(orient([c, pts[k], pts[(k+1)%pts.length]], c)); }
     return polyDropDegen(tris);
   }
-  const byFace=new Map(); for(const a of active) byFace.set(a.face|0, a);   // last assignment on a face wins
+  const byFace=new Map(); for(const a of active){ const fi=a.face|0; (byFace.get(fi)||byFace.set(fi,[]).get(fi)).push(a); } // several per face (e.g. D4 corner numbers)
   // Detail: a global edge subdivision `k` (shared between neighbours → watertight) + `R` interior rings.
   // Scaled down a little on many-faced dice (D100) so a high detail setting doesn't explode the triangle
   // count. Higher `res` (the die-face detail control) → crisper numbers.
@@ -4413,8 +4416,12 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   const R=Math.max(10, Math.min(72, Math.round(perim/5)));
   let tris=[];
   for(let f=0;f<G.polys.length;f++){
-    const face=G.faces[f], poly=G.polys[f], asg=byFace.get(f);
-    if(asg) tris=tris.concat(buildDieFaceTess(face, poly, dieReliefDispFn(face, asg), k, R));
+    const face=G.faces[f], poly=G.polys[f], asgs=byFace.get(f);
+    if(asgs && asgs.length){
+      const fns=asgs.map(a=>dieReliefDispFn(face,a)).filter(Boolean);
+      const disp = fns.length ? (p)=>{ for(const fn of fns){ const d=fn(p); if(d) return d; } return 0; } : null;
+      tris=tris.concat(buildDieFaceTess(face, poly, disp, k, R));
+    }
     else {   // unassigned: flat, but boundary split into the SAME k so it welds with assigned neighbours
       const c=face.c;
       for(let e=0;e<poly.length;e++){ const a=poly[e], b=poly[(e+1)%poly.length];
@@ -7313,17 +7320,54 @@ function dieAmbiguousLabels(labels){
   }
   return mark;
 }
+// Standard "balanced" face numbering: opposite faces sum to N+1 (d10 uses 0…9 → sum 9), the convention
+// that keeps a slightly-imperfect die fair. Faces are paired by nearest antipode (centrally-symmetric
+// dice have an exact opposite for every face). Returns value-string per face index.
+function dieOppositeSumNumbering(kind, n){
+  const G = dieFaceGeometry(kind, 1, 1, 1), c = G.faces.map(f=>f.c), anti = new Array(n).fill(-1);
+  for(let i=0;i<n;i++){ let best=-1, bd=Infinity;
+    for(let j=0;j<n;j++){ if(j===i) continue;
+      const dx=c[j][0]+c[i][0], dy=c[j][1]+c[i][1], dz=c[j][2]+c[i][2], d=dx*dx+dy*dy+dz*dz;
+      if(d<bd){ bd=d; best=j; } }
+    anti[i]=best; }
+  const val = new Array(n).fill(null), start = (kind==='d10')?0:1, sumC = (kind==='d10')?9:(n+1);
+  let low = start;
+  for(let i=0;i<n;i++){ if(val[i]!=null) continue; const j=anti[i];
+    if(j>=0 && val[j]==null){ val[i]=low; val[j]=sumC-low; } else val[i]=low; low++; }
+  return val.map(String);
+}
+// Apex-read D4: a tetrahedron lands vertex-up, so the result is shown at the top POINT — each face carries
+// three numbers, one per corner, and the same number sits at a shared vertex on all three faces meeting
+// there. We number the 4 vertices 1..4 and emboss each vertex's number in the corner of every face that
+// touches it, rotated so the digit is upright when that vertex is the apex.
+function autoNumberD4(){
+  const P = diePoly('d4'), G = dieFaceGeometry('d4', 1, 1, 1);   // vertex indices + matching face frames/points
+  for(let f=0; f<P.polys.length; f++){
+    const face = G.faces[f], idxs = P.polys[f], pts = G.polys[f];
+    for(let k=0;k<idxs.length;k++){
+      const num = String(idxs[k]+1), cor = pts[k];
+      const du = dot(sub(cor,face.c), face.u), dv = dot(sub(cor,face.c), face.v);
+      const rotation = Math.atan2(-du, dv) * 180/Math.PI;   // glyph "up" → toward the corner
+      const res = makeTextLogoResult(num, true, false);
+      if(!res) continue;
+      dieFaces.push({ id: nextDieId++, face: f, src:'text', text: num,
+        depth: -0.2, sizeFrac: 0.30, rotation, invert: false, threshold: 0.5,
+        offU: du/face.r*0.56, offV: dv/face.r*0.56, heightmap: res.heightmap, previewUrl: res.previewUrl });
+    }
+  }
+}
 function autoNumberDie(){
   const kind = dieActiveKind(); if (!kind) return;
-  const n = dieFaceCount(kind);
   dieFaces.length = 0;
-  const label = (i) => (kind==='d10') ? String(i) : String(i+1);   // d10 dice read 0..9
-  const labels = []; for (let i=0;i<n;i++) labels.push(label(i));
-  const ambiguous = dieAmbiguousLabels(labels);   // these get a distinguishing underline
+  if (kind === 'd4') { autoNumberD4(); renderDieCards(); if (currentShape === 'box') markPending(); return; }
+  const n = dieFaceCount(kind);
+  // D100 (Zocchihedron) isn't antipodally paired → number sequentially; the rest use opposite-sum balancing.
+  const byFaceVal = (kind === 'd100') ? Array.from({length:n}, (_,i)=>String(i+1)) : dieOppositeSumNumbering(kind, n);
+  const ambiguous = dieAmbiguousLabels(byFaceVal);   // 6/9 (and D100 pairs) get a distinguishing underline
   for (let i=0;i<n;i++){
-    const r = makeTextLogoResult(labels[i], true, ambiguous.has(labels[i]));
+    const r = makeTextLogoResult(byFaceVal[i], true, ambiguous.has(byFaceVal[i]));
     if (!r) continue;
-    dieFaces.push({ id: nextDieId++, face: i, src:'text', text: labels[i],
+    dieFaces.push({ id: nextDieId++, face: i, src:'text', text: byFaceVal[i],
       depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: false, threshold: 0.5,   // утоплено по умолчанию
       heightmap: r.heightmap, previewUrl: r.previewUrl });
   }

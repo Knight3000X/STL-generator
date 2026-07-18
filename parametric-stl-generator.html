@@ -406,11 +406,11 @@
     cursor:pointer; margin-bottom:10px;
   }
   #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-baseplate{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
+  #btn-add-baseplate, #btn-slice-model{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
     border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
     font-size:12px; cursor:pointer; }
-  #btn-add-baseplate:hover{ border-color:var(--ink); }
-  #btn-add-baseplate:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-baseplate:hover, #btn-slice-model:hover{ border-color:var(--ink); }
+  #btn-add-baseplate:disabled, #btn-slice-model:disabled{ opacity:0.4; cursor:not-allowed; }
   #lid-row{ display:flex; gap:6px; margin-bottom:8px; }
   #lid-row #btn-add-lid{ flex:0 0 auto; width:auto; padding:9px 14px; margin-bottom:0; }
   #lid-kind{
@@ -755,6 +755,7 @@
       <button id="btn-add-lid" title="Накидная — колпак внахлёст; защёлки — бампы на стенках + окна в юбке; петля — проушины сзади + пластина, ось из филамента 1.75">+ Крышка</button>
     </div>
     <button id="btn-add-baseplate" title="Отдельная модель: Gridfinity-базплейт (сетка гнёзд под ножки бинов)">+ Базплейт (Gridfinity)</button>
+    <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью.">✂ Разрезать на фрагменты</button>
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель отдельным объектом (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
     </details>
 
@@ -3282,6 +3283,7 @@ const SHAPE_PARAMS = {
     {group:'Сетчатое дно', key:'latticeWalls', label:'Полый: сетка на боковых стенках (сквозная)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'all',t:'все 4 стенки'}]},
     {group:'Сетчатое дно', key:'latticeRes', label:'Сетка: детализация дна', min:10, max:500, step:1, default:50, unit:'', int:true},
+    {group:'Разрезка на фрагменты', key:'fragSize', label:'Размер фрагмента (макс. по каждой оси)', min:10, max:1000000, step:1, default:180, unit:'мм'},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
@@ -3514,6 +3516,41 @@ function addGridfinityBaseplate(){
   regenerate();
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
+}
+// Split the ACTIVE model into a grid of watertight fragments no larger than `fragSize` mm per axis, so a
+// part too big for the print bed prints in pieces. Cuts the model's own (pre-rotation) geometry along
+// axis-aligned planes; each fragment becomes its own frozen-mesh model, exploded slightly outward from
+// the centre so the cuts are visible and the pieces don't overlap. Reuses the source model's rotation.
+function sliceActiveModel(){
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const src = getActiveModel();
+  if (!src || !src.rawTris || !src.rawTris.length) { alert('Модель пуста — нечего разрезать.'); return; }
+  const size = Math.max(10, +paramState.box.fragSize || 180);
+  const { frags, bb } = sliceMeshIntoFragments(src.rawTris, size, size, size);
+  if (frags.length <= 1) { alert('Модель уже помещается в заданный размер фрагмента — резать не на что.\nУменьшите «Размер фрагмента».'); return; }
+  const need = models.length - 1 + frags.length;
+  if (need > MAX_MODELS) { alert('Слишком много фрагментов ('+frags.length+') — всего получилось бы '+need+' моделей при лимите '+MAX_MODELS+'.\nУвеличьте «Размер фрагмента».'); return; }
+  const ctr = [ (bb.lo[0]+bb.hi[0])/2, (bb.lo[1]+bb.hi[1])/2, (bb.lo[2]+bb.hi[2])/2 ];
+  const EXPLODE = 0.14; // fraction of the offset from centre → visible gaps, pieces don't overlap
+  const baseName = src.name.replace(/\s*\(фрагмент.*\)$/,'');
+  const makeFrag = (rec, frag, idx) => {
+    const id = nextFrozenId++; frozenMeshes.set(id, frag.tris);
+    rec.params = defaultBoxParams(); rec.params.frozenId = id;
+    rec.logos = []; rec.holes = [];
+    rec.rx = src.rx; rec.ry = src.ry; rec.rz = src.rz;
+    const fc = [ (frag.bb.lo[0]+frag.bb.hi[0])/2, (frag.bb.lo[1]+frag.bb.hi[1])/2, (frag.bb.lo[2]+frag.bb.hi[2])/2 ];
+    rec.px = src.px + (fc[0]-ctr[0])*EXPLODE; rec.py = src.py + (fc[1]-ctr[1])*EXPLODE; rec.pz = src.pz + (fc[2]-ctr[2])*EXPLODE;
+    rec.color = src.color; rec.name = baseName + ' (фрагмент ' + (idx+1) + ')';
+    rec.rawTris = frag.tris; rec.bbox = null;
+  };
+  // reuse the source record as fragment 1, add the rest as new models
+  makeFrag(src, frags[0], 0);
+  for (let i = 1; i < frags.length; i++){ const rec = makeModelRecord('', defaultBoxParams()); makeFrag(rec, frags[i], i); models.push(rec); }
+  loadModel(src);
+  regenerate();
+  if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
+  renderModelCards(); updateExportTotal();
 }
 // #8: turn a wall-relief logo into its own STANDALONE extruded model (silhouette-by-threshold,
 // see buildLogoExtrudeTris). The new record is an ordinary assembly model whose params carry
@@ -5395,7 +5432,178 @@ function buildGridfinityBaseplate(p){
   }
   return out;
 }
+/* =========================================================
+   MODEL SLICER: cut a finished mesh into a grid of watertight fragments no larger than a chosen size,
+   for printing a part that doesn't fit the bed. Sequential single-plane splitting — a plane cut of a
+   closed solid yields two closed halves (each crossing triangle clipped to both sides; the planar
+   cross-section, a set of closed loops, triangulated once and sewn onto BOTH sides as a cap with
+   opposite normals so the two sides share the cut exactly). Slicing X→Y→Z composes single cuts; a later
+   cut sees earlier caps as ordinary surface. A final per-fragment vertex weld closes sub-tolerance seams.
+   Wrapped in an IIFE so its many small helpers don't collide with the page's own faceNormal/dot/etc.
+   ========================================================= */
+const sliceMeshIntoFragments = (function(){
+  function bboxOf(tris){ let lo=[1e30,1e30,1e30], hi=[-1e30,-1e30,-1e30];
+    for(const t of tris) for(const p of t) for(let a=0;a<3;a++){ if(p[a]<lo[a])lo[a]=p[a]; if(p[a]>hi[a])hi[a]=p[a]; } return {lo,hi}; }
+  function interiorCuts(lo, hi, size){ const ext=hi-lo; if(!(ext>0)||!(size>0)) return [];
+    const n=Math.max(1, Math.ceil(ext/size - 1e-9)); const p=[]; for(let i=1;i<n;i++) p.push(lo+ext*i/n); return p; }
+  function faceNormal(a,b,c){ const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    return [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]]; }
+  function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+  function clipPolyHalf(poly, axis, c, keepLess){
+    if(poly.length===0) return poly;
+    const out=[]; const inside = keepLess ? (x)=> x <= c : (x)=> x >= c; const n=poly.length;
+    for(let i=0;i<n;i++){ const A=poly[i], B=poly[(i+1)%n]; const av=A[axis], bv=B[axis], ai=inside(av), bi=inside(bv);
+      if(ai) out.push(A);
+      if(ai!==bi){ const t=(c-av)/(bv-av); const P=[A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]; P[axis]=c; out.push(P); } }
+    return out; }
+  function fanInto(dst, poly, refNormal){
+    for(let t=1;t<poly.length-1;t++){ let a=poly[0],b=poly[t],c=poly[t+1];
+      const fn=faceNormal(a,b,c); if(Math.abs(fn[0])+Math.abs(fn[1])+Math.abs(fn[2]) < 1e-14) continue;
+      if(dot(fn,refNormal)<0){ const tmp=b;b=c;c=tmp; } dst.push([a,b,c]); } }
+  function signedArea(loop){ let a=0; for(let i=0,n=loop.length;i<n;i++){ const p=loop[i], q=loop[(i+1)%n]; a+=p[0]*q[1]-q[0]*p[1]; } return a/2; }
+  function pointInPoly(pt, poly){ let inside=false; const x=pt[0], y=pt[1];
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+      if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
+  function triArea2(a,b,c){ return (b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]); }
+  function pointInTriStrict(p,a,b,c){ const d1=triArea2(p,a,b), d2=triArea2(p,b,c), d3=triArea2(p,c,a);
+    const hasNeg=(d1<-1e-12)||(d2<-1e-12)||(d3<-1e-12), hasPos=(d1>1e-12)||(d2>1e-12)||(d3>1e-12); return !(hasNeg&&hasPos); }
+  function bridgeHole(outer, hole){
+    let hi=0; for(let i=1;i<hole.length;i++) if(hole[i][0]>hole[hi][0]) hi=i; const M=hole[hi];
+    let bestX=Infinity, edgeI=-1, Ipt=null;
+    for(let i=0;i<outer.length;i++){ const A=outer[i], B=outer[(i+1)%outer.length];
+      if((A[1]>M[1])!==(B[1]>M[1])){ const t=(M[1]-A[1])/(B[1]-A[1]); const x=A[0]+(B[0]-A[0])*t;
+        if(x>=M[0]-1e-9 && x<bestX){ bestX=x; edgeI=i; Ipt=[x,M[1]]; } } }
+    if(edgeI<0){ let bi=0,bd=Infinity; for(let i=0;i<outer.length;i++){ const dx=outer[i][0]-M[0],dy=outer[i][1]-M[1],d=dx*dx+dy*dy; if(d<bd){bd=d;bi=i;} } edgeI=bi; }
+    const A=outer[edgeI], B=outer[(edgeI+1)%outer.length];
+    let candIdx = (A[0]>B[0])? edgeI : (edgeI+1)%outer.length;
+    if(Ipt){ const P=outer[candIdx]; let best=candIdx, bestAng=Math.atan2(Math.abs(P[1]-M[1]), P[0]-M[0]);
+      for(let i=0;i<outer.length;i++){ const R=outer[i];
+        if(R[0]>M[0]-1e-9 && pointInTriStrict(R,M,Ipt,P)){ const ang=Math.atan2(Math.abs(R[1]-M[1]), R[0]-M[0]);
+          if(ang<bestAng-1e-12){ bestAng=ang; best=i; } } } candIdx=best; }
+    const merged=[];
+    for(let i=0;i<=candIdx;i++) merged.push(outer[i]);
+    for(let k=0;k<hole.length;k++) merged.push(hole[(hi+k)%hole.length]);
+    merged.push(hole[hi]); merged.push(outer[candIdx]);
+    for(let i=candIdx+1;i<outer.length;i++) merged.push(outer[i]);
+    return merged; }
+  function earClip(poly, out){
+    const n0=poly.length; if(n0<3) return;
+    let list=poly.map((p,i)=>i); if(signedArea(poly)<0) list.reverse();
+    const pts=poly; let guard=0;
+    while(list.length>3 && guard++ < n0*n0+50){
+      let clipped=false, m=list.length;
+      for(let i=0;i<m;i++){
+        const i0=list[(i+m-1)%m], i1=list[i], i2=list[(i+1)%m]; const a=pts[i0], b=pts[i1], c=pts[i2];
+        if(triArea2(a,b,c) <= 1e-10) continue;
+        let ear=true;
+        for(let j=0;j<m;j++){ const vj=list[j]; if(vj===i0||vj===i1||vj===i2) continue; if(pointInTriStrict(pts[vj],a,b,c)){ ear=false; break; } }
+        if(ear){ out.push([a,b,c]); list.splice(i,1); clipped=true; break; } }
+      if(!clipped){ let bi=-1, ba=1e-10;
+        for(let i=0;i<m;i++){ const a=pts[list[(i+m-1)%m]], b=pts[list[i]], c=pts[list[(i+1)%m]]; const ar=triArea2(a,b,c); if(ar>ba){ ba=ar; bi=i; } }
+        if(bi<0) break; const i0=list[(bi+m-1)%m], i2=list[(bi+1)%m]; out.push([pts[i0],pts[list[bi]],pts[i2]]); list.splice(bi,1); } }
+    if(list.length===3){ const a=pts[list[0]],b=pts[list[1]],c=pts[list[2]]; if(Math.abs(triArea2(a,b,c))>1e-10) out.push([a,b,c]); } }
+  function triangulate2D(loops){
+    const outers=[], holes=[];
+    for(const lp of loops){ if(lp.length<3) continue; const a=signedArea(lp); if(a>1e-10) outers.push(lp); else if(a<-1e-10) holes.push(lp); }
+    const tris=[]; if(outers.length===0) return tris;
+    for(const outer of outers){
+      const mine=holes.filter(h=> pointInPoly(h[0], outer));
+      let poly=outer.slice();
+      const ordered=mine.map(h=>({h, mx:Math.max(...h.map(p=>p[0]))})).sort((a,b)=>b.mx-a.mx);
+      for(const {h} of ordered) poly=bridgeHole(poly, h.slice());
+      earClip(poly, tris); }
+    return tris; }
+  function extractLoops(edges, q){
+    const id=new Map(), pts=[]; const kf=(p)=>{ const k=Math.round(p[0]*q)+','+Math.round(p[1]*q);
+      if(id.has(k)) return id.get(k); const i=pts.length; pts.push(p); id.set(k,i); return i; };
+    const adj=new Map();
+    for(const e of edges){ const a=kf(e[0]), b=kf(e[1]); if(a===b) continue; if(!adj.has(a)) adj.set(a,[]); adj.get(a).push(b); }
+    const loops=[]; const take=(f)=>{ const l=adj.get(f); return (l&&l.length)? l.shift() : -1; };
+    for(const start of Array.from(adj.keys())){
+      while(adj.get(start) && adj.get(start).length){
+        const loop=[]; let cur=start, steps=0, ok=true;
+        do{ const nx=take(cur); if(nx<0){ ok=false; break; } loop.push(pts[cur]); cur=nx; steps++; } while(cur!==start && steps<500000);
+        if(ok && loop.length>=3) loops.push(loop); } }
+    return loops; }
+  function splitOne(tris, axis, c){
+    const less=[], greater=[]; let rawCap=[];
+    const u=(axis===0)?1:0, v=(axis===2)?1:2;
+    let crossed=false, anyLess=false, anyGreater=false;
+    const nd=[0,0,0]; nd[axis]=1;
+    const pushCap=(P0,P1,nrm)=>{ const sd=[nrm[1]*nd[2]-nrm[2]*nd[1], nrm[2]*nd[0]-nrm[0]*nd[2], nrm[0]*nd[1]-nrm[1]*nd[0]];
+      const seg=[P1[u]-P0[u], P1[v]-P0[v]], A=[P0[u],P0[v]], B=[P1[u],P1[v]];
+      if(seg[0]*sd[u]+seg[1]*sd[v] >= 0) rawCap.push([A,B]); else rawCap.push([B,A]); };
+    for(const tri of tris){
+      let nPos=0,nNeg=0,nZero=0; const dd=[];
+      for(const p of tri){ const d=p[axis]-c; dd.push(d); if(d>1e-9)nPos++; else if(d<-1e-9)nNeg++; else nZero++; }
+      if(nZero===3){ greater.push(tri); anyGreater=true; continue; }
+      const nrm=faceNormal(tri[0],tri[1],tri[2]);
+      if(nPos>0 && nNeg>0){
+        crossed=true; anyLess=true; anyGreater=true;
+        const pl=clipPolyHalf([tri[0],tri[1],tri[2]], axis, c, true), pg=clipPolyHalf([tri[0],tri[1],tri[2]], axis, c, false);
+        if(pl.length>=3) fanInto(less, pl, nrm);
+        if(pg.length>=3) fanInto(greater, pg, nrm);
+        const ip=[];
+        for(let e=0;e<3;e++){ const A=tri[e],B=tri[(e+1)%3], da=dd[e], db=dd[(e+1)%3];
+          if(Math.abs(da)<1e-9) ip.push(A);
+          else if((da<-1e-9&&db>1e-9)||(da>1e-9&&db<-1e-9)){ const t=da/(da-db); ip.push([A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t,A[2]+(B[2]-A[2])*t]); } }
+        if(ip.length===2) pushCap(ip[0],ip[1],nrm);
+      } else if(nZero===2){
+        if(nNeg>0){ less.push(tri); anyLess=true;
+          const on=[]; for(let e=0;e<3;e++) if(Math.abs(dd[e])<=1e-9) on.push(tri[e]);
+          if(on.length===2){ crossed=true; anyGreater=true; pushCap(on[0],on[1],nrm); } }
+        else { greater.push(tri); anyGreater=true; }
+      } else { if(nNeg>0){ less.push(tri); anyLess=true; } else { greater.push(tri); anyGreater=true; } } }
+    if(!crossed){ if(anyGreater&&!anyLess) return {less:[],greater:tris}; if(anyLess&&!anyGreater) return {less:tris,greater:[]}; }
+    if(rawCap.length){
+      const q=1e6, cnt=new Map(), kf=(p)=>Math.round(p[0]*q)+','+Math.round(p[1]*q);
+      for(const e of rawCap){ const k=kf(e[0])+'|'+kf(e[1]); cnt.set(k,(cnt.get(k)||0)+1); }
+      const kept=[], done=new Set();
+      for(const e of rawCap){ const ka=kf(e[0]), kb=kf(e[1]), k=ka+'|'+kb, r=kb+'|'+ka; if(done.has(k)) continue; done.add(k);
+        if(((cnt.get(k)||0)-(cnt.get(r)||0)) > 0) kept.push(e); }
+      let loops=extractLoops(kept, q);
+      let net=0; for(const lp of loops) net+=signedArea(lp);
+      if(net<0) loops=loops.map(lp=>lp.slice().reverse());
+      const t2=triangulate2D(loops);
+      for(const T of t2){ const P=T.map(pt=>{ const p=[0,0,0]; p[axis]=c; p[u]=pt[0]; p[v]=pt[1]; return p; });
+        let a=P[0],b=P[1],cc=P[2]; if(faceNormal(a,b,cc)[axis] < 0){ const t=b;b=cc;cc=t; }
+        less.push([a,b,cc]); greater.push([a,cc,b]); } }
+    return {less, greater}; }
+  function splitAll(list, axis, positions){
+    let cur=list;
+    for(const c of positions){ const nxt=[];
+      for(const s of cur){ const {less,greater}=splitOne(s,axis,c); if(less.length)nxt.push(less); if(greater.length)nxt.push(greater); }
+      cur=nxt; }
+    return cur; }
+  function weldFragment(tris, tol){
+    const cell=tol, grid=new Map(), reps=[];
+    const repFor=(p)=>{ const gx=Math.floor(p[0]/cell), gy=Math.floor(p[1]/cell), gz=Math.floor(p[2]/cell);
+      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){
+        const arr=grid.get((gx+dx)+','+(gy+dy)+','+(gz+dz)); if(!arr) continue;
+        for(const ri of arr){ const r=reps[ri]; if(Math.abs(r[0]-p[0])<tol&&Math.abs(r[1]-p[1])<tol&&Math.abs(r[2]-p[2])<tol) return ri; } }
+      const ri=reps.length; reps.push(p); const k=gx+','+gy+','+gz; if(!grid.has(k))grid.set(k,[]); grid.get(k).push(ri); return ri; };
+    const out=[];
+    for(const t of tris){ const a=repFor(t[0]), b=repFor(t[1]), c=repFor(t[2]);
+      if(a===b||b===c||a===c) continue; const A=reps[a],B=reps[b],C=reps[c];
+      const n=faceNormal(A,B,C); if(n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-14) continue; out.push([A,B,C]); }
+    return out; }
+  return function(tris, sizeX, sizeY, sizeZ){
+    const bb=bboxOf(tris);
+    const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
+    let cells=[tris]; cells=splitAll(cells,0,ix); cells=splitAll(cells,1,iy); cells=splitAll(cells,2,iz);
+    const frags=cells.map(c=>weldFragment(c, 1.5e-4)).filter(c=>c.length>=4).map(c=>({tris:c, bb:bboxOf(c)}));
+    return {frags, bb};
+  };
+})();
+
+// Frozen fragment meshes: models produced by the slicer are not parametric — they carry a `frozenId`
+// in their params and their geometry lives here, so buildTrisForShape returns it verbatim (regenerate
+// / rebuilds are no-ops that keep the fragment intact).
+const frozenMeshes = new Map();
+let nextFrozenId = 1;
+
 function buildTrisForShape(shape, p) {
+  if (p && p.frozenId != null && frozenMeshes.has(p.frozenId)) return frozenMeshes.get(p.frozenId);
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   const gf = shape === 'box' && p.gfOn && !p.logo3d;
@@ -5959,6 +6167,7 @@ function attachModelEventListeners() {
     else addLidForActive(kind === 'clips');
   });
   document.getElementById('btn-add-baseplate').addEventListener('click', addGridfinityBaseplate);
+  document.getElementById('btn-slice-model').addEventListener('click', sliceActiveModel);
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {
     const card = e.target.closest('.model-card');

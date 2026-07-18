@@ -930,8 +930,22 @@ function makeTaperPointFn(angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX, a
     const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
     return Math.tan(theta);
   }
-  const tYPX = clampedTanY(angYPlusX), tYPZ = clampedTanY(angYPlusZ);
-  const tYMX = clampedTanY(angYMinusX), tYMZ = clampedTanY(angYMinusZ);
+  let tYPX = clampedTanY(angYPlusX), tYPZ = clampedTanY(angYPlusZ);
+  let tYMX = clampedTanY(angYMinusX), tYMZ = clampedTanY(angYMinusZ);
+  // Y-tilts (наклон верха/низа) must not change the model's Height. Instead of pivoting the top plane
+  // around its centre (which lifts one corner ABOVE hh and grows the bounding box), the top slopes DOWN
+  // from hh — its HIGH edge stays at hh, so the model is never taller than Height and the bottom stays
+  // flat (printable). Symmetrically the bottom slopes UP from -hh. `peak` is the corner rise a tilt would
+  // add; subtracting it keeps the tilted face within [-hh, hh]. Limit each tilt so the sloped face can't
+  // reach past the opposite face (a very thin/wide box can tilt only a little before its low corner would
+  // touch the base) — keeps a minimum wall so the mesh never self-intersects.
+  const capY = hh * 0.85;
+  const fitPeak = (tx, tz) => { const peak = hw*Math.abs(tx) + hd*Math.abs(tz);
+    if (peak > capY && peak > 1e-9) { const s = capY/peak; return [tx*s, tz*s]; } return [tx, tz]; };
+  [tYPX, tYPZ] = fitPeak(tYPX, tYPZ);
+  [tYMX, tYMZ] = fitPeak(tYMX, tYMZ);
+  const peakTop = hw*Math.abs(tYPX) + hd*Math.abs(tYPZ);
+  const peakBot = hw*Math.abs(tYMX) + hd*Math.abs(tYMZ);
   return function taperPoint(p) {
     const hOff = p[1]+hh;
     const wallXPlus = hw - hOff*tXP, wallXMinus = -hw + hOff*tXM;
@@ -939,8 +953,8 @@ function makeTaperPointFn(angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX, a
     const ux = (p[0]+hw)/(2*hw), uz = (p[2]+hd)/(2*hd);
     const x1 = wallXMinus + ux*(wallXPlus-wallXMinus);
     const z1 = wallZMinus + uz*(wallZPlus-wallZMinus);
-    const bottomPlane = -hh + x1*tYMX + z1*tYMZ;
-    const topPlane = hh + x1*tYPX + z1*tYPZ;
+    const bottomPlane = -hh + x1*tYMX + z1*tYMZ + peakBot; // low edge stays at -hh, slopes up
+    const topPlane = hh + x1*tYPX + z1*tYPZ - peakTop;     // high edge stays at hh, slopes down
     const uy = (p[1]+hh)/(2*hh);
     const y1 = bottomPlane + uy*(topPlane-bottomPlane);
     return [x1, y1, z1];
@@ -1321,8 +1335,20 @@ function taperBoxTris(tris, angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX,
     const theta = Math.max(-maxAngle, Math.min(maxAngle, deg*Math.PI/180));
     return Math.tan(theta);
   }
-  const tYPX = clampedTanY(angYPlusX, hw), tYPZ = clampedTanY(angYPlusZ, hd);
-  const tYMX = clampedTanY(angYMinusX, hw), tYMZ = clampedTanY(angYMinusZ, hd);
+  let tYPX = clampedTanY(angYPlusX, hw), tYPZ = clampedTanY(angYPlusZ, hd);
+  let tYMX = clampedTanY(angYMinusX, hw), tYMZ = clampedTanY(angYMinusZ, hd);
+  // Y-tilts (наклон верха/низа) must NOT change the model's Height: the top slopes DOWN from hh (its
+  // high edge stays at hh, so the model is never taller than Height, and the bottom stays flat and
+  // printable) and the bottom slopes UP from -hh. `peak` is the corner rise a tilt adds; subtracting it
+  // keeps the tilted face inside [-hh, hh]. Each tilt is limited so its low corner can't reach past the
+  // opposite face (a thin/wide plate can tilt only a little), keeping a minimum wall — no self-crossing.
+  const capY = hh * 0.85;
+  const fitPeak = (tx, tz) => { const peak = hw*Math.abs(tx) + hd*Math.abs(tz);
+    if (peak > capY && peak > 1e-9) { const s = capY/peak; return [tx*s, tz*s]; } return [tx, tz]; };
+  [tYPX, tYPZ] = fitPeak(tYPX, tYPZ);
+  [tYMX, tYMZ] = fitPeak(tYMX, tYMZ);
+  const peakTop = hw*Math.abs(tYPX) + hd*Math.abs(tYPZ);
+  const peakBot = hw*Math.abs(tYMX) + hd*Math.abs(tYMZ);
 
   function taperPoint(p) {
     // stage 1: X/Z side-wall taper (uses the ORIGINAL y)
@@ -1332,9 +1358,9 @@ function taperBoxTris(tris, angXPlus, angXMinus, angZPlus, angZMinus, angYPlusX,
     const ux = (p[0]+hw)/(2*hw), uz = (p[2]+hd)/(2*hd);
     const x1 = wallXMinus + ux*(wallXPlus-wallXMinus);
     const z1 = wallZMinus + uz*(wallZPlus-wallZMinus);
-    // stage 2: top/bottom tilt (uses the STAGE-1 x1,z1 as the tilt basis)
-    const bottomPlane = -hh + x1*tYMX + z1*tYMZ;
-    const topPlane = hh + x1*tYPX + z1*tYPZ;
+    // stage 2: top/bottom tilt (uses the STAGE-1 x1,z1 as the tilt basis), sloped inward so Height holds
+    const bottomPlane = -hh + x1*tYMX + z1*tYMZ + peakBot;
+    const topPlane = hh + x1*tYPX + z1*tYPZ - peakTop;
     const uy = (p[1]+hh)/(2*hh);
     const y1 = bottomPlane + uy*(topPlane-bottomPlane);
     return [x1, y1, z1];

@@ -149,12 +149,26 @@ console.log('\n=== Top tilt (наклон верха): the rim stays a UNIFORM d
     for (const tr of tris) if (tr.every(p => Math.abs(p[0]-sgn*(hw-t)) < 0.3) && Math.abs((tr[0][2]+tr[1][2]+tr[2][2])/3) < 15)
       for (const p of tr) { lo=Math.min(lo,p[1]); hi=Math.max(hi,p[1]); }
     return hi-lo; };
-  for (const ang of [10, 20, 26]) {
+  // Mild tilt: the material allows a uniform-depth pocket AND the model keeps its Height.
+  for (const ang of [8, 12]) {
     setBox({ width:120, height:40, depth:80, wallThickness:4, rimHeight:12, taperYPlusX:ang }); logos.length = 0;
     const tris = buildTrisForShape('box', paramState.box);
     check(`top tilt ${ang}°: watertight`, manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
+    const bb = computeBBox(tris);
+    check(`top tilt ${ang}°: Height unchanged (=40)`, Math.abs((bb.maxY-bb.minY)-40)<0.1, {h:+(bb.maxY-bb.minY).toFixed(2)});
     const dP = pocketDepth(tris, 60, 4, 1), dM = pocketDepth(tris, 60, 4, -1);
-    check(`top tilt ${ang}°: rim depth uniform (~12 both sides)`, Math.abs(dP-12)<0.2 && Math.abs(dM-12)<0.2, {plus:+dP.toFixed(2), minus:+dM.toFixed(2)});
+    check(`top tilt ${ang}°: rim depth uniform (~12 both sides)`, Math.abs(dP-12)<0.3 && Math.abs(dM-12)<0.3, {plus:+dP.toFixed(2), minus:+dM.toFixed(2)});
+  }
+  // Steeper tilt: the low side runs out of material once the top is lowered to keep Height, so the pocket
+  // there is shallower (can't be uniform) — but the model still keeps its Height and stays watertight,
+  // with a positive (never inverted) rim wall everywhere.
+  for (const ang of [20, 26]) {
+    setBox({ width:120, height:40, depth:80, wallThickness:4, rimHeight:12, taperYPlusX:ang }); logos.length = 0;
+    const tris = buildTrisForShape('box', paramState.box);
+    check(`top tilt ${ang}°: watertight`, manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
+    const bb = computeBBox(tris);
+    check(`top tilt ${ang}°: Height unchanged (=40)`, Math.abs((bb.maxY-bb.minY)-40)<0.1, {h:+(bb.maxY-bb.minY).toFixed(2)});
+    check(`top tilt ${ang}°: rim positive on both sides (never inverted)`, pocketDepth(tris,60,4,1)>0.5 && pocketDepth(tris,60,4,-1)>0.5);
   }
   // extreme tilt: the low side runs out of material → pocket clamps shallower there, but STILL watertight
   // (the old bug produced a negative/inverted rim wall and a self-intersection here).

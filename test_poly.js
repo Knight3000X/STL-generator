@@ -16,9 +16,9 @@ console.log('=== rounded edges + taper ===');
 chk('hex round6 wt', manifoldCheck(base({polyN:6,polyRound:6}),4).watertight);
 { const t=base({polyN:6,taperYPlusX:20}); const b=computeBBox(t); chk('hex + top tilt: watertight + height preserved', manifoldCheck(t,4).watertight && Math.abs((b.maxY-b.minY)-40)<0.2, {h:(b.maxY-b.minY)}); }
 chk('oct hollow + taper wt', manifoldCheck(base({polyN:8,hollow:true,wallThickness:3,taperXPlus:12}),4).watertight);
-console.log('=== Platonic through pipeline ===');
-for(const k of ['tetrahedron','octahedron','dodecahedron','icosahedron']){ const t=base({platonic:k}); const mc=manifoldCheck(t,4); chk(k+' wt',mc.watertight&&vol(t)>0,mc); }
-chk('platonic + taper wt', manifoldCheck(base({platonic:'icosahedron',taperXPlus:10}),4).watertight);
+console.log('=== Platonic / dice through pipeline ===');
+for(const k of ['d4','d8','d12','d20']){ const t=base({platonic:k}); const mc=manifoldCheck(t,4); chk(k+' wt',mc.watertight&&vol(t)>0,mc); }
+chk('platonic + taper wt', manifoldCheck(base({platonic:'d20',taperXPlus:10}),4).watertight);
 console.log('=== organizer add-ons gated off (no effect) on polyN ===');
 { const a=base({polyN:6}).length; const b=base({polyN:6,scoopDir:'front',gripWall:'front',mountHoles:'4',divX:2,stackFeet:true}).length;
   chk('scoop/grip/ears/dividers/feet skipped on poly (same mesh)', a===b, {a,b}); }

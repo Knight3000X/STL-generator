@@ -2840,7 +2840,7 @@ function loadLogoImageFile(file, cb) {
 // so text relief reuses the entire logo pipeline. The glyphs are drawn OPAQUE on a TRANSPARENT canvas,
 // so analyzeLogoImageData takes the alpha channel (letters proud, background flat) — no invert guessing.
 // Font size is fitted so the text spans ~88% of the width, capped by height (single line).
-function makeTextLogoResult(text, bold) {
+function makeTextLogoResult(text, bold, underline) {
   text = (text || '').trim(); if (!text) return null;
   const size = LOGO_HM_SIZE;
   const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
@@ -2854,6 +2854,12 @@ function makeTextLogoResult(text, bold) {
   fs = Math.max(8, Math.min(Math.round(size * 0.72), fs * (size * 0.88) / w));
   ctx.font = weight + ' ' + Math.round(fs) + 'px ' + family;
   ctx.fillText(text, size / 2, size / 2);
+  // Dice-style disambiguation bar under the number (so 6/9 and 68/89 etc. can't be read upside down).
+  if (underline) {
+    const tw = ctx.measureText(text).width || fs, uw = Math.min(size * 0.82, tw * 1.15),
+          uh = Math.max(4, Math.round(fs * 0.1)), uy = Math.min(size - uh, Math.round(size / 2 + fs * 0.46));
+    ctx.fillRect((size - uw) / 2, uy, uw, uh);
+  }
   const { heightmap, suggestedInvert } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
   // Visible aspect of the rendered line: measured width over ~cap height (≈0.72 em) — drives the
   // proportions lock so "TEXT" defaults to a wide, not square, footprint.
@@ -7283,15 +7289,28 @@ function addDieAssignmentFromResult(result, src, text){
   renderDieCards();
   if (currentShape === 'box') markPending();
 }
+// A number needs an underline when its 180° rotation reads as a DIFFERENT number that also appears on the
+// die — i.e. genuinely confusable upside down (6↔9 always; on D100 also 68↔89, 16↔91, …). Digits that
+// aren't valid upside down (2,3,4,5,7) make the whole number unambiguous.
+function dieAmbiguousLabels(labels){
+  const FLIP={'0':'0','1':'1','6':'9','8':'8','9':'6'}, set=new Set(labels), mark=new Set();
+  for(const L of labels){ let rot=''; let ok=true;
+    for(let k=L.length-1;k>=0;k--){ const c=L[k]; if(!(c in FLIP)){ ok=false; break; } rot+=FLIP[c]; }
+    if(ok && rot!==L && set.has(rot)) mark.add(L);
+  }
+  return mark;
+}
 function autoNumberDie(){
   const kind = dieActiveKind(); if (!kind) return;
   const n = dieFaceCount(kind);
   dieFaces.length = 0;
   const label = (i) => (kind==='d10') ? String(i) : String(i+1);   // d10 dice read 0..9
+  const labels = []; for (let i=0;i<n;i++) labels.push(label(i));
+  const ambiguous = dieAmbiguousLabels(labels);   // these get a distinguishing underline
   for (let i=0;i<n;i++){
-    const r = makeTextLogoResult(label(i), true);
+    const r = makeTextLogoResult(labels[i], true, ambiguous.has(labels[i]));
     if (!r) continue;
-    dieFaces.push({ id: nextDieId++, face: i, src:'text', text: label(i),
+    dieFaces.push({ id: nextDieId++, face: i, src:'text', text: labels[i],
       depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: false, threshold: 0.5,   // утоплено по умолчанию
       heightmap: r.heightmap, previewUrl: r.previewUrl });
   }

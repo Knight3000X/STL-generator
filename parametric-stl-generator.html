@@ -4502,7 +4502,7 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   const nF=G.faces.length, dsc=nF>=60?0.4:(nF>=24?0.7:(nF<=4?1.2:1));
   const nC=Math.max(48, Math.min(256, Math.round((res||160)*(nF>=24?0.35:0.55))));   // glyph patch cells
   const perim=Math.max(48, Math.min(480, Math.round(res||160)))*dsc;
-  const k=Math.max(4, Math.min(96, Math.round(perim/5)));    // GLOBAL edge subdivision (shared → watertight)
+  const k=Math.max(4, Math.min(96, 2*Math.round(perim/10))); // GLOBAL edge subdivision (shared → watertight); even, so edge midpoints are lattice points (D4 sector split)
   const R=Math.max(10, Math.min(120, Math.round(perim/4)));
   // Radial rings biased toward the centre: the glyph lives in the central ~80% of the face radius, so 3/4
   // of the rings sample [0..0.82] (fine under the number) and 1/4 stretch to the boundary — same triangle
@@ -4532,6 +4532,46 @@ function buildDie(kind, hw, hh, hd, assignments, res){
             const M3f=(q)=>[face.c[0]+q[0]*face.u[0]+q[1]*face.v[0], face.c[1]+q[0]*face.u[1]+q[1]*face.v[1], face.c[2]+q[0]*face.u[2]+q[1]*face.v[2]];
             tris=tris.concat(patch.tris);
             for(const T of polyStitchAnnulus(ring2, patch.ring, patch.center)) tris.push(orient(T.map(M3f), face.n));
+            done=true;
+          }
+        }
+      }
+      // D4 corner numbers (3 reliefs on a triangle face): split the face into 3 corner quads (centroid +
+      // edge midpoints — k is even, so midpoints are shared lattice points) and give EACH its own crisp
+      // cell patch + annulus, matching the single-glyph quality. Falls back if a patch escapes its quad.
+      if(!done && asgs.length===3 && poly.length===3){
+        const to2=(p)=>[dot(sub(p,face.c),face.u), dot(sub(p,face.c),face.v)];
+        const P2=poly.map(to2), h=k/2;
+        const ept=(e,s)=>{ const a=P2[e], b=P2[(e+1)%3]; return [a[0]+(b[0]-a[0])*s/k, a[1]+(b[1]-a[1])*s/k]; };
+        // one glyph per corner: match each assignment to the vertex its offset points at
+        const byV=new Array(3).fill(null); let okAsg=true;
+        for(const a of asgs){ let bi=-1,bd=-Infinity;
+          for(let v=0;v<3;v++){ const d=(a.offU||0)*P2[v][0]+(a.offV||0)*P2[v][1]; if(d>bd){bd=d;bi=v;} }
+          if(bi<0||byV[bi]) { okAsg=false; break; } byV[bi]=a; }
+        if(okAsg && byV.every(Boolean)){
+          const inQuad=(Q,pt)=>{ let w=false; for(let ii=0,jj=Q.length-1;ii<Q.length;jj=ii++){ const A=Q[ii],B=Q[jj];
+            if(((A[1]>pt[1])!==(B[1]>pt[1])) && (pt[0] < (B[0]-A[0])*(pt[1]-A[1])/(B[1]-A[1])+A[0])) w=!w; } return w; };
+          const parts=[];
+          let ok=true;
+          for(let v=0;v<3 && ok;v++){
+            const patch=buildDieGlyphPatch(face, byV[v], nC);
+            if(!patch){ ok=false; break; }
+            const eP=(v+2)%3, eN=v;                       // edges into / out of vertex v
+            const quad=[[0,0], ept(eP,h), P2[v], ept(eN,h)];
+            const qc=[(quad[0][0]+quad[1][0]+quad[2][0]+quad[3][0])/4,(quad[0][1]+quad[1][1]+quad[2][1]+quad[3][1])/4];
+            for(const q of patch.ring){ if(!inQuad(quad, [qc[0]+(q[0]-qc[0])/0.98, qc[1]+(q[1]-qc[1])/0.98])){ ok=false; break; } }
+            if(!ok) break;
+            const ring2=[[0,0]];
+            for(let s=h;s<=k;s++) ring2.push(ept(eP,s));   // M_prev → vertex
+            for(let s=1;s<=h;s++) ring2.push(ept(eN,s));   // vertex → M_next
+            parts.push({patch, ring2});
+          }
+          if(ok){
+            const M3f=(q)=>[face.c[0]+q[0]*face.u[0]+q[1]*face.v[0], face.c[1]+q[0]*face.u[1]+q[1]*face.v[1], face.c[2]+q[0]*face.u[2]+q[1]*face.v[2]];
+            for(const pr of parts){
+              tris=tris.concat(pr.patch.tris);
+              for(const T of polyStitchAnnulus(pr.ring2, pr.patch.ring, pr.patch.center)) tris.push(orient(T.map(M3f), face.n));
+            }
             done=true;
           }
         }
@@ -7427,16 +7467,20 @@ function renderDieCards(){
     container.appendChild(card);
   }
 }
-// Default glyph orientation on a die face (all dice EXCEPT the corner-numbered D4): rotate so the glyph's
-// BOTTOM points at one of the face's corners — the classic dice look (a number "standing" on a vertex).
-// Deterministic: always the face's first polygon vertex.
-function dieCornerRotation(kind, faceIndex){
+// Factory-style glyph orientation (all dice EXCEPT the corner-numbered D4). On production dice the number
+// STANDS ON AN EDGE: its baseline is parallel to one face edge, facing it (triangle/pentagon then shows a
+// vertex at the top — the classic d8/d12/d20 look; d6 likewise). The d10/d100-trapezohedron kite instead
+// reads along its symmetry axis with the TOP toward the die's pole (the kite's first vertex = the apex).
+function dieFactoryRotation(kind, faceIndex, Gpre){
   if (kind === 'd4') return 0;
-  const G = dieFaceGeometry(kind, 1, 1, 1);
+  const G = Gpre || dieFaceGeometry(kind, 1, 1, 1);
   if (faceIndex < 0 || faceIndex >= G.faces.length) return 0;
-  const face = G.faces[faceIndex], cor = G.polys[faceIndex][0];
-  const du = dot(sub(cor, face.c), face.u), dv = dot(sub(cor, face.c), face.v);
-  return Math.round(Math.atan2(du, -dv) * 180/Math.PI);   // glyph "up" → away from the corner = bottom → corner
+  const face = G.faces[faceIndex], P = G.polys[faceIndex];
+  const to2 = (p)=>[dot(sub(p,face.c),face.u), dot(sub(p,face.c),face.v)];
+  let up;   // glyph "up" direction in face-plane coords
+  if (kind === 'd10') { up = to2(P[0]); }                       // kite: up along the axis toward the apex
+  else { const a=to2(P[0]), b=to2(P[1]); up = [-(a[0]+b[0])/2, -(a[1]+b[1])/2]; }  // bottom on edge P0–P1
+  return Math.round(Math.atan2(-up[0], up[1]) * 180/Math.PI);
 }
 function addDieAssignmentFromResult(result, src, text){
   if (!result) return;
@@ -7444,7 +7488,7 @@ function addDieAssignmentFromResult(result, src, text){
   const n = dieFaceCount(kind);
   const face = nextFreeDieFace(n);
   dieFaces.push({ id: nextDieId++, face, src: src||'text', text: text||'',
-    depth: -0.2, sizeFrac: 0.55, rotation: dieCornerRotation(kind, face), invert: !!result.suggestedInvert,   // утоплено, низом к углу
+    depth: -0.2, sizeFrac: 0.55, rotation: dieFactoryRotation(kind, face), invert: !!result.suggestedInvert,   // утоплено, заводская ориентация
     threshold: 0.5, heightmap: result.heightmap, previewUrl: result.previewUrl });
   renderDieCards();
   if (currentShape === 'box') markPending();
@@ -7491,8 +7535,8 @@ function autoNumberD4(){
       const res = makeTextLogoResult(num, true, false);
       if(!res) continue;
       dieFaces.push({ id: nextDieId++, face: f, src:'text', text: num,
-        depth: -0.2, sizeFrac: 0.30, rotation, invert: false, threshold: 0.5,
-        offU: du/face.r*0.56, offV: dv/face.r*0.56, heightmap: res.heightmap, previewUrl: res.previewUrl });
+        depth: -0.2, sizeFrac: 0.26, rotation, invert: false, threshold: 0.5,   // sized so each corner's crisp patch fits its sector quad
+        offU: du/face.r*0.48, offV: dv/face.r*0.48, heightmap: res.heightmap, previewUrl: res.previewUrl });
     }
   }
 }
@@ -7504,16 +7548,13 @@ function autoNumberDie(){
   // D100 (Zocchihedron) isn't antipodally paired → number sequentially; the rest use opposite-sum balancing.
   const byFaceVal = (kind === 'd100') ? Array.from({length:n}, (_,i)=>String(i+1)) : dieOppositeSumNumbering(kind, n);
   const ambiguous = dieAmbiguousLabels(byFaceVal);   // 6/9 (and D100 pairs) get a distinguishing underline
-  // classic dice orientation: each number stands with its BOTTOM toward the face's first corner
+  // factory orientation: the number stands on an edge (d10 — up the kite axis toward the pole)
   const G = dieFaceGeometry(kind, 1, 1, 1);
-  const rotFor = (i) => { const face=G.faces[i], cor=G.polys[i][0];
-    const du=dot(sub(cor,face.c),face.u), dv=dot(sub(cor,face.c),face.v);
-    return Math.round(Math.atan2(du,-dv)*180/Math.PI); };
   for (let i=0;i<n;i++){
     const r = makeTextLogoResult(byFaceVal[i], true, ambiguous.has(byFaceVal[i]));
     if (!r) continue;
     dieFaces.push({ id: nextDieId++, face: i, src:'text', text: byFaceVal[i],
-      depth: -0.2, sizeFrac: 0.55, rotation: rotFor(i), invert: false, threshold: 0.5,   // утоплено, низом к углу
+      depth: -0.2, sizeFrac: 0.55, rotation: dieFactoryRotation(kind, i, G), invert: false, threshold: 0.5,   // утоплено, заводская ориентация
       heightmap: r.heightmap, previewUrl: r.previewUrl });
   }
   renderDieCards();

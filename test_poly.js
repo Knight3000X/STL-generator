@@ -81,5 +81,23 @@ console.log('=== through-hole lattice on the N-gon SIDE WALLS ===');
   chk('wall net + dividers wt', manifoldCheck(wl({polyN:6,divX:2,divZ:2}),4).watertight);
 }
 paramState.box.latticeWalls='none';
+console.log('=== бин: full-size rounded-rect container (gridfinity-bin look) ===');
+{
+  const bin=(ov)=>{ base(Object.assign({width:84,height:44,depth:60,binRound:8},ov)); return buildTrisForShape('box',paramState.box); };
+  { const t=bin({}); const b=computeBBox(t);   // solid prism must fill the FULL footprint (not inscribed)
+    chk('bin solid wt + fills 84×60', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-84)<0.01 && Math.abs((b.maxZ-b.minZ)-60)<0.01, {x:b.maxX-b.minX,z:b.maxZ-b.minZ}); }
+  chk('bin hollow wt', manifoldCheck(bin({hollow:true,wallThickness:3}),4).watertight);
+  chk('bin hollow + floor net wt', manifoldCheck(bin({hollow:true,wallThickness:3,latticeFloor:true,latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60}),4).watertight);
+  for(const pat of ['diamond','square','triangle','hex'])
+    chk('bin wall net '+pat+' wt', manifoldCheck(bin({hollow:true,wallThickness:3,latticeWalls:'all',latticePattern:pat,latticeCell:9,latticeRib:2,latticeBorder:2,latticeRes:60}),4).watertight);
+  chk('bin wall+floor nets together wt', manifoldCheck(bin({hollow:true,wallThickness:3,latticeWalls:'all',latticeFloor:true,latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60}),4).watertight);
+  chk('bin 2x2 dividers wt', manifoldCheck(bin({hollow:true,wallThickness:3,divX:2,divZ:2,divT:1.4}),4).watertight);
+  { const t=bin({taperXPlus:10}); const b=computeBBox(t);
+    chk('bin + taper wt + height kept', manifoldCheck(t,4).watertight && Math.abs((b.maxY-b.minY)-44)<0.2, {h:b.maxY-b.minY}); }
+  chk('bin net removes material', vol(bin({hollow:true,wallThickness:3,latticeWalls:'all',latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60})) < vol(bin({hollow:true,wallThickness:3})), {});
+  { const a=bin({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true}).length, b=bin({}).length;
+    chk('organizer add-ons gated off on bin', a===b, {a,b}); }
+}
+paramState.box.latticeWalls='none';
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

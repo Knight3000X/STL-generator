@@ -38,6 +38,22 @@ chk('core without legend watertight (plain slab)', manifoldCheck(base({keycapMod
 chk('shell choc watertight', manifoldCheck(base({keycapMode:'shell',keyStem:'choc'},true),4).watertight);
 chk('shell 2u watertight', manifoldCheck(base({keycapMode:'shell',keySizeU:2},true),4).watertight);
 
+console.log('=== profiles (Cherry/OEM/SA/MDA/XDA/DSA) × rows ===');
+for(const pr of ['cherry','oem','sa','mda','xda','dsa'])
+  for(const r of ['r1','r3','r4'])
+    chk(pr+' '+r+' watertight', manifoldCheck(base({keyProfile:pr,keyRow:r},true),4).watertight);
+{ const hSA=computeBBox(base({keyProfile:'sa'})).maxY, hDSA=computeBBox(base({keyProfile:'dsa'})).maxY;
+  chk('SA taller than DSA', hSA>hDSA+4, {hSA,hDSA}); }
+{ // sculpted R1 tilts the front edge down: max Y at the back (z<0) higher than at the front (z>0)
+  const t=base({keyProfile:'cherry',keyRow:'r1',keyStem:'none'});
+  let backTop=-1, frontTop=-1;
+  for(const T of t) for(const v of T){ if(v[2]<-5) backTop=Math.max(backTop,v[1]); if(v[2]>5) frontTop=Math.max(frontTop,v[1]); }
+  chk('cherry R1 top tilts toward the front', backTop>frontTop+0.5, {backTop,frontTop}); }
+{ const a=computeBBox(base({keyProfile:'xda',keyRow:'r1'})).maxY, b=computeBBox(base({keyProfile:'xda',keyRow:'r4'})).maxY;
+  chk('uniform profile ignores the row', Math.abs(a-b)<1e-6, {a,b}); }
+chk('profile + shell watertight', manifoldCheck(base({keyProfile:'sa',keycapMode:'shell'},true),4).watertight);
+chk('profile + core watertight', manifoldCheck(base({keyProfile:'oem',keyRow:'r1',keycapMode:'core'},true),4).watertight);
+
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('scoop/grip/ears/feet/dividers skipped on keycap', a===b, {a,b}); }

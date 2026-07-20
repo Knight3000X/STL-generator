@@ -931,7 +931,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3332,6 +3332,19 @@ const SHAPE_PARAMS = {
     {group:'Многогранник', key:'binRound', label:'Бин: скругление вертикальных углов, полный габарит (0 = выкл)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Многогранник', key:'platonic', label:'Игральная кость / правильный многогранник (перекрывает призму)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'d4',t:'D4 — тетраэдр (4)'},{v:'d6',t:'D6 — куб (6)'},{v:'d8',t:'D8 — октаэдр (8)'},{v:'d10',t:'D10 — трапецоэдр (10)'},{v:'d12',t:'D12 — додекаэдр (12)'},{v:'d20',t:'D20 — икосаэдр (20)'},{v:'d100',t:'D100 — сфера/Zocchihedron (100)'}]},
+    {group:'Кейкап', key:'keycapMode', label:'Кейкап (перекрывает куб/бин/кость)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'single',t:'кейкап (один цвет)'},{v:'shell',t:'AMS: внешний (легенда насквозь)'},{v:'core',t:'AMS: внутренний (вставка с легендой)'}]},
+    {group:'Кейкап', key:'keySizeU', label:'Кейкап: ширина в юнитах (1u = 18.2 мм)', min:0.25, max:7, step:0.25, default:1, unit:'u'},
+    {group:'Кейкап', key:'keyH', label:'Кейкап: высота', min:4, max:20, step:0.5, default:9, unit:'мм'},
+    {group:'Кейкап', key:'keyTaper', label:'Кейкап: сужение кверху (на сторону)', min:0, max:6, step:0.1, default:2.4, unit:'мм'},
+    {group:'Кейкап', key:'keyRound', label:'Кейкап: скругление углов', min:0.3, max:6, step:0.1, default:1.8, unit:'мм'},
+    {group:'Кейкап', key:'keyWall', label:'Кейкап: стенка юбки', min:0.8, max:3, step:0.1, default:1.3, unit:'мм'},
+    {group:'Кейкап', key:'keyPlate', label:'Кейкап: толщина верхней площадки', min:1, max:4, step:0.1, default:1.8, unit:'мм'},
+    {group:'Кейкап', key:'keyDish', label:'Кейкап: чаша (углубление верха)', min:0, max:3, step:0.1, default:1, unit:'мм'},
+    {group:'Кейкап', key:'keyLegendDepth', label:'Кейкап: глубина легенды (− = рельеф наружу)', min:-2, max:2, step:0.1, default:0.6, unit:'мм'},
+    {group:'Кейкап', key:'keyStem', label:'Кейкап: крепление (стем)', type:'select', default:'mx',
+      options:[{v:'mx',t:'Cherry MX (крест)'},{v:'choc',t:'Kailh Choc (2 ножки)'},{v:'none',t:'без стема'}]},
+    {group:'Кейкап', key:'keyStemTol', label:'Кейкап: допуск посадки стема', min:0, max:0.5, step:0.05, default:0.1, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -4601,6 +4614,153 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   return polyDropDegen(tris);
 }
 
+/* ---- Keycaps (кейкапы) --------------------------------------------------------------------------
+   Parametric keycap: rounded-rect base ring lofted to a smaller top ring (side taper), hollow skirt
+   underneath, a top plate carried by a Cartesian CELL GRID (the crisp-edge construction), an optional
+   spherical dish, a stem (Cherry MX cross bore or Kailh Choc legs — both via the extruded-silhouette
+   machinery, watertight by construction), and a LEGEND taken from the first logo card (text / image /
+   QR all work) engraved into or embossed out of the top.
+   Modes (keycapMode):
+     'single' — one-colour cap: legend cells shifted by keyLegendDepth with vertical cell walls.
+     'shell'  — AMS outer shell: legend cells are THROUGH-holes in the top plate (light shines through).
+     'core'   — AMS inner insert: base slab + legend PLUGS rising flush with the shell's top surface.
+   Shell + core are meant to be two assembly models (black + white) → two objects in the 3MF, the
+   slicer maps each to its own AMS filament. */
+function keycapStemHeightmap(kind, tol){
+  const S=LOGO_HM_SIZE, hm=new Float32Array(S*S);
+  let spanX, spanZ;
+  if(kind==='choc'){ spanX=7.6; spanZ=3.6;
+    const w=Math.max(0.6,1.2-tol), L=3.0, cx=5.7/2;
+    for(let j=0;j<S;j++)for(let i=0;i<S;i++){ const x=(i/S-0.5)*spanX, z=(j/S-0.5)*spanZ;
+      if((Math.abs(x-cx)<=w/2||Math.abs(x+cx)<=w/2)&&Math.abs(z)<=L/2) hm[j*S+i]=1; }
+  } else { spanX=5.8; spanZ=5.8;   // MX: Ø5.5 barrel with a +-shaped bore (slot widens with tol)
+    const R=2.75, aw=1.35+2*tol, al=4.25;
+    for(let j=0;j<S;j++)for(let i=0;i<S;i++){ const x=(i/S-0.5)*spanX, z=(j/S-0.5)*spanZ;
+      const inC=x*x+z*z<=R*R, inX=Math.abs(x)<=al/2&&Math.abs(z)<=aw/2, inZ=Math.abs(z)<=al/2&&Math.abs(x)<=aw/2;
+      if(inC&&!inX&&!inZ) hm[j*S+i]=1; }
+  }
+  return {heightmap:hm, spanX, spanZ};
+}
+function buildKeycap(p, logoRes){
+  const mode = p.keycapMode;
+  const u=Math.max(0.25,Math.min(7,p.keySizeU||1));
+  const seg=5, baseW=18.2*u, baseD=18.2, H=Math.max(4,Math.min(20,p.keyH||9));
+  const taper=Math.max(0,Math.min((Math.min(baseW,baseD)-8)/2, p.keyTaper||2.4));
+  const topW=baseW-2*taper, topD=baseD-2*taper;
+  const rB=Math.max(0.3,Math.min(p.keyRound||1.8, Math.min(baseW,baseD)/2-0.5));
+  const rT=Math.max(0.3,Math.min(rB, Math.min(topW,topD)/2-0.5));
+  const wall=Math.max(0.8,Math.min(3,p.keyWall||1.3)), plateT=Math.max(1,Math.min(4,p.keyPlate||1.8));
+  const dishD=Math.max(0,Math.min(3,p.keyDish||0)), legD=Math.max(-2,Math.min(2,(p.keyLegendDepth!=null?p.keyLegendDepth:0.6)));
+  const yPlate=H-plateT, tris=[];
+  const O0=ringRoundedRect(baseW/2,baseD/2,rB,seg), O1=ringRoundedRect(topW/2,topD/2,rT,seg);
+  const I0=polyInsetRing(O0,wall), I1=polyInsetRing(O1,wall), N=O0.length;
+  const V=(r,i,y)=>[r[i][0],y,r[i][1]];
+  const quad=(a,b,c,d,ref)=>{ tris.push(orient([a,b,c],ref)); tris.push(orient([a,c,d],ref)); };
+  // top-plate grid: inscribed rect of the INNER top ring (so the plate bottom stitches inside the skirt)
+  const R=polyInscribedRect(I1, 0.4);
+  const nG=Math.max(48,Math.min(240,Math.round((logoRes||60)*1.6)));
+  const X=i=>R.cx-R.rw+2*R.rw*i/nG, Z=j=>R.cz-R.rz+2*R.rz*j/nG;
+  const dish=(x,z)=>{ if(!(dishD>0)) return 0; const rx=(x-R.cx)/R.rw, rz=(z-R.cz)/R.rz;
+    return dishD*Math.max(0,1-(rx*rx+rz*rz)); };
+  // legend mask from the first logo card (text / image / QR share the heightmap pipeline)
+  const lg=(typeof logos!=='undefined'&&logos.length&&logos[0].heightmap)?logos[0]:null;
+  const mask=new Uint8Array(nG*nG);
+  if(lg&&mode!=='plain'){
+    const rot=(lg.rotation||0)*Math.PI/180, cR=Math.cos(-rot), sR=Math.sin(-rot);
+    const w=Math.max(2,lg.w||10), h=Math.max(2,lg.h||10), thr=(lg.threshold!=null?lg.threshold:0.5);
+    for(let j=0;j<nG;j++)for(let i=0;i<nG;i++){
+      if(i<2||j<2||i>=nG-2||j>=nG-2) continue;   // boundary cells stay solid → flat stitch ring
+      const x=(X(i)+X(i+1))/2-(lg.u0||0), z=(Z(j)+Z(j+1))/2-(lg.v0||0);
+      const lu=x*cR-z*sR, lv=x*sR+z*cR;
+      if(Math.abs(lu)>w/2||Math.abs(lv)>h/2) continue;
+      let val=sampleHeightmap(lg.heightmap,(lu+w/2)/w,1-(lv+h/2)/h); if(lg.invert)val=1-val;
+      if(val>thr) mask[j*nG+i]=1;
+    }
+    for(let ch=true;ch;){ ch=false;   // pinch dissolve
+      for(let j=0;j+1<nG;j++)for(let i=0;i+1<nG;i++){
+        const a=mask[j*nG+i],b=mask[j*nG+i+1],c2=mask[(j+1)*nG+i],d=mask[(j+1)*nG+i+1];
+        if(a&&d&&!b&&!c2){mask[j*nG+i+1]=1;ch=true;} else if(b&&c2&&!a&&!d){mask[j*nG+i]=1;ch=true;} } }
+  }
+  const at=(i,j)=>(i>=0&&j>=0&&i<nG&&j<nG)?mask[j*nG+i]:0;
+  // per-vertex top height (dish); legend offset applied PER CELL so shared lattice edges weld via walls
+  const yT=(i,j)=>H-dish(X(i),Z(j));
+  if(mode==='core'){
+    // standalone white insert: base slab (all cells, yPlate−slabT..yPlate) + legend plugs up to the shell's
+    // outer surface. One cell of perimeter clearance so it drops into the skirt cavity.
+    const slabT=1.6, yB=yPlate-slabT, m0=1, m1=nG-1;
+    const cin=(i,j)=>(i>=m0&&j>=m0&&i<m1&&j<m1);
+    for(let j=m0;j<m1;j++)for(let i=m0;i<m1;i++){
+      const leg=at(i,j);
+      const y00=leg?yT(i,j):yPlate, y10=leg?yT(i+1,j):yPlate, y11=leg?yT(i+1,j+1):yPlate, y01=leg?yT(i,j+1):yPlate;
+      quad([X(i),y00,Z(j)],[X(i+1),y10,Z(j)],[X(i+1),y11,Z(j+1)],[X(i),y01,Z(j+1)],[0,1,0]);   // top (2 levels)
+      quad([X(i),yB,Z(j)],[X(i+1),yB,Z(j)],[X(i+1),yB,Z(j+1)],[X(i),yB,Z(j+1)],[0,-1,0]);       // bottom
+      // side walls: slab perimeter (full height) and legend↔flat level steps — exact shared vertices
+      const eWall=(iN,jN,ax,az,bx,bz,va,vb,ref)=>{
+        const nIn=cin(iN,jN), nLeg=nIn?at(iN,jN):null;
+        const yaThis=leg?yT(va[0],va[1]):yPlate, ybThis=leg?yT(vb[0],vb[1]):yPlate;
+        if(!nIn){ quad([ax,yaThis,az],[bx,ybThis,bz],[bx,yB,bz],[ax,yB,az], ref); return; }
+        if(nLeg===leg || !leg) return;   // level step emitted ONCE, from the plug side
+        const yaN=nLeg?yT(va[0],va[1]):yPlate, ybN=nLeg?yT(vb[0],vb[1]):yPlate;
+        quad([ax,yaThis,az],[bx,ybThis,bz],[bx,ybN,bz],[ax,yaN,az], ref);
+      };
+      eWall(i+1,j, X(i+1),Z(j), X(i+1),Z(j+1), [i+1,j],[i+1,j+1], [1,0,0]);
+      eWall(i-1,j, X(i),Z(j),   X(i),Z(j+1),   [i,j],[i,j+1],     [-1,0,0]);
+      eWall(i,j+1, X(i),Z(j+1), X(i+1),Z(j+1), [i,j+1],[i+1,j+1], [0,0,1]);
+      eWall(i,j-1, X(i),Z(j),   X(i+1),Z(j),   [i,j],[i+1,j],     [0,0,-1]);
+    }
+    return polyDropDegen(snapWeldTris(tris));
+  }
+  // ---- shell / single: full cap ----
+  for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[O0[i][0]+O0[j][0],0,O0[i][1]+O0[j][1]];
+    quad(V(O0,i,0),V(O0,j,0),V(O1,j,H),V(O1,i,H), ref); }                       // outer loft
+  for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[-(I0[i][0]+I0[j][0]),0,-(I0[i][1]+I0[j][1])];
+    quad(V(I0,i,0),V(I0,j,0),V(I1,j,yPlate),V(I1,i,yPlate), ref); }             // inner loft (cavity)
+  for(let i=0;i<N;i++){ const j=(i+1)%N;                                        // bottom rim annulus
+    quad(V(O0,i,0),V(O0,j,0),V(I0,j,0),V(I0,i,0), [0,-1,0]); }
+  // top surface: cell grid + annulus to the OUTER top ring; plate bottom: grid/fan + annulus to inner ring
+  const ringTop=[];   // grid boundary lattice points (2D [x,z])
+  for(let i=0;i<nG;i++) ringTop.push([X(i),Z(0)]);
+  for(let j=0;j<nG;j++) ringTop.push([X(nG),Z(j)]);
+  for(let i=nG;i>0;i--) ringTop.push([X(i),Z(nG)]);
+  for(let j=nG;j>0;j--) ringTop.push([X(0),Z(j)]);
+  for(const T of polyStitchAnnulus(O1, ringTop, [R.cx,R.cz]))
+    tris.push(orient(T.map(q=>[q[0],H,q[1]]),[0,1,0]));                          // flat top annulus
+  const through = (mode==='shell');
+  for(let j=0;j<nG;j++)for(let i=0;i<nG;i++){
+    const leg=at(i,j);
+    const off= leg&&!through ? legD : 0;
+    if(!(leg&&through)){                                                         // cell top plate
+      quad([X(i),yT(i,j)-off,Z(j)],[X(i+1),yT(i+1,j)-off,Z(j)],[X(i+1),yT(i+1,j+1)-off,Z(j+1)],[X(i),yT(i,j+1)-off,Z(j+1)],[0,1,0]);
+    }
+    // walls between cells of different state (single: level step; shell: hole wall down to plate bottom)
+    const eWall=(iN,jN,ax,az,bx,bz,va,vb,ref)=>{
+      const nLeg=at(iN,jN); if(nLeg===leg || !leg) return;   // emit ONCE, from the legend/hole side
+      const yaT=yT(va[0],va[1]), ybT=yT(vb[0],vb[1]);
+      if(through){ quad([ax,yaT,az],[bx,ybT,bz],[bx,yPlate,bz],[ax,yPlate,az], ref); return; }
+      quad([ax,yaT-legD,az],[bx,ybT-legD,bz],[bx,ybT,bz],[ax,yaT,az], ref);
+    };
+    // wall outward: engraved pocket / through hole → normal points INTO the legend cell; emboss → away
+    const ws = (through || legD>0) ? -1 : 1;
+    eWall(i+1,j, X(i+1),Z(j), X(i+1),Z(j+1), [i+1,j],[i+1,j+1], [ws,0,0]);
+    eWall(i-1,j, X(i),Z(j),   X(i),Z(j+1),   [i,j],[i,j+1],     [-ws,0,0]);
+    eWall(i,j+1, X(i),Z(j+1), X(i+1),Z(j+1), [i,j+1],[i+1,j+1], [0,0,ws]);
+    eWall(i,j-1, X(i),Z(j),   X(i+1),Z(j),   [i,j],[i+1,j],     [0,0,-ws]);
+    // plate bottom (faces the cavity): holes only in 'through' mode
+    if(!(leg&&through))
+      quad([X(i),yPlate,Z(j)],[X(i+1),yPlate,Z(j)],[X(i+1),yPlate,Z(j+1)],[X(i),yPlate,Z(j+1)],[0,-1,0]);
+  }
+  for(const T of polyStitchAnnulus(I1, ringTop, [R.cx,R.cz]))
+    tris.push(orient(T.map(q=>[q[0],yPlate,q[1]]),[0,-1,0]));                    // plate-bottom annulus
+  // stem (MX bore / Choc legs), embedded into the plate from below — appended closed shell
+  if(p.keyStem && p.keyStem!=='none'){
+    const sh=keycapStemHeightmap(p.keyStem, Math.max(0,Math.min(0.5,p.keyStemTol||0.1)));
+    const stemH=yPlate+Math.min(1.2,plateT*0.6);
+    const st=buildLogoExtrudeTris({heightmap:sh.heightmap,rotation:0,invert:false,threshold:0.5},
+      sh.spanX, sh.spanZ, stemH, 150);
+    for(const t of st) tris.push(t.map(q=>[q[0], q[1]+stemH/2, q[2]]));
+  }
+  return polyDropDegen(snapWeldTris(tris));
+}
 // Full superellipsoid: the squircle prism with the TOP/BOTTOM edges also rounded. Horizontal exponent
 // eH (side/corner roundness) + vertical exponent eV (top/bottom edge roundness): eV→0 is the flat-top
 // prism, eV=1 is smooth ellipsoid caps. Poles collapse to a single apex top and bottom.
@@ -6316,7 +6476,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -6330,7 +6490,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -6360,6 +6520,11 @@ function buildTrisForShapeCore(shape, p) {
     // rides the shared per-vertex map afterwards; slicing / lid / export come from the mesh pipeline. The
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
+    // Keycap: overrides every other box mode. Legend comes from the first logo card; the shell/core
+    // pair (AMS) is two assembly models — two objects in the exported 3MF, one filament each.
+    if (p.keycapMode && p.keycapMode !== 'none') {
+      return snapWeldTris(buildKeycap(p, typeof logoResolution !== 'undefined' ? logoResolution : 60));
+    }
     if (p.platonic && p.platonic !== 'none') {
       // Dice: D4/D6/D8/D12/D20 (Platonic) or D10/D100 (trapezohedra), with optional per-face relief
       // (numbers / logos / text) from the dieFaces submenu, displaced into the actual face surface.
@@ -7625,6 +7790,7 @@ function setShading(smooth) {
 function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
+  if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';
   if (p.platonic && p.platonic !== 'none') return ({d4:'D4 (тетраэдр)',d6:'D6 (куб)',d8:'D8 (октаэдр)',d10:'D10 (трапецоэдр)',d12:'D12 (додекаэдр)',d20:'D20 (икосаэдр)',d100:'D100 (сфера)'})[p.platonic] || 'кость';
   if ((p.polyN|0) >= 3) return (p.polyN|0) + '-гранная призма';
   if ((p.binRound||0) > 0) return 'бин (скруглённые углы)';

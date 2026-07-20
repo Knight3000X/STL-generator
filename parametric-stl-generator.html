@@ -931,7 +931,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4649,12 +4649,12 @@ function keycapStemHeightmap(kind, tol){
 // plane's front-back angle — negative tips the front edge down, the R1 look), dish depth and side taper.
 // Sculpted profiles (Cherry/OEM/SA/MDA) vary by row R1–R4; uniform ones (XDA/DSA) ignore the row.
 const KEYCAP_PROFILES = {
-  cherry:{ h:[9.4,8.6,8.2,9.1],     ang:[-8,-5,0,6],   dish:1.2, taper:2.6 },
-  oem:   { h:[11.2,10.2,9.8,10.6],  ang:[-9,-6,0,7],   dish:1.2, taper:2.6 },
-  sa:    { h:[14.9,13.4,12.9,13.4], ang:[-13,-7,0,7],  dish:1.8, taper:3.2 },
-  mda:   { h:[10.4,9.3,9.1,9.3],    ang:[-9,-3,0,3],   dish:1.5, taper:3.0 },
-  xda:   { h:[9.1,9.1,9.1,9.1],     ang:[0,0,0,0],     dish:1.0, taper:3.4 },
-  dsa:   { h:[7.6,7.6,7.6,7.6],     ang:[0,0,0,0],     dish:1.0, taper:3.0 },
+  cherry:{ h:[9.4,8.6,8.2,9.1],     ang:[-8,-5,0,6],   dish:0, taper:2.6 },
+  oem:   { h:[11.2,10.2,9.8,10.6],  ang:[-9,-6,0,7],   dish:0, taper:2.6 },
+  sa:    { h:[14.9,13.4,12.9,13.4], ang:[-13,-7,0,7],  dish:0, taper:3.2 },
+  mda:   { h:[10.4,9.3,9.1,9.3],    ang:[-9,-3,0,3],   dish:0, taper:3.0 },
+  xda:   { h:[9.1,9.1,9.1,9.1],     ang:[0,0,0,0],     dish:0, taper:3.4 },
+  dsa:   { h:[7.6,7.6,7.6,7.6],     ang:[0,0,0,0],     dish:0, taper:3.0 },
 };
 function buildKeycap(p, logoRes){
   const mode = p.keycapMode;
@@ -4697,7 +4697,7 @@ function buildKeycap(p, logoRes){
       const x=(X(i)+X(i+1))/2-(lg.u0||0), z=(Z(j)+Z(j+1))/2-(lg.v0||0);
       const lu=x*cR-z*sR, lv=x*sR+z*cR;
       if(Math.abs(lu)>w/2||Math.abs(lv)>h/2) continue;
-      let val=sampleHeightmap(lg.heightmap,(lu+w/2)/w,1-(lv+h/2)/h); if(lg.invert)val=1-val;
+      let val=sampleHeightmap(lg.heightmap,1-(lu+w/2)/w,(lv+h/2)/h); if(lg.invert)val=1-val;   // 180°: legend top faces the cap's back
       if(val>thr) mask[j*nG+i]=1;
     }
     for(let ch=true;ch;){ ch=false;   // pinch dissolve

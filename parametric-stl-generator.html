@@ -4129,8 +4129,8 @@ function buildPolyHollowLogos(hw, hd, hh, N, roundR, seg, t, floorY, dispFns, lo
 // ear-clipping needed): sort each loop by angle about the centroid, then walk both, at each step joining
 // whichever loop's next vertex has the smaller angle — every outer and inner edge is used exactly once, so
 // the strip is watertight and non-overlapping. Winding is fixed by the caller (orient to the wanted normal).
-function polyStitchAnnulus(outer, inner){
-  const c=polyRingCentroid(outer);
+function polyStitchAnnulus(outer, inner, cOpt){
+  const c=cOpt||polyRingCentroid(outer);   // both rings must be star-shaped about c (convex ⇒ any interior point)
   const ang=p=>{ let a=Math.atan2(p[1]-c[1], p[0]-c[0]); return a<0?a+2*Math.PI:a; };
   const ccw=lp=>{ let s=0; for(let k=0;k<lp.length;k++){ const p=lp[k],q=lp[(k+1)%lp.length]; s+=p[0]*q[1]-q[0]*p[1]; } return s>0?lp.slice():lp.slice().reverse(); };
   const rot=lp=>{ let mi=0; for(let k=1;k<lp.length;k++) if(ang(lp[k])<ang(lp[mi])) mi=k; return lp.slice(mi).concat(lp.slice(0,mi)); };
@@ -4420,6 +4420,71 @@ function buildDieFaceTess(face, poly, dispFn, k, fracs){
       tris.push(orient([A[j], B[j], B[jn]], N)); tris.push(orient([A[j], B[jn], A[jn]], N)); } }
   return polyDropDegen(tris);
 }
+/* Crisp per-glyph relief patch: instead of displacing a radial grid (whose ragged sampled edges are what
+   made the numbers look chewed), the glyph area becomes a fine Cartesian CELL LATTICE — filled cells sit
+   at ±depth, empty at 0, with VERTICAL walls exactly on filled↔empty cell boundaries (the same sharp-edge
+   construction as the lattice floor / extruded logo). Edge crispness = cell pitch (~0.1 mm at high
+   detail), independent of the surrounding face tessellation. The patch is cut to the glyph's mask bbox
+   (+pad) and stitched into the flat face by one angular annulus. Supports emboss (+depth) and engrave (−).
+   Returns { tris (3D), ring (2D face-plane boundary loop, y=0), center (2D) } or null. */
+function buildDieGlyphPatch(face, asg, nC){
+  if(!asg || !asg.heightmap) return null;
+  const S=Math.max(1,(asg.sizeFrac||0.55)*face.r*2*0.9);
+  let depth=asg.depth||0; const cap=Math.max(0.2, face.r*0.6); depth=Math.max(-cap,Math.min(cap,depth));
+  if(Math.abs(depth)<1e-4) return null;
+  nC=Math.max(32,Math.min(256,Math.round(nC)));
+  const margin=Math.max(1.0, 4*S/nC), P=S+2*margin, h=P/nC;
+  const rot=(asg.rotation||0)*Math.PI/180, cR=Math.cos(rot), sR=Math.sin(rot);
+  const thr=(asg.threshold!=null?asg.threshold:0.5), inv=!!asg.invert;
+  const cU=(asg.offU||0)*face.r, cV=(asg.offV||0)*face.r;
+  const l2f=(lu,lv)=>[cU + lu*cR - lv*sR, cV + lu*sR + lv*cR];   // glyph-local → face-plane
+  // fill mask at cell centres (same sampling + horizontal mirror as dieReliefDispFn)
+  const mask=new Uint8Array(nC*nC);
+  let i0=nC,i1=-1,j0=nC,j1=-1;
+  for(let j=0;j<nC;j++)for(let i=0;i<nC;i++){
+    const lu=-P/2+(i+0.5)*h, lv=-P/2+(j+0.5)*h;
+    if(Math.abs(lu)>S/2||Math.abs(lv)>S/2) continue;
+    let val=sampleHeightmap(asg.heightmap, 1-(lu+S/2)/S, 1-(lv+S/2)/S); if(inv) val=1-val;
+    if(val>thr){ mask[j*nC+i]=1; if(i<i0)i0=i; if(i>i1)i1=i; if(j<j0)j0=j; if(j>j1)j1=j; }
+  }
+  if(i1<0) return null;
+  for(let ch=true; ch;){ ch=false;   // checkerboard pinch dissolve (corner-touching cells → non-manifold)
+    for(let j=0;j+1<nC;j++)for(let i=0;i+1<nC;i++){
+      const a=mask[j*nC+i],b=mask[j*nC+i+1],c2=mask[(j+1)*nC+i],d=mask[(j+1)*nC+i+1];
+      if(a&&d&&!b&&!c2){mask[j*nC+i+1]=1;ch=true;} else if(b&&c2&&!a&&!d){mask[j*nC+i]=1;ch=true;} } }
+  // emit only the glyph's bbox (+3-cell empty pad) — the annulus stitch covers the rest of the face
+  i0=Math.max(0,i0-3); j0=Math.max(0,j0-3); i1=Math.min(nC-1,i1+3); j1=Math.min(nC-1,j1+3);
+  const C3=face.c,U3=face.u,V3=face.v,N3=face.n;
+  const M3=(u,v,y)=>[C3[0]+u*U3[0]+v*V3[0]+y*N3[0], C3[1]+u*U3[1]+v*V3[1]+y*N3[1], C3[2]+u*U3[2]+v*V3[2]+y*N3[2]];
+  const lx=q=>-P/2+q*h, at=(i,j)=>(i>=i0&&j>=j0&&i<=i1&&j<=j1)?mask[j*nC+i]:0;
+  const tris=[], emit=(A,B,Cc,D,ref)=>{ tris.push(orient([A,B,Cc],ref)); tris.push(orient([A,Cc,D],ref)); };
+  const P3=(i,j,y)=>{ const q=l2f(lx(i),lx(j)); return M3(q[0],q[1],y); };
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+    const y=at(i,j)?depth:0;
+    emit(P3(i,j,y),P3(i+1,j,y),P3(i+1,j+1,y),P3(i,j+1,y), N3);   // cell top/floor plate
+    // vertical walls on fill transitions, emitted from the filled cell; outward flips with depth sign
+    // (embossed glyph walls face the empty side; engraved pocket walls face the pocket).
+    if(at(i,j)){
+      const sgn=depth>0?1:-1;
+      const mk=(ia,ja,ib,jb,d0,d1)=>{
+        const fu=(d0*cR - d1*sR)*sgn, fv=(d0*sR + d1*cR)*sgn;   // rotation only — directions carry no translation
+        const D3=[fu*U3[0]+fv*V3[0], fu*U3[1]+fv*V3[1], fu*U3[2]+fv*V3[2]];
+        emit(P3(ia,ja,0),P3(ib,jb,0),P3(ib,jb,depth),P3(ia,ja,depth), D3); };
+      if(!at(i+1,j)) mk(i+1,j, i+1,j+1, 1,0);
+      if(!at(i-1,j)) mk(i,j,   i,j+1,  -1,0);
+      if(!at(i,j+1)) mk(i,j+1, i+1,j+1, 0,1);
+      if(!at(i,j-1)) mk(i,j,   i+1,j,   0,-1);
+    }
+  }
+  // 2D boundary ring of the emitted bbox (y=0 plane) + centre, for the annulus stitch
+  const ring=[];
+  for(let i=i0;i<=i1;i++) ring.push(l2f(lx(i),lx(j0)));
+  for(let j=j0;j<=j1;j++) ring.push(l2f(lx(i1+1),lx(j)));
+  for(let i=i1+1;i>i0;i--) ring.push(l2f(lx(i),lx(j1+1)));
+  for(let j=j1+1;j>j0;j--) ring.push(l2f(lx(i0),lx(j)));
+  const center=l2f((lx(i0)+lx(i1+1))/2, (lx(j0)+lx(j1+1))/2);
+  return { tris:polyDropDegen(tris), ring, center };
+}
 // Whole die: flat body when no relief, otherwise every face tessellated (a global edge subdivision so
 // shared edges match) and the assigned faces displaced (emboss or engrave). Watertight by construction.
 function buildDie(kind, hw, hh, hd, assignments, res){
@@ -4434,7 +4499,8 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   // Detail: a global edge subdivision `k` (shared between neighbours → watertight) + `R` interior rings.
   // Scaled down a little on many-faced dice (D100) so a high detail setting doesn't explode the triangle
   // count. Higher `res` (the die-face detail control) → crisper numbers.
-  const nF=G.faces.length, dsc=nF>=60?0.4:(nF>=24?0.7:1);
+  const nF=G.faces.length, dsc=nF>=60?0.4:(nF>=24?0.7:(nF<=4?1.2:1));
+  const nC=Math.max(48, Math.min(256, Math.round((res||160)*(nF>=24?0.35:0.55))));   // glyph patch cells
   const perim=Math.max(48, Math.min(480, Math.round(res||160)))*dsc;
   const k=Math.max(4, Math.min(96, Math.round(perim/5)));    // GLOBAL edge subdivision (shared → watertight)
   const R=Math.max(10, Math.min(120, Math.round(perim/4)));
@@ -4448,9 +4514,33 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   for(let f=0;f<G.polys.length;f++){
     const face=G.faces[f], poly=G.polys[f], asgs=byFace.get(f);
     if(asgs && asgs.length){
-      const fns=asgs.map(a=>dieReliefDispFn(face,a)).filter(Boolean);
-      const disp = fns.length ? (p)=>{ for(const fn of fns){ const d=fn(p); if(d) return d; } return 0; } : null;
-      tris=tris.concat(buildDieFaceTess(face, poly, disp, k, fracs));
+      // Preferred path for a SINGLE relief on the face: crisp Cartesian glyph patch + flat annulus, edges
+      // sharp at cell pitch. Falls back to the displaced radial grid when the patch pokes out of the face
+      // (huge glyphs) or the face carries several reliefs (D4 corner numbers).
+      let done=false;
+      if(asgs.length===1){
+        const patch=buildDieGlyphPatch(face, asgs[0], nC);
+        if(patch){
+          const m=poly.length, to2=(p)=>[dot(sub(p,face.c),face.u), dot(sub(p,face.c),face.v)];
+          const P2=poly.map(to2);
+          const inside=(pt)=>{ let w=false; for(let ii=0,jj=m-1;ii<m;jj=ii++){ const A=P2[ii],B=P2[jj];
+            if(((A[1]>pt[1])!==(B[1]>pt[1])) && (pt[0] < (B[0]-A[0])*(pt[1]-A[1])/(B[1]-A[1])+A[0])) w=!w; } return w; };
+          let ok=true; for(const q of patch.ring){ if(!inside([q[0]*1.04, q[1]*1.04])){ ok=false; break; } }
+          if(ok){
+            const ring2=[]; for(let e=0;e<m;e++){ const a=P2[e], b=P2[(e+1)%m];
+              for(let s=0;s<k;s++){ const t=s/k; ring2.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); } }
+            const M3f=(q)=>[face.c[0]+q[0]*face.u[0]+q[1]*face.v[0], face.c[1]+q[0]*face.u[1]+q[1]*face.v[1], face.c[2]+q[0]*face.u[2]+q[1]*face.v[2]];
+            tris=tris.concat(patch.tris);
+            for(const T of polyStitchAnnulus(ring2, patch.ring, patch.center)) tris.push(orient(T.map(M3f), face.n));
+            done=true;
+          }
+        }
+      }
+      if(!done){
+        const fns=asgs.map(a=>dieReliefDispFn(face,a)).filter(Boolean);
+        const disp = fns.length ? (p)=>{ for(const fn of fns){ const d=fn(p); if(d) return d; } return 0; } : null;
+        tris=tris.concat(buildDieFaceTess(face, poly, disp, k, fracs));
+      }
     }
     else {   // unassigned: flat, but boundary split into the SAME k so it welds with assigned neighbours
       const c=face.c;
@@ -7337,12 +7427,24 @@ function renderDieCards(){
     container.appendChild(card);
   }
 }
+// Default glyph orientation on a die face (all dice EXCEPT the corner-numbered D4): rotate so the glyph's
+// BOTTOM points at one of the face's corners — the classic dice look (a number "standing" on a vertex).
+// Deterministic: always the face's first polygon vertex.
+function dieCornerRotation(kind, faceIndex){
+  if (kind === 'd4') return 0;
+  const G = dieFaceGeometry(kind, 1, 1, 1);
+  if (faceIndex < 0 || faceIndex >= G.faces.length) return 0;
+  const face = G.faces[faceIndex], cor = G.polys[faceIndex][0];
+  const du = dot(sub(cor, face.c), face.u), dv = dot(sub(cor, face.c), face.v);
+  return Math.round(Math.atan2(du, -dv) * 180/Math.PI);   // glyph "up" → away from the corner = bottom → corner
+}
 function addDieAssignmentFromResult(result, src, text){
   if (!result) return;
   const kind = dieActiveKind(); if (!kind) return;
   const n = dieFaceCount(kind);
-  dieFaces.push({ id: nextDieId++, face: nextFreeDieFace(n), src: src||'text', text: text||'',
-    depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: !!result.suggestedInvert,   // утоплено по умолчанию
+  const face = nextFreeDieFace(n);
+  dieFaces.push({ id: nextDieId++, face, src: src||'text', text: text||'',
+    depth: -0.2, sizeFrac: 0.55, rotation: dieCornerRotation(kind, face), invert: !!result.suggestedInvert,   // утоплено, низом к углу
     threshold: 0.5, heightmap: result.heightmap, previewUrl: result.previewUrl });
   renderDieCards();
   if (currentShape === 'box') markPending();
@@ -7402,11 +7504,16 @@ function autoNumberDie(){
   // D100 (Zocchihedron) isn't antipodally paired → number sequentially; the rest use opposite-sum balancing.
   const byFaceVal = (kind === 'd100') ? Array.from({length:n}, (_,i)=>String(i+1)) : dieOppositeSumNumbering(kind, n);
   const ambiguous = dieAmbiguousLabels(byFaceVal);   // 6/9 (and D100 pairs) get a distinguishing underline
+  // classic dice orientation: each number stands with its BOTTOM toward the face's first corner
+  const G = dieFaceGeometry(kind, 1, 1, 1);
+  const rotFor = (i) => { const face=G.faces[i], cor=G.polys[i][0];
+    const du=dot(sub(cor,face.c),face.u), dv=dot(sub(cor,face.c),face.v);
+    return Math.round(Math.atan2(du,-dv)*180/Math.PI); };
   for (let i=0;i<n;i++){
     const r = makeTextLogoResult(byFaceVal[i], true, ambiguous.has(byFaceVal[i]));
     if (!r) continue;
     dieFaces.push({ id: nextDieId++, face: i, src:'text', text: byFaceVal[i],
-      depth: -0.2, sizeFrac: 0.55, rotation: 0, invert: false, threshold: 0.5,   // утоплено по умолчанию
+      depth: -0.2, sizeFrac: 0.55, rotation: rotFor(i), invert: false, threshold: 0.5,   // утоплено, низом к углу
       heightmap: r.heightmap, previewUrl: r.previewUrl });
   }
   renderDieCards();

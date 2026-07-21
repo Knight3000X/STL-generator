@@ -984,7 +984,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3926,6 +3926,7 @@ function dominantMode(p){
 // Is a section (param group or panel-fold, keyed by its data-group / data-fold name) relevant right now?
 function sectionRelevant(key, mode, hollow){
   switch(key){
+    case 'Параметры': return true;                               // transparent wrapper — its cats decide for themselves
     case '__base': return true;                                  // base-shape picker is always available
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
@@ -3982,6 +3983,9 @@ function setBaseShape(kind){
   setSel('sheetShape', kind==='sheet'  ? 'rect'   : 'none');
   setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
   setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
+  // auto-expand that kind's detail group so its settings are immediately visible, not a collapsed header
+  const grp = {die:'Многогранник', keycap:'Кейкап', sheet:'Лист / панель'}[kind];
+  if (grp) { const d=[...document.querySelectorAll('#params-box details.param-cat')].find(x=>x.dataset.group===grp); if (d) d.open = true; }
   updateBaseShapePicker();
 }
 function setActiveTab(tab){

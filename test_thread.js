@@ -12,8 +12,8 @@ function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
   return buildTrisForShape('box',paramState.box); }
 
-console.log('=== watertight: cap × stud × pitch × starts × handedness ===');
-for(const mode of ['cap','stud'])
+console.log('=== watertight: cap × stud × jar × pitch × starts × handedness ===');
+for(const mode of ['cap','stud','jar'])
   for(const pitch of [1.5,3,5])
     for(const starts of [1,2,3])
       for(const hand of ['right','left']){
@@ -26,7 +26,17 @@ console.log('=== nominal-Ø range ===');
 for(const D of [8,16,30,60,120]){
   chk('cap Ø'+D+' watertight', manifoldCheck(base({threadMode:'cap',threadD:D}),4).watertight);
   chk('stud Ø'+D+' watertight', manifoldCheck(base({threadMode:'stud',threadD:D}),4).watertight);
+  chk('jar Ø'+D+' watertight', manifoldCheck(base({threadMode:'jar',threadD:D}),4).watertight);
 }
+
+console.log('=== jar: hollow vessel ===');
+{ const b=computeBBox(base({threadMode:'jar',threadD:30,threadBodyD:50,threadBodyH:35,threadLen:16}));
+  chk('jar body Ø = 50', Math.abs((b.maxX-b.minX)-50)<0.5 && Math.abs((b.maxZ-b.minZ)-50)<0.5, {x:+(b.maxX-b.minX).toFixed(1),z:+(b.maxZ-b.minZ).toFixed(1)});
+  chk('jar height ≈ bodyH + threadLen', Math.abs((b.maxY-b.minY)-(35+16))<0.3, {y:+(b.maxY-b.minY).toFixed(1),expect:51}); }
+{ const solidLike=vol(base({threadMode:'jar',threadWall:12,threadFloor:12})), hollow=vol(base({threadMode:'jar',threadWall:2,threadFloor:2}));
+  chk('jar is hollow (thin walls enclose far less material)', hollow<solidLike, {hollow:+hollow.toFixed(0),solidLike:+solidLike.toFixed(0)}); }
+{ const auto=computeBBox(base({threadMode:'jar',threadD:30,threadBodyD:0}));   // auto body Ø = D+16 = 46
+  chk('jar auto body Ø = D+16', Math.abs((auto.maxX-auto.minX)-46)<0.5, {x:+(auto.maxX-auto.minX).toFixed(1)}); }
 
 console.log('=== dimensions ===');
 { // stud outer footprint = flange Ø; cap outer Ø = nominal + 2·clear + 2·wall

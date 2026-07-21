@@ -985,7 +985,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v74';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3433,7 +3433,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3449,6 +3449,9 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlange', label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyD', label:'Банка: Ø корпуса (0 = авто, шире горла)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -5217,6 +5220,36 @@ function buildThread(p){
       tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
       tris.push(orient([outT(i),outB(i2),outT(i2)],rref));
       tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }     // flange bottom disc
+  } else if (mode === 'jar'){  // hollow vessel with an external-threaded neck (matches the cap)
+    const wall  = Math.max(1.0, p.threadWall>0 ?p.threadWall :2.5);
+    const floor = Math.max(0.8, p.threadFloor>0?p.threadFloor:2.5);
+    const bodyR = Math.max(majorR+1, (p.threadBodyD>0 ? p.threadBodyD : D+16)/2);
+    const neckLen = len, ySh = Math.max(floor+2, p.threadBodyH>0?p.threadBodyH:30), yTop = ySh+neckLen;
+    const rBore   = Math.max(1, minorR - wall);            // neck inner bore
+    const rInBody = Math.max(rBore+0.5, bodyR - wall);     // wide body interior
+    const Ny = Math.max(8, Math.round(neckLen/P*spp));
+    const ring=(r,y,i)=>{ const a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    const neck=(i,j)=>{ const y=ySh+(yTop-ySh)*j/Ny, r=minorR+h*threadProfile(phase(i,y),flat), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rr=[Math.cos(mid),0,Math.sin(mid)];
+      tris.push(orient([[0,0,0],ring(bodyR,0,i2),ring(bodyR,0,i)],[0,-1,0]));                    // bottom disc
+      tris.push(orient([ring(bodyR,0,i),ring(bodyR,0,i2),ring(bodyR,ySh,i2)],rr));               // outer body wall
+      tris.push(orient([ring(bodyR,0,i),ring(bodyR,ySh,i2),ring(bodyR,ySh,i)],rr));
+      tris.push(orient([ring(bodyR,ySh,i),ring(bodyR,ySh,i2),neck(i2,0)],[0,1,0]));              // outer shoulder (up)
+      tris.push(orient([ring(bodyR,ySh,i),neck(i2,0),neck(i,0)],[0,1,0])); }
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=neck(i,j),B=neck(i2,j),C=neck(i2,j+1),Dd=neck(i,j+1);
+      const ref=[A[0]+B[0],0,A[2]+B[2]];                                                          // neck thread
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rin=[-Math.cos(mid),0,-Math.sin(mid)];
+      tris.push(orient([neck(i,Ny),neck(i2,Ny),ring(rBore,yTop,i2)],[0,1,0]));                   // neck top rim (up)
+      tris.push(orient([neck(i,Ny),ring(rBore,yTop,i2),ring(rBore,yTop,i)],[0,1,0]));
+      tris.push(orient([ring(rBore,ySh,i),ring(rBore,ySh,i2),ring(rBore,yTop,i2)],rin));          // bore wall (inward)
+      tris.push(orient([ring(rBore,ySh,i),ring(rBore,yTop,i2),ring(rBore,yTop,i)],rin));
+      tris.push(orient([ring(rInBody,ySh,i),ring(rBore,ySh,i2),ring(rInBody,ySh,i2)],[0,-1,0]));  // inner shoulder (down)
+      tris.push(orient([ring(rInBody,ySh,i),ring(rBore,ySh,i),ring(rBore,ySh,i2)],[0,-1,0]));
+      tris.push(orient([ring(rInBody,floor,i),ring(rInBody,floor,i2),ring(rInBody,ySh,i2)],rin)); // inner body wall
+      tris.push(orient([ring(rInBody,floor,i),ring(rInBody,ySh,i2),ring(rInBody,ySh,i)],rin));
+      tris.push(orient([[0,floor,0],ring(rInBody,floor,i),ring(rInBody,floor,i2)],[0,1,0])); }    // floor top (up)
   } else {  // 'cap' — internal thread inside a knurled cup
     const wall = Math.max(1.2, p.threadWall>0?p.threadWall:2.5);
     const top  = Math.max(1.0, p.threadTop>0 ?p.threadTop :2.5);
@@ -8625,7 +8658,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
-  if (p.threadMode && p.threadMode !== 'none') return p.threadMode==='cap' ? 'резьба: крышка' : 'резьба: штуцер';
+  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

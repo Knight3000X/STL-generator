@@ -58,6 +58,18 @@ for(const sh of ['rect','round','circle']){
 { const noRim=vol(base({sheetShape:'rect',sheetPattern:'none',sheetRim:0})), rim=vol(base({sheetShape:'rect',sheetPattern:'none',sheetRim:6}));
   chk('rim adds material', rim>noRim, {noRim,rim}); }
 chk('rim + taper watertight', manifoldCheck(base({sheetShape:'round',sheetRim:5,taperXPlus:6}),4).watertight);
+
+console.log('=== back (bottom) chamfer (фаска тыльной стороны) ===');
+for(const sh of ['rect','round','ngon','circle']) for(const cut of ['none','texture','through']){
+  const t=base({sheetShape:sh,sheetCut:cut,sheetChamfer:3.5}); const mc=manifoldCheck(t,4);
+  chk(sh+'/'+cut+' + chamfer wt (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,open:mc.openEdges}); }
+chk('chamfer + rim watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetChamfer:3,sheetRim:5}),4).watertight);
+for(const a of [20,60,75]) chk('chamfer angle '+a+'° wt', manifoldCheck(base({sheetShape:'rect',sheetCut:'none',sheetChamfer:3,sheetChamferAngle:a}),4).watertight);
+chk('chamfer + taper watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'through',sheetChamfer:3,taperXPlus:5}),4).watertight);
+{ const no=vol(base({sheetShape:'rect',sheetCut:'none',sheetChamfer:0})), ch=vol(base({sheetShape:'rect',sheetCut:'none',sheetChamfer:4}));
+  chk('chamfer removes bottom-edge material', ch<no, {no:+no.toFixed(1),ch:+ch.toFixed(1)}); }
+{ const b=computeBBox(base({sheetShape:'rect',width:80,depth:50,sheetCut:'none',sheetChamfer:4}));
+  chk('chamfer keeps the full top footprint', Math.abs((b.maxX-b.minX)-80)<0.1 && Math.abs((b.maxZ-b.minZ)-50)<0.1, {x:b.maxX-b.minX,z:b.maxZ-b.minZ}); }
 console.log('=== SVG-contour outline (arbitrary shape) ===');
 { // synthesize a star-shaped polar radius table (like loadSvgHoleFile output): a rounded blob
   const M=360, U=new Array(M); for(let a=0;a<M;a++){ const th=a*2*Math.PI/M; U[a]=0.7+0.3*Math.abs(Math.cos(2*th)); }

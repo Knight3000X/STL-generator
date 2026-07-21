@@ -826,6 +826,7 @@
         <button class="base-btn" data-base="die" title="Игральная кость / правильный многогранник (D4–D100)">Кость</button>
         <button class="base-btn" data-base="keycap" title="Колпачок клавиши (кейкап)">Кейкап</button>
         <button class="base-btn" data-base="sheet" title="Плоский лист / панель / грип-пад">Лист / панель</button>
+        <button class="base-btn" data-base="thread" title="Резьбовое соединение: крышка (внутренняя резьба) или штуцер/горловина (наружная)">Резьба</button>
       </div>
     </div>
 
@@ -984,7 +985,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3431,6 +3432,23 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetRimW', label:'Лист: толщина бортика', min:1, max:10, step:0.5, default:2, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
+    {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'}]},
+    {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadLen', label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadClear', label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadDepth', label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
+      options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
+    {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlange', label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3918,6 +3936,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.threadMode && p.threadMode !== 'none') return 'thread';
   if (p.sheetShape && p.sheetShape !== 'none') return 'sheet';
   if (p.keycapMode && p.keycapMode !== 'none') return 'keycap';
   if (p.platonic && p.platonic !== 'none') return 'die';
@@ -3930,6 +3949,7 @@ function sectionRelevant(key, mode, hollow){
     case '__base': return true;                                  // base-shape picker is always available
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
+    case 'Резьба (крышка / штуцер)': return mode==='thread';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -3938,6 +3958,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
   if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
   if (mode==='keycap')    return key==='Размеры' || key==='Кейкап';
   if (mode==='die')       return key==='Размеры' || key==='Многогранник';
@@ -3983,6 +4004,7 @@ function setBaseShape(kind){
   setSel('sheetShape', kind==='sheet'  ? 'rect'   : 'none');
   setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
   setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
+  setSel('threadMode', kind==='thread' ? 'cap'    : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -5138,6 +5160,94 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
     if(!at(i,j-1)) quad([x0,yLo,z0],[x1,yLo,z0],[x1,yHi,z0],[x0,yHi,z0],[0,0,-1]);
   }
   return polyDropDegen(tris);
+}
+/* ---- Threaded parts (резьба) --------------------------------------------------------------------
+   Functional screw thread built as a HEIGHTFIELD on a cylinder — the same watertight trick as the
+   sheet grip texture, wrapped around Y. The radius at (θ,y) rides a helical trapezoidal profile
+   r = base ± depth·profile(frac(y/P − hand·starts·θ/2π)); the (θ,y) grid is capped at both ends, so
+   the mesh is closed by construction — no CSG. A 'stud' (external thread on a base flange, i.e. a jar
+   neck) and a 'cap' (internal thread inside a knurled cup) share the SAME profile, pitch, starts and
+   handedness, offset only by a printing clearance, so a cap of nominal Ø screws onto its stud. The
+   seam at θ=2π stays watertight because starts is an integer: profile is period-1 and the phase shifts
+   by exactly `starts` full periods around the perimeter, so vertex i=0 coincides with the wrap. */
+function threadProfile(t, flat){
+  t -= Math.floor(t);                                    // → [0,1)
+  const f = Math.max(0, Math.min(0.24, flat)), ramp = 0.5 - 2*f;
+  if (ramp <= 1e-6) return (t < 0.25 || t >= 0.75) ? 0 : 1;   // degenerate flats → square wave
+  if (t < f)         return 0;                           // root flat
+  if (t < 0.5 - f)   return (t - f) / ramp;              // rising flank
+  if (t < 0.5 + f)   return 1;                           // crest flat
+  if (t < 1 - f)     return 1 - (t - (0.5 + f)) / ramp;  // falling flank
+  return 0;                                              // root flat (wraps to t=0)
+}
+function buildThread(p){
+  const mode  = p.threadMode;
+  const D     = Math.max(4, p.threadD||30);              // male major diameter
+  const P     = Math.max(0.5, p.threadPitch||3);         // pitch (crest-to-crest, per start)
+  const S     = Math.max(1, Math.round(p.threadStarts||1));
+  const hand  = (p.threadHand==='left') ? -1 : 1;
+  const flat  = (p.threadFlat!=null) ? p.threadFlat : 0.14;
+  const clr   = Math.max(0, p.threadClear!=null ? p.threadClear : 0.4);
+  const majorR= D/2;
+  const h     = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
+  const minorR= Math.max(0.5, majorR - h);               // male root
+  const len   = Math.max(P, p.threadLen||16);            // threaded length
+  const Nth   = Math.max(96, Math.min(360, Math.round(2*Math.PI*majorR/0.55)));  // resolves flanks around
+  const spp   = 26;                                      // samples per pitch vertically (resolves the flank)
+  const tris  = [];
+  const th    = i => 2*Math.PI*(i%Nth)/Nth;
+  const phase = (i,y) => y/P - hand*S*(i%Nth)/Nth;       // t = y/P − hand·S·(θ/2π)
+
+  if (mode === 'stud'){
+    const flangeThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
+    const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
+    const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
+    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+h*threadProfile(phase(i,y),flat), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),B=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
+      const ref=[A[0]+B[0],0,A[2]+B[2]];
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const ct=[0,y1,0];                                   // top fan
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
+    const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
+    const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rref=[Math.cos(mid),0,Math.sin(mid)];
+      tris.push(orient([V(i,0),outT(i),outT(i2)],[0,1,0]));         // flange top annulus (wavy → flangeR)
+      tris.push(orient([V(i,0),outT(i2),V(i2,0)],[0,1,0]));
+      tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
+      tris.push(orient([outT(i),outB(i2),outT(i2)],rref));
+      tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }     // flange bottom disc
+  } else {  // 'cap' — internal thread inside a knurled cup
+    const wall = Math.max(1.2, p.threadWall>0?p.threadWall:2.5);
+    const top  = Math.max(1.0, p.threadTop>0 ?p.threadTop :2.5);
+    const femMajorR = majorR + clr;                      // female root  (outermost of bore)
+    const outR0 = femMajorR + wall;                      // base outer radius (before flutes)
+    const boreDepth = len, capH = boreDepth + top, Ny = Math.max(8, Math.round(boreDepth/P*spp));
+    const nFlute = Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24));
+    const gripD  = nFlute>0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0;
+    const rOut = i => outR0 - gripD*0.5*(1 - Math.cos(nFlute*th(i)));   // scalloped vertical flutes (θ-only)
+    // Female bore = the male surface offset OUTWARD by the clearance (same profile, pitch, starts, phase),
+    // so the male ridge nests in the female groove with a uniform `clr` gap → they screw together.
+    const Vb=(i,j)=>{ const y=boreDepth*j/Ny, r=minorR + h*threadProfile(phase(i,y),flat) + clr, a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    const Vo=(i,y)=>{ const r=rOut(i), a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);
+      const ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];           // bore normal points inward
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const cc=[0,boreDepth,0];                            // bore ceiling (underside of top slab)
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); }
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vo(i,0),B=Vo(i2,0),C=Vo(i2,capH),Dd=Vo(i,capH);
+      const ref=[A[0]+B[0],0,A[2]+B[2]];                 // outer wall
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const tc=[0,capH,0];                                 // top disc
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([tc,Vo(i,capH),Vo(i2,capH)],[0,1,0])); }
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;          // bottom rim annulus (bore mouth → outer)
+      tris.push(orient([Vb(i,0),Vo(i,0),Vo(i2,0)],[0,-1,0]));
+      tris.push(orient([Vb(i,0),Vo(i2,0),Vb(i2,0)],[0,-1,0])); }
+  }
+  let lo=Infinity,hi=-Infinity; for(const t of tris) for(const v of t){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2;   // center vertically — rebuild with FRESH point arrays (fan centers are shared refs)
+  return polyDropDegen(tris.map(T=>[[T[0][0],T[0][1]+dy,T[0][2]],[T[1][0],T[1][1]+dy,T[1][2]],[T[2][0],T[2][1]+dy,T[2][2]]]));
 }
 function buildSheet(p){
   const hw=p.width/2, hd=p.depth/2, t=Math.max(0.4, p.sheetThick||3), yb=-t/2, yt=t/2;
@@ -7121,7 +7231,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7135,7 +7245,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7166,6 +7276,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.threadMode && p.threadMode !== 'none') {
+      return snapWeldTris(buildThread(p));
+    }
     if (p.sheetShape && p.sheetShape !== 'none') {
       return applyTaper(snapWeldTris(buildSheet(p)));
     }
@@ -7499,7 +7612,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -8512,6 +8625,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.threadMode && p.threadMode !== 'none') return p.threadMode==='cap' ? 'резьба: крышка' : 'резьба: штуцер';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

@@ -935,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2125,15 +2125,16 @@ function buildRoundedHollow(w, h, d, t, Rout, Rin, resolution, segs, pocketDepth
 // hole per checkerboard bridges them (and rounds the crossing nodes). Oriented on FLAT coords
 // then taperFn'd, so seams match after taper. Proven watertight in Node across
 // sizes/res/pitch/rib/taper incl. thin ribs (scratchpad hollow-diagnet.js, 11/11).
-// Grid step for sampling a lattice net so its ribs render CLEAN, not aliased. The pattern field is
-// sampled per grid cell, so the grid must have several cells across each cell pitch or diagonal ribs
-// stair-step into ragged fragments. Rule: step ≤ pitch/4 (≥4 samples per cell — the hard quality bound
-// that kills aliasing), the detail slider (res) may only make it FINER, and a maxDim/600 floor caps the
-// total grid for performance. Used by every ring-generic net (squircle/N-gon wall + floor, sheet).
-function netGridStep(maxDim, cell, res){
-  const quality = Math.max(0.5, cell) / 4;                              // ceiling: never coarser than pitch/4
-  const detail  = maxDim / Math.max(10, Math.min(600, res || 80));      // slider can go finer than pitch/4
-  return Math.max(maxDim / 600, Math.min(quality, detail));
+// Grid step for sampling a lattice net so its ribs render CLEAN, not aliased. The pattern field is sampled
+// per grid cell, so the grid must resolve BOTH the cell pitch AND the (often much thinner) rib — a rib
+// narrower than one grid cell aliases away, breaking the honeycomb into disconnected stripes. Rule:
+// step ≤ pitch/4 (≥4 cells per pitch) AND step ≤ rib/1.3 (≥~1.3 cells across the rib — the empirical
+// threshold below which hex/diamond ribs disintegrate). The detail slider (res) may only make it FINER; a
+// maxDim/900 floor caps the total grid for performance. Used by every ring-generic net (wall, floor, sheet).
+function netGridStep(maxDim, cell, rib, res){
+  const quality = Math.min(Math.max(0.5, cell) / 4, Math.max(0.08, (rib||1) / 1.3));   // resolve cell AND rib
+  const detail  = maxDim / Math.max(10, Math.min(600, res || 80));                      // slider → only finer
+  return Math.max(maxDim / 900, Math.min(quality, detail));
 }
 // Rib-membership test for a lattice cell centre (cx,cz), pitch & rib in mm. `pattern` picks the hole
 // shape; ALL the rest of the perforation machinery (membranes, tubes, pinch removal, rounding, seams)
@@ -4317,7 +4318,7 @@ function buildPolyLatticeFloor(tris, outerRing, innerRing, hh, floorY, rib, cell
   let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
   for(const p of clip){ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); minz=Math.min(minz,p[1]); maxz=Math.max(maxz,p[1]); }
   if(maxx-minx<2*cell || maxz-minz<2*cell) return false;    // too small to net → caller keeps the plain floor
-  const step=netGridStep(maxDim, cell, res);                 // ≥4 samples per cell → clean ribs
+  const step=netGridStep(maxDim, cell, rib, res);            // resolve cell AND rib → clean, connected net
   const nx=Math.max(6, Math.round((maxx-minx)/step)), nz=Math.max(6, Math.round((maxz-minz)/step));
   const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
   const inClip=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];
@@ -4442,7 +4443,7 @@ function emitPolyWallNet(tris, O, I, ySamp, rib, cell, borderCells, pattern, col
 // Hollow N-gon container with a perforated SIDE WALL: solid outer base band (−hh..floorY) + perforated
 // band (floorY..hh) + outer bottom + cavity floor (plain fan or its own net) + top rim. Watertight.
 function buildPolyHollowWallLattice(hw, hd, hh, N, roundR, seg, t, floorY, wallLat, floorLat, ringDense){
-  const fineW=netGridStep(2*Math.max(hw,hh,hd), wallLat.cell, wallLat.res);   // ≥4 net samples per cell
+  const fineW=netGridStep(2*Math.max(hw,hh,hd), wallLat.cell, wallLat.rib, wallLat.res);   // resolve cell + rib
   const src=ringDense||polyRingDense(hw,hd,N,roundR,seg,fineW);
   // Commensurate wall grid: an INTEGER number of pattern periods (K) around the perimeter, each split into an
   // INTEGER number of columns (m ≥ 4). Resampling the ring to N=m·K equal-arc points makes the net tile the
@@ -4883,7 +4884,7 @@ function sheetOutlineRing(p, hw, hd){
 function buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res){
   const R=polyInscribedRect(ring, Math.max(cell,2));
   if(R.rw<cell || R.rz<cell) return false;
-  const maxDim=2*Math.max(hw,hd), step=netGridStep(maxDim, cell, res);   // ≥4 samples per cell → clean net
+  const maxDim=2*Math.max(hw,hd), step=netGridStep(maxDim, cell, rib, res);   // resolve cell + rib → clean net
   const nx=Math.max(4,Math.round(2*R.rw/step)), nz=Math.max(4,Math.round(2*R.rz/step));
   const xMid=[],zMid=[]; for(let i=0;i<=nx;i++)xMid.push(R.cx-R.rw+2*R.rw*i/nx); for(let j=0;j<=nz;j++)zMid.push(R.cz-R.rz+2*R.rz*j/nz);
   emitLatticeFloor(tris, xMid, zMid, xMid, zMid, yb, yt, rib, cell, border, (q)=>q, false, null, null, null, pattern);
@@ -7096,7 +7097,7 @@ function buildTrisForShapeCore(shape, p) {
           borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
         if (wallLat || sqLat) {
           const hw=p.width/2, hh=p.height/2, hd=p.depth/2, floorY=-hh+tW;
-          const fineW = netGridStep(2*Math.max(hw,hh,hd), (wallLat||sqLat).cell, (wallLat||sqLat).res);
+          const fineW = netGridStep(2*Math.max(hw,hh,hd), (wallLat||sqLat).cell, (wallLat||sqLat).rib, (wallLat||sqLat).res);
           const sqRing = superellipseRingDense(hw, hd, eH, fineW);
           const tris = wallLat
             ? buildPolyHollowWallLattice(hw, hd, hh, 0, 0, p.filletSeg||4, tW, floorY, wallLat, sqLat, sqRing)

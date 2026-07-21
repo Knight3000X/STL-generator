@@ -97,11 +97,13 @@ console.log('=== squircle container: full lattice walls + floor (round basket) =
   // roundness: the outer ring should be smoothly round (many distinct perimeter directions), not a few flats
   { const t=sq({squircle:100,latticeWalls:'all',latticeFloor:true}); const b=computeBBox(t);
     chk('squircle basket fills 90mm bbox', Math.abs((b.maxX-b.minX)-90)<0.6 && Math.abs((b.maxZ-b.minZ)-90)<0.6, {x:b.maxX-b.minX,z:b.maxZ-b.minZ}); }
-  // ANTI-ALIAS (the v63 fix): the net grid must sample ≥4 cells across each pitch, or the diamond/hex ribs
-  // stair-step into the ragged vertical-bar fragments the user reported. netGridStep is the single source.
-  for(const cell of [2,5,8,12]){ const step=netGridStep(2*45, cell, 80);
+  // ANTI-ALIAS (v63/v65): the net grid must resolve BOTH the cell pitch (≥4 samples) AND the rib (≥~1.3
+  // samples) — a rib thinner than a grid cell aliases away and shatters the honeycomb. netGridStep is the source.
+  for(const cell of [2,5,8,12]){ const step=netGridStep(2*45, cell, cell*0.75, 80);
     chk('netGridStep '+cell+'mm holds ≥4 samples/cell', step <= cell/4 + 1e-9, {cell,step}); }
-  chk('netGridStep stays bounded for perf on a big part', netGridStep(400, 2, 80) >= 400/600 - 1e-9, {step:netGridStep(400,2,80)});
+  for(const rib of [0.3,0.6,1.0]){ const step=netGridStep(180, 2, rib, 500);
+    chk('netGridStep resolves a '+rib+'mm rib (≥1.3 cells across)', step <= rib/1.3 + 1e-9, {rib,step}); }
+  chk('netGridStep stays bounded for perf on a big part', netGridStep(400, 2, 1.5, 80) >= 400/900 - 1e-9, {step:netGridStep(400,2,1.5,80)});
   // geometry proof: the WALL band must carry many vertical rows (the old cell/2 cap left only ~2 rows/cell,
   // which is what shattered the pattern). Count distinct Y levels strictly inside the cavity band.
   { const t=sq({squircle:100,height:90,wallThickness:2.4,latticeCell:8,latticeWalls:'all',latticeFloor:false});

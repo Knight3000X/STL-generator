@@ -788,7 +788,7 @@
       <button id="btn-redo" disabled title="Вернуть (Ctrl+Shift+Z / Ctrl+Y)">↷ Вернуть</button>
     </div>
 
-    <details class="panel-fold" open data-fold="Модели (сборка)"><summary class="section-label">Модели (сборка)</summary>
+    <details class="panel-fold" data-def-closed data-fold="Модели (сборка)"><summary class="section-label">Модели (сборка)</summary>
 
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
@@ -926,7 +926,7 @@
     <button id="btn-auto-orient" title="Перебирает 6 ориентаций (какой гранью вниз) и ставит модель так, чтобы площадь нависаний круче 45° была минимальной">⟳ Автоориентация (мин. поддержек)</button>
     </details>
 
-    <details class="panel-fold" open data-tab="finish" data-fold="Отображение"><summary class="section-label">Отображение</summary>
+    <details class="panel-fold" data-def-closed data-tab="finish" data-fold="Отображение"><summary class="section-label">Отображение</summary>
 
     <div class="shading-toggle">
       <button id="shade-flat" class="active" data-mode="flat">Плоское</button>
@@ -940,7 +940,7 @@
     </div>
     </details>
 
-    <details class="panel-fold" open data-tab="export" data-fold="Сводка"><summary class="section-label">Сводка</summary>
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Сводка"><summary class="section-label">Сводка</summary>
 
     <div class="stats-box">
       <div class="stats-row"><span class="k">Треугольники (активная)</span><span class="v mono" id="stat-tris">—</span></div>
@@ -956,7 +956,7 @@
     </div>
     </details>
 
-    <details class="panel-fold" open data-tab="export" data-fold="Экспорт"><summary class="section-label">Экспорт</summary>
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Экспорт"><summary class="section-label">Экспорт</summary>
 
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
@@ -984,7 +984,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3983,9 +3983,6 @@ function setBaseShape(kind){
   setSel('sheetShape', kind==='sheet'  ? 'rect'   : 'none');
   setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
   setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
-  // auto-expand that kind's detail group so its settings are immediately visible, not a collapsed header
-  const grp = {die:'Многогранник', keycap:'Кейкап', sheet:'Лист / панель'}[kind];
-  if (grp) { const d=[...document.querySelectorAll('#params-box details.param-cat')].find(x=>x.dataset.group===grp); if (d) d.open = true; }
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -7496,7 +7493,7 @@ function clampParam(param, val) {
 // Which parameter groups start EXPANDED. Everything else starts collapsed (progressive disclosure) so the
 // panel is a short scannable list of section headers instead of one endless wall of fields — the user opens
 // only what they need, and each group's open/closed choice is then remembered.
-const CAT_DEFAULT_OPEN = new Set(['Размеры']);
+const CAT_DEFAULT_OPEN = new Set();   // every group starts collapsed; the user's open/closed choice is remembered
 let CAT_STATE = {};
 try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(e) {}
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its

@@ -3,7 +3,7 @@
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
-  Object.assign(paramState.box, defaultBoxParams(), {width:80,height:3,depth:60,sheetShape:'rect',sheetThick:3,sheetPattern:'diamond',
+  Object.assign(paramState.box, defaultBoxParams(), {width:80,height:3,depth:60,sheetShape:'rect',sheetThick:3,sheetCut:'through',sheetPattern:'diamond',sheetTexH:0.6,
     latticeCell:8,latticeRib:1.6,latticeBorder:2,latticeRes:80,sheetRim:0,
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false,platonic:'none',polyN:0,binRound:0,keycapMode:'none'}, ov);
   return buildTrisForShape('box',paramState.box); }
@@ -23,6 +23,20 @@ console.log('=== dimensions / thickness ===');
 console.log('=== perforation removes material ===');
 { const solid=vol(base({sheetShape:'rect',sheetPattern:'none'})), net=vol(base({sheetShape:'rect',sheetPattern:'diamond'}));
   chk('perforation removes material', net<solid, {solid,net}); }
+console.log('=== raised TEXTURE (grip pad) — solid, bumps on top ===');
+for(const sh of ['rect','round','ngon','circle']){
+  for(const pat of ['diamond','square','triangle','hex','stripe','dots']){
+    const t=base({sheetShape:sh,sheetCut:'texture',sheetPattern:pat,sheetTexH:0.7}); const mc=manifoldCheck(t,4);
+    chk(sh+' '+pat+' texture wt (+vol)', mc.watertight&&vol(t)>0, mc);
+  }
+}
+{ const plain=vol(base({sheetShape:'rect',sheetCut:'none'})), tex=vol(base({sheetShape:'rect',sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8}));
+  chk('texture ADDS material (raised bumps, no holes)', tex>plain, {plain,tex}); }
+{ const b=computeBBox(base({sheetShape:'rect',sheetCut:'texture',sheetPattern:'diamond',sheetThick:3,sheetTexH:0.8}));
+  chk('texture raises top above the plate', Math.abs((b.maxY-b.minY)-(3+0.8))<0.05, {y:b.maxY-b.minY}); }
+chk('texture + taper watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetPattern:'hex',taperXPlus:5}),4).watertight);
+chk('texture + rim watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetPattern:'diamond',sheetRim:5}),4).watertight);
+
 console.log('=== raised rim (бортик) ===');
 for(const sh of ['rect','round','circle']){
   const t=base({sheetShape:sh,sheetPattern:'diamond',sheetRim:6,sheetRimW:2.5}); const mc=manifoldCheck(t,4);

@@ -47,6 +47,19 @@ for(const sh of ['rect','round','circle']){
 { const noRim=vol(base({sheetShape:'rect',sheetPattern:'none',sheetRim:0})), rim=vol(base({sheetShape:'rect',sheetPattern:'none',sheetRim:6}));
   chk('rim adds material', rim>noRim, {noRim,rim}); }
 chk('rim + taper watertight', manifoldCheck(base({sheetShape:'round',sheetRim:5,taperXPlus:6}),4).watertight);
+console.log('=== SVG-contour outline (arbitrary shape) ===');
+{ // synthesize a star-shaped polar radius table (like loadSvgHoleFile output): a rounded blob
+  const M=360, U=new Array(M); for(let a=0;a<M;a++){ const th=a*2*Math.PI/M; U[a]=0.7+0.3*Math.abs(Math.cos(2*th)); }
+  let apU=0,aqU=0; for(let a=0;a<M;a++){ const th=a*2*Math.PI/M; apU=Math.max(apU,Math.abs(U[a]*Math.cos(th))); aqU=Math.max(aqU,Math.abs(U[a]*Math.sin(th))); }
+  const svg={sheetShape:'svg',sheetSvgRU:U,sheetSvgApU:apU,sheetSvgAqU:aqU};
+  chk('svg solid wt', manifoldCheck(base(Object.assign({sheetCut:'none'},svg)),4).watertight);
+  for(const cut of ['texture','through']) for(const pat of ['diamond','hex'])
+    chk('svg '+cut+' '+pat+' wt', manifoldCheck(base(Object.assign({sheetCut:cut,sheetPattern:pat},svg)),4).watertight);
+  chk('svg + rim wt', manifoldCheck(base(Object.assign({sheetCut:'texture',sheetPattern:'diamond',sheetRim:5},svg)),4).watertight);
+  { const b=computeBBox(base(Object.assign({sheetCut:'none',width:100,depth:60},svg)));
+    chk('svg fills width×depth', Math.abs((b.maxX-b.minX)-100)<0.5 && Math.abs((b.maxZ-b.minZ)-60)<0.5, {x:b.maxX-b.minX,z:b.maxZ-b.minZ}); }
+  chk('svg without table falls back (no crash)', manifoldCheck(base({sheetShape:'svg',sheetCut:'none'}),4).watertight);
+}
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a sheet', a===b, {a,b}); }

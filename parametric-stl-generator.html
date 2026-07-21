@@ -411,11 +411,11 @@
     cursor:pointer; margin-bottom:10px;
   }
   #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
+  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
     border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
     font-size:12px; cursor:pointer; }
-  #btn-add-baseplate:hover, #btn-slice-model:hover, #btn-import-mesh:hover{ border-color:var(--ink); }
-  #btn-add-baseplate:disabled, #btn-slice-model:disabled, #btn-import-mesh:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-baseplate:hover, #btn-slice-model:hover, #btn-import-mesh:hover, #btn-sheet-svg:hover{ border-color:var(--ink); }
+  #btn-add-baseplate:disabled, #btn-slice-model:disabled, #btn-import-mesh:disabled, #btn-sheet-svg:disabled{ opacity:0.4; cursor:not-allowed; }
   #lid-row{ display:flex; gap:6px; margin-bottom:8px; }
   #lid-row #btn-add-lid{ flex:0 0 auto; width:auto; padding:9px 14px; margin-bottom:0; }
   #lid-kind{
@@ -775,6 +775,8 @@
     <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью.">✂ Разрезать на фрагменты</button>
     <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL или OBJ) отдельной моделью сборки — например скан мыши для грипов. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ</button>
     <input type="file" id="mesh-import-input" accept=".stl,.obj,model/stl,model/obj" style="display:none">
+    <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
+    <input type="file" id="sheet-svg-input" accept=".svg,image/svg+xml" style="display:none">
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель отдельным объектом (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
     </details>
 
@@ -933,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3356,7 +3358,7 @@ const SHAPE_PARAMS = {
       options:[{v:'mx',t:'Cherry MX (крест)'},{v:'choc',t:'Kailh Choc (2 ножки)'},{v:'none',t:'без стема'}]},
     {group:'Кейкап', key:'keyStemTol', label:'Кейкап: допуск посадки стема', min:0, max:0.5, step:0.05, default:0.1, unit:'мм'},
     {group:'Лист / панель', key:'sheetShape', label:'Плоский лист (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'rect',t:'прямоугольник'},{v:'round',t:'скруглённый прямоугольник'},{v:'ngon',t:'многоугольник'},{v:'circle',t:'круг / эллипс'}]},
+      options:[{v:'none',t:'нет'},{v:'rect',t:'прямоугольник'},{v:'round',t:'скруглённый прямоугольник'},{v:'ngon',t:'многоугольник'},{v:'circle',t:'круг / эллипс'},{v:'svg',t:'контур из SVG (кнопка ниже)'}]},
     {group:'Лист / панель', key:'sheetThick', label:'Лист: толщина', min:0.4, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Лист / панель', key:'sheetCut', label:'Лист: рисунок', type:'select', default:'texture',
       options:[{v:'texture',t:'выпуклая текстура (грип-пад)'},{v:'through',t:'сквозные отверстия (решётка)'},{v:'none',t:'без рисунка (гладкий)'}]},
@@ -4743,6 +4745,15 @@ function buildDie(kind, hw, hh, hd, assignments, res, beadR){
    Watertight by construction (shared grid/ring vertices). Good for grilles, trays, drain mats, coasters. */
 function sheetOutlineRing(p, hw, hd){
   const seg=Math.max(1,p.filletSeg||4);
+  if(p.sheetShape==='svg' && p.sheetSvgRU && p.sheetSvgRU.length>=8){
+    // arbitrary outline from an imported SVG: the polar radius table (star-shaped about its centroid),
+    // stretched to fill width×depth. Subsampled to keep the ring light.
+    const U=p.sheetSvgRU, M=U.length, apU=Math.max(0.05,p.sheetSvgApU||1), aqU=Math.max(0.05,p.sheetSvgAqU||1);
+    const stepA=Math.max(1, Math.round(M/180)), ring=[];
+    for(let a=0;a<M;a+=stepA){ const th=a*2*Math.PI/M;
+      ring.push([U[a]*Math.cos(th)*hw/apU, U[a]*Math.sin(th)*hd/aqU]); }
+    if(ring.length>=8) return ring;
+  }
   if(p.sheetShape==='round')  return ringRoundedRect(hw, hd, Math.max(0.5,Math.min(p.sheetRound||6, Math.min(hw,hd)-0.5)), seg);
   if(p.sheetShape==='ngon')   return polyRing(hw, hd, Math.max(3,Math.round(p.sheetN||6)), 0, seg);
   if(p.sheetShape==='circle') return polyRing(hw, hd, Math.max(24, Math.round(Math.PI*Math.max(hw,hd))), 0, 1);   // ellipse
@@ -7415,6 +7426,20 @@ function attachModelEventListeners() {
   document.getElementById('mesh-import-input').addEventListener('change', (e) => {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     importMeshFile(file);
+  });
+  document.getElementById('btn-sheet-svg').addEventListener('click', () => document.getElementById('sheet-svg-input').click());
+  document.getElementById('sheet-svg-input').addEventListener('change', (e) => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    loadSvgHoleFile(file, (res) => {
+      if (!res || !res.rUnit) { alert('Не удалось прочитать SVG (нужен залитый силуэт).'); return; }
+      const p = paramState.box;
+      p.sheetSvgRU = Array.from(res.rUnit, v=>Math.round(v*1e4)/1e4);
+      p.sheetSvgApU = res.apU; p.sheetSvgAqU = res.aqU;
+      p.sheetShape = 'svg';
+      if (!p.sheetThick) p.sheetThick = 3;
+      refreshActiveModelUI();     // reflect the sheetShape select
+      if (currentShape === 'box') markPending();
+    });
   });
   const container = document.getElementById('model-cards');
   container.addEventListener('click', (e) => {

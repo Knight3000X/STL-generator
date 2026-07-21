@@ -985,7 +985,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3439,6 +3439,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadLen', label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadClear', label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadLead', label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadDepth', label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
@@ -5200,13 +5201,18 @@ function buildThread(p){
   const tris  = [];
   const th    = i => 2*Math.PI*(i%Nth)/Nth;
   const phase = (i,y) => y/P - hand*S*(i%Nth)/Nth;       // t = y/P − hand·S·(θ/2π)
+  // Lead-in (заходная фаска): fade the thread depth to zero over `leadLen` at the ENGAGEMENT end so the parts
+  // self-start without a sharp partial first thread. Male fades to the root (narrower tip), female fades to the
+  // widest bore (open mouth) — both clear the mate. 0 disables.
+  const leadLen = Math.max(0, Math.min(p.threadLead!=null ? p.threadLead : 2, len*0.45));
+  const lead = d => leadLen>0 ? Math.max(0, Math.min(1, d/leadLen)) : 1;   // d = distance INTO the thread from the entry
 
   if (mode === 'stud'){
     const flangeThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
     const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
     const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
-    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+h*threadProfile(phase(i,y),flat), a=th(i);
-      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };   // lead-in fades at the top (engagement end)
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),B=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
       const ref=[A[0]+B[0],0,A[2]+B[2]];
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
@@ -5229,8 +5235,8 @@ function buildThread(p){
     const rInBody = Math.max(rBore+0.5, bodyR - wall);     // wide body interior
     const Ny = Math.max(8, Math.round(neckLen/P*spp));
     const ring=(r,y,i)=>{ const a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
-    const neck=(i,j)=>{ const y=ySh+(yTop-ySh)*j/Ny, r=minorR+h*threadProfile(phase(i,y),flat), a=th(i);
-      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    const neck=(i,j)=>{ const y=ySh+(yTop-ySh)*j/Ny, r=minorR+lead(yTop-y)*h*threadProfile(phase(i,y),flat), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };   // lead-in fades at the neck top
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rr=[Math.cos(mid),0,Math.sin(mid)];
       tris.push(orient([[0,0,0],ring(bodyR,0,i2),ring(bodyR,0,i)],[0,-1,0]));                    // bottom disc
       tris.push(orient([ring(bodyR,0,i),ring(bodyR,0,i2),ring(bodyR,ySh,i2)],rr));               // outer body wall
@@ -5261,7 +5267,8 @@ function buildThread(p){
     const rOut = i => outR0 - gripD*0.5*(1 - Math.cos(nFlute*th(i)));   // scalloped vertical flutes (θ-only)
     // Female bore = the male surface offset OUTWARD by the clearance (same profile, pitch, starts, phase),
     // so the male ridge nests in the female groove with a uniform `clr` gap → they screw together.
-    const Vb=(i,j)=>{ const y=boreDepth*j/Ny, r=minorR + h*threadProfile(phase(i,y),flat) + clr, a=th(i);
+    const Vb=(i,j)=>{ const y=boreDepth*j/Ny, L=lead(y),   // lead-in fades to the widest bore at the mouth (y=0)
+      r=minorR + clr + h*(1 + L*(threadProfile(phase(i,y),flat) - 1)), a=th(i);
       return [r*Math.cos(a), y, r*Math.sin(a)]; };
     const Vo=(i,y)=>{ const r=rOut(i), a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);

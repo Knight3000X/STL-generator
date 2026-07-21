@@ -80,6 +80,24 @@ console.log('=== MATING: cap bore clears the stud crest by ~clearance, everywher
   chk('mating clearance ≈ radial clearance', Math.abs(minGap-clr) < 0.05, {minGap:+minGap.toFixed(3),clr});
   chk('no interference cells', biteFrac===0, {biteFrac,n}); }
 
+console.log('=== lead-in (заходная фаска) ===');
+for(const mode of ['cap','stud','jar'])
+  chk(mode+' with lead-in still watertight', manifoldCheck(base({threadMode:mode,threadLead:2.5}),4).watertight);
+{ // stud: near the top the thread must flatten toward the root radius (self-starting tip). Compare the max
+  // radius in the top pitch with vs without a lead-in — it must shrink toward minorR.
+  const topRad=(lead)=>{ const t=base({threadMode:'stud',threadD:30,threadPitch:3,threadLen:18,threadLead:lead,threadFlange:3});
+    const b=computeBBox(t), yTop=b.maxY; let mx=0;
+    for(const T of t) for(const v of T) if(v[1] > yTop-0.6) mx=Math.max(mx, Math.hypot(v[0],v[2]));
+    return mx; };
+  chk('stud lead-in flattens the thread start (top thread shrinks)', topRad(2.5) < topRad(0)-0.5, {lead:+topRad(2.5).toFixed(2),none:+topRad(0).toFixed(2)}); }
+{ // cap: at the mouth the bore must OPEN to the widest radius so the neck can enter.
+  const mouthRad=(lead)=>{ const t=base({threadMode:'cap',threadD:30,threadPitch:3,threadLead:lead});
+    const b=computeBBox(t), yBot=b.minY; let mn=1e9,cnt=0,sum=0;
+    for(const T of t) for(const v of T) if(v[1] < yBot+0.3){ const r=Math.hypot(v[0],v[2]); if(r>1){sum+=r;cnt++;} }
+    return cnt?sum/cnt:0; };
+  chk('cap lead-in opens the mouth (avg bore radius grows)', mouthRad(2.5) > mouthRad(0)+0.3, {lead:+mouthRad(2.5).toFixed(2),none:+mouthRad(0).toFixed(2)}); }
+chk('lead-in=0 disables cleanly (watertight)', manifoldCheck(base({threadMode:'cap',threadLead:0}),4).watertight);
+
 console.log('=== profile sanity ===');
 { chk('profile: root=0, crest=1', threadProfile(0,0.14)===0 && Math.abs(threadProfile(0.5,0.14)-1)<1e-9, {});
   chk('profile: periodic (period 1)', Math.abs(threadProfile(0.3,0.14)-threadProfile(1.3,0.14))<1e-12, {});

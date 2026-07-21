@@ -107,6 +107,18 @@ console.log('=== squircle container: full lattice walls + floor (round basket) =
   { const t=sq({squircle:100,height:90,wallThickness:2.4,latticeCell:8,latticeWalls:'all',latticeFloor:false});
     const ys=new Set(); for(const T of t) for(const v of T){ if(v[1]>-42 && v[1]<44) ys.add(Math.round(v[1]*10)/10); }
     chk('wall net has fine vertical rows (no cell/2 aliasing)', ys.size>40, {rows:ys.size}); }
+  // commensurate wall: the ring is resampled to an INTEGER number of pattern periods so the hex/diamond tiles
+  // the curved wall seamlessly (fixes the "ряды не связаны" drift). Hex must stay watertight at a fine cell.
+  chk('squircle hex wall watertight at fine cell (commensurate)', manifoldCheck(sq({squircle:100,width:110,depth:110,height:120,latticeCell:2,latticeRib:0.4,latticeBorder:1,latticePattern:'hex',latticeRes:120,latticeWalls:'all',latticeFloor:false}),4).watertight);
+  // FULL-COVERAGE floor: holes now fill the whole round floor (staircase clipped to the ring), so hole rib
+  // walls reach FAR out toward the wall — not stopping at a small central inscribed square.
+  { const t=sq({squircle:100,width:90,depth:90,wallThickness:2.4,latticeCell:6,latticeRib:1.2,latticeBorder:1,latticeWalls:'none',latticeFloor:true});
+    const floorY=-45+2.4, yb=-45, ringR=42.6; let maxHoleR=0;
+    for(const T of t){ const ys=T.map(v=>v[1]), hi=Math.max(...ys), lo=Math.min(...ys);
+      if(hi>floorY-0.06 && lo<yb+0.06 && (hi-lo)>1){                       // a rib wall spans the floor slab
+        const cx=(T[0][0]+T[1][0]+T[2][0])/3, cz=(T[0][2]+T[1][2]+T[2][2])/3, r=Math.hypot(cx,cz);
+        if(r<ringR-2) maxHoleR=Math.max(maxHoleR, r); } }                  // exclude the container wall itself
+    chk('floor net covers the whole disc (holes reach the rim, not just a central square)', maxHoleR>33, {maxHoleR}); }
 }
 paramState.box.latticeWalls='none'; paramState.box.squircle=0;
 console.log('=== бин: full-size rounded-rect container (gridfinity-bin look) ===');

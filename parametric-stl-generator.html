@@ -935,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4127,6 +4127,22 @@ function polyRing(hw, hd, N, roundR, seg){
   return ring;
 }
 function polyRingCentroid(ring){ const N=ring.length; return [ring.reduce((s,p)=>s+p[0],0)/N, ring.reduce((s,p)=>s+p[1],0)/N]; }
+function polyPerimeter(ring){ let C=0; for(let i=0;i<ring.length;i++){ const a=ring[i], b=ring[(i+1)%ring.length]; C+=Math.hypot(b[0]-a[0],b[1]-a[1]); } return C; }
+// Resample a closed ring to exactly N points spaced EQUALLY by arc length. Used so a lattice pattern gets a
+// grid whose column pitch is uniform around the whole perimeter (not bunched by curvature) — the precondition
+// for a clean, non-aliased net on a curved wall.
+function resampleRingByArc(ring, N){
+  const M=ring.length, cum=[0]; let C=0;
+  for(let i=0;i<M;i++){ const a=ring[i], b=ring[(i+1)%M]; C+=Math.hypot(b[0]-a[0],b[1]-a[1]); cum.push(C); }
+  if(C<1e-9) return ring.slice(0, N);
+  const out=[]; let seg=0;
+  for(let k=0;k<N;k++){ const target=C*k/N;
+    while(seg<M-1 && cum[seg+1]<target) seg++;
+    const a=ring[seg], b=ring[(seg+1)%M], segLen=cum[seg+1]-cum[seg];
+    const f=segLen>1e-9 ? (target-cum[seg])/segLen : 0;
+    out.push([a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f]); }
+  return out;
+}
 // inset a convex ring inward by t (miter offset), same point count → outer/inner rims stay matched.
 function polyInsetRing(ring, t){
   const N=ring.length, c=polyRingCentroid(ring), edgeN=[];
@@ -4251,6 +4267,24 @@ function polyStitchAnnulus(outer, inner, cOpt){
   }
   return tris;
 }
+// Stitch a watertight annular strip between two nested closed loops, aligning them by ARC-LENGTH fraction
+// (always monotone) rather than angle — so it stays watertight even when the inner loop is a rectilinear
+// STAIRCASE whose steps make the angle non-monotone (where polyStitchAnnulus mis-stitches). Both loops are
+// reoriented CCW and rotated to start near the same direction so the ribbon doesn't twist.
+function stitchAnnulusArc(outer, inner, cOpt){
+  const c=cOpt||polyRingCentroid(outer);
+  const ang=p=>{ let a=Math.atan2(p[1]-c[1], p[0]-c[0]); return a<0?a+2*Math.PI:a; };
+  const ccw=lp=>{ let s=0; for(let k=0;k<lp.length;k++){ const p=lp[k],q=lp[(k+1)%lp.length]; s+=p[0]*q[1]-q[0]*p[1]; } return s>0?lp.slice():lp.slice().reverse(); };
+  const rot=lp=>{ let mi=0; for(let k=1;k<lp.length;k++) if(ang(lp[k])<ang(lp[mi])) mi=k; return lp.slice(mi).concat(lp.slice(0,mi)); };
+  const cf=lp=>{ const f=[0]; let C=0; for(let k=0;k<lp.length;k++){ const a=lp[k],b=lp[(k+1)%lp.length]; C+=Math.hypot(b[0]-a[0],b[1]-a[1]); f.push(C);} return C>0?f.map(v=>v/C):f; };
+  const O=rot(ccw(outer)), H=rot(ccw(inner)), No=O.length, Nh=H.length;
+  const fo=cf(O), fh=cf(H), tris=[]; let i=0,j=0;
+  while(i<No || j<Nh){
+    if(j>=Nh || (i<No && fo[i+1] <= fh[j+1])){ tris.push([O[i%No], O[(i+1)%No], H[j%Nh]]); i++; }
+    else { tris.push([O[i%No], H[(j+1)%Nh], H[j%Nh]]); j++; }
+  }
+  return tris;
+}
 // centred axis-aligned rectangle that fits inside a convex ring (about its centroid), scaled to the ring's
 // aspect so it fills as much of it as possible; then inset by `margin`.
 function polyInscribedRect(ring, margin){
@@ -4265,20 +4299,70 @@ function polyInscribedRect(ring, margin){
 // Через-сквозная сетка на дне полого многогранника: сетчатый прямоугольник по центру (emitLatticeFloor) +
 // сплошная кольцевая область (annulus) от прямоугольника до стенок — многоугольник-с-прямоугольной-дыркой,
 // триангулированный ушным отсечением. Прямоугольная сетка и края annulus делят одни узлы → водонепроницаемо.
+// FULL-COVERAGE through-net on the cavity floor: a Cartesian pattern grid CLIPPED to the (inset) inner ring,
+// so holes fill the WHOLE round floor — not just a central inscribed square. The clipped region's rectilinear
+// staircase edge is stitched to the smooth inner/outer rings (polyStitchAnnulus), so the border is a thin
+// solid rim following the wall. Watertight: staircase vertices are shared grid corners; holes never touch the
+// staircase (boundary cells are forced solid). floorY = cavity-floor top, −hh = outer bottom (slab between).
 function buildPolyLatticeFloor(tris, outerRing, innerRing, hh, floorY, rib, cell, borderCells, pattern, res){
   const maxDim=2*Math.max(...outerRing.map(p=>Math.max(Math.abs(p[0]),Math.abs(p[1]))));
-  const R=polyInscribedRect(innerRing, Math.max(cell, 2)); // margin so the wall base stays solid
-  if(R.rw<cell || R.rz<cell) return false;                 // too small to net → caller keeps the plain floor
-  const step=netGridStep(maxDim, cell, res);   // ≥4 samples per cell → clean ribs, not aliased fragments
-  const nx=Math.max(4, Math.round(2*R.rw/step)), nz=Math.max(4, Math.round(2*R.rz/step));
-  const xMid=[], zMid=[]; for(let i=0;i<=nx;i++) xMid.push(R.cx-R.rw+2*R.rw*i/nx); for(let j=0;j<=nz;j++) zMid.push(R.cz-R.rz+2*R.rz*j/nz);
-  emitLatticeFloor(tris, xMid, zMid, xMid, zMid, -hh, floorY, rib, cell, borderCells, (p)=>p, false, null, null, null, pattern);
-  // rectangle perimeter with ALL grid points, matching the net's outer edge exactly (shared vertices)
-  const perim=[]; for(let i=0;i<nx;i++) perim.push([xMid[i], zMid[0]]); for(let j=0;j<nz;j++) perim.push([xMid[nx], zMid[j]]);
-  for(let i=nx;i>0;i--) perim.push([xMid[i], zMid[nz]]); for(let j=nz;j>0;j--) perim.push([xMid[0], zMid[j]]);
-  // annulus: cavity floor (floorY, up) = inner ring → rect; outer bottom (−hh, down) = outer ring → rect
-  for(const T of polyStitchAnnulus(innerRing, perim)) { const P=T.map(q=>[q[0],floorY,q[1]]); tris.push(orient(P,[0,1,0])); }
-  for(const T of polyStitchAnnulus(outerRing, perim)) { const P=T.map(q=>[q[0],-hh,q[1]]); tris.push(orient(P,[0,-1,0])); }
+  // netting boundary = the inner ring shrunk toward its centroid by a HOMOTHETY (never self-intersects, unlike
+  // a parallel inset at the sharp corners of a low-squircle superellipse). Leaves a solid rim ≥ margin.
+  const cc=polyRingCentroid(innerRing); let minR=Infinity;
+  for(const p of innerRing) minR=Math.min(minR, Math.hypot(p[0]-cc[0], p[1]-cc[1]));
+  const margin=Math.min(minR*0.5, Math.max(cell*0.75, rib+0.8) + Math.max(0,(borderCells|0)-1)*cell*0.5);
+  const s=Math.max(0.25, 1 - margin/Math.max(1e-3,minR));
+  const clip=innerRing.map(p=>[cc[0]+(p[0]-cc[0])*s, cc[1]+(p[1]-cc[1])*s]);
+  if(clip.length<3) return false;
+  let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
+  for(const p of clip){ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); minz=Math.min(minz,p[1]); maxz=Math.max(maxz,p[1]); }
+  if(maxx-minx<2*cell || maxz-minz<2*cell) return false;    // too small to net → caller keeps the plain floor
+  const step=netGridStep(maxDim, cell, res);                 // ≥4 samples per cell → clean ribs
+  const nx=Math.max(6, Math.round((maxx-minx)/step)), nz=Math.max(6, Math.round((maxz-minz)/step));
+  const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
+  const inClip=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];
+    if(((yi>z)!==(yj>z)) && (x<(xj-xi)*(z-yi)/(yj-yi)+xi)) w=!w; } return w; };
+  const cxc=polyRingCentroid(clip);
+  const keep=Array.from({length:nx},()=>new Array(nz).fill(false));
+  for(let i=0;i<nx;i++) for(let j=0;j<nz;j++) keep[i][j]=inClip((X(i)+X(i+1))/2,(Z(j)+Z(j+1))/2);
+  // dissolve diagonal (checkerboard) touches in the kept mask so its boundary is ONE simple loop (a diagonal
+  // pinch makes a grid vertex belong to two boundary edges → the staircase walk breaks → open edges)
+  for(let ch=true;ch;){ ch=false; for(let i=0;i+1<nx;i++) for(let j=0;j+1<nz;j++){
+    const a=keep[i][j],b=keep[i+1][j],c2=keep[i][j+1],d=keep[i+1][j+1];
+    if(a&&d&&!b&&!c2){ keep[i][j]=false; ch=true; } else if(b&&c2&&!a&&!d){ keep[i+1][j]=false; ch=true; } } }
+  const K=(i,j)=> i>=0&&j>=0&&i<nx&&j<nz&&keep[i][j];
+  // solid = pattern rib, OR a boundary cell (adjacent to a non-kept cell) so holes never reach the staircase
+  const solid=Array.from({length:nx},()=>new Array(nz).fill(false));
+  for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ if(!keep[i][j]) continue;
+    const edge=!K(i-1,j)||!K(i+1,j)||!K(i,j-1)||!K(i,j+1);
+    solid[i][j]= edge ? true : latticeSolidAt((X(i)+X(i+1))/2 - minx, (Z(j)+Z(j+1))/2 - minz, Math.max(1e-3,cell), rib, pattern); }
+  for(let ch=true;ch;){ ch=false; for(let i=0;i+1<nx;i++) for(let j=0;j+1<nz;j++){    // dissolve checkerboard pinches
+    if(!(keep[i][j]&&keep[i+1][j]&&keep[i][j+1]&&keep[i+1][j+1])) continue;
+    const a=solid[i][j],b=solid[i+1][j],c2=solid[i][j+1],d=solid[i+1][j+1];
+    if(a&&d&&!b&&!c2){solid[i+1][j]=true;ch=true;} else if(b&&c2&&!a&&!d){solid[i][j]=true;ch=true;} } }
+  const quad=(A,B,C,D,ref)=>{ tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,D],ref)); };
+  for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ if(!(keep[i][j]&&solid[i][j])) continue;
+    const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
+    quad([x0,floorY,z0],[x1,floorY,z0],[x1,floorY,z1],[x0,floorY,z1],[0,1,0]);       // cavity floor (top)
+    quad([x0,-hh,z0],[x0,-hh,z1],[x1,-hh,z1],[x1,-hh,z0],[0,-1,0]);                   // outer bottom
+    const wall=(ni,nj,ax,az,bx,bz,ref)=>{ if(!(K(ni,nj)&&!solid[ni][nj])) return;     // neighbour is a kept HOLE
+      quad([ax,floorY,az],[bx,floorY,bz],[bx,-hh,bz],[ax,-hh,az], ref); };
+    wall(i-1,j,x0,z0,x0,z1,[-1,0,0]); wall(i+1,j,x1,z1,x1,z0,[1,0,0]);
+    wall(i,j-1,x1,z0,x0,z0,[0,0,-1]); wall(i,j+1,x0,z1,x1,z1,[0,0,1]); }
+  // boundary staircase loop (CCW, kept cell on the interior of each directed edge)
+  const key=(i,j)=>i*(nz+1)+j, nextV=new Map();
+  const addE=(ai,aj,bi,bj)=>nextV.set(key(ai,aj),[bi,bj]);
+  for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ if(!keep[i][j]) continue;
+    if(!K(i,j-1)) addE(i,j,i+1,j); if(!K(i+1,j)) addE(i+1,j,i+1,j+1);
+    if(!K(i,j+1)) addE(i+1,j+1,i,j+1); if(!K(i-1,j)) addE(i,j+1,i,j); }
+  if(nextV.size<4) return false;
+  const start=nextV.keys().next().value; let cur=start; const loop=[], seen=new Set();
+  for(let g=0; g<nextV.size+2; g++){ if(seen.has(cur)) break; seen.add(cur);
+    const i=Math.floor(cur/(nz+1)), j=cur-i*(nz+1); loop.push([X(i),Z(j)]);
+    const nv=nextV.get(cur); if(!nv) break; cur=key(nv[0],nv[1]); if(cur===start) break; }
+  if(loop.length<4) return false;
+  for(const T of stitchAnnulusArc(innerRing, loop, cxc)) tris.push(orient(T.map(q=>[q[0],floorY,q[1]]),[0,1,0]));   // top border
+  for(const T of stitchAnnulusArc(outerRing, loop, cxc)) tris.push(orient(T.map(q=>[q[0],-hh,q[1]]),[0,-1,0]));     // bottom border
   return true;
 }
 // where the vertical line x=X (resp. horizontal z=Z) crosses a convex ring → [lo,hi] span, or null.
@@ -4321,14 +4405,21 @@ function buildPolyDividers(p){
 // The domain is (perimeter u around the ring, height v); the ring WRAPS (i is periodic) so there is no
 // vertical seam, and the top/bottom rows stay solid so the band seams to the rim and the solid base band.
 // Solid cell → outer + inner face quads; hole cell → radial rib walls closing the hole's solid edges.
-function emitPolyWallNet(tris, O, I, ySamp, rib, cell, borderCells, pattern){
+function emitPolyWallNet(tris, O, I, ySamp, rib, cell, borderCells, pattern, colsPerPitch){
   const N=O.length, M=ySamp.length-1, pitch=Math.max(1e-3, cell);
+  // Commensurate sampling: with colsPerPitch grid columns per cell (and O resampled to an integer number of
+  // pattern periods around the ring), the pattern's phase is IDENTICAL in every period → it renders as clean
+  // as a flat floor and wraps seamlessly. Without it we fall back to raw arc-length (which drifts out of phase
+  // around a curved wall and shatters sensitive patterns like the hex honeycomb).
+  const uStep = colsPerPitch>0 ? pitch/colsPerPitch : 0;
   const uMid=[]; let acc=0;
   for(let i=0;i<N;i++){ const a=O[i], b=O[(i+1)%N]; uMid.push(acc + Math.hypot(b[0]-a[0],b[1]-a[1])/2); acc+=Math.hypot(b[0]-a[0],b[1]-a[1]); }
+  const uAt=(i)=> uStep>0 ? (i+0.5)*uStep : uMid[i];
+  const vAt=(j)=> uStep>0 ? (j+0.5)*uStep : (ySamp[j]+ySamp[j+1])/2 - ySamp[0];
   const bb=Math.min(Math.max(1,borderCells|0), Math.floor(M/2));
   const solid=Array.from({length:N},()=>new Array(M).fill(false));
   for(let i=0;i<N;i++) for(let j=0;j<M;j++){ if(j<bb||j>=M-bb){ solid[i][j]=true; continue; }
-    solid[i][j]=latticeSolidAt(uMid[i], (ySamp[j]+ySamp[j+1])/2 - ySamp[0], pitch, rib, pattern); }
+    solid[i][j]=latticeSolidAt(uAt(i), vAt(j), pitch, rib, pattern); }
   // pinch removal (2×2 checkerboard), i wraps
   let ch=true; while(ch){ ch=false; for(let i=0;i<N;i++) for(let j=0;j<M-1;j++){ const i2=(i+1)%N;
     const a=solid[i][j], c1=solid[i2][j], c2=solid[i][j+1], d=solid[i2][j+1];
@@ -4352,16 +4443,24 @@ function emitPolyWallNet(tris, O, I, ySamp, rib, cell, borderCells, pattern){
 // band (floorY..hh) + outer bottom + cavity floor (plain fan or its own net) + top rim. Watertight.
 function buildPolyHollowWallLattice(hw, hd, hh, N, roundR, seg, t, floorY, wallLat, floorLat, ringDense){
   const fineW=netGridStep(2*Math.max(hw,hh,hd), wallLat.cell, wallLat.res);   // ≥4 net samples per cell
-  const O=ringDense||polyRingDense(hw,hd,N,roundR,seg,fineW), I=polyInsetRing(O,t), Nr=O.length, tris=[];
+  const src=ringDense||polyRingDense(hw,hd,N,roundR,seg,fineW);
+  // Commensurate wall grid: an INTEGER number of pattern periods (K) around the perimeter, each split into an
+  // INTEGER number of columns (m ≥ 4). Resampling the ring to N=m·K equal-arc points makes the net tile the
+  // curved wall seamlessly and keeps every column at the same sub-cell phase → the hex/diamond ribs render
+  // clean instead of drifting into ragged fragments (the "ряды не связаны" bug on a round basket).
+  const pitch=Math.max(1e-3, wallLat.cell);
+  const C=polyPerimeter(src);
+  const m=Math.max(4, Math.min(48, Math.round(pitch/fineW)));   // grid columns per cell
+  const K=Math.max(1, Math.round(C/pitch));                     // whole pattern periods around the ring
+  const Nr=m*K;
+  const O=resampleRingByArc(src, Nr), I=polyInsetRing(O,t), tris=[];
   const Vo=(i,y)=>[O[i][0],y,O[i][1]];
   // outer base band (−hh..floorY): solid outer wall below the perforation
   for(let i=0;i<Nr;i++){ const j=(i+1)%Nr, ref=[O[i][0]+O[j][0],0,O[i][1]+O[j][1]];
     tris.push(orient([Vo(i,-hh),Vo(j,-hh),Vo(j,floorY)],ref)); tris.push(orient([Vo(i,-hh),Vo(j,floorY),Vo(i,floorY)],ref)); }
-  // perforated wall band floorY..hh
-  // vertical rows at the SAME fine step as the ring columns → isotropic cells; the old cell/2 floor gave
-  // only ~2 rows per cell and stair-stepped the pattern into ragged vertical bars.
-  const M=Math.max(6, Math.round((hh-floorY)/fineW)); const ySamp=[]; for(let k=0;k<=M;k++) ySamp.push(floorY+(hh-floorY)*k/M);
-  emitPolyWallNet(tris, O, I, ySamp, wallLat.rib, wallLat.cell, wallLat.borderCells, wallLat.pattern);
+  // perforated wall band floorY..hh — rows at the same fine step as the columns → square, isotropic cells.
+  const M=Math.max(6, Math.round((hh-floorY)*m/pitch)); const ySamp=[]; for(let k=0;k<=M;k++) ySamp.push(floorY+(hh-floorY)*k/M);
+  emitPolyWallNet(tris, O, I, ySamp, wallLat.rib, wallLat.cell, wallLat.borderCells, wallLat.pattern, m);
   // floor: its own net (emits BOTH outer bottom + cavity floor) if asked, else plain outer-bottom + cavity-floor fans
   const latOK = floorLat && buildPolyLatticeFloor(tris, O, I, hh, floorY, floorLat.rib, floorLat.cell, floorLat.borderCells, floorLat.pattern, floorLat.res);
   if(!latOK){ const co=polyRingCentroid(O), ci=polyRingCentroid(I);

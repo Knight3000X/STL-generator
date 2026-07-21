@@ -935,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4830,6 +4830,40 @@ function buildSheetTexture(tris, ring, hw, hd, yb, yt, texH, pitch, rib, pattern
   for(const T of polyStitchAnnulus(ring, perim, c)) tris.push(orient(T.map(q=>[q[0],yb,q[1]]),[0,-1,0]));
   return true;
 }
+// Full-coverage grip texture: the raised pattern over the WHOLE outline (clipped just inside the edge),
+// appended as ONE watertight extruded-silhouette slab that straddles the plate top (sunk `embed`, proud
+// `texH`). The smooth solid plate carries the shape; the slab adds the bumps (like a mouse side-pad).
+function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
+  const clip=polyInsetRing(ring, Math.max(0.6, edgeGap));   // stop the texture just inside the contour
+  if(clip.length<3) return [];
+  let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
+  for(const q of clip){ minx=Math.min(minx,q[0]);maxx=Math.max(maxx,q[0]);minz=Math.min(minz,q[1]);maxz=Math.max(maxz,q[1]); }
+  const c=polyRingCentroid(ring), maxDim=Math.max(maxx-minx,maxz-minz);
+  const step=Math.max(pitch/4, maxDim/Math.max(20, Math.min(700, res||120)));
+  const nx=Math.max(4,Math.ceil((maxx-minx)/step)), nz=Math.max(4,Math.ceil((maxz-minz)/step));
+  const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
+  const inPoly=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];
+    if(((yi>z)!==(yj>z)) && (x<(xj-xi)*(z-yi)/(yj-yi)+xi)) w=!w; } return w; };
+  const sol=Array.from({length:nx},()=>new Array(nz).fill(false));
+  for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ const cx=(X(i)+X(i+1))/2, cz=(Z(j)+Z(j+1))/2;
+    if(inPoly(cx,cz) && sheetTexRaised(cx-c[0], cz-c[1], pitch, rib, pattern)) sol[i][j]=true; }
+  for(let ch=true;ch;){ ch=false;
+    for(let i=0;i+1<nx;i++)for(let j=0;j+1<nz;j++){ const a=sol[i][j],bb=sol[i+1][j],c2=sol[i][j+1],d=sol[i+1][j+1];
+      if(a&&d&&!bb&&!c2){sol[i+1][j]=true;ch=true;} else if(bb&&c2&&!a&&!d){sol[i][j]=true;ch=true;} } }
+  const at=(i,j)=>(i>=0&&j>=0&&i<nx&&j<nz)?sol[i][j]:false;
+  const yLo=yTop-Math.min(0.5, texH*0.6+0.3), yHi=yTop+texH, tris=[];
+  const quad=(A,B,C,D,ref)=>{tris.push(orient([A,B,C],ref));tris.push(orient([A,C,D],ref));};
+  for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(!sol[i][j]) continue;
+    const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
+    quad([x0,yHi,z0],[x1,yHi,z0],[x1,yHi,z1],[x0,yHi,z1],[0,1,0]);      // bump top
+    quad([x0,yLo,z0],[x0,yLo,z1],[x1,yLo,z1],[x1,yLo,z0],[0,-1,0]);     // bump bottom (inside plate)
+    if(!at(i+1,j)) quad([x1,yLo,z0],[x1,yHi,z0],[x1,yHi,z1],[x1,yLo,z1],[1,0,0]);
+    if(!at(i-1,j)) quad([x0,yLo,z0],[x0,yLo,z1],[x0,yHi,z1],[x0,yHi,z0],[-1,0,0]);
+    if(!at(i,j+1)) quad([x0,yLo,z1],[x0,yHi,z1],[x1,yHi,z1],[x1,yLo,z1],[0,0,1]);
+    if(!at(i,j-1)) quad([x0,yLo,z0],[x1,yLo,z0],[x1,yHi,z0],[x0,yHi,z0],[0,0,-1]);
+  }
+  return polyDropDegen(tris);
+}
 function buildSheet(p){
   const hw=p.width/2, hd=p.depth/2, t=Math.max(0.4, p.sheetThick||3), yb=-t/2, yt=t/2;
   const ring=sheetOutlineRing(p, hw, hd), tris=[];
@@ -4837,11 +4871,9 @@ function buildSheet(p){
   const rib=Math.max(0.1,p.latticeRib||1.5), cell=Math.max(1,p.latticeCell||8),
         border=Math.max(1,Math.round(p.latticeBorder||2)), res=p.latticeRes||80;
   let ok=false;
-  if(pattern && pattern!=='none'){
-    if(cut==='through') ok=buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res);
-    else if(cut==='texture') ok=buildSheetTexture(tris, ring, hw, hd, yb, yt, Math.max(0.1,p.sheetTexH||0.6), cell, rib, pattern, res);
-  }
-  if(!ok){   // plain solid plate: top + bottom fan caps
+  if(cut==='through' && pattern && pattern!=='none')   // perforation stays central rect + smooth border
+    ok=buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res);
+  if(!ok){   // SOLID smooth plate (for texture / plain): top + bottom fan caps
     const c=polyRingCentroid(ring);
     for(let i=0;i<ring.length;i++){ const j=(i+1)%ring.length;
       tris.push(orient([[c[0],yt,c[1]],[ring[i][0],yt,ring[i][1]],[ring[j][0],yt,ring[j][1]]],[0,1,0]));
@@ -4851,6 +4883,11 @@ function buildSheet(p){
     tris.push(orient([[ring[i][0],yb,ring[i][1]],[ring[j][0],yb,ring[j][1]],[ring[j][0],yt,ring[j][1]]],ref));
     tris.push(orient([[ring[i][0],yb,ring[i][1]],[ring[j][0],yt,ring[j][1]],[ring[i][0],yt,ring[i][1]]],ref)); }
   let out=polyDropDegen(tris);
+  // full-coverage raised texture (grip): appended bump slab over the whole solid plate
+  if(!ok && cut==='texture' && pattern && pattern!=='none'){
+    const rim=(p.sheetRim||0)>0 ? Math.max(1,p.sheetRimW||2)+0.6 : Math.max(0.8, cell*0.4);
+    out=out.concat(buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6), res, rim));
+  }
   if((p.sheetRim||0)>0) out=out.concat(buildSheetRim(ring, yt, p.sheetRim, Math.max(1,p.sheetRimW||2)));
   return out;
 }

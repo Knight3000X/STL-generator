@@ -35,6 +35,12 @@ for(const sh of ['rect','round','ngon','circle']){
 { const b=computeBBox(base({sheetShape:'rect',sheetCut:'texture',sheetPattern:'diamond',sheetThick:3,sheetTexH:0.8}));
   chk('texture raises top above the plate', Math.abs((b.maxY-b.minY)-(3+0.8))<0.05, {y:b.maxY-b.minY}); }
 chk('texture + taper watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetPattern:'hex',taperXPlus:5}),4).watertight);
+{ // FULL coverage: on a circle the bumps must reach near the edge, not just the inscribed rectangle
+  const t=base({sheetShape:'circle',width:90,depth:90,sheetCut:'texture',sheetPattern:'diamond',latticeCell:5,latticeRib:1,sheetTexH:0.8,latticeRes:150,sheetThick:2.5});
+  const topY=2.5/2+0.8; let maxR=0;
+  for(const T of t) for(const v of T) if(Math.abs(v[1]-topY)<0.05) maxR=Math.max(maxR, Math.hypot(v[0],v[2]));
+  const inscribed=45/Math.SQRT2;   // old central-rect limit ≈ 31.8
+  chk('texture covers the whole disc (bumps past the inscribed rect)', maxR>inscribed+4, {maxR,inscribed}); }
 chk('texture + rim watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetPattern:'diamond',sheetRim:5}),4).watertight);
 
 console.log('=== raised rim (бортик) ===');

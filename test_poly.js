@@ -97,6 +97,13 @@ console.log('=== бин: full-size rounded-rect container (gridfinity-bin look) 
   chk('bin net removes material', vol(bin({hollow:true,wallThickness:3,latticeWalls:'all',latticeCell:9,latticeRib:2,latticeBorder:2,latticePattern:'diamond',latticeRes:60})) < vol(bin({hollow:true,wallThickness:3})), {});
   { const a=bin({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true}).length, b=bin({}).length;
     chk('organizer add-ons gated off on bin', a===b, {a,b}); }
+  // ROUND flared basket (screens 3+4): square bin, near-max corner radius → circle, taper flare, net walls+floor
+  { base(Object.assign({width:110,height:110,depth:110,binRound:54,filletSeg:16,hollow:true,wallThickness:2.2,
+      latticeWalls:'all',latticeFloor:true,latticeCell:8,latticeRib:1.6,latticeBorder:3,latticePattern:'hex',latticeRes:100,
+      taperXPlus:-9,taperXMinus:-9,taperZPlus:-9,taperZMinus:-9}));
+    const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
+    chk('round tapered basket + hex net walls/floor wt', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    chk('basket flares open (top wider than base)', (b.maxX-b.minX)>110+10, {top:b.maxX-b.minX}); }
 }
 paramState.box.latticeWalls='none';
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');

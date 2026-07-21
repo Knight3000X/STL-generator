@@ -224,6 +224,25 @@
   .param-cat[open] > summary::before{ transform:rotate(90deg); }
   .param-cat > summary:hover{ color:var(--ink); }
   .param-cat-body{ padding:11px 0 4px; }
+  /* Tabbed navigation: the panel groups sections into Форма / Полости / Отделка / Экспорт so it reads as a
+     few focused screens instead of one endless scroll. A search box filters params across every group. */
+  #tabnav{ position:sticky; top:0; z-index:5; background:var(--paper); padding:8px 0 6px; margin:2px 0 4px;
+    border-bottom:1px solid var(--paper-line); }
+  #tab-search{ width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; font-size:13px;
+    border:1px solid var(--paper-line); border-radius:7px; background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink); }
+  #tab-search::placeholder{ color:var(--ink-soft); }
+  #tab-search:focus{ outline:none; border-color:var(--accent,#4a90d9); }
+  .tab-row{ display:flex; gap:4px; }
+  .tab-btn{ flex:1; padding:8px 4px; font-size:12px; font-weight:600; letter-spacing:0.02em; cursor:pointer;
+    border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ink-soft);
+    transition:background 0.12s,color 0.12s; white-space:nowrap; }
+  .tab-btn:hover{ color:var(--ink); background:var(--paper-2,rgba(0,0,0,0.04)); }
+  .tab-btn.active{ color:var(--ink); background:var(--paper-2,rgba(0,0,0,0.07)); border-color:var(--paper-line);
+    box-shadow:inset 0 -2px 0 0 var(--accent,#4a90d9); }
+  .tab-btn.empty{ opacity:0.32; pointer-events:none; }
+  /* When tabbed, the wrapping "ПАРАМЕТРЫ" fold is just a transparent container — its header is redundant. */
+  .param-wrap > summary.section-label{ display:none; }
+  .search-hit mark{ background:var(--accent,#4a90d9); color:#fff; border-radius:2px; padding:0 1px; }
 
   .param-row{
     display:flex;
@@ -780,13 +799,23 @@
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель отдельным объектом (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
     </details>
 
-    <details class="panel-fold" open data-fold="Параметры"><summary class="section-label">Параметры</summary>
+    <div id="tabnav">
+      <input type="text" id="tab-search" placeholder="Поиск параметра…" spellcheck="false" autocomplete="off">
+      <div class="tab-row">
+        <button class="tab-btn active" data-tab="form">Форма</button>
+        <button class="tab-btn" data-tab="cavity">Полости</button>
+        <button class="tab-btn" data-tab="finish">Отделка</button>
+        <button class="tab-btn" data-tab="export">Экспорт</button>
+      </div>
+    </div>
+
+    <details class="panel-fold param-wrap" open data-tab="form cavity export" data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» вычищает внутренность, оставляя стенки и дно заданной толщины; открытый верх. «Глубина полости» — 0 даёт полную полость до дна, значение больше 0 превращает куб в лоток: сплошное тело с неглубоким карманом заданной глубины сверху (бывший режим «борт»). Наклон стенок работает во всех режимах (полости наклон передаётся вместе с внешней оболочкой). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/кармана (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, сходящим в 0 к рёбрам, поэтому меш остаётся замкнутым; совместимо с логотипами, наклоном и скруглением углов. На полом контейнере внутренняя полость повторяет выгиб (толщина стенки сохраняется). Детализация купола задаётся настройкой «Детализация логотипов».</div></details></div>
+    <div class="param-group" data-shape="box" data-tab="form cavity"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» вычищает внутренность, оставляя стенки и дно заданной толщины; открытый верх. «Глубина полости» — 0 даёт полную полость до дна, значение больше 0 превращает куб в лоток: сплошное тело с неглубоким карманом заданной глубины сверху (бывший режим «борт»). Наклон стенок работает во всех режимах (полости наклон передаётся вместе с внешней оболочкой). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/кармана (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, сходящим в 0 к рёбрам, поэтому меш остаётся замкнутым; совместимо с логотипами, наклоном и скруглением углов. На полом контейнере внутренняя полость повторяет выгиб (толщина стенки сохраняется). Детализация купола задаётся настройкой «Детализация логотипов».</div></details></div>
     </details>
 
-    <div id="logo-section" class="param-group" data-shape="box">
+    <div id="logo-section" class="param-group" data-shape="box" data-tab="finish" data-relkey="Логотипы (рельеф на гранях)">
       <details class="panel-fold" data-def-closed data-fold="Логотипы (рельеф на гранях)"><summary class="section-label">Логотипы (рельеф на гранях)</summary>
 
       <div class="param-row">
@@ -813,7 +842,7 @@
     </details>
     </div>
 
-    <div id="die-section" class="param-group" data-shape="box" style="display:none">
+    <div id="die-section" class="param-group" data-shape="box" data-tab="finish" data-relkey="Грани кости (номера / логотипы)" style="display:none">
       <details class="panel-fold" data-def-closed data-fold="Грани кости (номера / логотипы)"><summary class="section-label">Грани кости (номера / логотипы)</summary>
       <div id="die-face-count" class="export-note" style="margin-bottom:8px"></div>
       <div class="param-row">
@@ -835,7 +864,7 @@
       </details>
     </div>
 
-    <div id="holes-section" class="param-group" data-shape="box">
+    <div id="holes-section" class="param-group" data-shape="box" data-tab="cavity" data-relkey="Отверстия (сквозные)">
       <details class="panel-fold" data-def-closed data-fold="Отверстия (сквозные)"><summary class="section-label">Отверстия (сквозные)</summary>
 
       <button id="btn-add-hole">+ Добавить отверстие</button>
@@ -844,7 +873,7 @@
     </details>
     </div>
 
-    <details class="panel-fold" data-def-closed data-fold="Позиция модели (в сборке)"><summary class="section-label">Позиция модели (в сборке)</summary>
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Позиция модели (в сборке)"><summary class="section-label">Позиция модели (в сборке)</summary>
 
     <div class="param-row">
       <label class="param-label">Смещение X</label>
@@ -860,7 +889,7 @@
     </div>
     </details>
 
-    <details class="panel-fold" data-def-closed data-fold="Поворот (для печати)"><summary class="section-label">Поворот (для печати)</summary>
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Поворот (для печати)"><summary class="section-label">Поворот (для печати)</summary>
 
     <div class="param-row">
       <label class="param-label">Вокруг X</label>
@@ -877,7 +906,7 @@
     <button id="btn-auto-orient" title="Перебирает 6 ориентаций (какой гранью вниз) и ставит модель так, чтобы площадь нависаний круче 45° была минимальной">⟳ Автоориентация (мин. поддержек)</button>
     </details>
 
-    <details class="panel-fold" open data-fold="Отображение"><summary class="section-label">Отображение</summary>
+    <details class="panel-fold" open data-tab="finish" data-fold="Отображение"><summary class="section-label">Отображение</summary>
 
     <div class="shading-toggle">
       <button id="shade-flat" class="active" data-mode="flat">Плоское</button>
@@ -891,7 +920,7 @@
     </div>
     </details>
 
-    <details class="panel-fold" open data-fold="Сводка"><summary class="section-label">Сводка</summary>
+    <details class="panel-fold" open data-tab="export" data-fold="Сводка"><summary class="section-label">Сводка</summary>
 
     <div class="stats-box">
       <div class="stats-row"><span class="k">Треугольники (активная)</span><span class="v mono" id="stat-tris">—</span></div>
@@ -907,7 +936,7 @@
     </div>
     </details>
 
-    <details class="panel-fold" open data-fold="Экспорт"><summary class="section-label">Экспорт</summary>
+    <details class="panel-fold" open data-tab="export" data-fold="Экспорт"><summary class="section-label">Экспорт</summary>
 
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
@@ -915,7 +944,7 @@
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
     </details>
 
-    <details class="panel-fold" data-def-closed data-fold="Конфигурация сборки"><summary class="section-label">Конфигурация сборки</summary>
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Конфигурация сборки"><summary class="section-label">Конфигурация сборки</summary>
 
     <button id="btn-save-config">💾 Сохранить (JSON)</button>
     <button id="btn-load-config">📂 Загрузить (JSON)</button>
@@ -923,7 +952,7 @@
     <div class="export-note">Сохраняет всю сборку (модели, параметры, позиции, цвета и логотипы) в JSON и загружает обратно. Логотипы восстанавливаются из встроенного превью-изображения.</div>
     </details>
 
-    <div id="pwa-section" style="display:none">
+    <div id="pwa-section" data-tab="export" style="display:none">
       <details class="panel-fold" data-def-closed data-fold="Приложение"><summary class="section-label">Приложение</summary>
 
       <button id="btn-install-app">⤓ Установить приложение</button>
@@ -935,7 +964,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3854,17 +3883,97 @@ function refreshActiveModelUI(){
   ['px','py','pz'].forEach(a => { const el = document.getElementById(a); if (el) el.value = positionState[a]; });
   const m = getActiveModel(), cp = document.getElementById('color-picker');
   if (m && cp) cp.value = m.color;
-  // #8: an extruded-logo model only uses width/depth (footprint) + height (thickness) — hide
-  // every other param group (and the segment counters) while such a model is active.
-  const isLogo3d = !!paramState.box.logo3d, isBasePlate = !!paramState.box.gfBaseplate;
-  document.querySelectorAll('#params-box details.param-cat').forEach(det => {
-    if (isBasePlate) { det.style.display = det.dataset.group === 'Gridfinity' ? '' : 'none'; return; }
-    det.style.display = (!isLogo3d || det.dataset.group === 'Размеры') ? '' : 'none';
-  });
+  // an extruded-logo model only uses width/depth (footprint) + height (thickness) — hide the segment counters.
+  const isLogo3d = !!paramState.box.logo3d;
   document.querySelectorAll('#params-box .param-number[data-key]').forEach(inp => {
     if (!['segW','segH','segD'].includes(inp.dataset.key)) return;
     const row = inp.closest('.param-row');
     if (row) row.style.display = isLogo3d ? 'none' : '';
+  });
+  updateSectionVisibility();   // show only the groups relevant to the active model kind, filtered by the tab
+}
+
+// The single dominant "mode" of the active box model — later entries override earlier (a flat sheet or a
+// keycap replaces the whole prism, so only its own groups are relevant).
+function dominantMode(p){
+  if (p.gfBaseplate) return 'baseplate';
+  if (p.logo3d) return 'logo3d';
+  if (p.sheetShape && p.sheetShape !== 'none') return 'sheet';
+  if (p.keycapMode && p.keycapMode !== 'none') return 'keycap';
+  if (p.platonic && p.platonic !== 'none') return 'die';
+  return 'box';
+}
+// Is a section (param group or panel-fold, keyed by its data-group / data-fold name) relevant right now?
+function sectionRelevant(key, mode, hollow){
+  switch(key){
+    case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
+    case 'Грани кости (номера / логотипы)': return mode==='die';
+    case 'Отверстия (сквозные)': return mode==='box';
+    case 'Позиция модели (в сборке)': case 'Поворот (для печати)': case 'Отображение':
+    case 'Сводка': case 'Экспорт': case 'Конфигурация сборки': case 'Приложение': return true;
+  }
+  if (mode==='baseplate') return key==='Gridfinity';
+  if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
+  if (mode==='keycap')    return key==='Размеры' || key==='Кейкап';
+  if (mode==='die')       return key==='Размеры' || key==='Многогранник';
+  // box / prism: all form groups; the interior features need a hollow cavity to make sense.
+  if (['Сетчатое дно','Перегородки (полый)','Скат (полый)','Полка под ярлык (полый)','Грип-насечка'].includes(key)) return hollow;
+  return true;
+}
+let activeTab = 'form';
+try { activeTab = localStorage.getItem('stl-tab') || 'form'; } catch(e) {}
+// Combine tab + mode-relevance: a section shows only when it lives on the active tab AND is relevant to the
+// current model kind. Empty tabs are dimmed. Skipped entirely while a search filter is active.
+function updateSectionVisibility(){
+  if (!paramState || !paramState.box) return;
+  const srch = document.getElementById('tab-search');
+  if (srch && srch.value.trim()) return;
+  const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow;
+  const perTab = {form:0, cavity:0, finish:0, export:0};
+  document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => {
+    const tabs = (el.dataset.tab||'').split(/\s+/);
+    const key = el.dataset.group || el.dataset.fold || el.dataset.relkey || '';
+    const rel = key ? sectionRelevant(key, mode, hollow) : true;
+    const onTab = tabs.includes(activeTab);
+    el.style.display = (onTab && rel) ? '' : 'none';
+    if (rel) tabs.forEach(t => { if (t in perTab) perTab[t]++; });
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === activeTab);
+    b.classList.toggle('empty', perTab[b.dataset.tab] === 0);
+  });
+}
+function setActiveTab(tab){
+  activeTab = tab; try { localStorage.setItem('stl-tab', tab); } catch(e) {}
+  const s = document.getElementById('tab-search'); if (s) s.value = '';
+  updateSectionVisibility();
+  const panel = document.getElementById('panel'); if (panel) panel.scrollTop = 0;
+}
+// Live parameter search across every group, ignoring tabs: show only rows whose label matches, open the
+// groups that contain a hit, hide the rest. Empty query restores the tab view.
+function applyParamSearch(q){
+  q = (q||'').trim().toLowerCase();
+  if (!q){ updateSectionVisibility(); return; }
+  if (!paramState || !paramState.box) return;
+  const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow;
+  // show all tab containers so matches on any tab are reachable
+  document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => {
+    const key = el.dataset.group || el.dataset.fold || el.dataset.relkey || '';
+    const rel = key ? sectionRelevant(key, mode, hollow) : true;
+    el.style.display = rel ? '' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  // filter rows inside each relevant group
+  document.querySelectorAll('#panel details.param-cat').forEach(cat => {
+    if (cat.style.display === 'none') return;
+    let hits = 0;
+    cat.querySelectorAll('.param-row, .toggle-row').forEach(row => {
+      const lbl = (row.querySelector('.param-label, span')?.textContent || '').toLowerCase();
+      const hit = lbl.includes(q); row.style.display = hit ? '' : 'none'; if (hit) hits++;
+    });
+    cat.style.display = hits ? '' : 'none';
+    if (hits) cat.open = true;
   });
 }
 
@@ -7346,6 +7455,15 @@ function clampParam(param, val) {
 const CAT_DEFAULT_OPEN = new Set(['Размеры']);
 let CAT_STATE = {};
 try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(e) {}
+// Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
+// interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
+const GROUP_TAB = {
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form',
+  'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
+  'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
+  'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
+  'Gridfinity':'cavity','Разрезка на фрагменты':'export',
+};
 function buildAllParamUI() {
   for (const shapeKey in SHAPE_PARAMS) {
     const container = document.getElementById('params-'+shapeKey);
@@ -7359,7 +7477,8 @@ function buildAllParamUI() {
         det.open = (groupName in CAT_STATE) ? CAT_STATE[groupName] : CAT_DEFAULT_OPEN.has(groupName);
         det.addEventListener('toggle', () => { CAT_STATE[groupName] = det.open;
           try { localStorage.setItem('stl-cats', JSON.stringify(CAT_STATE)); } catch(e) {} });
-        det.dataset.group = groupName; // lets refreshActiveModelUI hide irrelevant groups per model kind
+        det.dataset.group = groupName; // lets updateSectionVisibility hide irrelevant groups per model kind
+        det.dataset.tab = GROUP_TAB[groupName] || 'form'; // which top tab this group belongs to
         const sum = document.createElement('summary'); sum.textContent = groupName;
         body = document.createElement('div'); body.className = 'param-cat-body';
         det.appendChild(sum); det.appendChild(body);
@@ -7420,10 +7539,12 @@ function attachEventListeners() {
       if (shape === currentShape) markPending();
     } else if (t.matches('select.param-select') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.value;
+      if (t.dataset.shape === 'box') updateSectionVisibility();   // sheet/keycap/die mode may have changed
       if (t.dataset.shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.checked;
       if (t.dataset.shape === 'box' && t.dataset.key === 'hollow' && logos.length) { logos.forEach(clampLogoToFace); renderLogoCards(); }
+      if (t.dataset.shape === 'box') updateSectionVisibility();   // hollow toggles the interior-feature groups
       if (t.dataset.shape === currentShape) markPending();
     }
   });
@@ -7535,6 +7656,19 @@ function attachEventListeners() {
   attachSplitHandle();
   attachUndoListeners();
   attachPanelFolds();
+  attachTabs();
+}
+
+// Tab bar + parameter search wiring.
+function attachTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn =>
+    btn.addEventListener('click', () => setActiveTab(btn.dataset.tab)));
+  const search = document.getElementById('tab-search');
+  if (search) {
+    search.addEventListener('input', () => applyParamSearch(search.value));
+    search.addEventListener('keydown', (e) => { if (e.key === 'Escape') { search.value = ''; applyParamSearch(''); search.blur(); } });
+  }
+  updateSectionVisibility();
 }
 
 // Every panel section is collapsible; remember which ones the user closed (localStorage, keyed by
@@ -8150,8 +8284,7 @@ function dieActiveKind(){ return (currentShape === 'box' && paramState.box && pa
 function updateDieSection(){
   const sec = document.getElementById('die-section'); if (!sec) return;
   const kind = dieActiveKind();
-  sec.style.display = kind ? '' : 'none';
-  if (!kind) return;
+  if (!kind) return;   // die-section visibility is owned by updateSectionVisibility (tab + mode)
   const n = dieFaceCount(kind);
   const cap = document.getElementById('die-face-count');
   if (cap) cap.textContent = 'Активная кость: ' + (activeShapeLabel()) + ' — ' + n + ' ' + plural(n,'грань','грани','граней') + '. Рельеф раскладывается по отдельным граням.';

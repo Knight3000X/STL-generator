@@ -933,7 +933,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3335,6 +3335,7 @@ const SHAPE_PARAMS = {
     {group:'Многогранник', key:'polyN', label:'Многогранник: число боковых граней (0 = куб)', min:0, max:64, step:1, default:0, unit:'', int:true},
     {group:'Многогранник', key:'polyRound', label:'Многогранник: скругление вертикальных рёбер', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Многогранник', key:'binRound', label:'Бин: скругление вертикальных углов, полный габарит (0 = выкл)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Многогранник', key:'dieBead', label:'Кость: скруглённый бортик-рамка вокруг граней (0 = выкл)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Многогранник', key:'platonic', label:'Игральная кость / правильный многогранник (перекрывает призму)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'d4',t:'D4 — тетраэдр (4)'},{v:'d6',t:'D6 — куб (6)'},{v:'d8',t:'D8 — октаэдр (8)'},{v:'d10',t:'D10 — трапецоэдр (10)'},{v:'d12',t:'D12 — додекаэдр (12)'},{v:'d20',t:'D20 — икосаэдр (20)'},{v:'d100',t:'D100 — сфера/Zocchihedron (100)'}]},
     {group:'Кейкап', key:'keycapMode', label:'Кейкап (перекрывает куб/бин/кость)', type:'select', default:'none',
@@ -3354,6 +3355,15 @@ const SHAPE_PARAMS = {
     {group:'Кейкап', key:'keyStem', label:'Кейкап: крепление (стем)', type:'select', default:'mx',
       options:[{v:'mx',t:'Cherry MX (крест)'},{v:'choc',t:'Kailh Choc (2 ножки)'},{v:'none',t:'без стема'}]},
     {group:'Кейкап', key:'keyStemTol', label:'Кейкап: допуск посадки стема', min:0, max:0.5, step:0.05, default:0.1, unit:'мм'},
+    {group:'Лист / панель', key:'sheetShape', label:'Плоский лист (перекрывает всё; насечки из «Сетка»)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'rect',t:'прямоугольник'},{v:'round',t:'скруглённый прямоугольник'},{v:'ngon',t:'многоугольник'},{v:'circle',t:'круг / эллипс'}]},
+    {group:'Лист / панель', key:'sheetThick', label:'Лист: толщина', min:0.4, max:20, step:0.2, default:3, unit:'мм'},
+    {group:'Лист / панель', key:'sheetPattern', label:'Лист: узор насечек (сквозной)', type:'select', default:'diamond',
+      options:[{v:'none',t:'нет (сплошной)'},{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'}]},
+    {group:'Лист / панель', key:'sheetN', label:'Лист: число сторон (для многоугольника)', min:3, max:64, step:1, default:6, unit:'', int:true},
+    {group:'Лист / панель', key:'sheetRound', label:'Лист: скругление углов (для скруглённого)', min:0.5, max:150, step:0.5, default:6, unit:'мм'},
+    {group:'Лист / панель', key:'sheetRim', label:'Лист: высота бортика по краю (0 = без бортика)', min:0, max:30, step:0.5, default:0, unit:'мм'},
+    {group:'Лист / панель', key:'sheetRimW', label:'Лист: толщина бортика', min:1, max:10, step:0.5, default:2, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -4558,12 +4568,49 @@ function buildDieGlyphPatch(face, asg, nC){
 }
 // Whole die: flat body when no relief, otherwise every face tessellated (a global edge subdivision so
 // shared edges match) and the assigned faces displaced (emboss or engrave). Watertight by construction.
-function buildDie(kind, hw, hh, hd, assignments, res){
+// Raised rounded FRAME (валик) around a die face: a closed rounded tube swept along the face's inset
+// boundary, half-protruding above the face and half-sunk into the solid body. Appended to the die like a
+// divider — a closed torus interpenetrating the closed body stays manifold (a slicer unions it), so the
+// number's crisp patch and the sharp edges are untouched. Auto-skips faces too small to host the bead.
+function buildDieBeadTube(face, poly, r, segCross){
+  const nP=poly.length; if(nP<3 || !(r>0)) return [];
+  const U=face.u, V=face.v, N=face.n, C=face.c;
+  const to2=p=>[dot(sub(p,C),U), dot(sub(p,C),V)];
+  const to3=(a,b)=>[C[0]+a*U[0]+b*V[0], C[1]+a*U[1]+b*V[1], C[2]+a*U[2]+b*V[2]];
+  const inset=r+Math.max(0.35, r*0.6);
+  if(inset > face.r*0.85) return [];                       // no room → skip (tiny faces, e.g. most of D100)
+  const ring2=polyInsetRing(poly.map(to2), inset);
+  let rMax=0; const ctr=polyRingCentroid(ring2);
+  for(const q of ring2) rMax=Math.max(rMax, Math.hypot(q[0]-ctr[0], q[1]-ctr[1]));
+  if(rMax < r*1.6) return [];                               // inset ring collapsed
+  const maxEdge=Math.max(0.6, r*1.1), dense=[];
+  for(let i=0;i<ring2.length;i++){ const a=ring2[i], b=ring2[(i+1)%ring2.length];
+    const L=Math.hypot(b[0]-a[0], b[1]-a[1]), steps=Math.max(1, Math.ceil(L/maxEdge));
+    for(let s=0;s<steps;s++){ const t=s/steps; dense.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); } }
+  const M=dense.length; if(M<3) return [];
+  const P=dense.map(q=>to3(q[0],q[1])), rings=[];
+  for(let i=0;i<M;i++){ const a=P[(i-1+M)%M], b=P[(i+1)%M];
+    const T=normalize([b[0]-a[0], b[1]-a[1], b[2]-a[2]]), rad=normalize(cross(T,N)), cs=[];
+    for(let j=0;j<segCross;j++){ const th=2*Math.PI*j/segCross, cn=Math.cos(th)*r, cr=Math.sin(th)*r;
+      cs.push([P[i][0]+cn*N[0]+cr*rad[0], P[i][1]+cn*N[1]+cr*rad[1], P[i][2]+cn*N[2]+cr*rad[2]]); }
+    rings.push(cs); }
+  const tris=[];
+  for(let i=0;i<M;i++){ const A=rings[i], B=rings[(i+1)%M];
+    for(let j=0;j<segCross;j++){ const jn=(j+1)%segCross;
+      const ref=[(A[j][0]+B[jn][0])/2-P[i][0], (A[j][1]+B[jn][1])/2-P[i][1], (A[j][2]+B[jn][2])/2-P[i][2]];
+      tris.push(orient([A[j],B[j],B[jn]], ref)); tris.push(orient([A[j],B[jn],A[jn]], ref)); } }
+  return polyDropDegen(tris);
+}
+function buildDie(kind, hw, hh, hd, assignments, res, beadR){
   const G=dieFaceGeometry(kind, hw, hh, hd);
   const active=(assignments||[]).filter(a=>a && (a.face|0)>=0 && (a.face|0)<G.faces.length && a.heightmap);
+  let tris=[];
+  const appendBeads=()=>{ if(!(beadR>0)) return; const segC=Math.max(8, Math.min(18, Math.round(8+beadR*4)));
+    for(let f=0;f<G.polys.length;f++) tris=tris.concat(buildDieBeadTube(G.faces[f], G.polys[f], beadR, segC)); };
   if(!active.length){
-    const tris=[]; for(let f=0;f<G.polys.length;f++){ const pts=G.polys[f], c=G.faces[f].c;
+    for(let f=0;f<G.polys.length;f++){ const pts=G.polys[f], c=G.faces[f].c;
       for(let k=0;k<pts.length;k++) tris.push(orient([c, pts[k], pts[(k+1)%pts.length]], c)); }
+    appendBeads();
     return polyDropDegen(tris);
   }
   const byFace=new Map(); for(const a of active){ const fi=a.face|0; (byFace.get(fi)||byFace.set(fi,[]).get(fi)).push(a); } // several per face (e.g. D4 corner numbers)
@@ -4581,7 +4628,6 @@ function buildDie(kind, hw, hh, hd, assignments, res){
   const fracs=[]; const nIn=Math.max(6, Math.round(R*0.75)), nOut=Math.max(3, R-nIn);
   for(let r=1;r<=nIn;r++) fracs.push(0.82*r/nIn);
   for(let r=1;r<=nOut;r++) fracs.push(0.82+0.18*r/nOut);
-  let tris=[];
   for(let f=0;f<G.polys.length;f++){
     const face=G.faces[f], poly=G.polys[f], asgs=byFace.get(f);
     if(asgs && asgs.length){
@@ -4661,9 +4707,72 @@ function buildDie(kind, hw, hh, hd, assignments, res){
                                [a[0]+(b[0]-a[0])*t1,a[1]+(b[1]-a[1])*t1,a[2]+(b[2]-a[2])*t1]], face.n)); } }
     }
   }
+  appendBeads();
   return polyDropDegen(tris);
 }
 
+/* ---- Flat perforated sheet / panel (лист) -------------------------------------------------------
+   A flat plate of an arbitrary outline (rect / rounded-rect / N-gon / ellipse) with an optional through
+   perforation lattice (diamond/square/triangle/hex) and an optional raised rim (бортик). Reuses the
+   container-floor machinery: emitLatticeFloor makes the perforated centre slab, polyStitchAnnulus fills the
+   smooth solid border out to the outline on both faces, and the outline is extruded for the edge wall.
+   Watertight by construction (shared grid/ring vertices). Good for grilles, trays, drain mats, coasters. */
+function sheetOutlineRing(p, hw, hd){
+  const seg=Math.max(1,p.filletSeg||4);
+  if(p.sheetShape==='round')  return ringRoundedRect(hw, hd, Math.max(0.5,Math.min(p.sheetRound||6, Math.min(hw,hd)-0.5)), seg);
+  if(p.sheetShape==='ngon')   return polyRing(hw, hd, Math.max(3,Math.round(p.sheetN||6)), 0, seg);
+  if(p.sheetShape==='circle') return polyRing(hw, hd, Math.max(24, Math.round(Math.PI*Math.max(hw,hd))), 0, 1);   // ellipse
+  return [[hw,hd],[-hw,hd],[-hw,-hd],[hw,-hd]];   // rect
+}
+function buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res){
+  const R=polyInscribedRect(ring, Math.max(cell,2));
+  if(R.rw<cell || R.rz<cell) return false;
+  const maxDim=2*Math.max(hw,hd), step=Math.max(cell/3, maxDim/Math.max(10,Math.min(500,res||80)));
+  const nx=Math.max(4,Math.round(2*R.rw/step)), nz=Math.max(4,Math.round(2*R.rz/step));
+  const xMid=[],zMid=[]; for(let i=0;i<=nx;i++)xMid.push(R.cx-R.rw+2*R.rw*i/nx); for(let j=0;j<=nz;j++)zMid.push(R.cz-R.rz+2*R.rz*j/nz);
+  emitLatticeFloor(tris, xMid, zMid, xMid, zMid, yb, yt, rib, cell, border, (q)=>q, false, null, null, null, pattern);
+  const perim=[]; for(let i=0;i<nx;i++)perim.push([xMid[i],zMid[0]]); for(let j=0;j<nz;j++)perim.push([xMid[nx],zMid[j]]);
+  for(let i=nx;i>0;i--)perim.push([xMid[i],zMid[nz]]); for(let j=nz;j>0;j--)perim.push([xMid[0],zMid[j]]);
+  const c=[R.cx,R.cz];
+  for(const T of polyStitchAnnulus(ring, perim, c)) tris.push(orient(T.map(q=>[q[0],yt,q[1]]),[0,1,0]));   // top border
+  for(const T of polyStitchAnnulus(ring, perim, c)) tris.push(orient(T.map(q=>[q[0],yb,q[1]]),[0,-1,0]));  // bottom border
+  return true;
+}
+// Raised rim (бортик) standing on the plate's top edge: a closed band from just below yt up to yt+rimH,
+// inset by rimW. Appended (interpenetrates the plate top) → watertight without touching the plate mesh.
+function buildSheetRim(ring, yt, rimH, rimW){
+  const O=ring, I=polyInsetRing(ring, Math.max(0.6,rimW)); if(I.length<3) return [];
+  const yLo=yt-0.6, yHi=yt+Math.max(0.4,rimH), N=O.length, tris=[];
+  const Vo=(r,i,y)=>[r[i][0],y,r[i][1]];
+  for(let i=0;i<N;i++){ const j=(i+1)%N;
+    let ref=[O[i][0]+O[j][0],0,O[i][1]+O[j][1]];
+    tris.push(orient([Vo(O,i,yLo),Vo(O,j,yLo),Vo(O,j,yHi)],ref)); tris.push(orient([Vo(O,i,yLo),Vo(O,j,yHi),Vo(O,i,yHi)],ref));  // outer wall
+    ref=[-(I[i][0]+I[j][0]),0,-(I[i][1]+I[j][1])];
+    tris.push(orient([Vo(I,i,yLo),Vo(I,j,yLo),Vo(I,j,yHi)],ref)); tris.push(orient([Vo(I,i,yLo),Vo(I,j,yHi),Vo(I,i,yHi)],ref));  // inner wall
+    tris.push(orient([Vo(O,i,yHi),Vo(O,j,yHi),Vo(I,j,yHi)],[0,1,0])); tris.push(orient([Vo(O,i,yHi),Vo(I,j,yHi),Vo(I,i,yHi)],[0,1,0]));  // top cap
+    tris.push(orient([Vo(O,i,yLo),Vo(O,j,yLo),Vo(I,j,yLo)],[0,-1,0])); tris.push(orient([Vo(O,i,yLo),Vo(I,j,yLo),Vo(I,i,yLo)],[0,-1,0]));  // bottom cap
+  }
+  return polyDropDegen(tris);
+}
+function buildSheet(p){
+  const hw=p.width/2, hd=p.depth/2, t=Math.max(0.4, p.sheetThick||3), yb=-t/2, yt=t/2;
+  const ring=sheetOutlineRing(p, hw, hd), tris=[];
+  const pattern=p.sheetPattern;
+  const netOK = pattern && pattern!=='none' && buildSheetNet(tris, ring, hw, hd, yb, yt,
+    Math.max(0.1,p.latticeRib||1.5), Math.max(1,p.latticeCell||8), Math.max(1,Math.round(p.latticeBorder||2)), pattern, p.latticeRes||80);
+  if(!netOK){   // solid plate: top + bottom fan caps
+    const c=polyRingCentroid(ring);
+    for(let i=0;i<ring.length;i++){ const j=(i+1)%ring.length;
+      tris.push(orient([[c[0],yt,c[1]],[ring[i][0],yt,ring[i][1]],[ring[j][0],yt,ring[j][1]]],[0,1,0]));
+      tris.push(orient([[c[0],yb,c[1]],[ring[i][0],yb,ring[i][1]],[ring[j][0],yb,ring[j][1]]],[0,-1,0])); }
+  }
+  for(let i=0;i<ring.length;i++){ const j=(i+1)%ring.length, ref=[ring[i][0]+ring[j][0],0,ring[i][1]+ring[j][1]];  // edge wall
+    tris.push(orient([[ring[i][0],yb,ring[i][1]],[ring[j][0],yb,ring[j][1]],[ring[j][0],yt,ring[j][1]]],ref));
+    tris.push(orient([[ring[i][0],yb,ring[i][1]],[ring[j][0],yt,ring[j][1]],[ring[i][0],yt,ring[i][1]]],ref)); }
+  let out=polyDropDegen(tris);
+  if((p.sheetRim||0)>0) out=out.concat(buildSheetRim(ring, yt, p.sheetRim, Math.max(1,p.sheetRimW||2)));
+  return out;
+}
 /* ---- Keycaps (кейкапы) --------------------------------------------------------------------------
    Parametric keycap: rounded-rect base ring lofted to a smaller top ring (side taper), hollow skirt
    underneath, a top plate carried by a Cartesian CELL GRID (the crisp-edge construction), an optional
@@ -6609,7 +6718,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -6623,7 +6732,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -6653,6 +6762,10 @@ function buildTrisForShapeCore(shape, p) {
     // rides the shared per-vertex map afterwards; slicing / lid / export come from the mesh pipeline. The
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
+    // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.sheetShape && p.sheetShape !== 'none') {
+      return applyTaper(snapWeldTris(buildSheet(p)));
+    }
     // Keycap: overrides every other box mode. Legend comes from the first logo card; the shell/core
     // pair (AMS) is two assembly models — two objects in the exported 3MF, one filament each.
     if (p.keycapMode && p.keycapMode !== 'none') {
@@ -6663,7 +6776,8 @@ function buildTrisForShapeCore(shape, p) {
       // (numbers / logos / text) from the dieFaces submenu, displaced into the actual face surface.
       const dieAsg = (typeof dieFaces !== 'undefined' && dieFaces.length) ? dieFaces : null;
       const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
-      return applyTaper(snapWeldTris(buildDie(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes)));
+      const beadR = Math.max(0, Math.min(3, p.dieBead||0));
+      return applyTaper(snapWeldTris(buildDie(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes, beadR)));
     }
     if ((p.polyN|0) >= 3 || (p.binRound||0) > 0) {
       const hw=p.width/2, hh=p.height/2, hd=p.depth/2, seg=p.filletSeg||4, N=p.polyN, rr=p.polyRound||0;
@@ -7929,6 +8043,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';
   if (p.platonic && p.platonic !== 'none') return ({d4:'D4 (тетраэдр)',d6:'D6 (куб)',d8:'D8 (октаэдр)',d10:'D10 (трапецоэдр)',d12:'D12 (додекаэдр)',d20:'D20 (икосаэдр)',d100:'D100 (сфера)'})[p.platonic] || 'кость';
   if ((p.polyN|0) >= 3) return (p.polyN|0) + '-гранная призма';

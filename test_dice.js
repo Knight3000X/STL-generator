@@ -104,5 +104,18 @@ console.log('=== multiple reliefs per face (D4 corner style) watertight ===');
   const t=buildTrisForShape('box',paramState.box); const mc=manifoldCheck(t,4);
   chk('d4 with 3 reliefs/face (12 total) watertight', mc.watertight, mc); dieFaces.length=0; }
 
+console.log('=== raised rounded frame (валик) around die faces ===');
+for(const k of ['d6','d8','d12','d20']){ const t=base({platonic:k,dieBead:0.8,width:40,height:40,depth:40}); const mc=manifoldCheck(t,4);
+  chk(k+' bead frame watertight (+vol)', mc.watertight && vol(t)>0, mc); }
+{ const plain=vol(base({platonic:'d6'})), beaded=vol(base({platonic:'d6',dieBead:0.9}));
+  chk('bead adds material (raised frame)', beaded>plain, {plain,beaded}); }
+{ base({platonic:'d20'}); dieFaces.length=0;
+  for(let f=0;f<20;f++) dieFaces.push({id:nextDieId++,face:f,src:'text',depth:-0.3,sizeFrac:0.5,rotation:0,invert:false,threshold:0.5,heightmap:blobHM(0.3)});
+  paramState.box.dieBead=0.8;
+  chk('bead + engraved numbers watertight', manifoldCheck(buildTrisForShape('box',paramState.box),4).watertight); dieFaces.length=0; }
+chk('bead + taper watertight', manifoldCheck(base({platonic:'d8',dieBead:0.7,taperXPlus:8}),4).watertight);
+{ // tiny faces auto-skip the bead: still watertight, no crash
+  chk('d100 with bead watertight (mostly skipped)', manifoldCheck(base({platonic:'d100',dieBead:0.8,width:44,height:44,depth:44}),4).watertight); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

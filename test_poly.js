@@ -81,6 +81,24 @@ console.log('=== through-hole lattice on the N-gon SIDE WALLS ===');
   chk('wall net + dividers wt', manifoldCheck(wl({polyN:6,divX:2,divZ:2}),4).watertight);
 }
 paramState.box.latticeWalls='none';
+console.log('=== squircle container: full lattice walls + floor (round basket) ===');
+{
+  const sq=(ov)=>{ base(Object.assign({width:90,height:90,depth:90,squircle:100,hollow:true,wallThickness:2.4,
+    latticeCell:8,latticeRib:1.8,latticeBorder:3,latticePattern:'hex',latticeRes:100},ov)); return buildTrisForShape('box',paramState.box); };
+  for(const s of [100,70,40,15]){ const t=sq({squircle:s,latticeWalls:'all',latticeFloor:true}); const mc=manifoldCheck(t,4);
+    chk('squircle '+s+'% walls+floor net wt (+vol)', mc.watertight && vol(t)>0, mc); }
+  for(const pat of ['diamond','square','triangle','hex']) chk('squircle '+pat+' wall net wt', manifoldCheck(sq({squircle:100,latticeWalls:'all',latticePattern:pat}),4).watertight);
+  chk('squircle floor-only net wt', manifoldCheck(sq({squircle:100,latticeWalls:'none',latticeFloor:true}),4).watertight);
+  chk('squircle walls-only net wt', manifoldCheck(sq({squircle:100,latticeWalls:'all',latticeFloor:false}),4).watertight);
+  { const t=sq({squircle:100,width:110,depth:70,latticeWalls:'all',latticeFloor:true}); chk('elliptical (W≠D) squircle net wt', manifoldCheck(t,4).watertight); }
+  { const t=sq({squircle:100,latticeWalls:'all',latticeFloor:true,taperXPlus:-9,taperXMinus:-9,taperZPlus:-9,taperZMinus:-9}); const b=computeBBox(t);
+    chk('round net BASKET (flared) wt + top wider', manifoldCheck(t,4).watertight && (b.maxX-b.minX)>90+8, {top:b.maxX-b.minX}); }
+  chk('net removes material vs plain squircle', vol(sq({squircle:100,latticeWalls:'all',latticeFloor:true})) < vol(sq({squircle:100,latticeWalls:'none',latticeFloor:false})), {});
+  // roundness: the outer ring should be smoothly round (many distinct perimeter directions), not a few flats
+  { const t=sq({squircle:100,latticeWalls:'all',latticeFloor:true}); const b=computeBBox(t);
+    chk('squircle basket fills 90mm bbox', Math.abs((b.maxX-b.minX)-90)<0.6 && Math.abs((b.maxZ-b.minZ)-90)<0.6, {x:b.maxX-b.minX,z:b.maxZ-b.minZ}); }
+}
+paramState.box.latticeWalls='none'; paramState.box.squircle=0;
 console.log('=== бин: full-size rounded-rect container (gridfinity-bin look) ===');
 {
   const bin=(ov)=>{ base(Object.assign({width:84,height:44,depth:60,binRound:8},ov)); return buildTrisForShape('box',paramState.box); };

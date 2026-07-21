@@ -935,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4053,6 +4053,16 @@ function squircleRingPoint(theta, a, c, p){
   const ct=Math.cos(theta), st=Math.sin(theta);
   return [ a*Math.sign(ct)*Math.pow(Math.abs(ct), p), c*Math.sign(st)*Math.pow(Math.abs(st), p) ];
 }
+// Dense superellipse ring [x,z] (smooth round/elliptical wall) for the ring-generic lattice path — the
+// squircle container fed through the SAME net machinery the bin/N-gon use. eH: 1 = ellipse, →0 = square.
+// Segment length ≤ maxEdge so a net cell has enough perimeter samples. Convex & simple → clean inset (no
+// self-intersection at corners, unlike the rounded-rect bin) → slicer-friendly.
+function superellipseRingDense(hw, hd, eH, maxEdge){
+  const per = 2*Math.PI*Math.max(hw,hd);
+  const N = Math.max(64, Math.min(2400, Math.round(per/Math.max(0.4, maxEdge))));
+  const ring=[]; for(let i=0;i<N;i++) ring.push(squircleRingPoint(2*Math.PI*i/N, hw, hd, eH));
+  return ring;
+}
 function buildSquirclePrism(w, h, d, p, resolution){
   const hw=w/2, hh=h/2, hd=d/2;
   const N = Math.max(48, Math.round(resolution)*12); // perimeter samples (more = smoother curve)
@@ -6965,6 +6975,24 @@ function buildTrisForShapeCore(shape, p) {
       if (p.squircle > 0) {
         const eH = Math.max(0.02, Math.min(1, p.squircle/100)), eV = Math.max(0, Math.min(1, (p.squircleVBot||0)/100));
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2);
+        // Lattice net on a SQUIRCLE container (smooth round/elliptical basket): reuse the ring-generic lattice
+        // machinery with a dense superellipse ring — a convex simple ring, so it insets/perforates cleanly
+        // (no bin-corner self-intersections → no slicer errors). Straight walls (flat bottom); the net
+        // overrides squircleVBot rounding. Works for every horizontal variation (squircle % + W≠D ellipse).
+        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
+          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
+        const sqLat = p.latticeFloor ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
+          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
+        if (wallLat || sqLat) {
+          const hw=p.width/2, hh=p.height/2, hd=p.depth/2, floorY=-hh+tW;
+          const fineW = Math.max(0.4, 2*Math.max(hw,hh,hd)/Math.max(12, ((wallLat||sqLat).res||60)));
+          const sqRing = superellipseRingDense(hw, hd, eH, fineW);
+          const tris = wallLat
+            ? buildPolyHollowWallLattice(hw, hd, hh, 0, 0, p.filletSeg||4, tW, floorY, wallLat, sqLat, sqRing)
+            : buildPolyHollow(hw, hd, hh, sqRing, tW, floorY, sqLat);
+          return taperBoxTris(tris, p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
+            p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
+        }
         const idT = q => q, all = logos.length > 0 ? buildCombinedLogoDispFns(idT) : null;
         // Single-wall port on a plain squircle container — flat OR rounded bottom (superellipsoid): the port
         // rides the straight upper wall, so squircleVBot doesn't block it. First side-wall hole, no logos.
@@ -8176,6 +8204,7 @@ function activeShapeLabel() {
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
+  if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';
   if (p.platonic && p.platonic !== 'none') return ({d4:'D4 (тетраэдр)',d6:'D6 (куб)',d8:'D8 (октаэдр)',d10:'D10 (трапецоэдр)',d12:'D12 (додекаэдр)',d20:'D20 (икосаэдр)',d100:'D100 (сфера)'})[p.platonic] || 'кость';
   if ((p.polyN|0) >= 3) return (p.polyN|0) + '-гранная призма';

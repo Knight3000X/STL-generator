@@ -984,7 +984,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v69';
+const APP_VERSION = 'v70';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -9407,6 +9407,7 @@ function init() {
   activeModelId = models[0].id;
   renderModelCards();
   switchShape('box'); // computes geometry + stats; 3D update inside is a no-op until scene3DReady
+  updateSectionVisibility(); // paramState is ready now → apply the initial tab + mode filtering
 
   if (typeof THREE === 'undefined') {
     showViewportError(

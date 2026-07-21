@@ -32,6 +32,11 @@ for(const sh of ['rect','round','ngon','circle']){
 }
 { const plain=vol(base({sheetShape:'rect',sheetCut:'none'})), tex=vol(base({sheetShape:'rect',sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8}));
   chk('texture ADDS material (raised bumps, no holes)', tex>plain, {plain,tex}); }
+// ANTI-ALIAS (v66): a THIN groove (rib) must still be resolved, or the grip bumps disintegrate into sparse
+// fragments (the near-empty tetris texture the user saw). A fine-rib hex grip must add SUBSTANTIAL bump volume.
+{ const texH=0.7, plate=80*60, plain=vol(base({sheetShape:'rect',width:80,depth:60,sheetCut:'none',sheetThick:3}));
+  const tex=vol(base({sheetShape:'rect',width:80,depth:60,sheetCut:'texture',sheetPattern:'hex',latticeCell:8,latticeRib:0.6,sheetTexH:texH,sheetThick:3}));
+  chk('thin-rib grip texture adds substantial bumps (not aliased fragments)', (tex-plain) > plate*texH*0.3, {added:+(tex-plain).toFixed(0), full:plate*texH}); }
 { const b=computeBBox(base({sheetShape:'rect',sheetCut:'texture',sheetPattern:'diamond',sheetThick:3,sheetTexH:0.8}));
   chk('texture raises top above the plate', Math.abs((b.maxY-b.minY)-(3+0.8))<0.05, {y:b.maxY-b.minY}); }
 chk('texture + taper watertight', manifoldCheck(base({sheetShape:'round',sheetCut:'texture',sheetPattern:'hex',taperXPlus:5}),4).watertight);

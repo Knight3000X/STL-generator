@@ -935,7 +935,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4924,7 +4924,7 @@ function sheetTexRaised(cx, cz, pitch, rib, pattern){
 function buildSheetTexture(tris, ring, hw, hd, yb, yt, texH, pitch, rib, pattern, res){
   const R=polyInscribedRect(ring, Math.max(pitch,2));
   if(R.rw<pitch || R.rz<pitch) return false;
-  const maxDim=2*Math.max(hw,hd), step=Math.max(pitch/4, maxDim/Math.max(10,Math.min(600,res||100)));
+  const maxDim=2*Math.max(hw,hd), step=netGridStep(maxDim, pitch, rib, res);   // resolve cell + rib (groove)
   const nx=Math.max(4,Math.round(2*R.rw/step)), nz=Math.max(4,Math.round(2*R.rz/step));
   const X=i=>R.cx-R.rw+2*R.rw*i/nx, Z=j=>R.cz-R.rz+2*R.rz*j/nz, b=1;
   const sol=Array.from({length:nx},()=>new Array(nz).fill(false));
@@ -4961,7 +4961,7 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
   let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
   for(const q of clip){ minx=Math.min(minx,q[0]);maxx=Math.max(maxx,q[0]);minz=Math.min(minz,q[1]);maxz=Math.max(maxz,q[1]); }
   const c=polyRingCentroid(ring), maxDim=Math.max(maxx-minx,maxz-minz);
-  const step=Math.max(pitch/4, maxDim/Math.max(20, Math.min(700, res||120)));
+  const step=netGridStep(maxDim, pitch, rib, res);   // resolve cell + rib (groove) → clean grip, not aliased
   const nx=Math.max(4,Math.ceil((maxx-minx)/step)), nz=Math.max(4,Math.ceil((maxz-minz)/step));
   const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
   const inPoly=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];

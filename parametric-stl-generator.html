@@ -243,6 +243,16 @@
   /* When tabbed, the wrapping "ПАРАМЕТРЫ" fold is just a transparent container — its header is redundant. */
   .param-wrap > summary.section-label{ display:none; }
   .search-hit mark{ background:var(--accent,#4a90d9); color:#fff; border-radius:2px; padding:0 1px; }
+  /* Base-shape picker: one always-visible place to choose the model kind (cube/prism, die, keycap, sheet) so
+     switching never depends on a mode-specific group being visible. */
+  #baseshape{ margin:2px 0 10px; }
+  .basepick-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-soft); padding:2px 0 6px; }
+  .basepick-row{ display:flex; gap:4px; flex-wrap:wrap; }
+  .base-btn{ flex:1 1 40%; padding:9px 6px; font-size:12px; font-weight:600; cursor:pointer; border-radius:7px;
+    border:1px solid var(--paper-line); background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink-soft);
+    transition:background 0.12s,color 0.12s,border-color 0.12s; }
+  .base-btn:hover{ color:var(--ink); }
+  .base-btn.active{ color:#fff; background:var(--accent,#4a90d9); border-color:var(--accent,#4a90d9); }
 
   .param-row{
     display:flex;
@@ -809,6 +819,16 @@
       </div>
     </div>
 
+    <div id="baseshape" data-tab="form" data-relkey="__base">
+      <div class="basepick-label">Базовая форма</div>
+      <div class="basepick-row">
+        <button class="base-btn" data-base="box" title="Куб / прямоугольная призма (число боковых граней задаётся в «Многогранник»)">Куб / призма</button>
+        <button class="base-btn" data-base="die" title="Игральная кость / правильный многогранник (D4–D100)">Кость</button>
+        <button class="base-btn" data-base="keycap" title="Колпачок клавиши (кейкап)">Кейкап</button>
+        <button class="base-btn" data-base="sheet" title="Плоский лист / панель / грип-пад">Лист / панель</button>
+      </div>
+    </div>
+
     <details class="panel-fold param-wrap" open data-tab="form cavity export" data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
@@ -964,7 +984,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3906,6 +3926,9 @@ function dominantMode(p){
 // Is a section (param group or panel-fold, keyed by its data-group / data-fold name) relevant right now?
 function sectionRelevant(key, mode, hollow){
   switch(key){
+    case '__base': return true;                                  // base-shape picker is always available
+    case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
+    case 'Лист / панель': return mode==='sheet';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -3943,6 +3966,23 @@ function updateSectionVisibility(){
     b.classList.toggle('active', b.dataset.tab === activeTab);
     b.classList.toggle('empty', perTab[b.dataset.tab] === 0);
   });
+  updateBaseShapePicker();
+}
+// Base-shape picker: highlight the active kind, and switch kinds by driving the real mode selects (so it goes
+// through the normal change pipeline). Clears the other activators — dominantMode precedence settles the rest.
+function updateBaseShapePicker(){
+  if (!paramState || !paramState.box) return;
+  const mode = dominantMode(paramState.box);
+  document.querySelectorAll('.base-btn').forEach(b => b.classList.toggle('active', b.dataset.base === mode));
+}
+function setBaseShape(kind){
+  const setSel = (key, val) => { const el = document.querySelector('select[data-key="'+key+'"]');
+    if (el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
+    else if (paramState.box) paramState.box[key] = val; };
+  setSel('sheetShape', kind==='sheet'  ? 'rect'   : 'none');
+  setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
+  setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
+  updateBaseShapePicker();
 }
 function setActiveTab(tab){
   activeTab = tab; try { localStorage.setItem('stl-tab', tab); } catch(e) {}
@@ -7663,6 +7703,8 @@ function attachEventListeners() {
 function attachTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn =>
     btn.addEventListener('click', () => setActiveTab(btn.dataset.tab)));
+  document.querySelectorAll('.base-btn').forEach(btn =>
+    btn.addEventListener('click', () => setBaseShape(btn.dataset.base)));
   const search = document.getElementById('tab-search');
   if (search) {
     search.addEventListener('input', () => applyParamSearch(search.value));

@@ -990,7 +990,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v87';
+const APP_VERSION = 'v88';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3451,6 +3451,7 @@ const SHAPE_PARAMS = {
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSeal', label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlange', label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
@@ -3537,6 +3538,8 @@ const SHAPE_PARAMS = {
     {group:'TPMS-решётка', key:'tpmsThick', label:'TPMS: толщина стенки (для «стенки»)', min:0.6, max:8, step:0.1, default:2.2, unit:'мм'},
     {group:'TPMS-решётка', key:'tpmsIso', label:'TPMS: смещение (доля объёма, для «сети»)', min:-1, max:1, step:0.05, default:0, unit:''},
     {group:'TPMS-решётка', key:'tpmsGrad', label:'TPMS: градиент плотности по Y (0 = равномерно)', min:-0.9, max:0.9, step:0.05, default:0, unit:''},
+    {group:'TPMS-решётка', key:'tpmsShape', label:'TPMS: форма (обрезка)', type:'select', default:'box',
+      options:[{v:'box',t:'параллелепипед'},{v:'cylinder',t:'цилиндр (ось Y)'},{v:'sphere',t:'сфера / эллипсоид'}]},
     {group:'Крючок', key:'hookMount', label:'Крючок (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'wall',t:'на стену (винтовая пластина)'},{v:'pipe',t:'на трубу (защёлка, любой Ø)'}]},
     {group:'Крючок', key:'hookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
@@ -5406,6 +5409,9 @@ function buildThread(p){
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;          // bottom rim annulus (bore mouth → outer)
       tris.push(orient([Vb(i,0),Vo(i,0),Vo(i2,0)],[0,-1,0]));
       tris.push(orient([Vb(i,0),Vo(i2,0),Vb(i2,0)],[0,-1,0])); }
+    const sealH=Math.max(0, p.threadSeal||0);            // gasket lip: a raised ring on the ceiling that presses the neck rim
+    if(sealH>0.1){ const rSeal=Math.max(1, minorR-0.8), bw=Math.max(0.8,Math.min(1.8,sealH*1.3)), sseg=Math.max(24,Math.round(2*Math.PI*rSeal));
+      for(const T of tubeYTris(0,0, rSeal+bw/2, rSeal-bw/2, boreDepth-sealH, boreDepth+0.6, sseg)) tris.push(T); }
   }
   let lo=Infinity,hi=-Infinity; for(const t of tris) for(const v of t){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2;   // center vertically — rebuild with FRESH point arrays (fan centers are shared refs)
@@ -7080,7 +7086,8 @@ function buildHook(p){
     const rP=Math.max(4,(p.hookPipeD||25)/2), sw=Math.max(2.5,p.hookClipWall||3.5), rO=rP+sw, W=Math.max(rBar*2+2,p.hookClipW||14);
     const cyC=-(rP+sw+rBar), mouth=Math.asin(Math.min(0.9,0.7));  // saddle centre below; mouth faces −Y (snaps up onto pipe)
     for(const T of sectorShellTris(cyC, 0, rP, rO, -Math.PI/2+mouth, 1.5*Math.PI-mouth, -W/2, W/2, Math.max(28,Math.round(2*Math.PI*rO/1.1)))) tris.push(T);
-    for(const T of boxSpanTris(-W*0.35,W*0.35, cyC-2, rBar, -rBar-0.5, embed)) tris.push(T);   // web joins saddle top to the hook root
+    const wx=Math.min(W*0.42, rBar*1.5);                          // compact neck: saddle top (y≈−rBar) → hook stem root
+    for(const T of boxSpanTris(-wx,wx, cyC+rO-2.5, rBar*0.7, -rBar-1, embed)) tris.push(T);
   } else {                                                        // wall plate
     const t=Math.max(3,p.hookPlateT||4), sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
     const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];
@@ -7132,7 +7139,11 @@ function buildTPMS(p){
   // ever lands on the TPMS symmetry planes where F is exactly 0 — that alignment makes marching tetrahedra
   // emit coincident crossing points and non-manifold edges. The margin layers stay outside the box either way.
   const x0=-hx-dg+dg*0.1237, y0=-hy-dg+dg*0.0861, z0=-hz-dg+dg*0.1553;
-  const boxSDF=(x,y,z)=>Math.max(Math.abs(x)-hx, Math.abs(y)-hy, Math.abs(z)-hz);
+  // Clip the lattice to a box, a cylinder (axis Y), or a sphere/ellipsoid — the outer shape the TPMS fills.
+  const shp=p.tpmsShape||'box', rXZ=Math.min(hx,hz);
+  const boxSDF = shp==='cylinder' ? (x,y,z)=>Math.max(Math.hypot(x,z)-rXZ, Math.abs(y)-hy)
+    : shp==='sphere' ? (x,y,z)=>Math.hypot(x/hx, y/hy, z/hz)*Math.min(hx,hy,hz) - Math.min(hx,hy,hz)
+    : (x,y,z)=>Math.max(Math.abs(x)-hx, Math.abs(y)-hy, Math.abs(z)-hz);
   // nudge any sample that lands exactly on the isovalue OFF it (nodes align with F=0 at the origin/lattice),
   // else marching tetrahedra makes degenerate, non-manifold crossings. `grad` grades the density along Y
   // (wall thickness for sheet, volume fraction for solid) → a stiffness gradient.

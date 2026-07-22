@@ -49,6 +49,14 @@ for(const g of [-0.7,0,0.7])
 { const flat=vol(base({tpmsGrad:0})), graded=vol(base({tpmsGrad:0.6}));
   chk('gradient changes total volume', Math.abs(graded-flat)>50, {flat:+flat.toFixed(0),graded:+graded.toFixed(0)}); }
 
+console.log('=== outer shape (box / cylinder / sphere) ===');
+for(const shp of ['box','cylinder','sphere']) for(const style of ['sheet','solid'])
+  chk(shp+'/'+style+' watertight (+vol)', (()=>{const t=base({tpmsShape:shp,tpmsStyle:style,tpmsCell:14,tpmsW:36,tpmsH:36,tpmsD:36});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {shp,style});
+{ const cyl=computeBBox(base({tpmsShape:'cylinder',tpmsW:40,tpmsH:30,tpmsD:40,tpmsCell:12}));
+  chk('cylinder ≤ min(W,D) across, full height', (cyl.maxX-cyl.minX)<=40+1 && Math.abs((cyl.maxY-cyl.minY)-30)<3, {x:+(cyl.maxX-cyl.minX).toFixed(1),y:+(cyl.maxY-cyl.minY).toFixed(1)}); }
+{ const box=vol(base({tpmsShape:'box',tpmsW:36,tpmsH:36,tpmsD:36})), sph=vol(base({tpmsShape:'sphere',tpmsW:36,tpmsH:36,tpmsD:36}));
+  chk('sphere clip removes corner material (< box)', sph<box, {box:+box.toFixed(0),sph:+sph.toFixed(0)}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a TPMS block', a===b, {a,b}); }

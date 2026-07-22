@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v94';
+const APP_VERSION = 'v95';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7199,24 +7199,25 @@ function buildHook(p){
   for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
   let tris=sweepTubePlanar(path, rBar, seg);
   { const tip=path[path.length-1]; for(const T of sphereTris(tip[0],tip[1],tip[2], rBar, seg)) tris.push(T); }   // hemispherical rounded tip
-  if(p.hookMount==='pipe'){                                       // snap-on pipe clip (any Ø); hook exits the SIDE of the ring
+  if(p.hookMount==='pipe'){                                       // snap-on pipe clip: ring on top, J-hook hangs straight DOWN
     const rP=Math.max(4,(p.hookPipeD||25)/2), sw=Math.max(2.5,p.hookClipWall||3.5), rO=rP+sw;
     const W=Math.max(rBar*2+2,p.hookClipW||14), cseg=Math.max(28,Math.round(2*Math.PI*rO/1.1));
-    // Rotate the (hemisphere-capped) hook 90° about Y so it points +X (out the SIDE), then set it on the ring's
-    // +X end at the top-outer surface. (x,y,z) → (z+dx, y+dy, −x).
-    const dx=W/2-Math.max(2,rBar), dy=rO+rBar*0.35;
-    tris = tris.map(T=>T.map(v=>[ v[2]+dx, v[1]+dy, -v[0] ]));
-    // Saddle ring: pipe axis X, centred at the origin, mouth (gap) faces −Y — snaps onto a horizontal pipe.
+    // Hang the hook straight down from the ring: rotate it +90° about X (stem +Z → −Y), then drop the stem root
+    // to the ring's inner-bottom. (x,y,z) → (x, −z+dy, y).
+    const dy=-rP-embed;
+    tris = tris.map(T=>T.map(v=>[ v[0], -v[2]+dy, v[1] ]));
+    // Saddle ring: pipe axis X, centred at the origin, mouth (gap) faces UP (+Y) — snap the clip down onto a
+    // horizontal pipe; the hook + its load hang below and seat the clip. Gap centred at a=0 (top).
     const gh=1.0;                                                 // half gap angle: opening ≈ 0.84·Ø, then the latch retains
-    for(const T of sectorShellTris(0,0, rP,rO, Math.PI+gh, 3*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
-    // Neck: weld the ring's top-end to the hook stem root (stays above mid-wall → never intrudes into the bore).
-    for(const T of boxSpanTris(W/2-rBar*1.6, W/2+rBar*0.4, rP+sw*0.4, rO+rBar*0.9, -rBar*0.95, rBar*0.95)) tris.push(T);
-    // Snap latch: a retention nub on each mouth lip, running the full width, protruding into the opening so the
-    // pipe clicks past and is held — как защёлка на полипропиленовых креплениях труб.
+    for(const T of sectorShellTris(0,0, rP,rO, gh, 2*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
+    // Neck: weld the ring bottom to the hook stem root (spans the bottom wall; only grazes the bore centre).
+    for(const T of boxSpanTris(-rBar*0.95, rBar*0.95, -rO-0.2, -rP+0.5, -rBar*0.95, rBar*0.95)) tris.push(T);
+    // Snap latch at the TOP mouth: a retention nub on each lip, running the full width, protruding into the
+    // opening so the pipe clicks past and is held — как защёлка на полипропиленовых креплениях труб.
     const pro=Math.max(0.8, sw*0.35), nH=Math.max(1.0, sw*0.6);
-    for(const s of [-1,1]){ const ly=-rP*Math.cos(gh), lz=s*rP*Math.sin(gh);
+    for(const s of [-1,1]){ const ly=rP*Math.cos(gh), lz=s*rP*Math.sin(gh);   // lips at a=±gh (top), split in Z
       const z0 = s>0 ? lz-pro : lz, z1 = s>0 ? lz : lz+pro;       // protrude toward the gap centre (z=0)
-      for(const T of boxSpanTris(-W/2+0.6, W/2-0.6, ly-nH, ly+nH*0.6, z0, z1)) tris.push(T); }
+      for(const T of boxSpanTris(-W/2+0.6, W/2-0.6, ly-nH*0.6, ly+nH, z0, z1)) tris.push(T); }
   } else {                                                        // wall plate
     const t=Math.max(3,p.hookPlateT||4), sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
     const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];

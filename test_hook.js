@@ -22,14 +22,15 @@ for(const sw of [140,200,280]) chk('wall sweep '+sw+'° watertight', manifoldChe
 console.log('=== pipe hook (any Ø) ===');
 for(const d of [12,25,50]) for(const bar of [6,10])
   chk('pipe Ø'+d+' bar'+bar+' watertight (+vol)', (()=>{const t=base({hookMount:'pipe',hookPipeD:d,hookBar:bar});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {d,bar});
-{ // The saddle ring lies in the Y-Z plane (pipe axis X); the hook exits sideways (+X) and is thin in Z, so a
-  //   bigger pipe grows the clip's Z span cleanly (Y is masked by the hook's reach/drop).
+{ // Ring on top (pipe axis X), J-hook hangs straight down below it. The ring top is the highest point (y≈rO),
+  //   so a bigger pipe raises maxY cleanly (the hook only pulls minY further down).
   const small=computeBBox(base({hookMount:'pipe',hookPipeD:12})), big=computeBBox(base({hookMount:'pipe',hookPipeD:50}));
-  chk('bigger pipe → bigger clip (Z, the ring diameter)', (big.maxZ-big.minZ) > (small.maxZ-small.minZ)+20, {small:+(small.maxZ-small.minZ).toFixed(1),big:+(big.maxZ-big.minZ).toFixed(1)}); }
+  chk('bigger pipe → higher ring top (maxY grows)', (big.maxY) > (small.maxY)+12, {small:+small.maxY.toFixed(1),big:+big.maxY.toFixed(1)}); }
 chk('pipe clip is watertight with a thin wall', manifoldCheck(base({hookMount:'pipe',hookPipeD:32,hookClipWall:2.5}),4).watertight);
-{ // hook exits the SIDE (+X): the X span (dominated by the sideways hook reach) far exceeds the clip width W
-  const b=computeBBox(base({hookMount:'pipe',hookPipeD:25,hookClipW:14,hookReach:30}));
-  chk('hook exits sideways (X span ≫ clip width)', (b.maxX-b.minX) > 14+22, {xSpan:+(b.maxX-b.minX).toFixed(1)}); }
+{ // hook hangs straight DOWN from the ring: the X span stays ≈ the clip width W (pipe axis), while the vertical
+  //   span is far larger (ring + hanging J-hook), and most of the mesh sits below the ring.
+  const b=computeBBox(base({hookMount:'pipe',hookPipeD:25,hookClipW:16,hookReach:30,hookDrop:16}));
+  chk('hook hangs down (Y span ≫ X span ≈ clip width)', (b.maxY-b.minY) > (b.maxX-b.minX)*2 && Math.abs((b.maxX-b.minX)-16) < 2, {xSpan:+(b.maxX-b.minX).toFixed(1),ySpan:+(b.maxY-b.minY).toFixed(1)}); }
 
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;

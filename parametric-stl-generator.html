@@ -832,6 +832,7 @@
         <button class="base-btn" data-base="mount" title="Крепёж: L-кронштейн, VESA-адаптер, стойки под heat-set">Крепёж</button>
         <button class="base-btn" data-base="tpms" title="TPMS-решётка: гироид / Schwarz-P / diamond (лёгкий инфилл, демпфер)">TPMS</button>
         <button class="base-btn" data-base="hook" title="Крючок на стену или на трубу (защёлка под любой Ø)">Крючок</button>
+        <button class="base-btn" data-base="wallorg" title="Настенный органайзер: французская планка / перфопанель + крючок/полка">Органайзер</button>
       </div>
     </div>
 
@@ -990,7 +991,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3552,6 +3553,25 @@ const SHAPE_PARAMS = {
     {group:'Крючок', key:'hookPipeD', label:'На трубу: Ø трубы', min:6, max:120, step:1, default:25, unit:'мм'},
     {group:'Крючок', key:'hookClipWall', label:'На трубу: толщина защёлки', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Крючок', key:'hookClipW', label:'На трубу: ширина защёлки', min:6, max:60, step:1, default:14, unit:'мм'},
+    {group:'Настенный органайзер', key:'woBack', label:'Настенный органайзер (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'cleat',t:'французская планка (45° задник)'},{v:'peg',t:'перфопанель (штыри)'}]},
+    {group:'Настенный органайзер', key:'woFront', label:'Органайзер: держатель спереди', type:'select', default:'hook',
+      options:[{v:'hook',t:'крючок'},{v:'shelf',t:'полка (плоская)'},{v:'tools',t:'полка с гнёздами'},{v:'none',t:'без держателя (пластина)'}]},
+    {group:'Настенный органайзер', key:'woW', label:'Органайзер: ширина', min:20, max:200, step:1, default:60, unit:'мм'},
+    {group:'Настенный органайзер', key:'woH', label:'Органайзер: высота задника', min:20, max:200, step:1, default:60, unit:'мм'},
+    {group:'Настенный органайзер', key:'woT', label:'Органайзер: толщина задника', min:3, max:15, step:0.5, default:5, unit:'мм'},
+    {group:'Настенный органайзер', key:'woCleatLip', label:'Планка: глубина зацепа (45°)', min:4, max:25, step:0.5, default:8, unit:'мм'},
+    {group:'Настенный органайзер', key:'woPegD', label:'Перфопанель: Ø штыря', min:2, max:12, step:0.5, default:6, unit:'мм'},
+    {group:'Настенный органайзер', key:'woPegSpacing', label:'Перфопанель: шаг штырей', min:15, max:60, step:0.4, default:25.4, unit:'мм'},
+    {group:'Настенный органайзер', key:'woPegN', label:'Перфопанель: число штырей', min:1, max:6, step:1, default:2, unit:'', int:true},
+    {group:'Настенный органайзер', key:'woPegLen', label:'Перфопанель: длина штыря', min:6, max:30, step:0.5, default:10, unit:'мм'},
+    {group:'Настенный органайзер', key:'woHookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
+    {group:'Настенный органайзер', key:'woHookReach', label:'Крючок: вылет', min:6, max:100, step:1, default:24, unit:'мм'},
+    {group:'Настенный органайзер', key:'woHookDrop', label:'Крючок: радиус загиба', min:5, max:60, step:1, default:14, unit:'мм'},
+    {group:'Настенный органайзер', key:'woShelfD', label:'Полка: глубина', min:10, max:120, step:1, default:35, unit:'мм'},
+    {group:'Настенный органайзер', key:'woShelfT', label:'Полка: толщина', min:2, max:12, step:0.5, default:4, unit:'мм'},
+    {group:'Настенный органайзер', key:'woToolN', label:'Полка: число гнёзд', min:1, max:12, step:1, default:3, unit:'', int:true},
+    {group:'Настенный органайзер', key:'woToolD', label:'Полка: Ø гнезда', min:3, max:60, step:1, default:16, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -4039,6 +4059,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.woBack && p.woBack !== 'none') return 'wallorg';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
   if (p.tpmsType && p.tpmsType !== 'none') return 'tpms';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
@@ -4063,6 +4084,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Крепёж / монтаж': return mode==='mount';
     case 'TPMS-решётка': return mode==='tpms';
     case 'Крючок': return mode==='hook';
+    case 'Настенный органайзер': return mode==='wallorg';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4071,6 +4093,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='hook')      return key==='Крючок';
   if (mode==='tpms')      return key==='TPMS-решётка';
   if (mode==='mount')     return key==='Крепёж / монтаж';
@@ -4128,6 +4151,7 @@ function setBaseShape(kind){
   setSel('mntMode',    kind==='mount'  ? 'lbracket':'none');
   setSel('tpmsType',   kind==='tpms'   ? 'gyroid' : 'none');
   setSel('hookMount',  kind==='hook'   ? 'wall'   : 'none');
+  setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -7097,6 +7121,44 @@ function buildHook(p){
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }
+function cylZTris(cx,cy,r,z0,z1,seg){ const out=[], R=k=>{const a=2*Math.PI*k/seg;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];};
+  for(let k=0;k<seg;k++){ const k1=(k+1)%seg,A=R(k),B=R(k1),ref=[(A[0]+B[0])/2-cx,(A[1]+B[1])/2-cy,0];
+    out.push(orient([[A[0],A[1],z0],[B[0],B[1],z0],[B[0],B[1],z1]],ref));
+    out.push(orient([[A[0],A[1],z0],[B[0],B[1],z1],[A[0],A[1],z1]],ref));
+    out.push(orient([[cx,cy,z0],[B[0],B[1],z0],[A[0],A[1],z0]],[0,0,-1]));
+    out.push(orient([[cx,cy,z1],[A[0],A[1],z1],[B[0],B[1],z1]],[0,0,1])); } return out; }
+/* ---- Wall organiser (настенный органайзер) ------------------------------------------------------
+   A wall-storage ecosystem: a BACK that hangs on a standard (French cleat / pegboard) + a FRONT holder
+   (hook / flat shelf / shelf with tool sockets). Plain plate + prisms + swept-tube hook → watertight. */
+function buildWallOrg(p){
+  const W=Math.max(20,p.woW||60), t=Math.max(3,p.woT||5), H=Math.max(20,p.woH||60), tris=[];
+  for(const T of boxSpanTris(-W/2,W/2, 0,H, 0,t)) tris.push(T);                          // back plate, wall at z=0
+  if((p.woBack||'cleat')==='cleat'){                                                     // French-cleat 45° lip at the top-back
+    const lip=Math.max(4,p.woCleatLip||8);
+    for(const T of prismXTris([[H-lip,0.5],[H,-lip],[H,0.5]], -W/2+0.3, W/2-0.3)) tris.push(T);
+  } else {                                                                               // pegboard pins (protrude −Z into the board)
+    const pr=Math.max(1.5,(p.woPegD||6)/2), sp=Math.max(15,p.woPegSpacing||25.4), pl=Math.max(6,p.woPegLen||10);
+    const n=Math.max(1,Math.round(p.woPegN||2)), seg=Math.max(12,Math.round(pr*4));
+    for(let i=0;i<n;i++){ const cy=H*0.72 - i*sp; if(cy<pr+2) break; for(const T of cylZTris(0,cy,pr,-pl,0.6,seg)) tris.push(T); }
+  }
+  const front=p.woFront||'hook';                                                         // FRONT holder (extends +Z)
+  if(front==='hook'){
+    const rBar=Math.max(2,(p.woHookBar||8)/2), reach=Math.max(6,p.woHookReach||24), drop=Math.max(rBar+2,p.woHookDrop||14);
+    const sweep=(p.woHookSweep||230)*Math.PI/180, hy=Math.max(rBar+2, H*0.28), path=[], nStem=5;
+    for(let i=0;i<=nStem;i++) path.push([0, hy, t-3 + (reach+3)*i/nStem]);
+    const Cy=hy-drop, Cz=t-3+reach, nArc=16; for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
+    for(const T of sweepTubePlanar(path, rBar, Math.max(12,Math.round(rBar*4)))) tris.push(T);
+  } else if(front==='shelf'){
+    const sd=Math.max(10,p.woShelfD||35), st=Math.max(2,p.woShelfT||4), sw=W-2;
+    for(const T of boxSpanTris(-sw/2,sw/2, H*0.4, H*0.4+st, t-1, t+sd)) tris.push(T);     // flat ledge
+  } else if(front==='tools'){
+    const sd=Math.max(15,p.woShelfD||34), st=Math.max(3,p.woShelfT||4), n=Math.max(1,Math.round(p.woToolN||3)), tr=Math.max(1.5,(p.woToolD||16)/2);
+    const yc=H*0.4, m=Math.max(tr+3, W*0.5/n), holes=[]; for(let k=0;k<n;k++){ const cp=n===1?0:-W/2+m+(W-2*m)*k/(n-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,sd/2-1.5)}); }
+    for(const T of buildBoxWithHoles(W, st, sd, holes)) tris.push(T.map(v=>[v[0], v[1]+yc+st/2, v[2]+t-1+sd/2]));
+  }
+  let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
+  return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
+}
 function buildMount(p){
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
@@ -7919,7 +7981,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7933,7 +7995,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7964,6 +8026,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.woBack && p.woBack !== 'none') {
+      return snapWeldTris(buildWallOrg(p));
+    }
     if (p.hookMount && p.hookMount !== 'none') {
       return snapWeldTris(buildHook(p));
     }
@@ -8315,7 +8380,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form','Настенный органайзер':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -9328,6 +9393,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.woBack && p.woBack !== 'none') return (p.woBack==='peg'?'перфопанель':'фр. планка') + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';

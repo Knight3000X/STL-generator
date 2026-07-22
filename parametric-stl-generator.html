@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7206,18 +7206,15 @@ function buildHook(p){
     // to the ring's inner-bottom. (x,y,z) → (x, −z+dy, y).
     const dy=-rP-embed;
     tris = tris.map(T=>T.map(v=>[ v[0], -v[2]+dy, v[1] ]));
-    // Saddle ring: pipe axis X, centred at the origin, mouth (gap) faces UP (+Y) — snap the clip down onto a
-    // horizontal pipe; the hook + its load hang below and seat the clip. Gap centred at a=0 (top).
-    const gh=1.0;                                                 // half gap angle: opening ≈ 0.84·Ø, then the latch retains
+    // Saddle ring: mouth (gap) faces UP (+Y) — snap the clip down onto the pipe; the hook + its load hang below
+    // and seat the clip. Gap centred at a=0 (top). No latch (removed per request).
+    const gh=1.0;                                                 // half gap angle: opening ≈ 0.84·Ø
     for(const T of sectorShellTris(0,0, rP,rO, gh, 2*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
     // Neck: weld the ring bottom to the hook stem root (spans the bottom wall; only grazes the bore centre).
     for(const T of boxSpanTris(-rBar*0.95, rBar*0.95, -rO-0.2, -rP+0.5, -rBar*0.95, rBar*0.95)) tris.push(T);
-    // Snap latch at the TOP mouth: a retention nub on each lip, running the full width, protruding into the
-    // opening so the pipe clicks past and is held — как защёлка на полипропиленовых креплениях труб.
-    const pro=Math.max(0.8, sw*0.35), nH=Math.max(1.0, sw*0.6);
-    for(const s of [-1,1]){ const ly=rP*Math.cos(gh), lz=s*rP*Math.sin(gh);   // lips at a=±gh (top), split in Z
-      const z0 = s>0 ? lz-pro : lz, z1 = s>0 ? lz : lz+pro;       // protrude toward the gap centre (z=0)
-      for(const T of boxSpanTris(-W/2+0.6, W/2-0.6, ly-nH*0.6, ly+nH, z0, z1)) tris.push(T); }
+    // Turn the whole clip 90° about the vertical Y axis so the PIPE runs toward the viewer (axis Z) instead of
+    // sideways — the collar faces front, hook still hangs down and curls in the front plane. (x,y,z)→(z,y,−x).
+    tris = tris.map(T=>T.map(v=>[ v[2], v[1], -v[0] ]));
   } else {                                                        // wall plate
     const t=Math.max(3,p.hookPlateT||4), sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
     const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];

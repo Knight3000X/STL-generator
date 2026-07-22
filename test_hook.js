@@ -27,10 +27,10 @@ for(const d of [12,25,50]) for(const bar of [6,10])
   const small=computeBBox(base({hookMount:'pipe',hookPipeD:12})), big=computeBBox(base({hookMount:'pipe',hookPipeD:50}));
   chk('bigger pipe → higher ring top (maxY grows)', (big.maxY) > (small.maxY)+12, {small:+small.maxY.toFixed(1),big:+big.maxY.toFixed(1)}); }
 chk('pipe clip is watertight with a thin wall', manifoldCheck(base({hookMount:'pipe',hookPipeD:32,hookClipWall:2.5}),4).watertight);
-{ // hook hangs straight DOWN from the ring: the X span stays ≈ the clip width W (pipe axis), while the vertical
-  //   span is far larger (ring + hanging J-hook), and most of the mesh sits below the ring.
+{ // hook hangs straight DOWN from the ring, and the ring is turned so the pipe runs along Z (its width ≈ the
+  //   clip width W); the vertical span is far larger than the pipe-axis span.
   const b=computeBBox(base({hookMount:'pipe',hookPipeD:25,hookClipW:16,hookReach:30,hookDrop:16}));
-  chk('hook hangs down (Y span ≫ X span ≈ clip width)', (b.maxY-b.minY) > (b.maxX-b.minX)*2 && Math.abs((b.maxX-b.minX)-16) < 2, {xSpan:+(b.maxX-b.minX).toFixed(1),ySpan:+(b.maxY-b.minY).toFixed(1)}); }
+  chk('hook hangs down; pipe runs along Z (Z span ≈ clip width)', (b.maxY-b.minY) > (b.maxZ-b.minZ)*2 && Math.abs((b.maxZ-b.minZ)-16) < 2, {zSpan:+(b.maxZ-b.minZ).toFixed(1),ySpan:+(b.maxY-b.minY).toFixed(1)}); }
 
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;

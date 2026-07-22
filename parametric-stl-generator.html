@@ -829,6 +829,7 @@
         <button class="base-btn" data-base="thread" title="Резьбовое соединение: крышка (внутренняя резьба) или штуцер/горловина (наружная)">Резьба</button>
         <button class="base-btn" data-base="hinge" title="Петля «печать в сборе»: складывается сразу после печати, без вставки штифта">Петля</button>
         <button class="base-btn" data-base="gear" title="Прямозубая шестерня (эвольвентный профиль)">Шестерня</button>
+        <button class="base-btn" data-base="mount" title="Крепёж: L-кронштейн, VESA-адаптер, стойки под heat-set">Крепёж</button>
       </div>
     </div>
 
@@ -987,7 +988,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3493,6 +3494,22 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'}]},
+    {group:'Крепёж / монтаж', key:'mntW', label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntT', label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntLegA', label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntLegB', label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntScrewD', label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGusset', label:'L-кронштейн: рёбра жёсткости', type:'select', default:'yes',
+      options:[{v:'yes',t:'да'},{v:'no',t:'нет'}]},
+    {group:'Крепёж / монтаж', key:'mntVesa', label:'VESA: шаг отверстий', type:'select', default:'100',
+      options:[{v:'75',t:'75 × 75 мм'},{v:'100',t:'100 × 100 мм'},{v:'200',t:'200 × 200 мм'}]},
+    {group:'Крепёж / монтаж', key:'mntCenterD', label:'VESA: центральное отверстие (0 = без)', min:0, max:120, step:1, default:0, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBossNX', label:'Стойки: число по X', min:1, max:10, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntBossNZ', label:'Стойки: число по Z', min:1, max:10, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntBossD', label:'Стойки: Ø стойки', min:4, max:30, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBossH', label:'Стойки: высота', min:3, max:60, step:0.5, default:7, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3980,6 +3997,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.mntMode && p.mntMode !== 'none') return 'mount';
   if (p.gearMode && p.gearMode !== 'none') return 'gear';
   if (p.pipMode && p.pipMode !== 'none') return 'hinge';
   if (p.threadMode && p.threadMode !== 'none') return 'thread';
@@ -3998,6 +4016,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Резьба (крышка / штуцер)': return mode==='thread';
     case 'Петля (печать в сборе)': return mode==='hinge';
     case 'Шестерня': return mode==='gear';
+    case 'Крепёж / монтаж': return mode==='mount';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4006,6 +4025,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='mount')     return key==='Крепёж / монтаж';
   if (mode==='gear')      return key==='Шестерня';
   if (mode==='hinge')     return key==='Петля (печать в сборе)';
   if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
@@ -4057,6 +4077,7 @@ function setBaseShape(kind){
   setSel('threadMode', kind==='thread' ? 'cap'    : 'none');
   setSel('pipMode',    kind==='hinge'  ? 'flat'   : 'none');
   setSel('gearMode',   kind==='gear'   ? 'spur'   : 'none');
+  setSel('mntMode',    kind==='mount'  ? 'lbracket':'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -6839,6 +6860,75 @@ function buildGear(p){
   if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
   return extrudeProfileY(o.P, rB, th, twist);
 }
+/* ---- Mounts & fasteners (крепёж / монтаж) -------------------------------------------------------
+   Functional brackets built from plain closed boxes + bored plates + Y-axis tube bosses. Holes (incl.
+   countersinks) come from buildBoxWithHoles; overlapping parts interpenetrate (offset so no two share an
+   exact vertex/face) → watertight by construction, no CSG. Modes: L-bracket, VESA plate, heat-set bosses. */
+function tubeYTris(cx,cz,rO,rI,y0,y1,seg){ const out=[], R=(r,k)=>{const a=2*Math.PI*k/seg;return [cx+r*Math.cos(a),cz+r*Math.sin(a)];};
+  for(let k=0;k<seg;k++){ const k1=(k+1)%seg,Ao=R(rO,k),Bo=R(rO,k1),Ai=R(rI,k),Bi=R(rI,k1);
+    const mo=[(Ao[0]+Bo[0])/2-cx,0,(Ao[1]+Bo[1])/2-cz], mi=[-((Ai[0]+Bi[0])/2-cx),0,-((Ai[1]+Bi[1])/2-cz)];
+    out.push(orient([[Ao[0],y0,Ao[1]],[Bo[0],y0,Bo[1]],[Bo[0],y1,Bo[1]]],mo));
+    out.push(orient([[Ao[0],y0,Ao[1]],[Bo[0],y1,Bo[1]],[Ao[0],y1,Ao[1]]],mo));
+    out.push(orient([[Ai[0],y0,Ai[1]],[Bi[0],y0,Bi[1]],[Bi[0],y1,Bi[1]]],mi));
+    out.push(orient([[Ai[0],y0,Ai[1]],[Bi[0],y1,Bi[1]],[Ai[0],y1,Ai[1]]],mi));
+    out.push(orient([[Ao[0],y1,Ao[1]],[Ai[0],y1,Ai[1]],[Bi[0],y1,Bi[1]]],[0,1,0]));
+    out.push(orient([[Ao[0],y1,Ao[1]],[Bi[0],y1,Bi[1]],[Bo[0],y1,Bo[1]]],[0,1,0]));
+    out.push(orient([[Ao[0],y0,Ao[1]],[Bi[0],y0,Bi[1]],[Ai[0],y0,Ai[1]]],[0,-1,0]));
+    out.push(orient([[Ao[0],y0,Ao[1]],[Bo[0],y0,Bo[1]],[Bi[0],y0,Bi[1]]],[0,-1,0]));
+  }
+  return out;
+}
+function prismXTris(P, x0, x1){ const out=[], [A,B,C]=P, cy=(A[0]+B[0]+C[0])/3, cz=(A[1]+B[1]+C[1])/3;
+  out.push(orient([[x0,A[0],A[1]],[x0,B[0],B[1]],[x0,C[0],C[1]]],[-1,0,0]));
+  out.push(orient([[x1,A[0],A[1]],[x1,B[0],B[1]],[x1,C[0],C[1]]],[1,0,0]));
+  for(const [u,v] of [[A,B],[B,C],[C,A]]){ const ref=[0,(u[0]+v[0])/2-cy,(u[1]+v[1])/2-cz];
+    out.push(orient([[x0,u[0],u[1]],[x0,v[0],v[1]],[x1,v[0],v[1]]],ref));
+    out.push(orient([[x0,u[0],u[1]],[x1,v[0],v[1]],[x1,u[0],u[1]]],ref)); }
+  return out;
+}
+function buildLBracket(p){
+  const W=Math.max(10,p.mntW||40), t=Math.max(2,p.mntT||4);
+  const legA=Math.max(t+8,p.mntLegA||45), legB=Math.max(t+8,p.mntLegB||45);
+  const sd=Math.max(0,p.mntScrewD||4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), tris=[];
+  const baseHoles = sd>0.5 ? [{axis:1,cp:0,cq:legA/2-Math.max(sd+3,legA*0.28),r,head:'sink',headR:hR,headDepth:hD,headSide:1}] : [];
+  for(const T of buildBoxWithHoles(W,t,legA,baseHoles)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+legA/2]));   // base z∈[0,legA]
+  const bw=W-0.6, hb=legB-(t-0.5), yc=(t-0.5+legB)/2, zc=t/2+0.3;
+  const backHoles = sd>0.5 ? [{axis:2,cp:0,cq:(hb/2)-Math.max(sd+3,hb*0.28),r,head:'sink',headR:hR,headDepth:hD,headSide:-1}] : [];
+  for(const T of buildBoxWithHoles(bw,hb,t,backHoles)) tris.push(T.map(v=>[v[0],v[1]+yc,v[2]+zc]));           // back z∈[0.3,t+0.3]
+  if(p.mntGusset!=='no'){ const gl=Math.min(legA,legB)*0.55, gw=Math.max(t,3);
+    const tri=[[t-0.4, 0.3],[t-0.4, 0.3+gl],[t-0.4+gl, 0.3]];   // (y,z) right triangle in the concave corner
+    for(const T of prismXTris(tri, W/2-gw, W/2-0.2)) tris.push(T);
+    for(const T of prismXTris(tri, -(W/2-0.2), -(W/2-gw))) tris.push(T); }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+function buildVesa(p){
+  const spacing = ({['75']:75,['100']:100,['200']:200})[p.mntVesa] || 100;
+  const t=Math.max(2.5,p.mntT||4), plate=spacing+Math.max(16,p.mntW>spacing?0:16), sd=Math.max(2,p.mntScrewD||5);
+  const r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), h=spacing/2, holes=[];
+  for(const sx of [-1,1]) for(const sz of [-1,1]) holes.push({axis:1,cp:sx*h,cq:sz*h,r,head:'sink',headR:hR,headDepth:hD,headSide:1});
+  const cd=Math.max(0,p.mntCenterD||0); if(cd>1) holes.push({axis:1,cp:0,cq:0,ap:cd/2,aq:cd/2,rc:cd/2});
+  return buildBoxWithHoles(plate,t,plate,holes);   // already centred at origin
+}
+function buildBoss(p){
+  const W=Math.max(15,p.mntW||60), D=Math.max(15,p.mntLegA||45), t=Math.max(2,p.mntT||3);
+  const nX=Math.max(1,Math.round(p.mntBossNX||2)), nZ=Math.max(1,Math.round(p.mntBossNZ||2));
+  const bD=Math.max(4,p.mntBossD||8), bH=Math.max(3,p.mntBossH||7), bore=Math.max(1,(p.mntScrewD||3.5)*0.82);
+  const rO=bD/2, rI=bore/2, seg=Math.max(16,Math.round(bD*3)), tris=[];
+  for(const T of boxSpanTris(-W/2,W/2, 0,t, -D/2,D/2)) tris.push(T);
+  const mX=Math.max(rO+2, W*0.15), mZ=Math.max(rO+2, D*0.15);
+  for(let ix=0;ix<nX;ix++) for(let iz=0;iz<nZ;iz++){
+    const cx = nX===1?0 : -W/2+mX + (W-2*mX)*ix/(nX-1), cz = nZ===1?0 : -D/2+mZ + (D-2*mZ)*iz/(nZ-1);
+    for(const T of tubeYTris(cx,cz, rO, rI, t-0.6, t+bH, seg)) tris.push(T);   // blind bore for a heat-set insert
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+function buildMount(p){
+  if(p.mntMode==='vesa') return buildVesa(p);
+  if(p.mntMode==='boss') return buildBoss(p);
+  return buildLBracket(p);
+}
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
    INTO the open cavity of an identical box underneath — the boxes stack without sliding, the upper
@@ -7597,7 +7687,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7611,7 +7701,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7642,6 +7732,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.mntMode && p.mntMode !== 'none') {
+      return snapWeldTris(buildMount(p));
+    }
     if (p.gearMode && p.gearMode !== 'none') {
       return snapWeldTris(buildGear(p));
     }
@@ -7984,7 +8077,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -8997,6 +9090,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
     + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

@@ -989,7 +989,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3500,7 +3500,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'}]},
     {group:'Крепёж / монтаж', key:'mntW', label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntT', label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegA', label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
@@ -3515,6 +3515,8 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntBossNZ', label:'Стойки: число по Z', min:1, max:10, step:1, default:2, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntBossD', label:'Стойки: Ø стойки', min:4, max:30, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntBossH', label:'Стойки: высота', min:3, max:60, step:0.5, default:7, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntToolN', label:'Держатель: число гнёзд', min:1, max:20, step:1, default:4, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntToolD', label:'Держатель: Ø гнезда под инструмент', min:3, max:60, step:1, default:16, unit:'мм'},
     {group:'TPMS-решётка', key:'tpmsType', label:'TPMS-решётка (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'gyroid',t:'гироид'},{v:'schwarzp',t:'Schwarz-P'},{v:'diamond',t:'diamond (алмаз)'}]},
     {group:'TPMS-решётка', key:'tpmsStyle', label:'TPMS: тип', type:'select', default:'sheet',
@@ -6963,9 +6965,24 @@ function buildBoss(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+function buildTool(p){
+  const W=Math.max(20,p.mntW||90), t=Math.max(2,p.mntT||4);
+  const shelfD=Math.max(15,p.mntLegA||35), backH=Math.max(15,p.mntLegB||42);
+  const sd=Math.max(0,p.mntScrewD||4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
+  const toolN=Math.max(1,Math.round(p.mntToolN||4)), tr=Math.max(1.5,(p.mntToolD||16)/2), tris=[];
+  const m=Math.max(tr+3, W*0.5/toolN), holes=[];                            // a row of tool holes through the shelf (Y)
+  for(let k=0;k<toolN;k++){ const cp=toolN===1?0:-W/2+m+(W-2*m)*k/(toolN-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,shelfD/2-1.5)}); }
+  for(const T of buildBoxWithHoles(W,t,shelfD,holes)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+shelfD/2]));       // shelf z∈[0,shelfD]
+  const bw=W-0.6, hb=backH-(t-0.5), yc=(t-0.5+backH)/2, zc=t/2+0.3, backHoles=[];                                 // vertical back plate
+  if(sd>0.5) for(const sx of [-1,1]) backHoles.push({axis:2,cp:sx*(W*0.32),cq:(hb/2)-Math.max(sd+3,hb*0.3),r,head:'sink',headR:hR,headDepth:hD,headSide:-1});
+  for(const T of buildBoxWithHoles(bw,hb,t,backHoles)) tris.push(T.map(v=>[v[0],v[1]+yc,v[2]+zc]));
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 function buildMount(p){
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
+  if(p.mntMode==='tool') return buildTool(p);
   return buildLBracket(p);
 }
 /* ---- TPMS lattice infill (гироид / Schwarz-P / diamond) ------------------------------------------
@@ -9186,7 +9203,7 @@ function activeShapeLabel() {
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
     + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

@@ -38,6 +38,15 @@ for(const nx of [1,2,3]) for(const nz of [1,2]) for(const bH of [5,12])
 { const one=vol(base({mntMode:'boss',mntBossNX:1,mntBossNZ:1})), many=vol(base({mntMode:'boss',mntBossNX:3,mntBossNZ:3}));
   chk('more bosses → more material', many>one, {one:+one.toFixed(0),many:+many.toFixed(0)}); }
 
+console.log('=== tool holder ===');
+for(const n of [1,3,6]) for(const d of [10,20]) for(const sd of [0,4.5])
+  chk('tool N'+n+' Ø'+d+' screw'+sd+' watertight (+vol)', (()=>{const t=base({mntMode:'tool',mntToolN:n,mntToolD:d,mntScrewD:sd,mntW:100});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {n,d,sd});
+{ const b=computeBBox(base({mntMode:'tool',mntW:100,mntLegB:44,mntT:4}));
+  chk('tool holder width = mntW (X)', Math.abs((b.maxX-b.minX)-100)<0.3, {x:+(b.maxX-b.minX).toFixed(1)});
+  chk('tool holder height ≈ back (Y)', Math.abs((b.maxY-b.minY)-44)<1.0, {y:+(b.maxY-b.minY).toFixed(1)}); }
+{ const few=vol(base({mntMode:'tool',mntToolN:1,mntToolD:10,mntW:120})), many=vol(base({mntMode:'tool',mntToolN:5,mntToolD:10,mntW:120}));
+  chk('more tool holes remove more material', many<few, {few:+few.toFixed(0),many:+many.toFixed(0)}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a mount', a===b, {a,b}); }

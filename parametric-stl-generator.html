@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v91';
+const APP_VERSION = 'v92';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7156,6 +7156,7 @@ function buildHook(p){
   const Cy=-drop, Cz=reach, nArc=Math.max(14,Math.round(sweep/0.18));           // hook curve (arc), centre below stem end
   for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
   let tris=sweepTubePlanar(path, rBar, seg);
+  { const tip=path[path.length-1]; for(const T of sphereTris(tip[0],tip[1],tip[2], rBar, seg)) tris.push(T); }   // hemispherical rounded tip
   if(p.hookMount==='pipe'){                                       // snap-on pipe clip (any Ø) behind the hook
     const rP=Math.max(4,(p.hookPipeD||25)/2), sw=Math.max(2.5,p.hookClipWall||3.5), rO=rP+sw, W=Math.max(rBar*2+2,p.hookClipW||14);
     const cyC=-(rP+sw+rBar), mouth=Math.asin(Math.min(0.9,0.7));  // saddle centre below; mouth faces −Y (snaps up onto pipe)
@@ -7177,27 +7178,53 @@ function cylZTris(cx,cy,r,z0,z1,seg){ const out=[], R=k=>{const a=2*Math.PI*k/se
     out.push(orient([[A[0],A[1],z0],[B[0],B[1],z1],[A[0],A[1],z1]],ref));
     out.push(orient([[cx,cy,z0],[B[0],B[1],z0],[A[0],A[1],z0]],[0,0,-1]));
     out.push(orient([[cx,cy,z1],[A[0],A[1],z1],[B[0],B[1],z1]],[0,0,1])); } return out; }
+// Closed UV sphere (poles on ±Y). Appended at a bar/peg free tip: with r = bar radius and the centre on the
+// tip ring's plane, the protruding half is a clean hemispherical cap (rounds the end); the buried half just
+// interpenetrates the tube → watertight union, same trick as everywhere else. seg = longitude divisions.
+function sphereTris(cx,cy,cz,r,seg){
+  const out=[], nLat=Math.max(4,Math.round(seg/2)), nLon=Math.max(6,seg);
+  const V=(i,j)=>{ const th=Math.PI*i/nLat, ph=2*Math.PI*(j%nLon)/nLon;
+    return [cx+r*Math.sin(th)*Math.cos(ph), cy+r*Math.cos(th), cz+r*Math.sin(th)*Math.sin(ph)]; };
+  const rf=v=>[v[0]-cx,v[1]-cy,v[2]-cz];
+  for(let i=0;i<nLat;i++) for(let j=0;j<nLon;j++){ const A=V(i,j),B=V(i,j+1),C=V(i+1,j+1),Dd=V(i+1,j);
+    if(i===0) out.push(orient([A,C,Dd],rf(C)));
+    else if(i===nLat-1) out.push(orient([A,B,Dd],rf(A)));
+    else { out.push(orient([A,B,C],rf(A))); out.push(orient([A,C,Dd],rf(A))); }
+  }
+  return out;
+}
 /* ---- Wall organiser (настенный органайзер) ------------------------------------------------------
    A wall-storage ecosystem: a BACK that hangs on a standard (French cleat / pegboard) + a FRONT holder
    (hook / flat shelf / shelf with tool sockets). Plain plate + prisms + swept-tube hook → watertight. */
 function buildWallOrg(p){
   const W=Math.max(20,p.woW||60), t=Math.max(3,p.woT||5), H=Math.max(20,p.woH||60), tris=[];
   for(const T of boxSpanTris(-W/2,W/2, 0,H, 0,t)) tris.push(T);                          // back plate, wall at z=0
-  if((p.woBack||'cleat')==='cleat'){                                                     // French-cleat 45° lip at the top-back
+  if((p.woBack||'cleat')==='cleat'){                                                     // French-cleat 135° lip at the top-back
     const lip=Math.max(4,p.woCleatLip||8);
-    for(const T of prismXTris([[H-lip,0.5],[H,-lip],[H,0.5]], -W/2+0.3, W/2-0.3)) tris.push(T);
+    // 135° cleat: the mating face undercuts the OTHER way vs a 45° tooth — the wedge's sloped face runs from the
+    // front-top down to the back, so the plate hangs on a wall rail whose bevel faces up-and-out (135° included).
+    for(const T of prismXTris([[H,0.5],[H,-lip],[H-lip,-lip]], -W/2+0.3, W/2-0.3)) tris.push(T);
   } else {                                                                               // pegboard pins (protrude −Z into the board)
     const pr=Math.max(1.5,(p.woPegD||6)/2), sp=Math.max(15,p.woPegSpacing||25.4), pl=Math.max(6,p.woPegLen||10);
     const n=Math.max(1,Math.round(p.woPegN||2)), seg=Math.max(12,Math.round(pr*4));
-    for(let i=0;i<n;i++){ const cy=H*0.72 - i*sp; if(cy<pr+2) break; for(const T of cylZTris(0,cy,pr,-pl,0.6,seg)) tris.push(T); }
+    for(let i=0;i<n;i++){ const cy=H*0.72 - i*sp; if(cy<pr+2) break;
+      for(const T of cylZTris(0,cy,pr,-pl,0.6,seg)) tris.push(T);
+      for(const T of sphereTris(0,cy,-pl-0.05, pr+0.25, seg+1)) tris.push(T);              // hemispherical rounded tip (rim strictly inside → no coincident edges)
+      if(i===0){                                                                          // retaining lip on the TOP pin: a small downward
+        const lh=pr*1.5, lt=Math.max(1.2,pr*0.8);                                         // hook at the tip that catches the board's back
+        for(const T of boxSpanTris(-lt,lt, cy-pr-lh, cy-pr+0.4, -pl-0.2, -pl+lt*1.6)) tris.push(T); }
+    }
   }
   const front=p.woFront||'hook';                                                         // FRONT holder (extends +Z)
   if(front==='hook'){
     const rBar=Math.max(2,(p.woHookBar||8)/2), reach=Math.max(6,p.woHookReach||24), drop=Math.max(rBar+2,p.woHookDrop||14);
-    const sweep=(p.woHookSweep||230)*Math.PI/180, hy=Math.max(rBar+2, H*0.28), path=[], nStem=5;
+    const sweep=(p.woHookSweep||230)*Math.PI/180, hy=Math.max(drop+rBar+2, H*0.5), nStem=5; let path=[];
     for(let i=0;i<=nStem;i++) path.push([0, hy, t-3 + (reach+3)*i/nStem]);
     const Cy=hy-drop, Cz=t-3+reach, nArc=16; for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
-    for(const T of sweepTubePlanar(path, rBar, Math.max(12,Math.round(rBar*4)))) tris.push(T);
+    path = path.map(v=>[v[0], 2*hy-v[1], v[2]]);                                          // rotate the hook 180° (curl the other way)
+    const hseg=Math.max(12,Math.round(rBar*4));
+    for(const T of sweepTubePlanar(path, rBar, hseg)) tris.push(T);
+    { const tip=path[path.length-1]; for(const T of sphereTris(tip[0],tip[1],tip[2], rBar, hseg)) tris.push(T); }   // hemispherical rounded tip
   } else if(front==='shelf'){
     const sd=Math.max(10,p.woShelfD||35), st=Math.max(2,p.woShelfT||4), sw=W-2;
     for(const T of boxSpanTris(-sw/2,sw/2, H*0.4, H*0.4+st, t-1, t+sd)) tris.push(T);     // flat ledge

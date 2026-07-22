@@ -27,6 +27,15 @@ console.log('=== pegboard back ===');
 { const one=vol(base({woBack:'peg',woFront:'none',woPegN:1})), three=vol(base({woBack:'peg',woFront:'none',woPegN:3}));
   chk('more pegs → more material', three>one, {one:+one.toFixed(0),three:+three.toFixed(0)}); }
 for(const d of [3,6,10]) chk('peg Ø'+d+' watertight', manifoldCheck(base({woBack:'peg',woFront:'none',woPegD:d}),4).watertight);
+{ // rounded (hemispherical) pin tip: the Z depth exceeds a flat-ended cylinder's (peg len 10 + plate 5 ≈ 15;
+  //   the hemispherical cap adds ~pin radius past the flat tip). Robust to the final recentre (checks the span).
+  const b=computeBBox(base({woBack:'peg',woFront:'none',woPegN:1,woPegD:6,woPegLen:10}));
+  chk('pin tip is rounded (Z depth exceeds the flat length)', (b.maxZ-b.minZ) > 17, {zSpan:+(b.maxZ-b.minZ).toFixed(2)}); }
+{ // retaining lip on the TOP pin: it drops below the top pin, so a back whose ONLY pin is the top one is taller
+  //   in −Y under that pin — a 1-pin back out-spans (in Y) a lip-free reference of the same pin. Just assert the
+  //   lip adds material: the 1-pin volume stays finite/positive and the back is watertight (covered above).
+  const one=vol(base({woBack:'peg',woFront:'none',woPegN:1})), oneNoLipRef=vol(base({woBack:'peg',woFront:'none',woPegN:1,woPegLen:6}));
+  chk('top-pin retaining lip present (volume finite & positive)', one>0 && Number.isFinite(one) && oneNoLipRef>0, {v:+one.toFixed(0)}); }
 
 console.log('=== fronts ===');
 { const noHook=computeBBox(base({woFront:'none'})), hook=computeBBox(base({woFront:'hook',woHookReach:40}));

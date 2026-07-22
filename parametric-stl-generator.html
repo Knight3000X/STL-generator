@@ -991,7 +991,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3439,7 +3439,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3463,6 +3463,8 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyW', label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'петля: коробка с крышкой (лоток + крышка)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'}]},
     {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
@@ -5369,6 +5371,31 @@ function buildThread(p){
       tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
       tris.push(orient([outT(i),outB(i2),outT(i2)],rref));
       tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }     // flange bottom disc
+  } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
+    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
+    const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, a=th(i), a2=th(i2), r=hexR(a), r2=hexR(a2);
+      const P0=[r*Math.cos(a),0,r*Math.sin(a)], P1=[r2*Math.cos(a2),0,r2*Math.sin(a2)], P2=[r2*Math.cos(a2),headH,r2*Math.sin(a2)], P3=[r*Math.cos(a),headH,r*Math.sin(a)], ref=[P0[0]+P1[0],0,P0[2]+P1[2]];
+      tris.push(orient([P0,P1,P2],ref)); tris.push(orient([P0,P2,P3],ref));
+      tris.push(orient([[0,0,0],P1,P0],[0,-1,0])); tris.push(orient([[0,headH,0],P3,P2],[0,1,0])); }
+    const y0=headH-1, y1=headH+len, Ny=Math.max(8,Math.round(len/P*spp));
+    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat), a=th(i); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth,A=V(i,j),B=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1),ref=[A[0]+B[0],0,A[2]+B[2]];
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const ct=[0,y1,0]; for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
+    const cb=[0,y0,0]; for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+  } else if (mode === 'nut' || mode === 'wingnut'){  // hex prism with a through internal thread (+ wings)
+    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2, nutH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.8);
+    const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
+    const Hx=(y,i)=>{ const a=th(i), r=hexR(a); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    const Bo=(y,i)=>{ const a=th(i), r=minorR+h*threadProfile(phase(i,y),flat)+clr; return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i2))/2, ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
+      tris.push(orient([Hx(0,i),Hx(0,i2),Hx(nutH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(nutH,i2),Hx(nutH,i)],ro));         // hex wall
+      tris.push(orient([Bo(0,i),Bo(0,i2),Bo(nutH,i2)],ri)); tris.push(orient([Bo(0,i),Bo(nutH,i2),Bo(nutH,i)],ri));         // bore wall
+      tris.push(orient([Bo(nutH,i),Hx(nutH,i),Hx(nutH,i2)],[0,1,0])); tris.push(orient([Bo(nutH,i),Hx(nutH,i2),Bo(nutH,i2)],[0,1,0]));  // top annulus
+      tris.push(orient([Bo(0,i),Hx(0,i2),Hx(0,i)],[0,-1,0])); tris.push(orient([Bo(0,i),Bo(0,i2),Hx(0,i2)],[0,-1,0])); }    // bottom annulus
+    if(mode==='wingnut'){ const wingL=afR*1.7, wingT=Math.max(2,nutH*0.35);   // two grip fins on ±X, embedded into the hex
+      for(const s of [-1,1]) for(const T of boxSpanTris(s>0?afR-1.5:-(afR+wingL), s>0?afR+wingL:-(afR-1.5), nutH*0.08, nutH*1.35, -wingT/2, wingT/2)) tris.push(T); }
   } else if (mode === 'jar'){  // hollow vessel with an external-threaded ROUND neck (matches the cap); the
     // BODY footprint can be any shape (round/squircle/rounded-rect/rect) — the round neck + round bore stay
     // concentric, so the cap fits regardless of body shape. Threaded jar of an arbitrary container footprint.
@@ -9400,7 +9427,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
     + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
+  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

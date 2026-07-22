@@ -827,6 +827,7 @@
         <button class="base-btn" data-base="keycap" title="Колпачок клавиши (кейкап)">Кейкап</button>
         <button class="base-btn" data-base="sheet" title="Плоский лист / панель / грип-пад">Лист / панель</button>
         <button class="base-btn" data-base="thread" title="Резьбовое соединение: крышка (внутренняя резьба) или штуцер/горловина (наружная)">Резьба</button>
+        <button class="base-btn" data-base="hinge" title="Петля «печать в сборе»: складывается сразу после печати, без вставки штифта">Петля</button>
       </div>
     </div>
 
@@ -985,7 +986,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3453,6 +3454,14 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyD', label:'Банка: Ø корпуса (0 = авто, шире горла)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipMode', label:'Петля «печать в сборе» (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'flat',t:'плоская двухлистовая петля'}]},
+    {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipLeafW', label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipKnuckles', label:'Петля: число узлов (нечётное)', min:3, max:21, step:2, default:5, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipPinD', label:'Петля: Ø штифта (0 = авто)', min:0, max:10, step:0.5, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipGap', label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3940,6 +3949,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.pipMode && p.pipMode !== 'none') return 'hinge';
   if (p.threadMode && p.threadMode !== 'none') return 'thread';
   if (p.sheetShape && p.sheetShape !== 'none') return 'sheet';
   if (p.keycapMode && p.keycapMode !== 'none') return 'keycap';
@@ -3954,6 +3964,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
     case 'Резьба (крышка / штуцер)': return mode==='thread';
+    case 'Петля (печать в сборе)': return mode==='hinge';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -3962,6 +3973,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='hinge')     return key==='Петля (печать в сборе)';
   if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
   if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
   if (mode==='keycap')    return key==='Размеры' || key==='Кейкап';
@@ -4009,6 +4021,7 @@ function setBaseShape(kind){
   setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
   setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
   setSel('threadMode', kind==='thread' ? 'cap'    : 'none');
+  setSel('pipMode',    kind==='hinge'  ? 'flat'   : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -6513,6 +6526,58 @@ function buildHingeKnuckles(p) {
   }
   return out;
 }
+/* ---- Print-in-place hinge (петля «печать в сборе») ----------------------------------------------
+   A two-leaf hinge that prints FLAT in one piece and folds straight off the bed — no pin to insert.
+   It leans on the app's own watertight-by-construction rule: two closed bodies in one mesh stay
+   SEPARATE for the slicer as long as a clearance gap divides them. Body A = leaf + its knuckles + a
+   solid pin fused through them; body B = the other leaf + tube knuckles that wrap the pin with `gap`
+   clearance. They interlock along the pin but never touch, so they print already assembled and rotate
+   freely. Knuckles alternate A/B along the pin (N forced odd → both ends are A), so B's tubes are
+   captured axially between A's knuckles. Every part is a plain closed box / cylinder / tube; nothing is
+   unioned in code. Pin axis = X; leaves fold about it. */
+function buildHinge(p){
+  const L     = Math.max(10, p.pipLen||60);
+  const leafT = Math.max(2, p.pipLeafT||6);
+  const zEdge = leafT/2;                                  // knuckle radius = half the leaf thickness (folds flat)
+  const gap   = Math.max(0.15, Math.min(0.8, p.pipGap!=null?p.pipGap:0.35));
+  const wall  = Math.max(1.0, gap+0.9);                   // knuckle wall thickness
+  const pinR  = Math.max(0.8, (p.pipPinD>0 ? p.pipPinD/2 : zEdge - wall));
+  const fingerLen = zEdge + Math.max(1.5, leafT*0.35);    // z where the flat leaf plate begins
+  const leafW = Math.max(fingerLen+3, p.pipLeafW||22);    // leaf depth measured from the pin line
+  let N = Math.max(3, Math.round(p.pipKnuckles||5)); if(N%2===0) N++;   // odd → both ends fused to the pin
+  const w = L/N, wf = Math.max(2, w - gap);               // band pitch, finger width (axial gap between knuckles)
+  const seg = Math.max(20, Math.min(64, Math.round(zEdge*8)));
+  const emb = 0.6, cyMid = leafT/2;                       // weld overlap; pin/knuckle height
+  const tris=[];
+  const boxSpan=(x0,x1,y0,y1,z0,z1)=>{ const t=plainBoxShellTris(x1-x0,y1-y0,z1-z0), cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
+    for(const T of t) tris.push([[T[0][0]+cx,T[0][1]+cy,T[0][2]+cz],[T[1][0]+cx,T[1][1]+cy,T[1][2]+cz],[T[2][0]+cx,T[2][1]+cy,T[2][2]+cz]]); };
+  const cylX=(x0,x1,cy,cz,r)=>{ const R=k=>{const a=2*Math.PI*k/seg;return [cy+r*Math.cos(a),cz+r*Math.sin(a)];};
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg,A=R(k),B=R(k1),ref=[0,(A[0]+B[0])/2-cy,(A[1]+B[1])/2-cz];
+      tris.push(orient([[x0,A[0],A[1]],[x1,A[0],A[1]],[x1,B[0],B[1]]],ref));
+      tris.push(orient([[x0,A[0],A[1]],[x1,B[0],B[1]],[x0,B[0],B[1]]],ref));
+      tris.push(orient([[x0,cy,cz],[x0,B[0],B[1]],[x0,A[0],A[1]]],[-1,0,0]));
+      tris.push(orient([[x1,cy,cz],[x1,A[0],A[1]],[x1,B[0],B[1]]],[1,0,0])); } };
+  const tubeX=(x0,x1,cy,cz,rO,rI)=>{ const R=(r,k)=>{const a=2*Math.PI*k/seg;return [cy+r*Math.cos(a),cz+r*Math.sin(a)];};
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg,Ao=R(rO,k),Bo=R(rO,k1),Ai=R(rI,k),Bi=R(rI,k1);
+      const refO=[0,(Ao[0]+Bo[0])/2-cy,(Ao[1]+Bo[1])/2-cz], refI=[0,-((Ai[0]+Bi[0])/2-cy),-((Ai[1]+Bi[1])/2-cz)];
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x1,Ao[0],Ao[1]],[x1,Bo[0],Bo[1]]],refO));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x1,Bo[0],Bo[1]],[x0,Bo[0],Bo[1]]],refO));
+      tris.push(orient([[x0,Ai[0],Ai[1]],[x1,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]]],refI));
+      tris.push(orient([[x0,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]],[x0,Bi[0],Bi[1]]],refI));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x0,Bo[0],Bo[1]],[x0,Bi[0],Bi[1]]],[-1,0,0]));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x0,Bi[0],Bi[1]],[x0,Ai[0],Ai[1]]],[-1,0,0]));
+      tris.push(orient([[x1,Ao[0],Ao[1]],[x1,Bi[0],Bi[1]],[x1,Bo[0],Bo[1]]],[1,0,0]));
+      tris.push(orient([[x1,Ao[0],Ao[1]],[x1,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]]],[1,0,0])); } };
+  boxSpan(-L/2,L/2, 0,leafT, -leafW, -fingerLen);         // leaf A plate (−Z)
+  boxSpan(-L/2,L/2, 0,leafT, +fingerLen, leafW);          // leaf B plate (+Z)
+  cylX(-L/2, L/2, cyMid, 0, pinR);                        // pin rod (body A): fused in A knuckles, free in B tubes
+  const bTz0 = pinR+gap+0.4;                              // B tongue stays clear of the pin, bites the tube wall
+  for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
+    if(i%2===0){ cylX(x0,x1, cyMid,0, zEdge); boxSpan(x0,x1, 0,leafT, -fingerLen-emb, emb); }        // A: solid barrel + tongue
+    else {       tubeX(x0,x1, cyMid,0, zEdge, pinR+gap); boxSpan(x0,x1, 0,leafT, bTz0, fingerLen+emb); } // B: tube + tongue
+  }
+  return tris.map(T=>T.map(v=>[v[0], v[1]-cyMid, v[2]]));  // center on Y
+}
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
    INTO the open cavity of an identical box underneath — the boxes stack without sliding, the upper
@@ -7271,7 +7336,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7285,7 +7350,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7316,6 +7381,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.pipMode && p.pipMode !== 'none') {
+      return snapWeldTris(buildHinge(p));
+    }
     if (p.threadMode && p.threadMode !== 'none') {
       return snapWeldTris(buildThread(p));
     }
@@ -7652,7 +7720,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -8665,6 +8733,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.pipMode && p.pipMode !== 'none') return 'петля (печать в сборе)';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

@@ -831,6 +831,7 @@
         <button class="base-btn" data-base="gear" title="Прямозубая шестерня (эвольвентный профиль)">Шестерня</button>
         <button class="base-btn" data-base="mount" title="Крепёж: L-кронштейн, VESA-адаптер, стойки под heat-set">Крепёж</button>
         <button class="base-btn" data-base="tpms" title="TPMS-решётка: гироид / Schwarz-P / diamond (лёгкий инфилл, демпфер)">TPMS</button>
+        <button class="base-btn" data-base="hook" title="Крючок на стену или на трубу (защёлка под любой Ø)">Крючок</button>
       </div>
     </div>
 
@@ -989,7 +990,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3536,6 +3537,18 @@ const SHAPE_PARAMS = {
     {group:'TPMS-решётка', key:'tpmsThick', label:'TPMS: толщина стенки (для «стенки»)', min:0.6, max:8, step:0.1, default:2.2, unit:'мм'},
     {group:'TPMS-решётка', key:'tpmsIso', label:'TPMS: смещение (доля объёма, для «сети»)', min:-1, max:1, step:0.05, default:0, unit:''},
     {group:'TPMS-решётка', key:'tpmsGrad', label:'TPMS: градиент плотности по Y (0 = равномерно)', min:-0.9, max:0.9, step:0.05, default:0, unit:''},
+    {group:'Крючок', key:'hookMount', label:'Крючок (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'wall',t:'на стену (винтовая пластина)'},{v:'pipe',t:'на трубу (защёлка, любой Ø)'}]},
+    {group:'Крючок', key:'hookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
+    {group:'Крючок', key:'hookReach', label:'Крючок: вылет (длина стержня)', min:6, max:120, step:1, default:28, unit:'мм'},
+    {group:'Крючок', key:'hookDrop', label:'Крючок: радиус загиба', min:5, max:80, step:1, default:16, unit:'мм'},
+    {group:'Крючок', key:'hookSweep', label:'Крючок: угол загиба', min:120, max:300, step:5, default:230, unit:'°'},
+    {group:'Крючок', key:'hookScrewD', label:'На стену: Ø крепёжных отверстий (0 = без)', min:0, max:10, step:0.5, default:4.5, unit:'мм'},
+    {group:'Крючок', key:'hookPlateW', label:'На стену: ширина пластины', min:12, max:120, step:1, default:26, unit:'мм'},
+    {group:'Крючок', key:'hookPlateH', label:'На стену: высота пластины', min:16, max:160, step:1, default:44, unit:'мм'},
+    {group:'Крючок', key:'hookPipeD', label:'На трубу: Ø трубы', min:6, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крючок', key:'hookClipWall', label:'На трубу: толщина защёлки', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
+    {group:'Крючок', key:'hookClipW', label:'На трубу: ширина защёлки', min:6, max:60, step:1, default:14, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -4023,6 +4036,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.hookMount && p.hookMount !== 'none') return 'hook';
   if (p.tpmsType && p.tpmsType !== 'none') return 'tpms';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
   if (p.gearMode && p.gearMode !== 'none') return 'gear';
@@ -4045,6 +4059,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Шестерня': return mode==='gear';
     case 'Крепёж / монтаж': return mode==='mount';
     case 'TPMS-решётка': return mode==='tpms';
+    case 'Крючок': return mode==='hook';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4053,6 +4068,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='hook')      return key==='Крючок';
   if (mode==='tpms')      return key==='TPMS-решётка';
   if (mode==='mount')     return key==='Крепёж / монтаж';
   if (mode==='gear')      return key==='Шестерня';
@@ -4108,6 +4124,7 @@ function setBaseShape(kind){
   setSel('gearMode',   kind==='gear'   ? 'spur'   : 'none');
   setSel('mntMode',    kind==='mount'  ? 'lbracket':'none');
   setSel('tpmsType',   kind==='tpms'   ? 'gyroid' : 'none');
+  setSel('hookMount',  kind==='hook'   ? 'wall'   : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -7026,6 +7043,53 @@ function buildPipe(p){
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));      // center
 }
+// Sweep a circle (radius r) along a PLANAR path in the Y-Z plane (x=0) → a round bar bent along the path.
+// Cross-section frame: one axis is world-X (always ⟂ a Y-Z tangent), the other is tangent×X. Watertight.
+function sweepTubePlanar(path, r, seg){
+  const out=[], N=path.length; if(N<2) return out;
+  const tanAt=i=>{ let t = i===0 ? [path[1][0]-path[0][0],path[1][1]-path[0][1],path[1][2]-path[0][2]]
+    : i===N-1 ? [path[N-1][0]-path[N-2][0],path[N-1][1]-path[N-2][1],path[N-1][2]-path[N-2][2]]
+    : [path[i+1][0]-path[i-1][0],path[i+1][1]-path[i-1][1],path[i+1][2]-path[i-1][2]];
+    const l=Math.hypot(t[0],t[1],t[2])||1; return [t[0]/l,t[1]/l,t[2]/l]; };
+  const ringAt=i=>{ const t=tanAt(i), en=cross(t,[1,0,0]), el=Math.hypot(en[0],en[1],en[2])||1, e2=[en[0]/el,en[1]/el,en[2]/el];
+    const ring=[]; for(let k=0;k<seg;k++){ const a=2*Math.PI*k/seg, c=Math.cos(a), s=Math.sin(a);
+      ring.push([path[i][0]+r*c, path[i][1]+r*(s*e2[1]), path[i][2]+r*(s*e2[2])]); }   // c·X + s·e2
+    return ring; };
+  const R=[]; for(let i=0;i<N;i++) R.push(ringAt(i));
+  for(let i=0;i<N-1;i++){ const A=R[i], B=R[i+1];
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg, ref=[(A[k][0]+A[k1][0])/2-path[i][0],(A[k][1]+A[k1][1])/2-path[i][1],(A[k][2]+A[k1][2])/2-path[i][2]];
+      out.push(orient([A[k],A[k1],B[k1]],ref)); out.push(orient([A[k],B[k1],B[k]],ref)); } }
+  const t0=tanAt(0), tN=tanAt(N-1);
+  for(let k=0;k<seg;k++){ const k1=(k+1)%seg;
+    out.push(orient([path[0],R[0][k1],R[0][k]],[-t0[0],-t0[1],-t0[2]]));
+    out.push(orient([path[N-1],R[N-1][k],R[N-1][k1]],[tN[0],tN[1],tN[2]])); }
+  return out;
+}
+/* ---- Hooks (крючки) -----------------------------------------------------------------------------
+   A round-bar hook (swept tube) on either a WALL plate (screw-mounted) or a snap-on PIPE clip (fits any
+   pipe Ø). The bar sweeps a J-curve in the Y-Z plane; the mount interpenetrates the bar's root → watertight. */
+function buildHook(p){
+  const rBar=Math.max(2,(p.hookBar||8)/2), reach=Math.max(6,p.hookReach||28), drop=Math.max(rBar+2,p.hookDrop||16);
+  const sweep=Math.max(120,Math.min(300,p.hookSweep||230))*Math.PI/180, seg=Math.max(12,Math.round(rBar*4));
+  const path=[]; const nStem=5, embed=Math.max(3,rBar+1);        // stem digs `embed` into the mount at z<0
+  for(let i=0;i<=nStem;i++) path.push([0,0,-embed + (reach+embed)*i/nStem]);   // stem out +Z
+  const Cy=-drop, Cz=reach, nArc=Math.max(14,Math.round(sweep/0.18));           // hook curve (arc), centre below stem end
+  for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
+  let tris=sweepTubePlanar(path, rBar, seg);
+  if(p.hookMount==='pipe'){                                       // snap-on pipe clip (any Ø) behind the hook
+    const rP=Math.max(4,(p.hookPipeD||25)/2), sw=Math.max(2.5,p.hookClipWall||3.5), rO=rP+sw, W=Math.max(rBar*2+2,p.hookClipW||14);
+    const cyC=-(rP+sw+rBar), mouth=Math.asin(Math.min(0.9,0.7));  // saddle centre below; mouth faces −Y (snaps up onto pipe)
+    for(const T of sectorShellTris(cyC, 0, rP, rO, -Math.PI/2+mouth, 1.5*Math.PI-mouth, -W/2, W/2, Math.max(28,Math.round(2*Math.PI*rO/1.1)))) tris.push(T);
+    for(const T of boxSpanTris(-W*0.35,W*0.35, cyC-2, rBar, -rBar-0.5, embed)) tris.push(T);   // web joins saddle top to the hook root
+  } else {                                                        // wall plate
+    const t=Math.max(3,p.hookPlateT||4), sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
+    const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];
+    if(sd>0.5) for(const s of [-1,1]) holes.push({axis:2,cp:0,cq:s*(ph/2-Math.max(sd+3,ph*0.18)),r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:-1});
+    for(const T of buildBoxWithHoles(pw,ph,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]-t/2]));   // plate z∈[−t,0]
+  }
+  let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
+  return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
+}
 function buildMount(p){
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
@@ -7844,7 +7908,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7858,7 +7922,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7889,6 +7953,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.hookMount && p.hookMount !== 'none') {
+      return snapWeldTris(buildHook(p));
+    }
     if (p.tpmsType && p.tpmsType !== 'none') {
       return snapWeldTris(buildTPMS(p));
     }
@@ -8237,7 +8304,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -9250,6 +9317,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]

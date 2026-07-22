@@ -828,6 +828,7 @@
         <button class="base-btn" data-base="sheet" title="Плоский лист / панель / грип-пад">Лист / панель</button>
         <button class="base-btn" data-base="thread" title="Резьбовое соединение: крышка (внутренняя резьба) или штуцер/горловина (наружная)">Резьба</button>
         <button class="base-btn" data-base="hinge" title="Петля «печать в сборе»: складывается сразу после печати, без вставки штифта">Петля</button>
+        <button class="base-btn" data-base="gear" title="Прямозубая шестерня (эвольвентный профиль)">Шестерня</button>
       </div>
     </div>
 
@@ -986,7 +987,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v79';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3481,6 +3482,13 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampWall', label:'Хомут: толщина стенки', min:1.5, max:10, step:0.5, default:3, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
+    {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'}]},
+    {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб)', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
+    {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
+    {group:'Шестерня', key:'gearPA', label:'Шестерня: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
+    {group:'Шестерня', key:'gearThick', label:'Шестерня: толщина', min:1, max:60, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearBore', label:'Шестерня: Ø отверстия под вал (0 = авто)', min:0, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3968,6 +3976,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.gearMode && p.gearMode !== 'none') return 'gear';
   if (p.pipMode && p.pipMode !== 'none') return 'hinge';
   if (p.threadMode && p.threadMode !== 'none') return 'thread';
   if (p.sheetShape && p.sheetShape !== 'none') return 'sheet';
@@ -3984,6 +3993,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Лист / панель': return mode==='sheet';
     case 'Резьба (крышка / штуцер)': return mode==='thread';
     case 'Петля (печать в сборе)': return mode==='hinge';
+    case 'Шестерня': return mode==='gear';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -3992,6 +4002,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='gear')      return key==='Шестерня';
   if (mode==='hinge')     return key==='Петля (печать в сборе)';
   if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
   if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
@@ -4041,6 +4052,7 @@ function setBaseShape(kind){
   setSel('platonic',   kind==='die'    ? 'd6'     : 'none');
   setSel('threadMode', kind==='thread' ? 'cap'    : 'none');
   setSel('pipMode',    kind==='hinge'  ? 'flat'   : 'none');
+  setSel('gearMode',   kind==='gear'   ? 'spur'   : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -6717,6 +6729,50 @@ function buildClamp(p){
   }
   return tris;
 }
+/* ---- Involute spur gear (шестерня) --------------------------------------------------------------
+   A standard involute spur gear: module m, Z teeth, pressure angle α. The 2D tooth outline is an
+   involute flank (base→tip), mirrored per tooth, joined by tip lands and root valleys — angle-monotone,
+   so the outline is star-shaped about the centre. Extruded along Y with a concentric bore; the bore ring
+   is sampled at the SAME angles as the outline points, so the end faces close as a clean annulus →
+   watertight by construction, no CSG. */
+function gearOutline(m, Z, alphaDeg){
+  const alpha=alphaDeg*Math.PI/180;
+  const rp=m*Z/2, ra=rp+m, rb=rp*Math.cos(alpha), rf=Math.max(0.3, rp-1.25*m);
+  const inv=a=>Math.tan(a)-a, tP=2*Math.PI/Z, halfBase=tP/4+inv(alpha), rStart=Math.max(rb, rf), N=8;
+  const flank=[]; for(let k=0;k<=N;k++){ const r=rStart+(ra-rStart)*k/N, ar=Math.acos(Math.min(1,rb/r));
+    flank.push([r, halfBase - inv(ar)]); }        // [radius, angular offset from tooth centre] up the flank
+  const tipAng=flank[N][1], polar=(r,a)=>[r*Math.cos(a), r*Math.sin(a)], P=[];
+  for(let i=0;i<Z;i++){ const c=i*tP;
+    if(rStart>rf+1e-3) P.push(polar(rf, c-halfBase));                       // left root
+    for(let k=0;k<=N;k++) P.push(polar(flank[k][0], c-flank[k][1]));        // left flank (up)
+    P.push(polar(ra, c+tipAng));                                           // tip land
+    for(let k=N;k>=0;k--) P.push(polar(flank[k][0], c+flank[k][1]));        // right flank (down)
+    if(rStart>rf+1e-3) P.push(polar(rf, c+halfBase));                       // right root
+    P.push(polar(rf, c+tP/2));                                             // valley to next tooth
+  }
+  return {P, rf, rp, ra};
+}
+function buildGear(p){
+  const m=Math.max(0.3, p.gearModule||2), Z=Math.max(6, Math.round(p.gearTeeth||20));
+  const alpha=Math.max(14, Math.min(30, p.gearPA||20)), th=Math.max(1, p.gearThick||6);
+  const {P, rf} = gearOutline(m, Z, alpha);
+  const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:rf*0.35, rf-0.8));   // bore stays inside the root
+  const n=P.length, y0=-th/2, y1=th/2, tris=[];
+  const ang=P.map(q=>Math.atan2(q[1],q[0])), B=ang.map(a=>[rB*Math.cos(a), rB*Math.sin(a)]);
+  for(let i=0;i<n;i++){ const j=(i+1)%n;
+    const refO=[P[i][0]+P[j][0],0,P[i][1]+P[j][1]];                         // outer tooth wall
+    tris.push(orient([[P[i][0],y0,P[i][1]],[P[j][0],y0,P[j][1]],[P[j][0],y1,P[j][1]]],refO));
+    tris.push(orient([[P[i][0],y0,P[i][1]],[P[j][0],y1,P[j][1]],[P[i][0],y1,P[i][1]]],refO));
+    const refI=[-(B[i][0]+B[j][0]),0,-(B[i][1]+B[j][1])];                   // bore wall (inward)
+    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[B[j][0],y1,B[j][1]]],refI));
+    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y1,B[j][1]],[B[i][0],y1,B[i][1]]],refI));
+    tris.push(orient([[B[i][0],y1,B[i][1]],[P[i][0],y1,P[i][1]],[P[j][0],y1,P[j][1]]],[0,1,0]));   // top annulus
+    tris.push(orient([[B[i][0],y1,B[i][1]],[P[j][0],y1,P[j][1]],[B[j][0],y1,B[j][1]]],[0,1,0]));
+    tris.push(orient([[B[i][0],y0,B[i][1]],[P[j][0],y0,P[j][1]],[P[i][0],y0,P[i][1]]],[0,-1,0]));  // bottom annulus
+    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[P[j][0],y0,P[j][1]]],[0,-1,0]));
+  }
+  return tris;
+}
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
    INTO the open cavity of an identical box underneath — the boxes stack without sliding, the upper
@@ -7475,7 +7531,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7489,7 +7545,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7520,6 +7576,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.gearMode && p.gearMode !== 'none') {
+      return snapWeldTris(buildGear(p));
+    }
     if (p.pipMode && p.pipMode !== 'none') {
       return snapWeldTris(buildHinge(p));
     }
@@ -7859,7 +7918,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -8872,6 +8931,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.gearMode && p.gearMode !== 'none') return 'шестерня (' + (p.gearTeeth|0) + ' зуб., m' + (p.gearModule||2) + ')';
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';

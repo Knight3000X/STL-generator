@@ -986,7 +986,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3455,7 +3455,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'петля: коробка с крышкой (лоток + крышка)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'петля: коробка с крышкой (лоток + крышка)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'}]},
     {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafW', label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
@@ -3471,6 +3471,16 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipClipWall', label:'Клипса: толщина стенки', min:1.2, max:8, step:0.2, default:2.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipClipMouth', label:'Клипса: раскрытие горловины (% Ø, <100 = защёлк.)', min:30, max:98, step:1, default:75, unit:'%'},
     {group:'Петля (печать в сборе)', key:'pipClipBaseT', label:'Клипса: толщина основания', min:1.5, max:12, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieLen', label:'Стяжка: длина ремешка', min:20, max:400, step:5, default:120, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieW', label:'Стяжка: ширина ремешка', min:2.5, max:16, step:0.5, default:5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieT', label:'Стяжка: толщина ремешка', min:0.8, max:4, step:0.1, default:1.6, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieToothP', label:'Стяжка: шаг зубьев храповика', min:1.2, max:5, step:0.1, default:2.4, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieToothH', label:'Стяжка: высота зубьев', min:0.3, max:2, step:0.1, default:0.8, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampD', label:'Хомут: Ø трубы', min:5, max:120, step:1, default:20, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampW', label:'Хомут: ширина', min:5, max:60, step:1, default:16, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampWall', label:'Хомут: толщина стенки', min:1.5, max:10, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -6545,7 +6555,9 @@ function buildHingeKnuckles(p) {
    captured axially between A's knuckles. Every part is a plain closed box / cylinder / tube; nothing is
    unioned in code. Pin axis = X; leaves fold about it. */
 function buildHinge(p){
-  if (p.pipMode === 'clip') return buildClip(p);
+  if (p.pipMode === 'clip')  return buildClip(p);
+  if (p.pipMode === 'tie')   return buildCableTie(p);
+  if (p.pipMode === 'clamp') return buildClamp(p);
   const L     = Math.max(10, p.pipLen||60);
   const leafT = Math.max(2, p.pipLeafT||6);
   const zEdge = leafT/2;                                  // knuckle radius = half the leaf thickness (folds flat)
@@ -6606,6 +6618,41 @@ function buildHinge(p){
   }
   return tris.map(T=>T.map(v=>[v[0], v[1]-cyMid, v[2]]));  // center on Y
 }
+// Shared print-in-place primitives (used by clip / cable-tie / clamp). All return fresh tri arrays.
+function boxSpanTris(x0,x1,y0,y1,z0,z1){ const t=plainBoxShellTris(x1-x0,y1-y0,z1-z0), cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
+  return t.map(T=>[[T[0][0]+cx,T[0][1]+cy,T[0][2]+cz],[T[1][0]+cx,T[1][1]+cy,T[1][2]+cz],[T[2][0]+cx,T[2][1]+cy,T[2][2]+cz]]); }
+// Closed annular-sector shell swept along X: outer + inner walls, two X-end sector faces, two radial caps.
+// pt(a,r) = [cy + r·cos a, cz + r·sin a] in (Y,Z). A full ring (a1−a0 = 2π) still closes via the caps.
+function sectorShellTris(cy,cz, rI,rO, a0,a1, x0,x1, seg){
+  const out=[], pt=(a,r)=>[cy+r*Math.cos(a), cz+r*Math.sin(a)];
+  const M=Math.max(6, Math.round(Math.abs(a1-a0)/(2*Math.PI)*seg));
+  for(let j=0;j<M;j++){ const f0=a0+(a1-a0)*j/M, f1=a0+(a1-a0)*(j+1)/M, fm=(f0+f1)/2;
+    const Io=pt(f0,rI),Io1=pt(f1,rI),Oo=pt(f0,rO),Oo1=pt(f1,rO);
+    const refO=[0,Math.cos(fm),Math.sin(fm)], refI=[0,-Math.cos(fm),-Math.sin(fm)];
+    out.push(orient([[x0,Oo[0],Oo[1]],[x1,Oo[0],Oo[1]],[x1,Oo1[0],Oo1[1]]],refO));
+    out.push(orient([[x0,Oo[0],Oo[1]],[x1,Oo1[0],Oo1[1]],[x0,Oo1[0],Oo1[1]]],refO));
+    out.push(orient([[x0,Io[0],Io[1]],[x1,Io[0],Io[1]],[x1,Io1[0],Io1[1]]],refI));
+    out.push(orient([[x0,Io[0],Io[1]],[x1,Io1[0],Io1[1]],[x0,Io1[0],Io1[1]]],refI));
+    out.push(orient([[x0,Io[0],Io[1]],[x0,Oo[0],Oo[1]],[x0,Oo1[0],Oo1[1]]],[-1,0,0]));
+    out.push(orient([[x0,Io[0],Io[1]],[x0,Oo1[0],Oo1[1]],[x0,Io1[0],Io1[1]]],[-1,0,0]));
+    out.push(orient([[x1,Io[0],Io[1]],[x1,Oo1[0],Oo1[1]],[x1,Oo[0],Oo[1]]],[1,0,0]));
+    out.push(orient([[x1,Io[0],Io[1]],[x1,Io1[0],Io1[1]],[x1,Oo1[0],Oo1[1]]],[1,0,0]));
+  }
+  for(const [f,sgn] of [[a0,-1],[a1,1]]){ const I=pt(f,rI),O=pt(f,rO), ref=[0,-sgn*Math.sin(f),sgn*Math.cos(f)];
+    out.push(orient([[x0,I[0],I[1]],[x0,O[0],O[1]],[x1,O[0],O[1]]],ref));
+    out.push(orient([[x0,I[0],I[1]],[x1,O[0],O[1]],[x1,I[0],I[1]]],ref)); }
+  return out;
+}
+// Triangular prism: a 2D triangle P=[[x,y]×3] extruded along Z (z0→z1). Two caps + three side quads.
+function prismZTris(P, z0, z1){ const out=[], [A,B,C]=P;
+  const cx=(A[0]+B[0]+C[0])/3, cyc=(A[1]+B[1]+C[1])/3;               // centroid → outward side-face normals
+  out.push(orient([[A[0],A[1],z0],[B[0],B[1],z0],[C[0],C[1],z0]],[0,0,-1]));
+  out.push(orient([[A[0],A[1],z1],[B[0],B[1],z1],[C[0],C[1],z1]],[0,0,1]));
+  for(const [u,v] of [[A,B],[B,C],[C,A]]){ const ref=[(u[0]+v[0])/2-cx, (u[1]+v[1])/2-cyc, 0];
+    out.push(orient([[u[0],u[1],z0],[v[0],v[1],z0],[v[0],v[1],z1]],ref));
+    out.push(orient([[u[0],u[1],z0],[v[0],v[1],z1],[u[0],u[1],z1]],ref)); }
+  return out;
+}
 /* ---- Snap-fit cable / pipe clip (клипса-защёлка) ------------------------------------------------
    A C-shaped clip on a mounting base: the arm is an annular sector whose top opening (mouth) is a bit
    narrower than the cable, so the cable snaps in and is gripped. One extruded closed sector shell + a
@@ -6616,37 +6663,59 @@ function buildClip(p){
   const rO = rI + clipWall, clipW = Math.max(4, p.pipClipW||12);
   const baseT = Math.max(1.5, p.pipClipBaseT||3);
   const mouthPct = Math.max(30, Math.min(98, p.pipClipMouth||75));
-  const mouthHalf = Math.asin(Math.min(0.985, rI*mouthPct/100/rI));   // half-angle of the top opening
-  const cy = baseT + rI, x0=-clipW/2, x1=clipW/2;
-  const seg = Math.max(28, Math.round(2*Math.PI*rO/1.1));
-  const tris=[];
-  const pt=(f,r)=>[cy + r*Math.cos(f), r*Math.sin(f)];               // → [y,z]; φ from +Y (top), mouth at φ≈0
-  const phiA=mouthHalf, phiB=2*Math.PI-mouthHalf, M=Math.max(20, Math.round((phiB-phiA)/(2*Math.PI)*seg));
-  for(let j=0;j<M;j++){ const f0=phiA+(phiB-phiA)*j/M, f1=phiA+(phiB-phiA)*(j+1)/M, fm=(f0+f1)/2;
-    const Io=pt(f0,rI),Io1=pt(f1,rI),Oo=pt(f0,rO),Oo1=pt(f1,rO);
-    const refO=[0,Math.cos(fm),Math.sin(fm)], refI=[0,-Math.cos(fm),-Math.sin(fm)];
-    tris.push(orient([[x0,Oo[0],Oo[1]],[x1,Oo[0],Oo[1]],[x1,Oo1[0],Oo1[1]]],refO));   // outer wall
-    tris.push(orient([[x0,Oo[0],Oo[1]],[x1,Oo1[0],Oo1[1]],[x0,Oo1[0],Oo1[1]]],refO));
-    tris.push(orient([[x0,Io[0],Io[1]],[x1,Io[0],Io[1]],[x1,Io1[0],Io1[1]]],refI));   // inner wall
-    tris.push(orient([[x0,Io[0],Io[1]],[x1,Io1[0],Io1[1]],[x0,Io1[0],Io1[1]]],refI));
-    tris.push(orient([[x0,Io[0],Io[1]],[x0,Oo[0],Oo[1]],[x0,Oo1[0],Oo1[1]]],[-1,0,0]));   // −X sector face
-    tris.push(orient([[x0,Io[0],Io[1]],[x0,Oo1[0],Oo1[1]],[x0,Io1[0],Io1[1]]],[-1,0,0]));
-    tris.push(orient([[x1,Io[0],Io[1]],[x1,Oo1[0],Oo1[1]],[x1,Oo[0],Oo[1]]],[1,0,0]));    // +X sector face
-    tris.push(orient([[x1,Io[0],Io[1]],[x1,Io1[0],Io1[1]],[x1,Oo1[0],Oo1[1]]],[1,0,0]));
-  }
-  for(const [f,sgn] of [[phiA,-1],[phiB,1]]){ const I=pt(f,rI),O=pt(f,rO), ref=[0,-sgn*Math.sin(f),sgn*Math.cos(f)];
-    tris.push(orient([[x0,I[0],I[1]],[x0,O[0],O[1]],[x1,O[0],O[1]]],ref));            // mouth tip cap
-    tris.push(orient([[x0,I[0],I[1]],[x1,O[0],O[1]],[x1,I[0],I[1]]],ref));
-  }
-  const screwD = Math.max(0, p.pipScrewD||0), tab = screwD>0.5 ? Math.max(screwD*2.6, 9) : 0;
-  const baseD = 2*rO + 2*tab, halfBD=baseD/2;
+  const mouthHalf = Math.asin(Math.min(0.985, mouthPct/100));        // half-angle of the top opening
+  const cy = baseT + rI, x0=-clipW/2, x1=clipW/2, seg = Math.max(28, Math.round(2*Math.PI*rO/1.1));
+  const tris = sectorShellTris(cy, 0, rI, rO, mouthHalf, 2*Math.PI-mouthHalf, x0, x1, seg);  // C-arm, mouth at top
+  const screwD = Math.max(0, p.pipScrewD||0), tab = screwD>0.5 ? Math.max(screwD*2.6, 9) : 0, baseD = 2*rO + 2*tab;
   if(screwD>0.5){
     const r=screwD/2, holes=[{axis:1,cp:0,cq:+(rO+tab/2),r},{axis:1,cp:0,cq:-(rO+tab/2),r}];
-    const bt=buildBoxWithHoles(clipW, baseT, baseD, holes);
-    for(const T of bt) tris.push([[T[0][0],T[0][1]+baseT/2,T[0][2]],[T[1][0],T[1][1]+baseT/2,T[1][2]],[T[2][0],T[2][1]+baseT/2,T[2][2]]]);
-  } else { const t=plainBoxShellTris(clipW,baseT,baseD); for(const T of t) tris.push(T.map(v=>[v[0],v[1]+baseT/2,v[2]])); }
+    for(const T of buildBoxWithHoles(clipW, baseT, baseD, holes)) tris.push(T.map(v=>[v[0],v[1]+baseT/2,v[2]]));
+  } else for(const T of plainBoxShellTris(clipW,baseT,baseD)) tris.push(T.map(v=>[v[0],v[1]+baseT/2,v[2]]));
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
-  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));            // center on Y
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+/* ---- Cable tie (кабель-стяжка) ------------------------------------------------------------------
+   A one-piece zip tie: a flat strap with ratchet teeth on top, joined to a head at one end. The head is
+   a block with a rectangular tunnel and an angled pawl inside; the strap is threaded through by hand and
+   the pawl catches the teeth (one-way lock). A single connected watertight body. Strap runs +X. */
+function buildCableTie(p){
+  const W=Math.max(2.5, p.tieW||5), T=Math.max(0.8, p.tieT||1.6), Ln=Math.max(20, p.tieLen||120);
+  const tp=Math.max(1.2, p.tieToothP||2.4), thH=Math.max(0.3, p.tieToothH||0.8), wall=1.6;
+  const slotH=T+thH+0.7, oh=slotH+2*wall, ow=W+0.7+2*wall, headLen=Math.max(6, T+thH+4);
+  const tris=[];
+  for(const T2 of buildBoxWithHoles(headLen, oh, ow, [{axis:0, cp:0, cq:0, ap:slotH/2, aq:(W+0.7)/2, rc:0.4}]))
+    tris.push(T2.map(v=>[v[0]+headLen/2, v[1]+oh/2, v[2]]));        // head: tunnel along X, x∈[0,headLen], y∈[0,oh]
+  const sy1=oh-0.4, sy0=sy1-T;                                     // strap embedded just under the head top
+  for(const T2 of boxSpanTris(headLen-3, headLen+Ln, sy0, sy1, -W/2, W/2)) tris.push(T2);
+  const tw=tp*0.8, tz=Math.max(0.5, W/2-0.3);                      // teeth gapped in X and inset in Z → no shared edges
+  for(let k=0;k<Math.floor(Ln/tp);k++){ const tx=headLen + k*tp + 0.05;   // ratchet tooth (vertical stop face at +X)
+    for(const T2 of prismZTris([[tx, sy1-0.2],[tx+tw, sy1-0.2],[tx+tw, sy1+thH]], -tz, tz)) tris.push(T2); }
+  const fy = wall;                                                 // slot floor (world Y) = oh/2 − slotH/2
+  for(const T2 of prismZTris([[headLen*0.5, fy-0.4],[headLen*0.5+tp*1.1, fy-0.4],[headLen*0.5, fy+thH*1.2]], -W/2, W/2)) tris.push(T2); // pawl (base sunk into the floor → fused)
+  let lo=1e9,hi=-1e9; for(const T2 of tris) for(const v of T2){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T2=>T2.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+/* ---- Split clamp (разъёмный хомут) --------------------------------------------------------------
+   A pipe clamp split into two half-ring halves, each with two bolt ears at the split line; bolt the pair
+   around a pipe. Two separate watertight bodies (top + bottom) with a clamp gap between the ears. Each
+   half = a 180° sector shell (pipe axis = X) + two flat ears carrying a Y-axis bolt hole. */
+function buildClamp(p){
+  const rI=Math.max(3,(p.clampD||20)/2), wall=Math.max(1.5,p.clampWall||3), rO=rI+wall;
+  const clampW=Math.max(5,p.clampW||16), g=Math.max(0.3,p.clampGap||1.2);
+  const boltD=Math.max(2,Math.min(rO*0.9,p.clampBoltD||3.5)), ear=Math.max(boltD*2.4, 9);
+  const x0=-clampW/2, x1=clampW/2, seg=Math.max(28, Math.round(2*Math.PI*rO/1.1)), earT=Math.max(3.5, wall+1);
+  const tris=[];
+  for(const sgn of [1,-1]){ const cy=sgn*g;                        // top / bottom half
+    const a0 = sgn>0 ? -Math.PI/2 : Math.PI/2, a1 = sgn>0 ? Math.PI/2 : 3*Math.PI/2;
+    for(const T of sectorShellTris(cy, 0, rI, rO, a0, a1, x0, x1, seg)) tris.push(T);   // the half ring
+    for(const s of [1,-1]){                                        // the two bolt ears (±Z), at the split line
+      const zLo = s>0 ? rO-0.8 : -(rO+ear), zHi = s>0 ? rO+ear : -(rO-0.8), zc=(zLo+zHi)/2, earLen=zHi-zLo;
+      const yLo = sgn>0 ? cy : cy-earT, yHi = sgn>0 ? cy+earT : cy, yc=(yLo+yHi)/2;
+      const hole = [{axis:1, cp:0, cq: s*(rO+ear*0.5)-zc, r:boltD/2}];
+      for(const T of buildBoxWithHoles(clampW, earT, earLen, hole)) tris.push(T.map(v=>[v[0], v[1]+yc, v[2]+zc]));
+    }
+  }
+  return tris;
 }
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
@@ -8803,7 +8872,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
-  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка'})[p.pipMode] || 'петля (печать в сборе)';
+  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

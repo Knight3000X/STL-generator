@@ -69,6 +69,25 @@ chk('clip + screw tabs watertight', manifoldCheck(base({pipMode:'clip',pipScrewD
   for(const T of t) for(const v of T) if(v[1]>ymax-1){ topZmin=Math.min(topZmin,v[2]); topZmax=Math.max(topZmax,v[2]); }
   chk('clip has an open mouth at the top (grip < Ø)', (topZmax-topZmin) < 20, {mouthGap:+(topZmax-topZmin).toFixed(1)}); }
 
+console.log('=== cable tie (кабель-стяжка) ===');
+for(const w of [4,6]) for(const t of [1.2,1.8]) for(const len of [60,150])
+  chk('tie W'+w+' T'+t+' L'+len+' watertight (+vol)', (()=>{const tr=base({pipMode:'tie',tieW:w,tieT:t,tieLen:len});const mc=manifoldCheck(tr,4);return mc.watertight&&vol(tr)>0;})(), {w,t,len});
+{ const short=vol(base({pipMode:'tie',tieLen:60})), long=vol(base({pipMode:'tie',tieLen:180}));
+  chk('longer strap → more material', long>short, {short:+short.toFixed(0),long:+long.toFixed(0)}); }
+{ const b=computeBBox(base({pipMode:'tie',tieLen:120,tieW:5})); chk('tie is strap-long in X', (b.maxX-b.minX) > 100, {x:+(b.maxX-b.minX).toFixed(1)}); }
+{ const smooth=vol(base({pipMode:'tie',tieToothH:0.1,tieLen:100})), toothy=vol(base({pipMode:'tie',tieToothH:1.4,tieLen:100}));
+  chk('taller ratchet teeth add material', toothy>smooth, {smooth:+smooth.toFixed(0),toothy:+toothy.toFixed(0)}); }
+
+console.log('=== split clamp (разъёмный хомут) ===');
+for(const d of [12,25,50]) for(const wall of [2.5,4]) for(const cw of [10,20])
+  chk('clamp Ø'+d+' wall'+wall+' W'+cw+' watertight (+vol)', (()=>{const t=base({pipMode:'clamp',clampD:d,clampWall:wall,clampW:cw});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {d,wall,cw});
+{ const b=computeBBox(base({pipMode:'clamp',clampD:20,clampW:16,clampWall:3}));
+  chk('clamp width = clampW (X)', Math.abs((b.maxX-b.minX)-16)<0.3, {x:+(b.maxX-b.minX).toFixed(2)});
+  chk('clamp outer Ø ≈ pipe + 2·wall (Z)', Math.abs((b.maxZ-b.minZ)-(20+2*3)) < 22, {z:+(b.maxZ-b.minZ).toFixed(1)}); }
+{ const t=base({pipMode:'clamp',clampD:20,clampGap:1.5}); let hasTop=false,hasBot=false;
+  for(const T of t) for(const v of T){ if(v[1]>1) hasTop=true; if(v[1]<-1) hasBot=true; }
+  chk('clamp is two halves (material above and below the split)', hasTop&&hasBot, {hasTop,hasBot}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a hinge', a===b, {a,b}); }

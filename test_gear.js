@@ -52,6 +52,33 @@ console.log('=== two gears mesh (pitch circles tangent) ===');
   const g1=gearOutline(2,20,20), g2=gearOutline(2,40,20);
   chk('center distance = m(Z1+Z2)/2', Math.abs((g1.rp+g2.rp) - 2*(20+40)/2) < 1e-6, {rp1:g1.rp,rp2:g2.rp}); }
 
+console.log('=== helical (косозубая) ===');
+for(const hx of [0,15,30,45]) for(const Z of [12,24])
+  chk('helical β'+hx+' Z'+Z+' watertight (+vol)', (()=>{const t=base({gearMode:'helical',gearHelix:hx,gearTeeth:Z,gearThick:12});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {hx,Z});
+{ const straight=base({gearMode:'helical',gearHelix:0,gearThick:12}), twisted=base({gearMode:'helical',gearHelix:35,gearThick:12});
+  chk('helix twists the mesh (more triangles than a straight loft)', twisted.length > straight.length, {straight:straight.length,twisted:twisted.length}); }
+{ const b0=computeBBox(base({gearMode:'helical',gearHelix:0})), b1=computeBBox(base({gearMode:'helical',gearHelix:30}));
+  chk('helical keeps the same outer Ø as spur', Math.abs((b1.maxX-b1.minX)-(b0.maxX-b0.minX))<1.0, {}); }
+
+console.log('=== rack (зубчатая рейка) ===');
+for(const m of [1.5,2,3]) for(const len of [40,120])
+  chk('rack m'+m+' L'+len+' watertight (+vol)', (()=>{const t=base({gearMode:'rack',gearModule:m,rackLen:len});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {m,len});
+{ const b=computeBBox(base({gearMode:'rack',rackLen:100,rackW:12,rackH:6,gearModule:2}));
+  chk('rack length = rackLen (X)', Math.abs((b.maxX-b.minX)-100)<0.5, {x:+(b.maxX-b.minX).toFixed(1)});
+  chk('rack width = rackW (Z)', Math.abs((b.maxZ-b.minZ)-12)<0.5, {z:+(b.maxZ-b.minZ).toFixed(1)}); }
+{ const flat=vol(base({gearMode:'rack',gearModule:0.4,rackLen:80})), toothy=vol(base({gearMode:'rack',gearModule:3,rackLen:80}));
+  chk('bigger module rack → more tooth material', toothy>flat, {flat:+flat.toFixed(0),toothy:+toothy.toFixed(0)}); }
+
+console.log('=== GT2 pulley + ratchet ===');
+for(const Z of [16,20,36])
+  chk('GT2 Z'+Z+' watertight (+vol)', (()=>{const t=base({gearMode:'gt2',gearTeeth:Z});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {Z});
+{ const g=sprocketOutline(20,2); const rp=20*2/(2*Math.PI);
+  chk('GT2 pitch radius = N·pitch/2π', Math.abs(rp - 20*2/(2*Math.PI))<1e-9 && g.rf>0, {rp:+rp.toFixed(2)}); }
+for(const Z of [8,12,24])
+  chk('ratchet Z'+Z+' watertight (+vol)', (()=>{const t=base({gearMode:'ratchet',gearTeeth:Z,gearModule:2});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {Z});
+chk('helical + bore watertight', manifoldCheck(base({gearMode:'helical',gearHelix:25,gearBore:6}),4).watertight);
+chk('GT2 + bore watertight', manifoldCheck(base({gearMode:'gt2',gearTeeth:20,gearBore:5}),4).watertight);
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a gear', a===b, {a,b}); }

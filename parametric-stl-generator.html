@@ -987,7 +987,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3483,12 +3483,16 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'}]},
-    {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб)', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'ratchet',t:'храповик'}]},
+    {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
-    {group:'Шестерня', key:'gearPA', label:'Шестерня: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
+    {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
     {group:'Шестерня', key:'gearThick', label:'Шестерня: толщина', min:1, max:60, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearBore', label:'Шестерня: Ø отверстия под вал (0 = авто)', min:0, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearHelix', label:'Косозубая: угол наклона зуба', min:0, max:45, step:1, default:15, unit:'°'},
+    {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
+    {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
+    {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -6752,26 +6756,88 @@ function gearOutline(m, Z, alphaDeg){
   }
   return {P, rf, rp, ra};
 }
-function buildGear(p){
-  const m=Math.max(0.3, p.gearModule||2), Z=Math.max(6, Math.round(p.gearTeeth||20));
-  const alpha=Math.max(14, Math.min(30, p.gearPA||20)), th=Math.max(1, p.gearThick||6);
-  const {P, rf} = gearOutline(m, Z, alpha);
-  const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:rf*0.35, rf-0.8));   // bore stays inside the root
-  const n=P.length, y0=-th/2, y1=th/2, tris=[];
-  const ang=P.map(q=>Math.atan2(q[1],q[0])), B=ang.map(a=>[rB*Math.cos(a), rB*Math.sin(a)]);
+// GT2 timing-belt pulley outline: N rounded (raised-cosine) grooves at 2 mm pitch on the circumference.
+function sprocketOutline(N, pitch){
+  const rp=N*pitch/(2*Math.PI), rOut=rp-0.254, depth=0.76, tP=2*Math.PI/N, gHalf=tP*0.36, S=10, P=[];
+  for(let i=0;i<N;i++){ const c=i*tP;
+    for(let k=0;k<S;k++){ const a=c-tP/2+tP*k/S, off=a-c;
+      const d = Math.abs(off)<gHalf ? depth*0.5*(1+Math.cos(Math.PI*off/gHalf)) : 0, r=rOut-d;
+      P.push([r*Math.cos(a), r*Math.sin(a)]); } }
+  return {P, rf:rOut-depth};
+}
+// Ratchet wheel outline: N asymmetric saw teeth — a gradual radial rise then a near-radial drop (one-way pawl).
+function ratchetOutline(N, m){
+  const rOut=m*N/2, depth=m*1.8, rRoot=rOut-depth, tP=2*Math.PI/N, S=5, P=[];
+  for(let i=0;i<N;i++){ const c=i*tP;
+    for(let k=0;k<S;k++){ const f=k/S*0.85, r=rRoot+(rOut-rRoot)*(f/0.85); P.push([r*Math.cos(c+tP*f), r*Math.sin(c+tP*f)]); }
+    P.push([rOut*Math.cos(c+tP*0.85), rOut*Math.sin(c+tP*0.85)]);              // tip
+    P.push([rRoot*Math.cos(c+tP*0.85+0.002), rRoot*Math.sin(c+tP*0.85+0.002)]); // steep drop
+    P.push([rRoot*Math.cos(c+tP*0.999), rRoot*Math.sin(c+tP*0.999)]);           // root land
+  }
+  return {P, rf:rRoot};
+}
+// Loft a star-shaped 2D outline P along Y (th) with a concentric bore, optionally TWISTED (helical gears).
+// The bore ring is sampled per-point at the outline's own angle, so end faces close as a clean annulus.
+function extrudeProfileY(P, rBore, th, twist){
+  const n=P.length, tris=[], M=Math.max(1, Math.round(Math.abs(twist)/(5*Math.PI/180)));
+  const rot=(q,a)=>[q[0]*Math.cos(a)-q[1]*Math.sin(a), q[0]*Math.sin(a)+q[1]*Math.cos(a)];
+  const lP=[], lB=[]; for(let k=0;k<=M;k++){ const Pk=P.map(q=>rot(q,twist*k/M));
+    lP.push(Pk); lB.push(Pk.map(q=>{const a=Math.atan2(q[1],q[0]); return [rBore*Math.cos(a), rBore*Math.sin(a)];})); }
+  const yAt=k=>-th/2+th*k/M;
+  for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1], Ba=lB[k],Bb=lB[k+1];
+    for(let i=0;i<n;i++){ const j=(i+1)%n;
+      const refO=[Pa[i][0]+Pa[j][0],0,Pa[i][1]+Pa[j][1]];
+      tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pa[j][0],y0,Pa[j][1]],[Pb[j][0],y1,Pb[j][1]]],refO));
+      tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pb[j][0],y1,Pb[j][1]],[Pb[i][0],y1,Pb[i][1]]],refO));
+      const refI=[-(Ba[i][0]+Ba[j][0]),0,-(Ba[i][1]+Ba[j][1])];
+      tris.push(orient([[Ba[i][0],y0,Ba[i][1]],[Ba[j][0],y0,Ba[j][1]],[Bb[j][0],y1,Bb[j][1]]],refI));
+      tris.push(orient([[Ba[i][0],y0,Ba[i][1]],[Bb[j][0],y1,Bb[j][1]],[Bb[i][0],y1,Bb[i][1]]],refI));
+    } }
+  const yT=yAt(M),PT=lP[M],BT=lB[M], yB=yAt(0),PB=lP[0],BB=lB[0];
   for(let i=0;i<n;i++){ const j=(i+1)%n;
-    const refO=[P[i][0]+P[j][0],0,P[i][1]+P[j][1]];                         // outer tooth wall
-    tris.push(orient([[P[i][0],y0,P[i][1]],[P[j][0],y0,P[j][1]],[P[j][0],y1,P[j][1]]],refO));
-    tris.push(orient([[P[i][0],y0,P[i][1]],[P[j][0],y1,P[j][1]],[P[i][0],y1,P[i][1]]],refO));
-    const refI=[-(B[i][0]+B[j][0]),0,-(B[i][1]+B[j][1])];                   // bore wall (inward)
-    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[B[j][0],y1,B[j][1]]],refI));
-    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y1,B[j][1]],[B[i][0],y1,B[i][1]]],refI));
-    tris.push(orient([[B[i][0],y1,B[i][1]],[P[i][0],y1,P[i][1]],[P[j][0],y1,P[j][1]]],[0,1,0]));   // top annulus
-    tris.push(orient([[B[i][0],y1,B[i][1]],[P[j][0],y1,P[j][1]],[B[j][0],y1,B[j][1]]],[0,1,0]));
-    tris.push(orient([[B[i][0],y0,B[i][1]],[P[j][0],y0,P[j][1]],[P[i][0],y0,P[i][1]]],[0,-1,0]));  // bottom annulus
-    tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[P[j][0],y0,P[j][1]]],[0,-1,0]));
+    tris.push(orient([[BT[i][0],yT,BT[i][1]],[PT[i][0],yT,PT[i][1]],[PT[j][0],yT,PT[j][1]]],[0,1,0]));
+    tris.push(orient([[BT[i][0],yT,BT[i][1]],[PT[j][0],yT,PT[j][1]],[BT[j][0],yT,BT[j][1]]],[0,1,0]));
+    tris.push(orient([[BB[i][0],yB,BB[i][1]],[PB[j][0],yB,PB[j][1]],[PB[i][0],yB,PB[i][1]]],[0,-1,0]));
+    tris.push(orient([[BB[i][0],yB,BB[i][1]],[BB[j][0],yB,BB[j][1]],[PB[j][0],yB,PB[j][1]]],[0,-1,0]));
   }
   return tris;
+}
+// Convex 2D polygon extruded along Z (fan caps + side walls). Used for rack teeth.
+function convexPrismZTris(poly, z0, z1){ const out=[], n=poly.length;
+  const cx=poly.reduce((s,q)=>s+q[0],0)/n, cy=poly.reduce((s,q)=>s+q[1],0)/n;
+  for(let i=1;i<n-1;i++){
+    out.push(orient([[poly[0][0],poly[0][1],z0],[poly[i][0],poly[i][1],z0],[poly[i+1][0],poly[i+1][1],z0]],[0,0,-1]));
+    out.push(orient([[poly[0][0],poly[0][1],z1],[poly[i][0],poly[i][1],z1],[poly[i+1][0],poly[i+1][1],z1]],[0,0,1])); }
+  for(let i=0;i<n;i++){ const j=(i+1)%n,u=poly[i],v=poly[j], ref=[(u[0]+v[0])/2-cx,(u[1]+v[1])/2-cy,0];
+    out.push(orient([[u[0],u[1],z0],[v[0],v[1],z0],[v[0],v[1],z1]],ref));
+    out.push(orient([[u[0],u[1],z0],[v[0],v[1],z1],[u[0],u[1],z1]],ref)); }
+  return out;
+}
+// Gear rack (зубчатая рейка): a straight bar with trapezoidal (straight-flanked, involute-of-∞) teeth.
+function buildRack(p){
+  const m=Math.max(0.3,p.gearModule||2), alpha=Math.max(14,Math.min(30,p.gearPA||20))*Math.PI/180;
+  const Ln=Math.max(10,p.rackLen||90), W=Math.max(2,p.rackW||12), H=Math.max(1,p.rackH||6);
+  const pitch=Math.PI*m, ht=2*m, root=H, tris=[];
+  for(const T of boxSpanTris(-Ln/2, Ln/2, 0, H, -W/2, W/2)) tris.push(T);
+  const nT=Math.floor(Ln/pitch), s=pitch/4, dx=(ht/2)*Math.tan(alpha), tz=Math.max(0.5,W/2-0.2);
+  for(let k=0;k<nT;k++){ const xc=-Ln/2 + (k+0.5)*pitch, bH=s+dx, tH=Math.max(0.15,s-dx);
+    const poly=[[xc-bH,root-0.3],[xc+bH,root-0.3],[xc+tH,root+ht],[xc-tH,root+ht]];   // trapezoid, embedded into the bar
+    for(const T of convexPrismZTris(poly, -tz, tz)) tris.push(T); }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+function buildGear(p){
+  const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
+  const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
+  if(mode==='rack') return buildRack(p);
+  let o, rp=m*Z/2;
+  if(mode==='gt2') o=sprocketOutline(Z, 2);
+  else if(mode==='ratchet') o=ratchetOutline(Z, m);
+  else { o=gearOutline(m,Z,alpha); rp=o.rp; }                 // spur / helical
+  const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:o.rf*0.35, o.rf-0.8));
+  let twist=0;
+  if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
+  return extrudeProfileY(o.P, rB, th, twist);
 }
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
@@ -8931,7 +8997,8 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
-  if (p.gearMode && p.gearMode !== 'none') return 'шестерня (' + (p.gearTeeth|0) + ' зуб., m' + (p.gearModule||2) + ')';
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
+    + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';

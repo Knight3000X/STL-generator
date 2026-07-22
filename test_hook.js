@@ -22,9 +22,14 @@ for(const sw of [140,200,280]) chk('wall sweep '+sw+'° watertight', manifoldChe
 console.log('=== pipe hook (any Ø) ===');
 for(const d of [12,25,50]) for(const bar of [6,10])
   chk('pipe Ø'+d+' bar'+bar+' watertight (+vol)', (()=>{const t=base({hookMount:'pipe',hookPipeD:d,hookBar:bar});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {d,bar});
-{ const small=computeBBox(base({hookMount:'pipe',hookPipeD:12})), big=computeBBox(base({hookMount:'pipe',hookPipeD:50}));
-  chk('bigger pipe → bigger clip (Y)', (big.maxY-big.minY) > (small.maxY-small.minY)+20, {}); }
+{ // The saddle ring lies in the Y-Z plane (pipe axis X); the hook exits sideways (+X) and is thin in Z, so a
+  //   bigger pipe grows the clip's Z span cleanly (Y is masked by the hook's reach/drop).
+  const small=computeBBox(base({hookMount:'pipe',hookPipeD:12})), big=computeBBox(base({hookMount:'pipe',hookPipeD:50}));
+  chk('bigger pipe → bigger clip (Z, the ring diameter)', (big.maxZ-big.minZ) > (small.maxZ-small.minZ)+20, {small:+(small.maxZ-small.minZ).toFixed(1),big:+(big.maxZ-big.minZ).toFixed(1)}); }
 chk('pipe clip is watertight with a thin wall', manifoldCheck(base({hookMount:'pipe',hookPipeD:32,hookClipWall:2.5}),4).watertight);
+{ // hook exits the SIDE (+X): the X span (dominated by the sideways hook reach) far exceeds the clip width W
+  const b=computeBBox(base({hookMount:'pipe',hookPipeD:25,hookClipW:14,hookReach:30}));
+  chk('hook exits sideways (X span ≫ clip width)', (b.maxX-b.minX) > 14+22, {xSpan:+(b.maxX-b.minX).toFixed(1)}); }
 
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;

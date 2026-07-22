@@ -833,6 +833,7 @@
         <button class="base-btn" data-base="tpms" title="TPMS-решётка: гироид / Schwarz-P / diamond (лёгкий инфилл, демпфер)">TPMS</button>
         <button class="base-btn" data-base="hook" title="Крючок на стену или на трубу (защёлка под любой Ø)">Крючок</button>
         <button class="base-btn" data-base="wallorg" title="Настенный органайзер: французская планка / перфопанель + крючок/полка">Органайзер</button>
+        <button class="base-btn" data-base="pbox" title="Электрокорпус (project box): лоток + крышка + стойки под винты и PCB">Корпус</button>
       </div>
     </div>
 
@@ -991,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3574,6 +3575,24 @@ const SHAPE_PARAMS = {
     {group:'Настенный органайзер', key:'woShelfT', label:'Полка: толщина', min:2, max:12, step:0.5, default:4, unit:'мм'},
     {group:'Настенный органайзер', key:'woToolN', label:'Полка: число гнёзд', min:1, max:12, step:1, default:3, unit:'', int:true},
     {group:'Настенный органайзер', key:'woToolD', label:'Полка: Ø гнезда', min:3, max:60, step:1, default:16, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbPart', label:'Электрокорпус (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'tray',t:'лоток (дно + стенки + стойки)'},{v:'lid',t:'крышка (с потайными отверстиями)'},{v:'both',t:'лоток + крышка (рядом)'}]},
+    {group:'Корпус (электроника)', key:'pbW', label:'Корпус: размер по X (снаружи)', min:20, max:300, step:1, default:80, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbD', label:'Корпус: размер по Z (снаружи)', min:20, max:300, step:1, default:60, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbH', label:'Корпус: высота стенок', min:8, max:200, step:1, default:30, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbWall', label:'Корпус: толщина стенки', min:1.2, max:8, step:0.1, default:2.4, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbFloor', label:'Корпус: толщина дна', min:1, max:10, step:0.1, default:2.4, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbFlange', label:'Корпус: базовый выступ (юбка под стенкой)', min:0.6, max:6, step:0.1, default:1.5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbScrewD', label:'Корпус: Ø винта крышки', min:2, max:8, step:0.5, default:3, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbPostD', label:'Корпус: Ø угловой стойки (0=авто)', min:0, max:24, step:0.5, default:8, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbClear', label:'Корпус: зазор посадки крышки', min:0.1, max:1, step:0.05, default:0.35, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbLidT', label:'Крышка: толщина', min:1, max:10, step:0.1, default:2.4, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbLipH', label:'Крышка: высота внутреннего борта (заходит в лоток)', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBossNX', label:'PCB-стойки: число по X (0=выкл)', min:0, max:8, step:1, default:0, unit:'', int:true},
+    {group:'Корпус (электроника)', key:'pbBossNZ', label:'PCB-стойки: число по Z (0=выкл)', min:0, max:8, step:1, default:0, unit:'', int:true},
+    {group:'Корпус (электроника)', key:'pbBossD', label:'PCB-стойки: Ø', min:4, max:20, step:0.5, default:6, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBossH', label:'PCB-стойки: высота', min:2, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -4062,6 +4081,7 @@ function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
   if (p.woBack && p.woBack !== 'none') return 'wallorg';
+  if (p.pbPart && p.pbPart !== 'none') return 'pbox';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
   if (p.tpmsType && p.tpmsType !== 'none') return 'tpms';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
@@ -4087,6 +4107,7 @@ function sectionRelevant(key, mode, hollow){
     case 'TPMS-решётка': return mode==='tpms';
     case 'Крючок': return mode==='hook';
     case 'Настенный органайзер': return mode==='wallorg';
+    case 'Корпус (электроника)': return mode==='pbox';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4096,6 +4117,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
   if (mode==='wallorg')   return key==='Настенный органайзер';
+  if (mode==='pbox')      return key==='Корпус (электроника)';
   if (mode==='hook')      return key==='Крючок';
   if (mode==='tpms')      return key==='TPMS-решётка';
   if (mode==='mount')     return key==='Крепёж / монтаж';
@@ -4154,6 +4176,7 @@ function setBaseShape(kind){
   setSel('tpmsType',   kind==='tpms'   ? 'gyroid' : 'none');
   setSel('hookMount',  kind==='hook'   ? 'wall'   : 'none');
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
+  setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -7193,6 +7216,83 @@ function buildMount(p){
   if(p.mntMode==='pipe') return buildPipe(p);
   return buildLBracket(p);
 }
+/* ---- Project box (электрокорпус) ---------------------------------------------------------------
+   A functional electronics enclosure — a tray (floor + walls + lid-screw posts + optional PCB
+   standoffs) and a matching drop-in lid — built from independently-closed interpenetrating solids
+   (no CSG), same watertight trick as everything else. The walls are ONE rectangular ring prism
+   (rectRingYTris), so no two axis-aligned wall slabs ever share a coplanar face; the floor is a full
+   solid slab inset UNDER the ring by a small base flange so its outer faces never align with the ring
+   (avoids coincident faces); posts/standoffs are round tubes that interpenetrate the floor. The lid is
+   a holed plate (countersunk clearance holes over the posts) plus a smaller ring lip that drops into
+   the cavity with a printing clearance, so lid+tray close by construction. */
+function rectRingYTris(cx,cz, Wo,Do, t, y0,y1){   // closed rectangular annulus prism along Y (a frame)
+  const out=[], xo=Wo/2, zo=Do/2, xi=Math.max(0.5,Wo/2-t), zi=Math.max(0.5,Do/2-t);
+  const O=[[cx-xo,cz-zo],[cx+xo,cz-zo],[cx+xo,cz+zo],[cx-xo,cz+zo]];   // outer ring (x,z), CCW
+  const I=[[cx-xi,cz-zi],[cx+xi,cz-zi],[cx+xi,cz+zi],[cx-xi,cz+zi]];   // inner ring
+  const q=(a,b,c,d,ref)=>{ out.push(orient([a,b,c],ref)); out.push(orient([a,c,d],ref)); };
+  for(let k=0;k<4;k++){ const k1=(k+1)%4, o0=O[k],o1=O[k1], i0=I[k],i1=I[k1];
+    const mo=[(o0[0]+o1[0])/2-cx,0,(o0[1]+o1[1])/2-cz];                                    // outward
+    q([o0[0],y0,o0[1]],[o1[0],y0,o1[1]],[o1[0],y1,o1[1]],[o0[0],y1,o0[1]], mo);            // outer face
+    const mi=[-((i0[0]+i1[0])/2-cx),0,-((i0[1]+i1[1])/2-cz)];                              // inward
+    q([i0[0],y0,i0[1]],[i0[0],y1,i0[1]],[i1[0],y1,i1[1]],[i1[0],y0,i1[1]], mi);            // inner face
+    q([o0[0],y1,o0[1]],[o1[0],y1,o1[1]],[i1[0],y1,i1[1]],[i0[0],y1,i0[1]], [0,1,0]);       // top annulus
+    q([o0[0],y0,o0[1]],[i0[0],y0,i0[1]],[i1[0],y0,i1[1]],[o1[0],y0,o1[1]], [0,-1,0]);      // bottom annulus
+  }
+  return out;
+}
+function buildProjectBox(p){
+  const part  = p.pbPart || 'tray';
+  const W = Math.max(20, p.pbW||80), D = Math.max(20, p.pbD||60), H = Math.max(8, p.pbH||30);
+  const wall  = Math.max(1.2, Math.min(Math.min(W,D)/4, p.pbWall||2.4));
+  const floorT= Math.max(1.0, p.pbFloor||2.4), lidT = Math.max(1.0, p.pbLidT||2.4);
+  const flange= Math.max(0.6, Math.min(6, p.pbFlange!=null ? p.pbFlange : 1.5));   // base lip past the walls
+  const clr   = Math.max(0.1, Math.min(1.0, p.pbClear!=null ? p.pbClear : 0.35));   // lid↔cavity fit clearance
+  const screwD= Math.max(2, p.pbScrewD||3), postD = Math.max(screwD+3, p.pbPostD||(screwD+5));
+  const emb   = Math.min(floorT*0.6, 1.0);
+  const Ww = W-2*flange, Dw = D-2*flange;             // wall (frame) outer footprint (inset by the flange)
+  const Wi = Math.max(6, Ww-2*wall), Di = Math.max(6, Dw-2*wall);   // inner cavity footprint
+  const pm = wall + postD/2 + 0.8;                    // corner-post centre inset from the frame outer
+  const postPos = [[-Ww/2+pm,-Dw/2+pm],[Ww/2-pm,-Dw/2+pm],[Ww/2-pm,Dw/2-pm],[-Ww/2+pm,Dw/2-pm]];
+  const center = t => { let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
+    for(const T of t)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
+    return t.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2])); };
+  function tray(){
+    const t=[];
+    for(const T of boxSpanTris(-W/2,W/2, 0,floorT, -D/2,D/2)) t.push(T);            // floor slab (full footprint)
+    for(const T of rectRingYTris(0,0, Ww,Dw, wall, floorT-emb, H)) t.push(T);       // walls (one closed ring)
+    const rO=postD/2, rB=Math.max(0.6,screwD*0.42), seg=Math.max(18,Math.round(postD*3));
+    for(const [cx,cz] of postPos) for(const T of tubeYTris(cx,cz, rO, rB, floorT-0.6, H, seg)) t.push(T);   // lid-screw posts
+    const nX=Math.max(0,Math.round(p.pbBossNX||0)), nZ=Math.max(0,Math.round(p.pbBossNZ||0));
+    if(nX>0 && nZ>0){                                                              // optional PCB standoffs (blind bore)
+      const bD=Math.max(4,p.pbBossD||6), bH=Math.max(2,p.pbBossH||5), bR=Math.max(0.8,(p.pbBossBore||2.6)/2);
+      const brO=bD/2, bseg=Math.max(16,Math.round(bD*3)), mx=Math.max(brO+2, Wi*0.14), mz=Math.max(brO+2, Di*0.14);
+      for(let ix=0;ix<nX;ix++) for(let iz=0;iz<nZ;iz++){
+        const cx=nX===1?0:-Wi/2+mx+(Wi-2*mx)*ix/(nX-1), cz=nZ===1?0:-Di/2+mz+(Di-2*mz)*iz/(nZ-1);
+        for(const T of tubeYTris(cx,cz, brO, bR, floorT-0.6, floorT+bH, bseg)) t.push(T); }
+    }
+    return t;
+  }
+  function lid(){
+    const t=[], lidW=Ww, lidD=Dw, hR=screwD*0.95, hD=Math.min(lidT*0.7, screwD*0.6);
+    const holes = postPos.map(([cx,cz])=>({axis:1,cp:cx,cq:cz,r:screwD*0.55,head:'sink',headR:hR,headDepth:hD,headSide:1}));
+    for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);          // plate (centred, y∈[-lidT/2,lidT/2])
+    const lipH=Math.max(2, Math.min(H*0.5, p.pbLipH||5)), lipWall=Math.max(1.0, wall-0.6);
+    const lipWo=Math.max(6, Wi-2*clr), lipDo=Math.max(6, Di-2*clr);
+    for(const T of rectRingYTris(0,0, lipWo,lipDo, lipWall, -lidT/2-lipH, -lidT/2+0.6)) t.push(T);   // drop-in lip
+    return t;
+  }
+  if(part==='tray') return center(tray());
+  if(part==='lid')  return center(lid());
+  // both: tray on the left, lid on the right (bottoms aligned), a small print gap between
+  const A=center(tray()), Bc=center(lid());
+  let aMinY=1e9,bMinY=1e9,aMaxX=-1e9,bMinX=1e9;
+  for(const T of A)for(const v of T){ if(v[1]<aMinY)aMinY=v[1]; if(v[0]>aMaxX)aMaxX=v[0]; }
+  for(const T of Bc)for(const v of T){ if(v[1]<bMinY)bMinY=v[1]; if(v[0]<bMinX)bMinX=v[0]; }
+  const dx = aMaxX + 6 - bMinX, dy = aMinY - bMinY;
+  const out = A.slice();
+  for(const T of Bc) out.push(T.map(v=>[v[0]+dx, v[1]+dy, v[2]]));
+  return center(out);
+}
 /* ---- TPMS lattice infill (гироид / Schwarz-P / diamond) ------------------------------------------
    A functional triply-periodic minimal-surface block (lightweight spacer / damper / energy absorber),
    built by MARCHING TETRAHEDRA over an implicit field — no big lookup tables, watertight by construction
@@ -8008,7 +8108,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -8022,7 +8122,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -8055,6 +8155,9 @@ function buildTrisForShapeCore(shape, p) {
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
     if (p.woBack && p.woBack !== 'none') {
       return snapWeldTris(buildWallOrg(p));
+    }
+    if (p.pbPart && p.pbPart !== 'none') {
+      return snapWeldTris(buildProjectBox(p));
     }
     if (p.hookMount && p.hookMount !== 'none') {
       return snapWeldTris(buildHook(p));
@@ -8407,7 +8510,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form','Настенный органайзер':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -9421,6 +9524,7 @@ function activeShapeLabel() {
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
   if (p.woBack && p.woBack !== 'none') return (p.woBack==='peg'?'перфопанель':'фр. планка') + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
+  if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';

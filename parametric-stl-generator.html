@@ -830,6 +830,7 @@
         <button class="base-btn" data-base="hinge" title="Петля «печать в сборе»: складывается сразу после печати, без вставки штифта">Петля</button>
         <button class="base-btn" data-base="gear" title="Прямозубая шестерня (эвольвентный профиль)">Шестерня</button>
         <button class="base-btn" data-base="mount" title="Крепёж: L-кронштейн, VESA-адаптер, стойки под heat-set">Крепёж</button>
+        <button class="base-btn" data-base="tpms" title="TPMS-решётка: гироид / Schwarz-P / diamond (лёгкий инфилл, демпфер)">TPMS</button>
       </div>
     </div>
 
@@ -988,7 +989,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v81';
+const APP_VERSION = 'v82';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3510,6 +3511,16 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntBossNZ', label:'Стойки: число по Z', min:1, max:10, step:1, default:2, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntBossD', label:'Стойки: Ø стойки', min:4, max:30, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntBossH', label:'Стойки: высота', min:3, max:60, step:0.5, default:7, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsType', label:'TPMS-решётка (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'gyroid',t:'гироид'},{v:'schwarzp',t:'Schwarz-P'},{v:'diamond',t:'diamond (алмаз)'}]},
+    {group:'TPMS-решётка', key:'tpmsStyle', label:'TPMS: тип', type:'select', default:'sheet',
+      options:[{v:'sheet',t:'стенка (лёгкий инфилл / демпфер)'},{v:'solid',t:'сплошной лабиринт (сеть)'}]},
+    {group:'TPMS-решётка', key:'tpmsW', label:'TPMS: ширина (X)', min:8, max:200, step:1, default:40, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsH', label:'TPMS: высота (Y)', min:8, max:200, step:1, default:40, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsD', label:'TPMS: глубина (Z)', min:8, max:200, step:1, default:40, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsCell', label:'TPMS: период ячейки', min:5, max:60, step:1, default:14, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsThick', label:'TPMS: толщина стенки (для «стенки»)', min:0.6, max:8, step:0.1, default:2.2, unit:'мм'},
+    {group:'TPMS-решётка', key:'tpmsIso', label:'TPMS: смещение (доля объёма, для «сети»)', min:-1, max:1, step:0.05, default:0, unit:''},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -3997,6 +4008,7 @@ function refreshActiveModelUI(){
 function dominantMode(p){
   if (p.gfBaseplate) return 'baseplate';
   if (p.logo3d) return 'logo3d';
+  if (p.tpmsType && p.tpmsType !== 'none') return 'tpms';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
   if (p.gearMode && p.gearMode !== 'none') return 'gear';
   if (p.pipMode && p.pipMode !== 'none') return 'hinge';
@@ -4017,6 +4029,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Петля (печать в сборе)': return mode==='hinge';
     case 'Шестерня': return mode==='gear';
     case 'Крепёж / монтаж': return mode==='mount';
+    case 'TPMS-решётка': return mode==='tpms';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4025,6 +4038,7 @@ function sectionRelevant(key, mode, hollow){
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
+  if (mode==='tpms')      return key==='TPMS-решётка';
   if (mode==='mount')     return key==='Крепёж / монтаж';
   if (mode==='gear')      return key==='Шестерня';
   if (mode==='hinge')     return key==='Петля (печать в сборе)';
@@ -4078,6 +4092,7 @@ function setBaseShape(kind){
   setSel('pipMode',    kind==='hinge'  ? 'flat'   : 'none');
   setSel('gearMode',   kind==='gear'   ? 'spur'   : 'none');
   setSel('mntMode',    kind==='mount'  ? 'lbracket':'none');
+  setSel('tpmsType',   kind==='tpms'   ? 'gyroid' : 'none');
   updateBaseShapePicker();
 }
 function setActiveTab(tab){
@@ -6929,6 +6944,53 @@ function buildMount(p){
   if(p.mntMode==='boss') return buildBoss(p);
   return buildLBracket(p);
 }
+/* ---- TPMS lattice infill (гироид / Schwarz-P / diamond) ------------------------------------------
+   A functional triply-periodic minimal-surface block (lightweight spacer / damper / energy absorber),
+   built by MARCHING TETRAHEDRA over an implicit field — no big lookup tables, watertight by construction
+   (every tet uses the same 6-way split so shared faces match, and edge crossings are interpolated
+   identically). The solid is F clipped to the box: phi = max(sheet|solid term, boxSDF); a margin node
+   layer sits outside the box (boxSDF>0) so the surface closes into flat caps at the box faces. */
+function tpmsF(x,y,z,kind,k){ const X=x*k,Y=y*k,Z=z*k;
+  if(kind==='schwarzp') return Math.cos(X)+Math.cos(Y)+Math.cos(Z);
+  if(kind==='diamond')  return Math.sin(X)*Math.sin(Y)*Math.sin(Z)+Math.sin(X)*Math.cos(Y)*Math.cos(Z)+Math.cos(X)*Math.sin(Y)*Math.cos(Z)+Math.cos(X)*Math.cos(Y)*Math.sin(Z);
+  return Math.sin(X)*Math.cos(Y)+Math.sin(Y)*Math.cos(Z)+Math.sin(Z)*Math.cos(X);   // gyroid
+}
+function marchTet(cp,cv,out){
+  let nIn=0; const inside=[cv[0]<0,cv[1]<0,cv[2]<0,cv[3]<0]; for(const b of inside) if(b) nIn++;
+  if(nIn===0||nIn===4) return;
+  const interp=(a,b)=>{ const va=cv[a],vb=cv[b]; let t=va/(va-vb); if(!isFinite(t))t=0.5;
+    return [cp[a][0]+t*(cp[b][0]-cp[a][0]), cp[a][1]+t*(cp[b][1]-cp[a][1]), cp[a][2]+t*(cp[b][2]-cp[a][2])]; };
+  const inI=[],outI=[]; for(let i=0;i<4;i++)(inside[i]?inI:outI).push(i);
+  const oc=[0,0,0]; for(const o of outI){oc[0]+=cp[o][0];oc[1]+=cp[o][1];oc[2]+=cp[o][2];} for(let d=0;d<3;d++)oc[d]/=outI.length;
+  const ref=(A,B,C)=>[oc[0]-(A[0]+B[0]+C[0])/3, oc[1]-(A[1]+B[1]+C[1])/3, oc[2]-(A[2]+B[2]+C[2])/3];   // toward the empty side
+  if(nIn===1||nIn===3){ const solo=nIn===1?inI[0]:outI[0], oth=nIn===1?outI:inI;
+    const A=interp(solo,oth[0]),B=interp(solo,oth[1]),C=interp(solo,oth[2]); out.push(orient([A,B,C],ref(A,B,C)));
+  } else { const [a,b]=inI,[c,d]=outI, A=interp(a,c),B=interp(a,d),C=interp(b,d),E=interp(b,c);
+    out.push(orient([A,B,C],ref(A,B,C))); out.push(orient([A,C,E],ref(A,C,E))); }
+}
+function buildTPMS(p){
+  const kind=p.tpmsType||'gyroid', style=p.tpmsStyle||'sheet';
+  const W=Math.max(8,p.tpmsW||40), H=Math.max(8,p.tpmsH||40), D=Math.max(8,p.tpmsD||40);
+  const cell=Math.max(4,p.tpmsCell||14), k=2*Math.PI/cell, hx=W/2,hy=H/2,hz=D/2;
+  const tF=Math.max(0.6,p.tpmsThick||2.2)*k*0.5, iso=p.tpmsIso||0;
+  const dg=Math.max(cell/6, Math.max(W,H,D)/64);            // ≥6 samples/cell, capped at 64 nodes/axis
+  const nx=Math.ceil((W+2*dg)/dg), ny=Math.ceil((H+2*dg)/dg), nz=Math.ceil((D+2*dg)/dg);
+  const x0=-hx-dg, y0=-hy-dg, z0=-hz-dg;
+  const boxSDF=(x,y,z)=>Math.max(Math.abs(x)-hx, Math.abs(y)-hy, Math.abs(z)-hz);
+  // nudge any sample that lands exactly on the isovalue OFF it (nodes align with F=0 at the origin/lattice),
+  // else marching tetrahedra makes degenerate, non-manifold crossings.
+  const phi=(x,y,z)=>{ const f=tpmsF(x,y,z,kind,k), s=style==='solid'?(iso-f):(Math.abs(f)-tF); const v=Math.max(s, boxSDF(x,y,z)); return Math.abs(v)<1e-6 ? 1e-6 : v; };
+  const stJ=nz+1, stI=(ny+1)*(nz+1), val=new Float32Array((nx+1)*stI);
+  for(let i=0;i<=nx;i++) for(let j=0;j<=ny;j++) for(let l=0;l<=nz;l++) val[i*stI+j*stJ+l]=phi(x0+i*dg, y0+j*dg, z0+l*dg);
+  const CO=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+  const TETS=[[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]];
+  const tris=[];
+  for(let i=0;i<nx;i++) for(let j=0;j<ny;j++) for(let l=0;l<nz;l++){
+    const cp=[],cv=[]; for(const [dx,dy,dz] of CO){ cp.push([x0+(i+dx)*dg, y0+(j+dy)*dg, z0+(l+dz)*dg]); cv.push(val[(i+dx)*stI+(j+dy)*stJ+(l+dz)]); }
+    for(const t of TETS) marchTet([cp[t[0]],cp[t[1]],cp[t[2]],cp[t[3]]], [cv[t[0]],cv[t[1]],cv[t[2]],cv[t[3]]], tris);
+  }
+  return tris;
+}
 /* ---- Stacking feet («штабелируемость») ------------------------------------------------------
    Four pads under the bottom, one at each edge middle, inset past (wall + clearance) so they drop
    INTO the open cavity of an identical box underneath — the boxes stack without sliding, the upper
@@ -7687,7 +7749,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none'));
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none'));
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -7701,7 +7763,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -7732,6 +7794,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.tpmsType && p.tpmsType !== 'none') {
+      return snapWeldTris(buildTPMS(p));
+    }
     if (p.mntMode && p.mntMode !== 'none') {
       return snapWeldTris(buildMount(p));
     }
@@ -8077,7 +8142,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -9090,6 +9155,7 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
     + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');

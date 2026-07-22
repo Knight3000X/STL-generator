@@ -120,5 +120,24 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('gearMode none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+console.log('=== belt pulleys (клиновой / круглый) ===');
+for(const mode of ['vbelt','roundbelt'])
+  for(const od of [16,30,80]) for(const th of [6,12,20]) for(const bw of [3,6,10]) for(const bore of [0,4,8]){
+    const t=base({gearMode:mode,gearPulleyOD:od,gearThick:th,gearBeltW:bw,gearGroove:4,gearBore:bore});
+    const mc=manifoldCheck(t,4);
+    chk(mode+' OD'+od+' th'+th+' bw'+bw+' bore'+bore+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+  }
+{ const b=computeBBox(base({gearMode:'vbelt',gearPulleyOD:40,gearThick:10}));
+  chk('pulley outer Ø = gearPulleyOD', Math.abs((b.maxX-b.minX)-40)<0.8, {x:+(b.maxX-b.minX).toFixed(1)});
+  chk('pulley thickness = gearThick', Math.abs((b.maxY-b.minY)-10)<0.6, {y:+(b.maxY-b.minY).toFixed(1)}); }
+{ // the groove removes material: a grooved pulley is lighter than a plain cylinder of the same OD×th
+  const grooved=vol(base({gearMode:'vbelt',gearPulleyOD:40,gearThick:10,gearGroove:6,gearBeltW:8,gearBore:0}));
+  const plain=Math.PI*20*20*10;   // solid cylinder volume (no bore)
+  chk('V groove removes material (pulley < solid cylinder)', grooved < plain && grooved > 0, {grooved:+grooved.toFixed(0),plain:+plain.toFixed(0)}); }
+{ const shallow=vol(base({gearMode:'vbelt',gearGroove:2})), deep=vol(base({gearMode:'vbelt',gearGroove:8}));
+  chk('deeper V groove removes more material', deep<shallow, {shallow:+shallow.toFixed(0),deep:+deep.toFixed(0)}); }
+{ const small=vol(base({gearMode:'roundbelt',gearPulleyOD:40,gearBore:3})), big=vol(base({gearMode:'roundbelt',gearPulleyOD:40,gearBore:12}));
+  chk('bigger bore removes more material', big<small, {small:+small.toFixed(0),big:+big.toFixed(0)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

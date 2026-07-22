@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3494,7 +3494,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'ratchet',t:'храповик'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3511,6 +3511,9 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearPulleyOD', label:'Шкив: наружный Ø', min:8, max:200, step:1, default:30, unit:'мм'},
+    {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'}]},
     {group:'Крепёж / монтаж', key:'mntW', label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
@@ -6982,6 +6985,44 @@ function buildRack(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+// Lathe (тело вращения): revolve a 2D outer silhouette `profile` (array of [r,y], bottom→top, r>rBore) around
+// the Y axis, closed by a coaxial bore cylinder and top/bottom annulus rings. Watertight by construction (an
+// index-stitched surface of revolution). Used for belt pulleys — the groove is an axial profile, not a tooth.
+function latheYTris(profile, rBore, seg){
+  const out=[], n=profile.length, TAU=2*Math.PI;
+  const V=(r,y,k)=>{ const a=TAU*(k%seg)/seg; return [r*Math.cos(a), y, r*Math.sin(a)]; };
+  const yB=profile[0][1], yT=profile[n-1][1], rBot=profile[0][0], rTop=profile[n-1][0];
+  for(let s=0;s<n-1;s++){ const [r0,y0]=profile[s],[r1,y1]=profile[s+1];              // outer surface
+    for(let k=0;k<seg;k++){ const A=V(r0,y0,k),B=V(r0,y0,k+1),C=V(r1,y1,k+1),D=V(r1,y1,k), ref=[(A[0]+B[0]),0,(A[2]+B[2])];
+      out.push(orient([A,B,C],ref)); out.push(orient([A,C,D],ref)); } }
+  for(let k=0;k<seg;k++){ const A=V(rBore,yB,k),B=V(rBore,yB,k+1),C=V(rBore,yT,k+1),D=V(rBore,yT,k), ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];  // bore
+    out.push(orient([A,B,C],ref)); out.push(orient([A,C,D],ref)); }
+  for(let k=0;k<seg;k++){ const oB=V(rBot,yB,k),oB1=V(rBot,yB,k+1),iB=V(rBore,yB,k),iB1=V(rBore,yB,k+1);   // bottom annulus
+    out.push(orient([oB,iB,iB1],[0,-1,0])); out.push(orient([oB,iB1,oB1],[0,-1,0]));
+    const oT=V(rTop,yT,k),oT1=V(rTop,yT,k+1),iT=V(rBore,yT,k),iT1=V(rBore,yT,k+1);                        // top annulus
+    out.push(orient([oT,iT1,iT],[0,1,0])); out.push(orient([oT,oT1,iT1],[0,1,0])); }
+  return out;
+}
+// Belt pulley (шкив): a rim with a circumferential groove — V (клиновой ремень) or round (круглый
+// ремень). Built as a lathe of the axial silhouette + a plain bore. Watertight by construction.
+function buildPulley(p){
+  const th=Math.max(3, p.gearThick||10), rO=Math.max(5,(p.gearPulleyOD||30)/2);
+  const rB=Math.max(0.8, Math.min(p.gearBore>0?p.gearBore/2:rO*0.28, rO-2));
+  const seg=Math.max(48, Math.round(2*Math.PI*rO/1.0)), yG=th/2;
+  const beltW=Math.max(1.5, Math.min(p.gearBeltW||6, th-1.2)), hw=beltW/2;
+  let profile=[[rO,0]];
+  if(p.gearMode==='roundbelt'){                                        // semicircular groove (round belt / cord)
+    const bR=hw, nArc=12;                                              // arc runs [rO,yG−bR] → [rO−bR,yG] → [rO,yG+bR]
+    for(let i=0;i<=nArc;i++){ const f=1.5*Math.PI - Math.PI*i/nArc; profile.push([rO+bR*Math.cos(f), yG+bR*Math.sin(f)]); }
+  } else {                                                             // V groove (клиновой ремень)
+    const gd=Math.max(1, Math.min(p.gearGroove||beltW*0.75, rO-rB-1));
+    profile.push([rO, yG-hw]); profile.push([rO-gd, yG]); profile.push([rO, yG+hw]);
+  }
+  profile.push([rO, th]);
+  let tris=latheYTris(profile, rB, seg);
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 // Bore radius as a function of angle: a plain circle, plus an optional rectangular KEYWAY cut outward at
 // the top (θ≈π/2) — a flat top at rB+keyD flanked by two straight side walls. Single-valued in angle, so
 // the index-stitched bore annulus stays watertight.
@@ -6996,6 +7037,7 @@ function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
   if(mode==='rack') return buildRack(p);
+  if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
   let o, rp=m*Z/2;
   if(mode==='gt2') o=sprocketOutline(Z, 2);
   else if(mode==='ratchet') o=ratchetOutline(Z, m);
@@ -9567,8 +9609,8 @@ function activeShapeLabel() {
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
-    + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';

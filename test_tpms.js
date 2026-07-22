@@ -39,6 +39,16 @@ console.log('=== field sanity ===');
   chk('schwarzP = 3 at origin', Math.abs(tpmsF(0,0,0,'schwarzp',1)-3)<1e-9, {});
   chk('gyroid is periodic in cell', Math.abs(tpmsF(0,0,0,'gyroid',2*Math.PI/14) - tpmsF(14,0,0,'gyroid',2*Math.PI/14))<1e-9, {}); }
 
+console.log('=== density gradient ===');
+for(const g of [-0.7,0,0.7])
+  chk('gradient '+g+' watertight (+vol)', (()=>{const t=base({tpmsGrad:g,tpmsCell:14,tpmsW:36,tpmsH:36,tpmsD:36});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {g});
+{ // with a positive gradient the top half carries more material than the bottom half (thicker walls up top)
+  const t=base({tpmsGrad:0.8,tpmsStyle:'sheet',tpmsCell:12,tpmsW:36,tpmsH:36,tpmsD:36});
+  let top=0,bot=0; for(const T of t){ const yc=(T[0][1]+T[1][1]+T[2][1])/3; if(yc>3) top++; else if(yc<-3) bot++; }
+  chk('positive gradient → denser (more facets) toward +Y', top>bot, {top,bot}); }
+{ const flat=vol(base({tpmsGrad:0})), graded=vol(base({tpmsGrad:0.6}));
+  chk('gradient changes total volume', Math.abs(graded-flat)>50, {flat:+flat.toFixed(0),graded:+graded.toFixed(0)}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a TPMS block', a===b, {a,b}); }

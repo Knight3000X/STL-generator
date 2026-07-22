@@ -79,6 +79,22 @@ for(const Z of [8,12,24])
 chk('helical + bore watertight', manifoldCheck(base({gearMode:'helical',gearHelix:25,gearBore:6}),4).watertight);
 chk('GT2 + bore watertight', manifoldCheck(base({gearMode:'gt2',gearTeeth:20,gearBore:5}),4).watertight);
 
+console.log('=== keyway + hub ===');
+for(const mode of ['spur','helical','gt2']) for(const kw of [0,3,5])
+  chk(mode+' keyway '+kw+' watertight', manifoldCheck(base({gearMode:mode,gearKeyW:kw,gearKeyD:2.5,gearBore:6}),4).watertight);
+{ const noKey=vol(base({gearKeyW:0,gearBore:6})), key=vol(base({gearKeyW:5,gearKeyD:2.5,gearBore:6}));
+  chk('keyway removes bore material', key<noKey, {noKey:+noKey.toFixed(0),key:+key.toFixed(0)}); }
+{ // the keyway really widens the bore at the top: some bore point reaches beyond the round radius
+  const g=gearOutline(2,20,20), rB=Math.max(0.6,Math.min(3,g.rf-0.8));
+  const rTop=boreRadiusAt(Math.PI/2, rB, 5, 2.5);
+  chk('bore radius at top = rB + keyD', Math.abs(rTop-(rB+2.5))<1e-6, {rTop:+rTop.toFixed(2),expect:rB+2.5});
+  chk('bore radius off-slot = rB', Math.abs(boreRadiusAt(-Math.PI/2,rB,5,2.5)-rB)<1e-6, {}); }
+for(const mode of ['spur','helical','ratchet'])
+  chk(mode+' hub watertight (+vol)', (()=>{const t=base({gearMode:mode,gearHub:16,gearHubH:8,gearBore:6});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {mode});
+{ const noHub=computeBBox(base({gearHub:0})), hub=computeBBox(base({gearHub:16,gearHubH:9}));
+  chk('hub adds height on one face', (hub.maxY-hub.minY) > (noHub.maxY-noHub.minY)+6, {noHub:+(noHub.maxY-noHub.minY).toFixed(1),hub:+(hub.maxY-hub.minY).toFixed(1)}); }
+chk('keyway + hub together watertight', manifoldCheck(base({gearKeyW:5,gearKeyD:2.5,gearHub:16,gearHubH:8,gearBore:6}),4).watertight);
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a gear', a===b, {a,b}); }

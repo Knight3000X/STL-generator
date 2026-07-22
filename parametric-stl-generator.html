@@ -989,7 +989,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3492,6 +3492,10 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearThick', label:'Шестерня: толщина', min:1, max:60, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearBore', label:'Шестерня: Ø отверстия под вал (0 = авто)', min:0, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Шестерня', key:'gearHelix', label:'Косозубая: угол наклона зуба', min:0, max:45, step:1, default:15, unit:'°'},
+    {group:'Шестерня', key:'gearKeyW', label:'Шестерня: ширина шпоночного паза (0 = без)', min:0, max:12, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearKeyD', label:'Шестерня: глубина шпоночного паза', min:0, max:6, step:0.5, default:2, unit:'мм'},
+    {group:'Шестерня', key:'gearHub', label:'Шестерня: Ø ступицы (0 = без)', min:0, max:80, step:1, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearHubH', label:'Шестерня: высота ступицы', min:0, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
@@ -3521,6 +3525,7 @@ const SHAPE_PARAMS = {
     {group:'TPMS-решётка', key:'tpmsCell', label:'TPMS: период ячейки', min:5, max:60, step:1, default:14, unit:'мм'},
     {group:'TPMS-решётка', key:'tpmsThick', label:'TPMS: толщина стенки (для «стенки»)', min:0.6, max:8, step:0.1, default:2.2, unit:'мм'},
     {group:'TPMS-решётка', key:'tpmsIso', label:'TPMS: смещение (доля объёма, для «сети»)', min:-1, max:1, step:0.05, default:0, unit:''},
+    {group:'TPMS-решётка', key:'tpmsGrad', label:'TPMS: градиент плотности по Y (0 = равномерно)', min:-0.9, max:0.9, step:0.05, default:0, unit:''},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -6814,27 +6819,28 @@ function ratchetOutline(N, m){
 }
 // Loft a star-shaped 2D outline P along Y (th) with a concentric bore, optionally TWISTED (helical gears).
 // The bore ring is sampled per-point at the outline's own angle, so end faces close as a clean annulus.
-function extrudeProfileY(P, rBore, th, twist){
+function extrudeProfileY(P, boreFn, th, twist){
   const n=P.length, tris=[], M=Math.max(1, Math.round(Math.abs(twist)/(5*Math.PI/180)));
   const rot=(q,a)=>[q[0]*Math.cos(a)-q[1]*Math.sin(a), q[0]*Math.sin(a)+q[1]*Math.cos(a)];
-  const lP=[], lB=[]; for(let k=0;k<=M;k++){ const Pk=P.map(q=>rot(q,twist*k/M));
-    lP.push(Pk); lB.push(Pk.map(q=>{const a=Math.atan2(q[1],q[0]); return [rBore*Math.cos(a), rBore*Math.sin(a)];})); }
+  const ang=P.map(q=>Math.atan2(q[1],q[0]));
+  const B=ang.map(a=>{ const r=boreFn(a); return [r*Math.cos(a), r*Math.sin(a)]; });   // AXIAL bore (keyway stays straight)
+  const lP=[]; for(let k=0;k<=M;k++) lP.push(P.map(q=>rot(q,twist*k/M)));               // outline twists (helical)
   const yAt=k=>-th/2+th*k/M;
-  for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1], Ba=lB[k],Bb=lB[k+1];
+  for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1];
     for(let i=0;i<n;i++){ const j=(i+1)%n;
       const refO=[Pa[i][0]+Pa[j][0],0,Pa[i][1]+Pa[j][1]];
       tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pa[j][0],y0,Pa[j][1]],[Pb[j][0],y1,Pb[j][1]]],refO));
       tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pb[j][0],y1,Pb[j][1]],[Pb[i][0],y1,Pb[i][1]]],refO));
-      const refI=[-(Ba[i][0]+Ba[j][0]),0,-(Ba[i][1]+Ba[j][1])];
-      tris.push(orient([[Ba[i][0],y0,Ba[i][1]],[Ba[j][0],y0,Ba[j][1]],[Bb[j][0],y1,Bb[j][1]]],refI));
-      tris.push(orient([[Ba[i][0],y0,Ba[i][1]],[Bb[j][0],y1,Bb[j][1]],[Bb[i][0],y1,Bb[i][1]]],refI));
+      const refI=[-(B[i][0]+B[j][0]),0,-(B[i][1]+B[j][1])];
+      tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[B[j][0],y1,B[j][1]]],refI));
+      tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y1,B[j][1]],[B[i][0],y1,B[i][1]]],refI));
     } }
-  const yT=yAt(M),PT=lP[M],BT=lB[M], yB=yAt(0),PB=lP[0],BB=lB[0];
+  const yT=yAt(M),PT=lP[M], yB=yAt(0),PB=lP[0];
   for(let i=0;i<n;i++){ const j=(i+1)%n;
-    tris.push(orient([[BT[i][0],yT,BT[i][1]],[PT[i][0],yT,PT[i][1]],[PT[j][0],yT,PT[j][1]]],[0,1,0]));
-    tris.push(orient([[BT[i][0],yT,BT[i][1]],[PT[j][0],yT,PT[j][1]],[BT[j][0],yT,BT[j][1]]],[0,1,0]));
-    tris.push(orient([[BB[i][0],yB,BB[i][1]],[PB[j][0],yB,PB[j][1]],[PB[i][0],yB,PB[i][1]]],[0,-1,0]));
-    tris.push(orient([[BB[i][0],yB,BB[i][1]],[BB[j][0],yB,BB[j][1]],[PB[j][0],yB,PB[j][1]]],[0,-1,0]));
+    tris.push(orient([[B[i][0],yT,B[i][1]],[PT[i][0],yT,PT[i][1]],[PT[j][0],yT,PT[j][1]]],[0,1,0]));
+    tris.push(orient([[B[i][0],yT,B[i][1]],[PT[j][0],yT,PT[j][1]],[B[j][0],yT,B[j][1]]],[0,1,0]));
+    tris.push(orient([[B[i][0],yB,B[i][1]],[PB[j][0],yB,PB[j][1]],[PB[i][0],yB,PB[i][1]]],[0,-1,0]));
+    tris.push(orient([[B[i][0],yB,B[i][1]],[B[j][0],yB,B[j][1]],[PB[j][0],yB,PB[j][1]]],[0,-1,0]));
   }
   return tris;
 }
@@ -6862,6 +6868,16 @@ function buildRack(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+// Bore radius as a function of angle: a plain circle, plus an optional rectangular KEYWAY cut outward at
+// the top (θ≈π/2) — a flat top at rB+keyD flanked by two straight side walls. Single-valued in angle, so
+// the index-stitched bore annulus stays watertight.
+function boreRadiusAt(a, rB, keyW, keyD){
+  if(!(keyD>0)||!(keyW>0)) return rB;
+  const sx=Math.sin(a), cx=Math.cos(a); if(sx<=0) return rB;
+  const rTop=(rB+keyD)/sx; if(Math.abs(rTop*cx)<=keyW/2) return rTop;                       // flat top of the slot
+  if(Math.abs(cx)>1e-6){ const rSide=(keyW/2)/Math.abs(cx); if(rSide*sx>rB && rSide*sx<rB+keyD) return rSide; } // side wall
+  return rB;
+}
 function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
@@ -6871,9 +6887,17 @@ function buildGear(p){
   else if(mode==='ratchet') o=ratchetOutline(Z, m);
   else { o=gearOutline(m,Z,alpha); rp=o.rp; }                 // spur / helical
   const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:o.rf*0.35, o.rf-0.8));
+  const keyW=Math.max(0,Math.min(p.gearKeyW||0, rB*1.4)), keyD=Math.max(0,Math.min(p.gearKeyD||0, o.rf-rB-0.6));
+  const boreFn=a=>boreRadiusAt(a, rB, keyW, keyD);
   let twist=0;
   if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
-  return extrudeProfileY(o.P, rB, th, twist);
+  let tris=extrudeProfileY(o.P, boreFn, th, twist);
+  const hubD=p.gearHub||0, hubH=Math.max(0,p.gearHubH||0);   // raised hub (boss) around the bore on the +Y face
+  if(hubD>2*rB+1 && hubH>0.5){ const hubR=Math.min(hubD/2, o.rf-0.4), seg=Math.max(20,Math.round(hubR*4));
+    tris=tris.concat(tubeYTris(0,0, hubR, rB+0.05, th/2-1, th/2+hubH, seg));   // +0.05 avoids a coaxial coincidence with the bore
+    let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+    const dy=-(lo+hi)/2; tris=tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]])); }
+  return tris;
 }
 /* ---- Mounts & fasteners (крепёж / монтаж) -------------------------------------------------------
    Functional brackets built from plain closed boxes + bored plates + Y-axis tube bosses. Holes (incl.
@@ -6972,14 +6996,20 @@ function buildTPMS(p){
   const kind=p.tpmsType||'gyroid', style=p.tpmsStyle||'sheet';
   const W=Math.max(8,p.tpmsW||40), H=Math.max(8,p.tpmsH||40), D=Math.max(8,p.tpmsD||40);
   const cell=Math.max(4,p.tpmsCell||14), k=2*Math.PI/cell, hx=W/2,hy=H/2,hz=D/2;
-  const tF=Math.max(0.6,p.tpmsThick||2.2)*k*0.5, iso=p.tpmsIso||0;
+  const tF=Math.max(0.6,p.tpmsThick||2.2)*k*0.5, iso=p.tpmsIso||0, grad=Math.max(-0.9,Math.min(0.9,p.tpmsGrad||0));
   const dg=Math.max(cell/6, Math.max(W,H,D)/64);            // ≥6 samples/cell, capped at 64 nodes/axis
-  const nx=Math.ceil((W+2*dg)/dg), ny=Math.ceil((H+2*dg)/dg), nz=Math.ceil((D+2*dg)/dg);
-  const x0=-hx-dg, y0=-hy-dg, z0=-hz-dg;
+  const nx=Math.ceil((W+2*dg)/dg)+1, ny=Math.ceil((H+2*dg)/dg)+1, nz=Math.ceil((D+2*dg)/dg)+1;
+  // Offset the grid origin by an irrational fraction of the step (a different fraction per axis) so no node
+  // ever lands on the TPMS symmetry planes where F is exactly 0 — that alignment makes marching tetrahedra
+  // emit coincident crossing points and non-manifold edges. The margin layers stay outside the box either way.
+  const x0=-hx-dg+dg*0.1237, y0=-hy-dg+dg*0.0861, z0=-hz-dg+dg*0.1553;
   const boxSDF=(x,y,z)=>Math.max(Math.abs(x)-hx, Math.abs(y)-hy, Math.abs(z)-hz);
   // nudge any sample that lands exactly on the isovalue OFF it (nodes align with F=0 at the origin/lattice),
-  // else marching tetrahedra makes degenerate, non-manifold crossings.
-  const phi=(x,y,z)=>{ const f=tpmsF(x,y,z,kind,k), s=style==='solid'?(iso-f):(Math.abs(f)-tF); const v=Math.max(s, boxSDF(x,y,z)); return Math.abs(v)<1e-6 ? 1e-6 : v; };
+  // else marching tetrahedra makes degenerate, non-manifold crossings. `grad` grades the density along Y
+  // (wall thickness for sheet, volume fraction for solid) → a stiffness gradient.
+  const phi=(x,y,z)=>{ const f=tpmsF(x,y,z,kind,k), g=grad*(y/hy);
+    const s = style==='solid' ? (iso + g*0.6 - f) : (Math.abs(f) - tF*(1+g));
+    const v=Math.max(s, boxSDF(x,y,z)); return Math.abs(v)<1e-6 ? 1e-6 : v; };
   const stJ=nz+1, stI=(ny+1)*(nz+1), val=new Float32Array((nx+1)*stI);
   for(let i=0;i<=nx;i++) for(let j=0;j<=ny;j++) for(let l=0;l<=nz;l++) val[i*stI+j*stJ+l]=phi(x0+i*dg, y0+j*dg, z0+l*dg);
   const CO=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];

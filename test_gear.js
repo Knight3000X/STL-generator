@@ -95,6 +95,24 @@ for(const mode of ['spur','helical','ratchet'])
   chk('hub adds height on one face', (hub.maxY-hub.minY) > (noHub.maxY-noHub.minY)+6, {noHub:+(noHub.maxY-noHub.minY).toFixed(1),hub:+(hub.maxY-hub.minY).toFixed(1)}); }
 chk('keyway + hub together watertight', manifoldCheck(base({gearKeyW:5,gearKeyD:2.5,gearHub:16,gearHubH:8,gearBore:6}),4).watertight);
 
+console.log('=== spoked / lightened web ===');
+for(const mode of ['spur','helical']) for(const sp of [3,4,6])
+  chk(mode+' '+sp+' spokes watertight (+vol)', (()=>{const t=base({gearMode:mode,gearTeeth:36,gearModule:2,gearSpokes:sp,gearBore:8});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {mode,sp});
+{ const solid=vol(base({gearTeeth:36,gearModule:2,gearSpokes:0,gearBore:8})), spoked=vol(base({gearTeeth:36,gearModule:2,gearSpokes:5,gearBore:8}));
+  chk('spoked web is lighter than a solid disc', spoked<solid, {solid:+solid.toFixed(0),spoked:+spoked.toFixed(0)}); }
+chk('spokes + keyway + hub watertight', manifoldCheck(base({gearTeeth:36,gearModule:2,gearSpokes:5,gearBore:8,gearKeyW:5,gearKeyD:2.5,gearHub:24,gearHubH:8}),4).watertight);
+{ const b=computeBBox(base({gearTeeth:36,gearModule:2,gearSpokes:5})); const outer=2*(36+2); // da
+  chk('spoked keeps the full outer Ø', Math.abs((b.maxX-b.minX)-outer)<2, {x:+(b.maxX-b.minX).toFixed(1),outer}); }
+
+console.log('=== bevel (коническая) ===');
+for(const ang of [30,45,60]) for(const Z of [16,24])
+  chk('bevel '+ang+'° Z'+Z+' watertight (+vol)', (()=>{const t=base({gearMode:'bevel',gearBevel:ang,gearTeeth:Z,gearThick:8,gearBore:6});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {ang,Z});
+{ // teeth taper: the top face outline is smaller than the bottom face outline
+  const t=base({gearMode:'bevel',gearBevel:55,gearTeeth:20,gearThick:9,gearModule:2.5}); const b=computeBBox(t);
+  let botR=0,topR=0; for(const T of t) for(const v of T){ const r=Math.hypot(v[0],v[2]); if(v[1]<b.minY+0.4) botR=Math.max(botR,r); if(v[1]>b.maxY-0.4) topR=Math.max(topR,r); }
+  chk('bevel teeth taper (top Ø < bottom Ø)', topR < botR-2, {botR:+botR.toFixed(1),topR:+topR.toFixed(1)}); }
+chk('bevel + keyway + bore watertight', manifoldCheck(base({gearMode:'bevel',gearBevel:45,gearKeyW:4,gearKeyD:2,gearBore:6}),4).watertight);
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a gear', a===b, {a,b}); }

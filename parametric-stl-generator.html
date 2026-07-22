@@ -989,7 +989,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3488,7 +3488,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'ratchet',t:'храповик'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3499,6 +3499,9 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearKeyD', label:'Шестерня: глубина шпоночного паза', min:0, max:6, step:0.5, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearHub', label:'Шестерня: Ø ступицы (0 = без)', min:0, max:80, step:1, default:0, unit:'мм'},
     {group:'Шестерня', key:'gearHubH', label:'Шестерня: высота ступицы', min:0, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearSpokes', label:'Шестерня: число спиц (0 = сплошной диск, ≥3 = облегчение)', min:0, max:12, step:1, default:0, unit:'', int:true},
+    {group:'Шестерня', key:'gearSpokeW', label:'Шестерня: ширина спицы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearBevel', label:'Коническая: угол конуса', min:15, max:75, step:1, default:45, unit:'°'},
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
@@ -6832,12 +6835,13 @@ function ratchetOutline(N, m){
 }
 // Loft a star-shaped 2D outline P along Y (th) with a concentric bore, optionally TWISTED (helical gears).
 // The bore ring is sampled per-point at the outline's own angle, so end faces close as a clean annulus.
-function extrudeProfileY(P, boreFn, th, twist){
-  const n=P.length, tris=[], M=Math.max(1, Math.round(Math.abs(twist)/(5*Math.PI/180)));
+function extrudeProfileY(P, boreFn, th, twist, scaleFn){
+  const hasScale = scaleFn !== undefined; scaleFn = scaleFn || (()=>1);
+  const n=P.length, tris=[], M=Math.max(hasScale?8:1, Math.round(Math.abs(twist)/(5*Math.PI/180)), 1);
   const rot=(q,a)=>[q[0]*Math.cos(a)-q[1]*Math.sin(a), q[0]*Math.sin(a)+q[1]*Math.cos(a)];
   const ang=P.map(q=>Math.atan2(q[1],q[0]));
   const B=ang.map(a=>{ const r=boreFn(a); return [r*Math.cos(a), r*Math.sin(a)]; });   // AXIAL bore (keyway stays straight)
-  const lP=[]; for(let k=0;k<=M;k++) lP.push(P.map(q=>rot(q,twist*k/M)));               // outline twists (helical)
+  const lP=[]; for(let k=0;k<=M;k++){ const s=scaleFn(k/M); lP.push(P.map(q=>{ const r=rot(q,twist*k/M); return [r[0]*s, r[1]*s]; })); }  // twist + taper
   const yAt=k=>-th/2+th*k/M;
   for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1];
     for(let i=0;i<n;i++){ const j=(i+1)%n;
@@ -6898,13 +6902,29 @@ function buildGear(p){
   let o, rp=m*Z/2;
   if(mode==='gt2') o=sprocketOutline(Z, 2);
   else if(mode==='ratchet') o=ratchetOutline(Z, m);
-  else { o=gearOutline(m,Z,alpha); rp=o.rp; }                 // spur / helical
+  else { o=gearOutline(m,Z,alpha); rp=o.rp; }                 // spur / helical / bevel
   const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:o.rf*0.35, o.rf-0.8));
   const keyW=Math.max(0,Math.min(p.gearKeyW||0, rB*1.4)), keyD=Math.max(0,Math.min(p.gearKeyD||0, o.rf-rB-0.6));
   const boreFn=a=>boreRadiusAt(a, rB, keyW, keyD);
   let twist=0;
   if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
-  let tris=extrudeProfileY(o.P, boreFn, th, twist);
+  const spokes=Math.max(0,Math.round(p.gearSpokes||0));
+  let tris;
+  if(mode==='bevel'){                                         // conical (bevel) gear: teeth taper toward the apex
+    const bevA=Math.max(15,Math.min(75,p.gearBevel||45))*Math.PI/180;
+    const sTop=Math.max(0.2, 1 - th*Math.tan(bevA)/rp);       // outline scale at the front face
+    tris=extrudeProfileY(o.P, boreFn, th, 0, u=>1-(1-sTop)*u); // back (u=0) full, front (u=1) shrunk
+  } else if(spokes>=3 && (mode==='spur'||mode==='helical')){  // SPOKED / lightened web: rim ring + hub ring + N spokes
+    const rRim=Math.max(rB*1.8, o.rf-m*1.6), rHub=Math.max(rB+2.5, rB+Math.max(3,(rRim-rB)*0.32));
+    tris=extrudeProfileY(o.P, ()=>rRim, th, twist);           // toothed rim (annulus outline↔rRim)
+    const nHub=Math.max(48, Math.round(2*Math.PI*rHub/1.0)), circ=[];   // dense enough to resolve the keyway
+    for(let i=0;i<nHub;i++){ const a=2*Math.PI*i/nHub; circ.push([rHub*Math.cos(a), rHub*Math.sin(a)]); }
+    tris=tris.concat(extrudeProfileY(circ, boreFn, th, 0));   // hub (annulus rHub↔bore, keyway included)
+    const spokeW=(p.gearSpokeW>0)?p.gearSpokeW:Math.max(2.5, 2*Math.PI*rHub/spokes*0.45);
+    for(let s=0;s<spokes;s++){ const a=2*Math.PI*s/spokes, ca=Math.cos(a), sa=Math.sin(a);   // radial bars, rotated about Y
+      for(const T of boxSpanTris(rHub-1.5, rRim+1.5, -th/2, th/2, -spokeW/2, spokeW/2))
+        tris.push(T.map(v=>[v[0]*ca - v[2]*sa, v[1], v[0]*sa + v[2]*ca])); }
+  } else tris=extrudeProfileY(o.P, boreFn, th, twist);
   const hubD=p.gearHub||0, hubH=Math.max(0,p.gearHubH||0);   // raised hub (boss) around the bore on the +Y face
   if(hubD>2*rB+1 && hubH>0.5){ const hubR=Math.min(hubD/2, o.rf-0.4), seg=Math.max(20,Math.round(hubR*4));
     tris=tris.concat(tubeYTris(0,0, hubR, rB+0.05, th/2-1, th/2+hubH, seg));   // +0.05 avoids a coaxial coincidence with the bore
@@ -9232,7 +9252,7 @@ function activeShapeLabel() {
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',ratchet:'храповик'})[p.gearMode]
     + (p.gearMode==='rack' ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер'})[p.threadMode] || 'резьба';

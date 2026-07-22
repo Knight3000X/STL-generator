@@ -44,6 +44,31 @@ console.log('=== print-in-place clearances (folds off the bed) ===');
   for(const T of t) for(const v of T){ if(v[2]>0.01) minPos=Math.min(minPos,v[2]); if(v[2]<-0.01) maxNeg=Math.max(maxNeg,v[2]); }
   chk('leaves separated by a clearance band at the pin line', minPos>0 && maxNeg<0, {minPos:+minPos.toFixed(2),maxNeg:+maxNeg.toFixed(2)}); }
 
+console.log('=== mounting holes in leaves ===');
+for(const d of [2.5,4]) for(const n of [1,2,3])
+  chk('screw Ø'+d+' ×'+n+'/leaf watertight', manifoldCheck(base({pipScrewD:d,pipScrewN:n}),4).watertight);
+{ const solid=vol(base({pipScrewD:0})), holed=vol(base({pipScrewD:4,pipScrewN:2}));
+  chk('screw holes remove material', holed<solid, {solid:+solid.toFixed(0),holed:+holed.toFixed(0)}); }
+
+console.log('=== box mode (лоток + крышка) ===');
+for(const bh of [6,12,30]) for(const kn of [3,5,9])
+  chk('box H'+bh+' K'+kn+' watertight (+vol)', (()=>{const t=base({pipMode:'box',pipBoxH:bh,pipKnuckles:kn});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {bh,kn});
+{ const flat=computeBBox(base({pipMode:'flat'})), box=computeBBox(base({pipMode:'box',pipBoxH:14}));
+  chk('tray walls add height above the leaf', (box.maxY-box.minY) > (flat.maxY-flat.minY)+8, {flat:+(flat.maxY-flat.minY).toFixed(1),box:+(box.maxY-box.minY).toFixed(1)}); }
+chk('box + screw holes watertight', manifoldCheck(base({pipMode:'box',pipScrewD:3}),4).watertight);
+
+console.log('=== clip mode (клипса-защёлка) ===');
+for(const d of [6,12,25]) for(const mouth of [50,75,95]) for(const wall of [2,3.5])
+  chk('clip Ø'+d+' mouth'+mouth+'% w'+wall+' watertight (+vol)', (()=>{const t=base({pipMode:'clip',pipClipD:d,pipClipMouth:mouth,pipClipWall:wall});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {d,mouth,wall});
+chk('clip + screw tabs watertight', manifoldCheck(base({pipMode:'clip',pipScrewD:3.5}),4).watertight);
+{ const t=base({pipMode:'clip',pipClipD:12,pipClipWall:2.5,pipClipW:14}); const b=computeBBox(t);
+  chk('clip width = pipClipW (X)', Math.abs((b.maxX-b.minX)-14)<0.2, {x:+(b.maxX-b.minX).toFixed(2)}); }
+{ // a narrower mouth (snap grip) really leaves a gap at the top narrower than the bore diameter
+  const t=base({pipMode:'clip',pipClipD:20,pipClipMouth:60,pipClipWall:3}); let topZmin=1e9,topZmax=-1e9,ymax=-1e9;
+  for(const T of t) for(const v of T) ymax=Math.max(ymax,v[1]);
+  for(const T of t) for(const v of T) if(v[1]>ymax-1){ topZmin=Math.min(topZmin,v[2]); topZmax=Math.max(topZmax,v[2]); }
+  chk('clip has an open mouth at the top (grip < Ø)', (topZmax-topZmin) < 20, {mouthGap:+(topZmax-topZmin).toFixed(1)}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a hinge', a===b, {a,b}); }

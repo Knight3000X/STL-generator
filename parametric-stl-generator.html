@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v96';
+const APP_VERSION = 'v97';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3467,7 +3467,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'петля: коробка с крышкой (лоток + крышка)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'}]},
     {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafW', label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
@@ -3596,6 +3596,8 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossD', label:'PCB-стойки: Ø', min:4, max:20, step:0.5, default:6, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossH', label:'PCB-стойки: высота', min:2, max:40, step:0.5, default:5, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
     {group:'Скругление углов', key:'filletAxisRes', label:'Скругление: плотность осевой сетки (0=авто)', min:0, max:40, step:1, default:0, unit:'', int:true},
@@ -5414,10 +5416,15 @@ function buildThread(p){
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2, nutH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.8);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
     const Hx=(y,i)=>{ const a=th(i), r=hexR(a); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    // Female bore: radius rides the SAME helical profile as the male, opened by the fit clearance, so a bolt of
+    // the same Ø/pitch screws in. It MUST be sampled along Y (spp per pitch) — a bore stitched only between the
+    // top and bottom rings is a ruled surface, i.e. no thread at all and a hole that looks off-centre.
     const Bo=(y,i)=>{ const a=th(i), r=minorR+h*threadProfile(phase(i,y),flat)+clr; return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    const Nn=Math.max(8, Math.min(320, Math.round(nutH/P*spp))), yN=j=>nutH*j/Nn;   // capped: a tall nut on a fine pitch would explode the mesh
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i2))/2, ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
       tris.push(orient([Hx(0,i),Hx(0,i2),Hx(nutH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(nutH,i2),Hx(nutH,i)],ro));         // hex wall
-      tris.push(orient([Bo(0,i),Bo(0,i2),Bo(nutH,i2)],ri)); tris.push(orient([Bo(0,i),Bo(nutH,i2),Bo(nutH,i)],ri));         // bore wall
+      for(let j=0;j<Nn;j++){ const y0=yN(j), y1=yN(j+1);                                                                    // bore wall (threaded)
+        tris.push(orient([Bo(y0,i),Bo(y0,i2),Bo(y1,i2)],ri)); tris.push(orient([Bo(y0,i),Bo(y1,i2),Bo(y1,i)],ri)); }
       tris.push(orient([Bo(nutH,i),Hx(nutH,i),Hx(nutH,i2)],[0,1,0])); tris.push(orient([Bo(nutH,i),Hx(nutH,i2),Bo(nutH,i2)],[0,1,0]));  // top annulus
       tris.push(orient([Bo(0,i),Hx(0,i2),Hx(0,i)],[0,-1,0])); tris.push(orient([Bo(0,i),Bo(0,i2),Hx(0,i2)],[0,-1,0])); }    // bottom annulus
     if(mode==='wingnut'){ const wingL=afR*1.7, wingT=Math.max(2,nutH*0.35);   // two grip fins on ±X, embedded into the hex
@@ -6727,10 +6734,81 @@ function buildHingeKnuckles(p) {
    freely. Knuckles alternate A/B along the pin (N forced odd → both ends are A), so B's tubes are
    captured axially between A's knuckles. Every part is a plain closed box / cylinder / tube; nothing is
    unioned in code. Pin axis = X; leaves fold about it. */
+/* ---- Print-in-place clamshell (контейнер с откидной крышкой) -------------------------------------
+   A REAL two-shell container — the glasses-case / tool-box pattern — not a tray with a flat lid. Both
+   halves are complete shells (floor + 4 walls), printed side by side with their openings up and joined
+   at their adjacent rims by the print-in-place hinge.
+
+   The key is WHERE the pin sits. A hinge at plate level folds the lid *into* the tray (it lands on the
+   floor, inside the walls) — geometrically impossible to close. Here the pin runs at RIM height, so the
+   180° fold maps rim onto rim: (y,z) → (2·rimY − y, −z) sends shell B's rim exactly onto shell A's and
+   lifts its floor clear above. Closed inner height is 2·wallH.
+
+   Bodies stay separate for the slicer: A = its shell + solid barrels + the pin fused through them;
+   B = its shell + tubes wrapping the pin with `gap`. Each barrel is welded to its OWN shell by a tongue
+   that reaches only to its side of the parting plane, and the walls stand off the barrel so a barrel can
+   never touch the opposite shell. */
+function buildClamshell(p){
+  const L      = Math.max(10, p.pipLen||60);
+  const floorT = Math.max(1.2, p.pipLeafT||6);
+  const wh     = Math.max(2, p.pipBoxH||10);            // wall height of EACH half (closed cavity = 2·wh)
+  const bw     = Math.max(1.2, p.pipWall||2);
+  const gap    = Math.max(0.15, Math.min(0.8, p.pipGap!=null?p.pipGap:0.35));
+  const kWall  = Math.max(1.0, gap+0.9);
+  const pinR   = Math.max(0.8, p.pipPinD>0 ? p.pipPinD/2 : 1.0);
+  const rK     = pinR + kWall;                          // knuckle outer radius
+  const zIn    = rK + 1.0;                              // walls stand off the barrel → no cross-body contact
+  const zOut   = Math.max(zIn+8, p.pipLeafW||22);       // shell depth from the parting line
+  const rimY   = floorT + wh, emb = 0.6;
+  let N = Math.max(3, Math.round(p.pipKnuckles||5)); if(N%2===0) N++;
+  const w = L/N, wf = Math.max(2, w-gap), seg = Math.max(20, Math.min(64, Math.round(rK*10)));
+  const tris = [];
+  const cylX=(x0,x1,cy,cz,r)=>{ const R=k=>{const a=2*Math.PI*k/seg;return [cy+r*Math.cos(a),cz+r*Math.sin(a)];};
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg,A=R(k),B=R(k1),ref=[0,(A[0]+B[0])/2-cy,(A[1]+B[1])/2-cz];
+      tris.push(orient([[x0,A[0],A[1]],[x1,A[0],A[1]],[x1,B[0],B[1]]],ref));
+      tris.push(orient([[x0,A[0],A[1]],[x1,B[0],B[1]],[x0,B[0],B[1]]],ref));
+      tris.push(orient([[x0,cy,cz],[x0,B[0],B[1]],[x0,A[0],A[1]]],[-1,0,0]));
+      tris.push(orient([[x1,cy,cz],[x1,A[0],A[1]],[x1,B[0],B[1]]],[1,0,0])); } };
+  // Tube along X. (sectorShellTris would do it, but a FULL 0…2π ring lands its two radial caps on top of each
+  // other — duplicate faces, non-manifold edges — so the knuckle tubes get their own closed-annulus sweep.)
+  const tubeX=(x0,x1,cy,cz,rO,rI)=>{ const R=(r,k)=>{const a=2*Math.PI*k/seg;return [cy+r*Math.cos(a),cz+r*Math.sin(a)];};
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg,Ao=R(rO,k),Bo=R(rO,k1),Ai=R(rI,k),Bi=R(rI,k1);
+      const refO=[0,(Ao[0]+Bo[0])/2-cy,(Ao[1]+Bo[1])/2-cz], refI=[0,-((Ai[0]+Bi[0])/2-cy),-((Ai[1]+Bi[1])/2-cz)];
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x1,Ao[0],Ao[1]],[x1,Bo[0],Bo[1]]],refO));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x1,Bo[0],Bo[1]],[x0,Bo[0],Bo[1]]],refO));
+      tris.push(orient([[x0,Ai[0],Ai[1]],[x1,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]]],refI));
+      tris.push(orient([[x0,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]],[x0,Bi[0],Bi[1]]],refI));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x0,Bo[0],Bo[1]],[x0,Bi[0],Bi[1]]],[-1,0,0]));
+      tris.push(orient([[x0,Ao[0],Ao[1]],[x0,Bi[0],Bi[1]],[x0,Ai[0],Ai[1]]],[-1,0,0]));
+      tris.push(orient([[x1,Ao[0],Ao[1]],[x1,Bi[0],Bi[1]],[x1,Bo[0],Bo[1]]],[1,0,0]));
+      tris.push(orient([[x1,Ao[0],Ao[1]],[x1,Ai[0],Ai[1]],[x1,Bi[0],Bi[1]]],[1,0,0])); } };
+  const add = T => { for(const t of T) tris.push(t); };
+  for(const s of [-1,1]){                                // s = −1 → shell A (−Z), +1 → shell B (+Z)
+    const zi = s<0 ? -zIn : zIn, zo = s<0 ? -zOut : zOut;   // inner (hinge) and outer edge of this shell
+    const zLo = Math.min(zi,zo), zHi = Math.max(zi,zo);
+    add(boxSpanTris(-L/2, L/2, 0, floorT, zLo, zHi));                       // floor
+    const y0 = floorT-emb, y1 = rimY;
+    add(boxSpanTris(-L/2, L/2, y0, y1, s<0 ? zi-bw : zi, s<0 ? zi : zi+bw));   // inner wall (hinge side)
+    add(boxSpanTris(-L/2, L/2, y0, y1, s<0 ? zo : zo-bw, s<0 ? zo+bw : zo));   // outer wall
+    for(const sx of [-1,1])                                                 // side walls, inset so no face is shared
+      add(boxSpanTris(sx<0 ? -L/2 : L/2-bw, sx<0 ? -L/2+bw : L/2, y0, y1-0.15, zLo+0.4, zHi-0.4));
+  }
+  cylX(-L/2, L/2, rimY, 0, pinR);                        // pin rod (body A)
+  const bTz0 = pinR+gap+0.4;                             // B's tongue starts clear of the pin
+  const tY0 = rimY-rK*0.7, tY1 = rimY+rK*0.7;
+  for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
+    if(i%2===0){ cylX(x0,x1, rimY,0, rK); add(boxSpanTris(x0,x1, tY0,tY1, -zIn-0.5, 0)); }              // A: barrel + tongue to A's wall
+    else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin
+           add(boxSpanTris(x0,x1, tY0,tY1, bTz0, zIn+0.5)); }                                           // B: tongue to B's wall
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));
+}
 function buildHinge(p){
   if (p.pipMode === 'clip')  return buildClip(p);
   if (p.pipMode === 'tie')   return buildCableTie(p);
   if (p.pipMode === 'clamp') return buildClamp(p);
+  if (p.pipMode === 'box')   return buildClamshell(p);
   const L     = Math.max(10, p.pipLen||60);
   const leafT = Math.max(2, p.pipLeafT||6);
   const zEdge = leafT/2;                                  // knuckle radius = half the leaf thickness (folds flat)
@@ -6780,14 +6858,6 @@ function buildHinge(p){
   for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
     if(i%2===0){ cylX(x0,x1, cyMid,0, zEdge); boxSpan(x0,x1, 0,leafT, -fingerLen-emb, emb); }        // A: solid barrel + tongue
     else {       tubeX(x0,x1, cyMid,0, zEdge, pinR+gap); boxSpan(x0,x1, 0,leafT, bTz0, fingerLen+emb); } // B: tube + tongue
-  }
-  if (p.pipMode === 'box') {                               // leaf A grows a shallow TRAY (leaf B stays the flat lid)
-    const bw = Math.max(1.2, p.pipWall||2), wh = Math.max(2, p.pipBoxH||10), y0=leafT-emb, y1=leafT+wh;
-    // Walls embed emb into the plate (never coplanar with it) and the side walls are corner-/top-offset from the
-    // outer wall so the interpenetrating boxes share NO exact vertex → the appended shells stay watertight.
-    boxSpan(-L/2, L/2, y0, y1, -leafW, -leafW+bw);                 // outer wall (full width, far −Z edge)
-    boxSpan(-L/2, -L/2+bw, y0, y1-0.15, -leafW+0.4, -fingerLen);   // side wall (−X)
-    boxSpan( L/2-bw, L/2, y0, y1-0.15, -leafW+0.4, -fingerLen);    // side wall (+X)
   }
   return tris.map(T=>T.map(v=>[v[0], v[1]-cyMid, v[2]]));  // center on Y
 }
@@ -7193,7 +7263,10 @@ function sweepTubePlanar(path, r, seg){
 function buildHook(p){
   const rBar=Math.max(2,(p.hookBar||8)/2), reach=Math.max(6,p.hookReach||28), drop=Math.max(rBar+2,p.hookDrop||16);
   const sweep=Math.max(120,Math.min(300,p.hookSweep||230))*Math.PI/180, seg=Math.max(12,Math.round(rBar*4));
-  const path=[]; const nStem=5, embed=Math.max(3,rBar+1);        // stem digs `embed` into the mount at z<0
+  // The stem digs `embed` into the mount at z<0. On a WALL plate it must stay INSIDE the plate, otherwise the
+  // bar pokes out the back and fouls the wall — clamp it to just under the plate thickness.
+  const plateT=Math.max(3,p.hookPlateT||4), nStem=5, path=[];
+  const embed = p.hookMount==='pipe' ? Math.max(3,rBar+1) : Math.min(Math.max(3,rBar+1), plateT-0.6);
   for(let i=0;i<=nStem;i++) path.push([0,0,-embed + (reach+embed)*i/nStem]);   // stem out +Z
   const Cy=-drop, Cz=reach, nArc=Math.max(14,Math.round(sweep/0.18));           // hook curve (arc), centre below stem end
   for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
@@ -7216,9 +7289,11 @@ function buildHook(p){
     // sideways — the collar faces front, hook still hangs down and curls in the front plane. (x,y,z)→(z,y,−x).
     tris = tris.map(T=>T.map(v=>[ v[2], v[1], -v[0] ]));
   } else {                                                        // wall plate
-    const t=Math.max(3,p.hookPlateT||4), sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
+    const t=plateT, sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
     const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];
-    if(sd>0.5) for(const s of [-1,1]) holes.push({axis:2,cp:0,cq:s*(ph/2-Math.max(sd+3,ph*0.18)),r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:-1});
+    // Countersinks open on the FRONT (+Z, the hook side) — that is where you drive the screw from; the back
+    // face sits flat against the wall and must stay unbroken.
+    if(sd>0.5) for(const s of [-1,1]) holes.push({axis:2,cp:0,cq:s*(ph/2-Math.max(sd+3,ph*0.18)),r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:1});
     for(const T of buildBoxWithHoles(pw,ph,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]-t/2]));   // plate z∈[−t,0]
   }
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
@@ -7330,8 +7405,12 @@ function buildProjectBox(p){
   const emb   = Math.min(floorT*0.6, 1.0);
   const Ww = W-2*flange, Dw = D-2*flange;             // wall (frame) outer footprint (inset by the flange)
   const Wi = Math.max(6, Ww-2*wall), Di = Math.max(6, Dw-2*wall);   // inner cavity footprint
-  const pm = wall + postD/2 + 0.8;                    // corner-post centre inset from the frame outer
+  const lipWall = Math.max(1.0, wall-0.6);            // lid centring rib thickness
+  // The corner posts must leave a channel for the lid's rib to pass BETWEEN the wall and the post — otherwise
+  // the lid simply cannot close. Inset = wall + rib + both fit clearances + post radius + a little slack.
+  const pm = wall + lipWall + 2*clr + postD/2 + 0.4;  // corner-post centre inset from the frame outer
   const postPos = [[-Ww/2+pm,-Dw/2+pm],[Ww/2-pm,-Dw/2+pm],[Ww/2-pm,Dw/2-pm],[-Ww/2+pm,Dw/2-pm]];
+  const postInX = Wi/2-(pm-wall)-postD/2, postInZ = Di/2-(pm-wall)-postD/2;   // post inner edge, from the cavity centre
   const center = t => { let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
     for(const T of t)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
     return t.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2])); };
@@ -7344,9 +7423,14 @@ function buildProjectBox(p){
     const nX=Math.max(0,Math.round(p.pbBossNX||0)), nZ=Math.max(0,Math.round(p.pbBossNZ||0));
     if(nX>0 && nZ>0){                                                              // optional PCB standoffs (blind bore)
       const bD=Math.max(4,p.pbBossD||6), bH=Math.max(2,p.pbBossH||5), bR=Math.max(0.8,(p.pbBossBore||2.6)/2);
-      const brO=bD/2, bseg=Math.max(16,Math.round(bD*3)), mx=Math.max(brO+2, Wi*0.14), mz=Math.max(brO+2, Di*0.14);
+      const brO=bD/2, bseg=Math.max(16,Math.round(bD*3));
+      // Keep the whole grid inside the corner-post ring, else the outer standoffs grow into the posts.
+      const gx=Math.max(0, postInX-brO-0.6), gz=Math.max(0, postInZ-brO-0.6);
+      const offX=Math.max(-gx,Math.min(gx,p.pbBossOffX||0)), offZ=Math.max(-gz,Math.min(gz,p.pbBossOffZ||0));  // shift the grid to suit a real board
+      const clearsPosts=(cx,cz)=>postPos.every(([px,pz])=>Math.hypot(cx-px,cz-pz) > brO+postD/2+0.3);
       for(let ix=0;ix<nX;ix++) for(let iz=0;iz<nZ;iz++){
-        const cx=nX===1?0:-Wi/2+mx+(Wi-2*mx)*ix/(nX-1), cz=nZ===1?0:-Di/2+mz+(Di-2*mz)*iz/(nZ-1);
+        const cx=(nX===1?0:-gx+2*gx*ix/(nX-1))+offX, cz=(nZ===1?0:-gz+2*gz*iz/(nZ-1))+offZ;
+        if(!clearsPosts(cx,cz)) continue;                                        // no room in this box — skip rather than fuse into a post
         for(const T of tubeYTris(cx,cz, brO, bR, floorT-0.6, floorT+bH, bseg)) t.push(T); }
     }
     return t;
@@ -7355,8 +7439,8 @@ function buildProjectBox(p){
     const t=[], lidW=Ww, lidD=Dw, hR=screwD*0.95, hD=Math.min(lidT*0.7, screwD*0.6);
     const holes = postPos.map(([cx,cz])=>({axis:1,cp:cx,cq:cz,r:screwD*0.55,head:'sink',headR:hR,headDepth:hD,headSide:1}));
     for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);          // plate (centred, y∈[-lidT/2,lidT/2])
-    const lipH=Math.max(2, Math.min(H*0.5, p.pbLipH||5)), lipWall=Math.max(1.0, wall-0.6);
-    const lipWo=Math.max(6, Wi-2*clr), lipDo=Math.max(6, Di-2*clr);
+    const lipH=Math.max(2, Math.min(H*0.5, p.pbLipH||5));
+    const lipWo=Math.max(6, Wi-2*clr), lipDo=Math.max(6, Di-2*clr);   // rib hugs the wall; posts are inset to clear it
     for(const T of rectRingYTris(0,0, lipWo,lipDo, lipWall, -lidT/2-lipH, -lidT/2+0.6)) t.push(T);   // drop-in lip
     return t;
   }
@@ -9609,7 +9693,7 @@ function activeShapeLabel() {
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
-  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'петля: коробка с крышкой',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
+  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

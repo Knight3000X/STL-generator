@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v98';
+const APP_VERSION = 'v99';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6808,10 +6808,17 @@ function buildClamshell(p){
     if(i%2===0){ if(chA>0.3) for(const T of prismXTris([[gY,-zIn-0.4],[gY,-zIn-0.4+chA],[gY-chA,-zIn-0.4]], x0, x1)) tris.push(T); }
     else       { if(chB>0.3) for(const T of prismXTris([[gY, zIn+0.4],[gY, zIn+0.4-chB],[gY-chB, zIn+0.4]], x0, x1)) tris.push(T); }
   }
+  // Tongues are 45° WEDGES, not square blocks: the top face falls away from the barrel toward the wall at 45°
+  // and the underside runs parallel, so the cross-section is a parallelogram — convex (a slope-then-flat top
+  // would be reflex and break the prism) and self-supporting on both faces. Drop is clamped so a tongue never
+  // reaches the floor. zA/zB are each tongue's span from the barrel out to its own wall.
+  const zAo = -zIn-0.5, zBi = bTz0, zBo = zIn+0.5, dropMax = Math.max(0, tY0-floorT-0.3);
+  const dropA = Math.min(zIn+0.5, dropMax), dropB = Math.min(zBo-zBi, dropMax);
   for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
-    if(i%2===0){ cylX(x0,x1, rimY,0, rK); add(boxSpanTris(x0,x1, tY0,tY1, -zIn-0.5, 0)); }              // A: barrel + tongue to A's wall
+    if(i%2===0){ cylX(x0,x1, rimY,0, rK);                                                               // A: barrel + wedge tongue
+      add(convexPrismXTris([[tY1,0],[tY1-dropA,zAo],[tY0-dropA,zAo],[tY0,0]], x0, x1)); }
     else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin
-           add(boxSpanTris(x0,x1, tY0,tY1, bTz0, zIn+0.5)); }                                           // B: tongue to B's wall
+      add(convexPrismXTris([[tY1,zBi],[tY1-dropB,zBo],[tY0-dropB,zBo],[tY0,zBi]], x0, x1)); }
   }
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));
@@ -7042,6 +7049,17 @@ function extrudeProfileY(P, boreFn, th, twist, scaleFn){
     tris.push(orient([[B[i][0],yB,B[i][1]],[B[j][0],yB,B[j][1]],[PB[j][0],yB,PB[j][1]]],[0,-1,0]));
   }
   return tris;
+}
+// Convex 2D polygon (points as [y,z]) extruded along X — fan caps at both ends + one quad per edge.
+function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
+  const cy=poly.reduce((s,q)=>s+q[0],0)/n, cz=poly.reduce((s,q)=>s+q[1],0)/n;
+  for(let i=1;i<n-1;i++){
+    out.push(orient([[x0,poly[0][0],poly[0][1]],[x0,poly[i][0],poly[i][1]],[x0,poly[i+1][0],poly[i+1][1]]],[-1,0,0]));
+    out.push(orient([[x1,poly[0][0],poly[0][1]],[x1,poly[i][0],poly[i][1]],[x1,poly[i+1][0],poly[i+1][1]]],[1,0,0])); }
+  for(let i=0;i<n;i++){ const j=(i+1)%n,u=poly[i],v=poly[j], ref=[0,(u[0]+v[0])/2-cy,(u[1]+v[1])/2-cz];
+    out.push(orient([[x0,u[0],u[1]],[x0,v[0],v[1]],[x1,v[0],v[1]]],ref));
+    out.push(orient([[x0,u[0],u[1]],[x1,v[0],v[1]],[x1,u[0],u[1]]],ref)); }
+  return out;
 }
 // Convex 2D polygon extruded along Z (fan caps + side walls). Used for rack teeth.
 function convexPrismZTris(poly, z0, z1){ const out=[], n=poly.length;

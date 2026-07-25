@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v97';
+const APP_VERSION = 'v98';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6796,6 +6796,18 @@ function buildClamshell(p){
   cylX(-L/2, L/2, rimY, 0, pinR);                        // pin rod (body A)
   const bTz0 = pinR+gap+0.4;                             // B's tongue starts clear of the pin
   const tY0 = rimY-rK*0.7, tY1 = rimY+rK*0.7;
+  // 45° self-supporting gussets under the tongues. Without them the tongue leaves the wall into open air
+  // (the hinge channel has no floor) and the barrel below it starts mid-air — both droop. A right triangle
+  // with equal legs puts the underside at exactly 45°, the steepest angle FDM prints unsupported. Each
+  // gusset lives on its own side of the parting plane, so the two bodies still never touch.
+  // The flat top is lifted 0.3 INTO the tongue (never coplanar with the tongue's underside) and the ramp stops
+  // 0.3 short of the parting plane / pin clearance, so the gusset interpenetrates its own body and touches nothing else.
+  const gY = tY0+0.3, chMax = Math.max(0, gY-floorT-0.2);   // never dip into the floor
+  const chA = Math.min(zIn+0.1, chMax), chB = Math.min(zIn+0.1-bTz0, chMax);
+  for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
+    if(i%2===0){ if(chA>0.3) for(const T of prismXTris([[gY,-zIn-0.4],[gY,-zIn-0.4+chA],[gY-chA,-zIn-0.4]], x0, x1)) tris.push(T); }
+    else       { if(chB>0.3) for(const T of prismXTris([[gY, zIn+0.4],[gY, zIn+0.4-chB],[gY-chB, zIn+0.4]], x0, x1)) tris.push(T); }
+  }
   for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
     if(i%2===0){ cylX(x0,x1, rimY,0, rK); add(boxSpanTris(x0,x1, tY0,tY1, -zIn-0.5, 0)); }              // A: barrel + tongue to A's wall
     else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin

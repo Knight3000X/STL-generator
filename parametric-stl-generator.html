@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v99';
+const APP_VERSION = 'v100';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3559,6 +3559,8 @@ const SHAPE_PARAMS = {
     {group:'Крючок', key:'hookPipeD', label:'На трубу: Ø трубы', min:6, max:120, step:1, default:25, unit:'мм'},
     {group:'Крючок', key:'hookClipWall', label:'На трубу: толщина защёлки', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Крючок', key:'hookClipW', label:'На трубу: ширина защёлки', min:6, max:60, step:1, default:14, unit:'мм'},
+    {group:'Крючок', key:'hookClipMouth', label:'На трубу: куда смотрит вырез кольца', type:'select', default:'up',
+      options:[{v:'up',t:'вверх (надевается сверху)'},{v:'front',t:'вперёд'},{v:'back',t:'назад'}]},
     {group:'Настенный органайзер', key:'woBack', label:'Настенный органайзер (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'cleat',t:'французская планка (45° задник)'},{v:'peg',t:'перфопанель (штыри)'}]},
     {group:'Настенный органайзер', key:'woFront', label:'Органайзер: держатель спереди', type:'select', default:'hook',
@@ -3574,6 +3576,7 @@ const SHAPE_PARAMS = {
     {group:'Настенный органайзер', key:'woHookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
     {group:'Настенный органайзер', key:'woHookReach', label:'Крючок: вылет', min:6, max:100, step:1, default:24, unit:'мм'},
     {group:'Настенный органайзер', key:'woHookDrop', label:'Крючок: радиус загиба', min:5, max:60, step:1, default:14, unit:'мм'},
+    {group:'Настенный органайзер', key:'woHookSweep', label:'Крючок: угол загиба', min:120, max:300, step:5, default:230, unit:'°'},
     {group:'Настенный органайзер', key:'woShelfD', label:'Полка: глубина', min:10, max:120, step:1, default:35, unit:'мм'},
     {group:'Настенный органайзер', key:'woShelfT', label:'Полка: толщина', min:2, max:12, step:0.5, default:4, unit:'мм'},
     {group:'Настенный органайзер', key:'woToolN', label:'Полка: число гнёзд', min:1, max:12, step:1, default:3, unit:'', int:true},
@@ -7095,11 +7098,16 @@ function latheYTris(profile, rBore, seg){
   for(let s=0;s<n-1;s++){ const [r0,y0]=profile[s],[r1,y1]=profile[s+1];              // outer surface
     for(let k=0;k<seg;k++){ const A=V(r0,y0,k),B=V(r0,y0,k+1),C=V(r1,y1,k+1),D=V(r1,y1,k), ref=[(A[0]+B[0]),0,(A[2]+B[2])];
       out.push(orient([A,B,C],ref)); out.push(orient([A,C,D],ref)); } }
-  for(let k=0;k<seg;k++){ const A=V(rBore,yB,k),B=V(rBore,yB,k+1),C=V(rBore,yT,k+1),D=V(rBore,yT,k), ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];  // bore
+  // `rBore` may be a number or a function of angle — the latter carries a KEYWAY (boreRadiusAt), so a pulley
+  // can be keyed to its shaft just like a gear. Every bore ring shares the same angular sampling, so the wall
+  // and both annuli stay index-stitched and watertight.
+  const boreAt = (typeof rBore==='function') ? rBore : (()=>rBore);
+  const Bo=(y,k)=>{ const a=TAU*(k%seg)/seg, r=boreAt(a); return [r*Math.cos(a), y, r*Math.sin(a)]; };
+  for(let k=0;k<seg;k++){ const A=Bo(yB,k),B=Bo(yB,k+1),C=Bo(yT,k+1),D=Bo(yT,k), ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];  // bore
     out.push(orient([A,B,C],ref)); out.push(orient([A,C,D],ref)); }
-  for(let k=0;k<seg;k++){ const oB=V(rBot,yB,k),oB1=V(rBot,yB,k+1),iB=V(rBore,yB,k),iB1=V(rBore,yB,k+1);   // bottom annulus
+  for(let k=0;k<seg;k++){ const oB=V(rBot,yB,k),oB1=V(rBot,yB,k+1),iB=Bo(yB,k),iB1=Bo(yB,k+1);            // bottom annulus
     out.push(orient([oB,iB,iB1],[0,-1,0])); out.push(orient([oB,iB1,oB1],[0,-1,0]));
-    const oT=V(rTop,yT,k),oT1=V(rTop,yT,k+1),iT=V(rBore,yT,k),iT1=V(rBore,yT,k+1);                        // top annulus
+    const oT=V(rTop,yT,k),oT1=V(rTop,yT,k+1),iT=Bo(yT,k),iT1=Bo(yT,k+1);                                  // top annulus
     out.push(orient([oT,iT1,iT],[0,1,0])); out.push(orient([oT,oT1,iT1],[0,1,0])); }
   return out;
 }
@@ -7119,7 +7127,8 @@ function buildPulley(p){
     profile.push([rO, yG-hw]); profile.push([rO-gd, yG]); profile.push([rO, yG+hw]);
   }
   profile.push([rO, th]);
-  let tris=latheYTris(profile, rB, seg);
+  const keyW=Math.max(0,Math.min(p.gearKeyW||0, rB*1.4)), keyD=Math.max(0,Math.min(p.gearKeyD||0, rO-rB-1.5));
+  let tris=latheYTris(profile, a=>boreRadiusAt(a, rB, keyW, keyD), seg);   // keyed bore, same as the gears
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
@@ -7244,7 +7253,9 @@ function buildTool(p){
   for(let k=0;k<toolN;k++){ const cp=toolN===1?0:-W/2+m+(W-2*m)*k/(toolN-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,shelfD/2-1.5)}); }
   for(const T of buildBoxWithHoles(W,t,shelfD,holes)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+shelfD/2]));       // shelf z∈[0,shelfD]
   const bw=W-0.6, hb=backH-(t-0.5), yc=(t-0.5+backH)/2, zc=t/2+0.3, backHoles=[];                                 // vertical back plate
-  if(sd>0.5) for(const sx of [-1,1]) backHoles.push({axis:2,cp:sx*(W*0.32),cq:(hb/2)-Math.max(sd+3,hb*0.3),r,head:'sink',headR:hR,headDepth:hD,headSide:-1});
+  // Countersinks open on the FRONT (+Z) — the side you can reach to drive the screw; the back face stays flat
+  // against the wall.
+  if(sd>0.5) for(const sx of [-1,1]) backHoles.push({axis:2,cp:sx*(W*0.32),cq:(hb/2)-Math.max(sd+3,hb*0.3),r,head:'sink',headR:hR,headDepth:hD,headSide:1});
   for(const T of buildBoxWithHoles(bw,hb,t,backHoles)) tris.push(T.map(v=>[v[0],v[1]+yc,v[2]+zc]));
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
@@ -7312,7 +7323,11 @@ function buildHook(p){
     // Saddle ring: mouth (gap) faces UP (+Y) — snap the clip down onto the pipe; the hook + its load hang below
     // and seat the clip. Gap centred at a=0 (top). No latch (removed per request).
     const gh=1.0;                                                 // half gap angle: opening ≈ 0.84·Ø
-    for(const T of sectorShellTris(0,0, rP,rO, gh, 2*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
+    // Which way the collar's mouth faces. It has to be perpendicular to the pipe, so the choices are up (drop it
+    // on from above) or one of the two sides. In this pre-rotation frame the final +X comes from +Z, so a side
+    // mouth is at ±π/2; the neck stays at the bottom either way.
+    const am = ({front:Math.PI/2, back:-Math.PI/2})[p.hookClipMouth] || 0;
+    for(const T of sectorShellTris(0,0, rP,rO, am+gh, am+2*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
     // Neck: weld the ring bottom to the hook stem root (spans the bottom wall; only grazes the bore centre).
     for(const T of boxSpanTris(-rBar*0.95, rBar*0.95, -rO-0.2, -rP+0.5, -rBar*0.95, rBar*0.95)) tris.push(T);
     // Turn the whole clip 90° about the vertical Y axis so the PIPE runs toward the viewer (axis Z) instead of
@@ -7361,15 +7376,20 @@ function buildWallOrg(p){
     // 135° cleat: the mating face undercuts the OTHER way vs a 45° tooth — the wedge's sloped face runs from the
     // front-top down to the back, so the plate hangs on a wall rail whose bevel faces up-and-out (135° included).
     for(const T of prismXTris([[H,0.5],[H,-lip],[H-lip,-lip]], -W/2+0.3, W/2-0.3)) tris.push(T);
+    // Reinforcement above the hook: the wedge's thin upper edge is where the whole load hangs, so back it with a
+    // solid band across the plate — without it the cleat snaps off at the root.
+    const rb=Math.max(2.5, lip*0.45);
+    for(const T of boxSpanTris(-W/2+0.3, W/2-0.3, H-rb-lip*0.15, H, 0.4, t+rb*0.8)) tris.push(T);
   } else {                                                                               // pegboard pins (protrude −Z into the board)
     const pr=Math.max(1.5,(p.woPegD||6)/2), sp=Math.max(15,p.woPegSpacing||25.4), pl=Math.max(6,p.woPegLen||10);
     const n=Math.max(1,Math.round(p.woPegN||2)), seg=Math.max(12,Math.round(pr*4));
     for(let i=0;i<n;i++){ const cy=H*0.72 - i*sp; if(cy<pr+2) break;
       for(const T of cylZTris(0,cy,pr,-pl,0.6,seg)) tris.push(T);
       for(const T of sphereTris(0,cy,-pl-0.05, pr+0.25, seg+1)) tris.push(T);              // hemispherical rounded tip (rim strictly inside → no coincident edges)
-      if(i===0){                                                                          // retaining lip on the TOP pin: a small downward
-        const lh=pr*1.5, lt=Math.max(1.2,pr*0.8);                                         // hook at the tip that catches the board's back
-        for(const T of boxSpanTris(-lt,lt, cy-pr-lh, cy-pr+0.4, -pl-0.2, -pl+lt*1.6)) tris.push(T); }
+      if(i===0){                                                                          // retaining lip on the TOP pin: a small UPWARD
+        const lh=pr*1.5, lt=Math.max(1.2,pr*0.8);                                         // hook at the tip. It must point UP: the board's
+        // hole is entered pin-first and the organiser then drops, so the barb has to catch the hole's TOP edge from behind.
+        for(const T of boxSpanTris(-lt,lt, cy+pr-0.4, cy+pr+lh, -pl-0.2, -pl+lt*1.6)) tris.push(T); }
     }
   }
   const front=p.woFront||'hook';                                                         // FRONT holder (extends +Z)

@@ -184,5 +184,21 @@ for(const cb of [10,24,80]) for(const lift of [1,8,40]) for(const rise of [30,12
 { const noBore=vol(base({gearMode:'cam',gearBore:0.001})), bored=vol(base({gearMode:'cam',gearBore:8}));
   chk('cam shaft bore removes material', bored<noBore, {}); }
 
+
+console.log('=== cam follower (толкатель) ===');
+{ let n=0,bad=0;
+  for(const tip of ['flat','round']) for(const rd of [2,6,20]) for(const L of [5,30,120]) for(const pd of [0,10,40]){
+    const t=base({gearMode:'follower',folTip:tip,folRodD:rd,folLen:L,folPadD:pd,folPadT:3});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++; }
+  chk('follower: all '+n+' tip × rod × length × pad combos watertight', bad===0, {n,bad}); }
+{ // The two tips are functionally different, not cosmetic: a FLAT face rides off-axis as the profile steepens
+  //   (tolerates any rise), a ROUND one tracks the profile but must stay near the rod Ø.
+  const fl=computeBBox(base({gearMode:'follower',folTip:'flat',folRodD:6,folPadD:18}));
+  chk('flat follower has a pad wider than the rod', (fl.maxX-fl.minX)>10, {x:+(fl.maxX-fl.minX).toFixed(1)});
+  const rn=computeBBox(base({gearMode:'follower',folTip:'round',folRodD:6}));
+  chk('round follower stays near the rod Ø', Math.abs((rn.maxX-rn.minX)-6.5)<1.0, {x:+(rn.maxX-rn.minX).toFixed(2)}); }
+{ const s2=computeBBox(base({gearMode:'follower',folLen:10})), l2=computeBBox(base({gearMode:'follower',folLen:80}));
+  chk('longer rod → taller follower', (l2.maxY-l2.minY)>(s2.maxY-s2.minY)+60, {}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

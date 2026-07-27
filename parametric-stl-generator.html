@@ -994,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v113';
+const APP_VERSION = 'v114';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3508,7 +3508,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'ratchet',t:'храповик'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3525,6 +3525,9 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'planetTeeth', label:'Планетарный: зубьев на сателлите', min:6, max:60, step:1, default:16, unit:'', int:true},
+    {group:'Шестерня', key:'planetN', label:'Планетарный: число сателлитов', min:2, max:6, step:1, default:3, unit:'', int:true},
+    {group:'Шестерня', key:'gearPlanClear', label:'Планетарный: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
     {group:'Шестерня', key:'folTip', label:'Толкатель: контактный конец', type:'select', default:'flat',
       options:[{v:'flat',t:'плоский (терпит любой подъём)'},{v:'round',t:'скруглённый (точно ведёт профиль)'}]},
     {group:'Шестерня', key:'folRodD', label:'Толкатель: Ø штока', min:2, max:40, step:0.5, default:6, unit:'мм'},
@@ -7367,11 +7370,64 @@ function buildWorm(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+/* A star-shaped outline (single-valued in angle, which every gear/sprocket profile here is) turned into a
+   RADIUS-BY-ANGLE function. That is the form extrudeProfileY's bore parameter wants, and it is what makes an
+   INTERNAL gear possible: the ring's outer face is a plain circle while its BORE carries the tooth profile. */
+function outlineRadiusFn(P, phase){
+  const n=P.length, pairs=[];
+  for(const q of P) pairs.push([Math.atan2(q[1],q[0]), Math.hypot(q[0],q[1])]);
+  pairs.sort((u,v)=>u[0]-v[0]);
+  const A=pairs.map(u=>u[0]), R=pairs.map(u=>u[1]), last=n-1, TAU=2*Math.PI;
+  return (ang)=>{ let t=ang+(phase||0); t=Math.atan2(Math.sin(t),Math.cos(t));
+    if(t<=A[0] || t>=A[last]){                       // wrap-around segment, from the last point back to the first
+      const a0=A[last]-TAU, span=A[0]-a0 || 1, tt=(t>=A[last]) ? t-TAU : t;
+      return R[last] + (R[0]-R[last])*((tt-a0)/span); }
+    let lo=0, hi=last;
+    while(hi-lo>1){ const mid=(lo+hi)>>1; if(A[mid]<=t) lo=mid; else hi=mid; }
+    const span=A[hi]-A[lo] || 1;
+    return R[lo] + (R[hi]-R[lo])*((t-A[lo])/span); };
+}
+/* Planetary gearset (планетарный редуктор): sun + N planets + ring, laid out on the CORRECT centre distances
+   so the thing actually turns. Two constraints drive everything and are enforced, not assumed:
+     • ring teeth  Zr = Zs + 2·Zp        — otherwise the ring cannot mesh with planets that mesh with the sun
+     • (Zs + Zr) mod N = 0               — otherwise the planets cannot sit at equal angles AND stay in phase
+   Planet k sits at angle θ = 2πk/N on the carrier circle a = m(Zs+Zp)/2 and is counter-rotated by −θ·Zs/Zp,
+   which is what keeps its teeth engaged with the sun at every station. Everything is laid out in one flat
+   plate, separated by the fit clearance, so it prints as loose parts ready to assemble. */
+function buildPlanetary(p){
+  const m  = Math.max(0.3, p.gearModule||2);
+  const th = Math.max(1, p.gearThick||6);
+  const alpha = Math.max(14, Math.min(30, p.gearPA||20));
+  const Zs = Math.max(8, Math.round(p.gearTeeth||16));
+  const Zp = Math.max(6, Math.round(p.planetTeeth||16));
+  const Zr = Zs + 2*Zp;
+  let N = Math.max(2, Math.min(6, Math.round(p.planetN||3)));
+  while(N>2 && (Zs+Zr)%N !== 0) N--;               // drop to a count that keeps the planets in phase
+  const clr = fitTuned(p, Math.max(0, p.gearPlanClear!=null ? p.gearPlanClear : 0.25));
+  const rB = Math.max(0.6, (p.gearBore>0?p.gearBore:m*3)/2);
+  const tris = [];
+  const place=(t, rot, dx, dz)=>{ const c=Math.cos(rot), s=Math.sin(rot);
+    for(const T of t) tris.push(T.map(v=>[v[0]*c - v[2]*s + dx, v[1], v[0]*s + v[2]*c + dz])); };
+  const oS = gearOutline(m, Zs, alpha), oP = gearOutline(m, Zp, alpha);
+  place(extrudeProfileY(oS.P, ()=>rB, th, 0), 0, 0, 0);                       // sun
+  const a = m*(Zs+Zp)/2;                                                       // carrier radius
+  for(let k=0;k<N;k++){ const ang=2*Math.PI*k/N;
+    place(extrudeProfileY(oP.P, ()=>rB, th, 0), -ang*Zs/Zp, a*Math.cos(ang), a*Math.sin(ang)); }
+  // Ring: plain circular rim outside, tooth profile on the BORE, opened by the fit clearance.
+  const oR = gearOutline(m, Zr, alpha);
+  const rRim = m*Zr/2 + m*1.8 + Math.max(1.5, m*1.2);
+  const nOut = Math.max(oR.P.length, 256), circ=[];
+  for(let i=0;i<nOut;i++){ const t=2*Math.PI*i/nOut; circ.push([rRim*Math.cos(t), rRim*Math.sin(t)]); }
+  const ringR = outlineRadiusFn(oR.P, 0);
+  place(extrudeProfileY(circ, ang=>ringR(ang)+clr, th, 0), 0, 0, 0);
+  return tris;
+}
 function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
   if(mode==='rack') return buildRack(p);
   if(mode==='worm') return buildWorm(p);
+  if(mode==='planetary') return buildPlanetary(p);
   if(mode==='follower') return buildFollower(p);
   if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
   let o, rp=m*Z/2;
@@ -10182,8 +10238,8 @@ function activeShapeLabel() {
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:'червячное колесо',cam:'кулачок',follower:'толкатель',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
-    + (['rack','vbelt','roundbelt','worm','cam','follower'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:'червячное колесо',planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';

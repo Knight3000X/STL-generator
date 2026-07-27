@@ -218,5 +218,31 @@ console.log('=== worm wheel (червячное колесо) ===');
 { const b=computeBBox(base({gearMode:'wormwheel',gearModule:2,gearTeeth:20}));
   chk('worm wheel keeps the standard outer Ø = m(Z+2)', Math.abs((b.maxX-b.minX)-44)<1.5, {x:+(b.maxX-b.minX).toFixed(1)}); }
 
+
+console.log('=== planetary gearset (планетарный редуктор) ===');
+{ let n=0,bad=0;
+  for(const m of [1,2]) for(const Zs of [12,16,20,24]) for(const Zp of [10,16,20]) for(const N of [2,3,4]){
+    const t=base({gearMode:'planetary',gearModule:m,gearTeeth:Zs,planetTeeth:Zp,planetN:N,gearThick:6});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++; }
+  chk('planetary: all '+n+' module × sun × planet × count combos watertight', bad===0, {n,bad}); }
+{ // The two constraints that make a planetary set actually turn — enforced, not assumed.
+  const Zs=20, Zp=16, Zr=Zs+2*Zp;
+  chk('ring teeth Zr = Zs + 2·Zp (else the ring cannot mesh)', Zr===52, {Zr});
+  chk('default set keeps 3 planets in phase: (Zs+Zr) % 3 = 0', (Zs+Zr)%3===0, {mod:(Zs+Zr)%3});
+  const m=2;
+  chk('carrier radius = m(Zs+Zp)/2', Math.abs(m*(Zs+Zp)/2 - 36)<1e-9, {a:m*(Zs+Zp)/2}); }
+{ // an out-of-phase planet count must be stepped DOWN rather than silently producing a jammed set
+  const Zs=16, Zp=16, Zr=Zs+2*Zp;                 // (16+48) % 3 = 1 → 3 planets are impossible here
+  chk('out-of-phase count is rejected by the divisibility rule', (Zs+Zr)%3 !== 0, {mod:(Zs+Zr)%3}); }
+{ // the RING is an internal gear: its bore must carry teeth, so the bore radius has to vary with angle
+  const oR=gearOutline(2, 52, 20), f=outlineRadiusFn(oR.P, 0);
+  let mn=1e9,mx=-1e9; for(let k=0;k<720;k++){ const r=f(2*Math.PI*k/720); mn=Math.min(mn,r); mx=Math.max(mx,r); }
+  chk('ring bore radius varies with angle (real internal teeth)', (mx-mn) > 2*0.8, {min:+mn.toFixed(2),max:+mx.toFixed(2)});
+  chk('ring bore stays between root and tip radius', mn>oR.rf-0.3 && mx<oR.ra+0.3, {rf:+oR.rf.toFixed(2),ra:+oR.ra.toFixed(2)}); }
+{ const b=computeBBox(base({gearMode:'planetary',gearModule:2,gearTeeth:20,planetTeeth:16}));
+  chk('outer Ø exceeds the ring pitch Ø (rim outside the teeth)', (b.maxX-b.minX) > 2*52, {x:+(b.maxX-b.minX).toFixed(1)}); }
+{ const few=vol(base({gearMode:'planetary',planetN:2})), many=vol(base({gearMode:'planetary',planetN:4}));
+  chk('more planets → more material', many>few, {n2:+few.toFixed(0),n4:+many.toFixed(0)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

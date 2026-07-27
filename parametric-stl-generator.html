@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v109';
+const APP_VERSION = 'v110';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3449,7 +3449,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3474,6 +3474,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBore', label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadTip', label:'Дюбель: сужение к носку (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.7, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
@@ -3538,7 +3539,12 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
+    {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtAngle', label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
+    {group:'Крепёж / монтаж', key:'mntDtClear', label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitD', label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitN', label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntFitStart', label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
@@ -5439,16 +5445,21 @@ function buildThread(p){
   const leadLen = Math.max(0, Math.min(p.threadLead!=null ? p.threadLead : 2, len*0.45));
   const lead = d => leadLen>0 ? Math.max(0, Math.min(1, d/leadLen)) : 1;   // d = distance INTO the thread from the entry
 
-  if (mode === 'stud' || mode === 'gland'){
+  if (mode === 'stud' || mode === 'gland' || mode === 'anchor'){
     // 'gland' (кабельный ввод) is the stud with a cable bore straight through it: the solid top fan and the
     // solid flange disc become annuli closed by a bore wall. Screw it through an enclosure wall and lock it
     // with a plain `nut` of the same Ø/pitch.
     const flangeThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
     const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
-    const bored = mode === 'gland';
-    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.55, minorR-0.8));
+    const bored = mode === 'gland' || mode === 'anchor';
+    // A drywall anchor is the same screw body TAPERED toward the tip, so it bites as it is driven in. The
+    // taper multiplies the whole radius function; the bore stays straight because the screw that goes in is.
+    const tipF = (mode === 'anchor') ? Math.max(0.4, Math.min(0.95, p.threadTip||0.7)) : 1;
+    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*tipF*0.5, minorR*tipF-0.8));
     const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
-    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat), a=th(i);
+    const taper = y => 1 - (1-tipF)*((y-y0)/Math.max(1e-6,y1-y0));
+    const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, a=th(i);
+      const r=(minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat))*taper(y);
       return [r*Math.cos(a), y, r*Math.sin(a)]; };   // lead-in fades at the top (engagement end)
     const B=(y,i)=>{ const a=th(i); return [rBore*Math.cos(a), y, rBore*Math.sin(a)]; };
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
@@ -7663,7 +7674,37 @@ function buildFitTest(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+/* Dovetail slide (ласточкин хвост): the tail and its socket, printed side by side.
+   The tail is a trapezoid — wider at the top — so it can only leave the socket by sliding along X, never by
+   lifting. That same shape makes the SOCKET non-convex, and a prism needs a convex profile, so the socket is
+   built as three convex solids instead: two flank walls whose inner edge follows the tail's slope, plus a
+   floor slab they both sink into. The flanks never touch each other (the groove separates them), so the
+   appended shells stay watertight. Socket = tail + clearance per side, and it picks up the global fitTune. */
+function buildDovetail(p){
+  const L    = Math.max(10, p.mntDtLen||60);
+  const wB   = Math.max(2, (p.mntDtW||18)/2);            // half width at the root
+  const ang  = Math.max(5, Math.min(30, p.mntDtAngle||12)) * Math.PI/180;
+  const hD   = Math.max(3, p.mntDtH||8);
+  const wT   = wB + hD*Math.tan(ang);                    // half width at the top — the undercut
+  const t    = Math.max(1.5, p.mntT||3);
+  const clr  = fitTuned(p, Math.max(0, p.mntDtClear!=null ? p.mntDtClear : 0.25));
+  const flank= Math.max(2.5, t), tris=[], emb=Math.min(t*0.6, 0.8);
+  const push = T => { for(const q of T) tris.push(q); };
+  // Tail: trapezoid on its own base slab.
+  const zT = -(wT + flank + 6);
+  push(boxSpanTris(-L/2, L/2, 0, t, zT-wT-2, zT+wT+2));
+  push(convexPrismXTris([[t-emb, zT-wB],[t-emb, zT+wB],[t+hD, zT+wT],[t+hD, zT-wT]], -L/2, L/2));
+  // Socket: floor + two flanks whose inner face follows the tail's slope, opened by the fit clearance.
+  const zS = wT + flank + 6, half = wT + clr + flank;
+  push(boxSpanTris(-L/2, L/2, 0, t, zS-half, zS+half));
+  for(const sgn of [-1,1])
+    push(convexPrismXTris([[t-emb, zS+sgn*half],[t-emb, zS+sgn*(wB+clr)],
+                           [t+hD,  zS+sgn*(wT+clr)],[t+hD,  zS+sgn*half]], -L/2, L/2));
+  let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
+  return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
+}
 function buildMount(p){
+  if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
   if(p.mntMode==='foot') return buildFoot(p);
   if(p.mntMode==='vesa') return buildVesa(p);
@@ -10045,11 +10086,11 @@ function activeShapeLabel() {
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',cam:'кулачок',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод'})[p.threadMode] || 'резьба';
+  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

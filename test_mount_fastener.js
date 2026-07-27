@@ -108,5 +108,29 @@ console.log('=== fit-clearance calibration print (калибровка зазо�
 { const few=vol(buildMount({mntMode:'fittest',mntFitN:2})), many=vol(buildMount({mntMode:'fittest',mntFitN:8}));
   chk('more steps → bigger calibration part', many>few, {n2:+few.toFixed(0),n8:+many.toFixed(0)}); }
 
+
+console.log('=== dovetail slide (ласточкин хвост) ===');
+{ let n=0,bad=0;
+  for(const L of [20,60,200]) for(const w of [6,18,60]) for(const h of [3,8,25]) for(const a of [5,12,30]){
+    const t=buildMount({mntMode:'dovetail',mntDtLen:L,mntDtW:w,mntDtH:h,mntDtAngle:a,mntDtClear:0.25,mntT:3});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++;
+  }
+  chk('dovetail: all '+n+' length × width × height × angle combos watertight', bad===0, {n,bad}); }
+{ // The tail must be UNDERCUT — wider at the top than at its root — otherwise it lifts straight out and the
+  //   joint is just a rectangular tongue. That undercut is exactly why the socket cannot be a single prism.
+  const w=18,h=8,ang=12*Math.PI/180, wT=w/2+h*Math.tan(ang);
+  chk('tail is undercut (top wider than root)', wT > w/2 + 0.5, {root:w/2,top:+wT.toFixed(2)}); }
+{ // Clearance must open the socket. Total volume is the wrong probe — a wider groove also pushes the socket's
+  //   outer walls out, so the part GROWS. And slicing at an arbitrary height finds nothing, because a prism
+  //   only has vertices at its profile corners. Measure the socket's own Z span instead (half = tail + clr + wall).
+  const spanAt=(c)=>{ const t=buildMount({mntMode:'dovetail',mntDtLen:60,mntDtW:18,mntDtH:8,mntDtAngle:12,mntDtClear:c,mntT:3});
+    let lo=1e9,hi=-1e9; for(const T of t)for(const v of T) if(v[2]>0){ lo=Math.min(lo,v[2]); hi=Math.max(hi,v[2]); }
+    return hi-lo; };
+  chk('more clearance → wider socket', spanAt(0.8) > spanAt(0)+0.5, {tight:+spanAt(0).toFixed(2),loose:+spanAt(0.8).toFixed(2)}); }
+{ const b=computeBBox(buildMount({mntMode:'dovetail',mntDtLen:80}));
+  chk('dovetail length = mntDtLen', Math.abs((b.maxX-b.minX)-80)<0.5, {x:+(b.maxX-b.minX).toFixed(1)}); }
+{ const lo=vol(buildMount({mntMode:'dovetail',mntDtH:4})), hi=vol(buildMount({mntMode:'dovetail',mntDtH:20}));
+  chk('taller tail → more material', hi>lo, {lo:+lo.toFixed(0),hi:+hi.toFixed(0)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

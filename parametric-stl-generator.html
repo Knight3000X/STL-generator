@@ -834,6 +834,7 @@
         <button class="base-btn" data-base="hook" title="Крючок на стену или на трубу (защёлка под любой Ø)">Крючок</button>
         <button class="base-btn" data-base="wallorg" title="Настенный органайзер: французская планка / перфопанель + крючок/полка">Органайзер</button>
         <button class="base-btn" data-base="pbox" title="Электрокорпус (project box): лоток + крышка + стойки под винты и PCB">Корпус</button>
+        <button class="base-btn" data-base="funnel" title="Воронка: конус со сливным носиком, оболочка постоянной толщины">Воронка</button>
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">Подставка</button>
       </div>
     </div>
@@ -993,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v112';
+const APP_VERSION = 'v113';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3652,6 +3653,12 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Воронка', key:'fnOn', label:'Воронка (перекрывает всё)', type:'bool', default:false},
+    {group:'Воронка', key:'fnMouthD', label:'Воронка: Ø горловины', min:12, max:400, step:1, default:70, unit:'мм'},
+    {group:'Воронка', key:'fnSpoutD', label:'Воронка: Ø носика', min:3, max:120, step:0.5, default:12, unit:'мм'},
+    {group:'Воронка', key:'fnSpoutLen', label:'Воронка: длина носика', min:2, max:200, step:1, default:25, unit:'мм'},
+    {group:'Воронка', key:'fnConeH', label:'Воронка: высота конуса', min:4, max:300, step:1, default:45, unit:'мм'},
+    {group:'Воронка', key:'fnWall', label:'Воронка: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psOn', label:'Подставка (перекрывает всё)', type:'bool', default:false},
     {group:'Подставка (телефон / планшет)', key:'psW', label:'Подставка: ширина', min:30, max:300, step:1, default:80, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psDepth', label:'Подставка: глубина основания', min:30, max:250, step:1, default:85, unit:'мм'},
@@ -4151,6 +4158,7 @@ function dominantMode(p){
   if (p.woBack && p.woBack !== 'none') return 'wallorg';
   if (p.pbPart && p.pbPart !== 'none') return 'pbox';
   if (p.psOn) return 'stand';
+  if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
   if (p.tpmsType && p.tpmsType !== 'none') return 'tpms';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
@@ -4178,6 +4186,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Настенный органайзер': return mode==='wallorg';
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подставка (телефон / планшет)': return mode==='stand';
+    case 'Воронка': return mode==='funnel';
     case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -4189,6 +4198,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='pbox')      return key==='Корпус (электроника)';
   if (mode==='stand')     return key==='Подставка (телефон / планшет)';
+  if (mode==='funnel')    return key==='Воронка';
   if (mode==='hook')      return key==='Крючок';
   if (mode==='tpms')      return key==='TPMS-решётка';
   if (mode==='mount')     return key==='Крепёж / монтаж';
@@ -4234,8 +4244,16 @@ function updateBaseShapePicker(){
   document.querySelectorAll('.base-btn').forEach(b => b.classList.toggle('active', b.dataset.base === mode));
 }
 function setBaseShape(kind){
-  const setSel = (key, val) => { const el = document.querySelector('select[data-key="'+key+'"]');
-    if (el) { el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); }
+  // Activators are a mix of <select> and checkbox (<input type=checkbox>) — matching only selects meant the
+  // boolean ones (psOn, fnOn, …) were assigned straight into paramState with no 'input' event, so nothing
+  // refreshed the panel and the first click left the CUBE's parameter groups on screen until a second click
+  // happened to fire an event. Match either element and drive it the same way.
+  const setSel = (key, val) => {
+    const el = document.querySelector('select[data-key="'+key+'"], input[data-key="'+key+'"]');
+    if (el) {
+      if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+    }
     else if (paramState.box) paramState.box[key] = val; };
   setSel('sheetShape', kind==='sheet'  ? 'rect'   : 'none');
   setSel('keycapMode', kind==='keycap' ? 'single' : 'none');
@@ -4249,7 +4267,10 @@ function setBaseShape(kind){
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
-  updateBaseShapePicker();
+  setSel('fnOn',       kind==='funnel' ? true     : false);
+  // Refresh explicitly: the last activator touched may not have been the one that decides the mode, so we
+  // cannot rely on its event alone to have re-evaluated which parameter groups are relevant.
+  updateBaseShapePicker(); updateSectionVisibility(); if (typeof updateShapeName === 'function') updateShapeName();
 }
 function setActiveTab(tab){
   activeTab = tab; try { localStorage.setItem('stl-tab', tab); } catch(e) {}
@@ -7206,6 +7227,42 @@ function latheYTris(profile, rBore, seg){
     out.push(orient([oT,iT1,iT],[0,1,0])); out.push(orient([oT,oT1,iT1],[0,1,0])); }
   return out;
 }
+/* Shell of revolution: revolve an OUTER and an INNER silhouette (both [r,y], bottom→top, equal length) and
+   close them with annuli at each end. latheYTris cannot do this — its bore is a function of ANGLE, so it can
+   only hollow a straight cylinder, whereas a funnel's inner surface has to follow the outer one up the taper.
+   Index-stitched throughout, so it is watertight by construction. */
+function latheShellYTris(outer, inner, seg){
+  const out=[], n=outer.length, TAU=2*Math.PI;
+  const V=(p,k)=>{ const a=TAU*(k%seg)/seg; return [p[0]*Math.cos(a), p[1], p[0]*Math.sin(a)]; };
+  for(let s=0;s<n-1;s++) for(let k=0;k<seg;k++){
+    const A=V(outer[s],k),B=V(outer[s],k+1),C=V(outer[s+1],k+1),D=V(outer[s+1],k), ro=[A[0]+B[0],0,A[2]+B[2]];
+    out.push(orient([A,B,C],ro)); out.push(orient([A,C,D],ro));
+    const a2=V(inner[s],k),b2=V(inner[s],k+1),c2=V(inner[s+1],k+1),d2=V(inner[s+1],k), ri=[-(a2[0]+b2[0]),0,-(a2[2]+b2[2])];
+    out.push(orient([a2,b2,c2],ri)); out.push(orient([a2,c2,d2],ri));
+  }
+  for(const [idx,nrm] of [[0,[0,-1,0]],[n-1,[0,1,0]]]) for(let k=0;k<seg;k++){
+    const O=V(outer[idx],k),O1=V(outer[idx],k+1),I=V(inner[idx],k),I1=V(inner[idx],k+1);
+    out.push(orient([O,I,I1],nrm)); out.push(orient([O,I1,O1],nrm));
+  }
+  return out;
+}
+/* Funnel (воронка): a straight spout under a cone, as a constant-thickness shell. Printed spout-down it is
+   self-supporting — the cone only ever leans outward. */
+function buildFunnel(p){
+  const rM = Math.max(6, (p.fnMouthD||70)/2);
+  const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
+  const sL = Math.max(2, p.fnSpoutLen||25);
+  const cH = Math.max(4, p.fnConeH||45);
+  const w  = Math.max(0.8, Math.min(p.fnWall||1.6, rS-0.5));
+  const seg= Math.max(48, Math.round(2*Math.PI*rM/1.2));
+  const nC = 24, outer=[], inner=[];
+  const put=(r,y)=>{ outer.push([r,y]); inner.push([Math.max(0.4, r-w), y]); };
+  put(rS, 0); put(rS, sL);                                   // spout
+  for(let i=1;i<=nC;i++) put(rS + (rM-rS)*i/nC, sL + cH*i/nC);  // cone up to the mouth
+  let tris = latheShellYTris(outer, inner, seg);
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 // Belt pulley (шкив): a rim with a circumferential groove — V (клиновой ремень) or round (круглый
 // ремень). Built as a lathe of the axial silhouette + a plain bore. Watertight by construction.
 function buildPulley(p){
@@ -8697,7 +8754,7 @@ function buildTrisForShape(shape, p) {
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || p.psOn);
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.tpmsType && p.tpmsType !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -8711,7 +8768,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !p.psOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.tpmsType && p.tpmsType !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -8750,6 +8807,9 @@ function buildTrisForShapeCore(shape, p) {
     }
     if (p.psOn) {
       return snapWeldTris(buildPhoneStand(p));
+    }
+    if (p.fnOn) {
+      return snapWeldTris(buildFunnel(p));
     }
     if (p.hookMount && p.hookMount !== 'none') {
       return snapWeldTris(buildHook(p));
@@ -9102,7 +9162,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','TPMS-решётка':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
@@ -10118,6 +10178,7 @@ function activeShapeLabel() {
   if (p.woBack && p.woBack !== 'none') return (p.woBack==='peg'?'перфопанель':'фр. планка') + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
+  if (p.fnOn) return 'воронка (Ø' + Math.round(p.fnMouthD||70) + ')';
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';

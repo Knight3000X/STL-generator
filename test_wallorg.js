@@ -19,10 +19,12 @@ for(const back of ['cleat','peg']) for(const front of ['hook','shelf','tools','n
 console.log('=== cleat back ===');
 { const b=computeBBox(base({woBack:'cleat',woFront:'none',woW:70,woH:80,woCleatLip:10,woT:5}));
   chk('cleat width = woW (X)', Math.abs((b.maxX-b.minX)-70)<0.8, {x:+(b.maxX-b.minX).toFixed(1)});
-  // The lip still hangs the full `lip` behind the plate; the front now also carries the reinforcing band above
-  // the hook, so total depth is lip + plate + band rather than exactly lip + plate.
-  chk('cleat lip protrudes the full depth behind the plate', (b.maxZ-b.minZ) >= 10+5-0.5, {z:+(b.maxZ-b.minZ).toFixed(1)});
-  chk('cleat reinforcement adds material in front of the plate', (b.maxZ-b.minZ) > 10+5, {z:+(b.maxZ-b.minZ).toFixed(1)}); }
+  // The reinforcement caps the wedge WITHIN the lip+plate envelope, so the depth stays exactly lip + plate —
+  // it must not stick out in front (that would just be a useless T).
+  chk('cleat depth = lip + plate (reinforcement stays inside the envelope)', Math.abs((b.maxZ-b.minZ)-(10+5))<1.5, {z:+(b.maxZ-b.minZ).toFixed(1)}); }
+{ // the band is real material: capping the wedge's top must out-weigh a bare plate+wedge of the same envelope
+  const thin=vol(base({woBack:'cleat',woFront:'none',woCleatLip:5})), thick=vol(base({woBack:'cleat',woFront:'none',woCleatLip:14}));
+  chk('deeper cleat → more reinforcement material', thick>thin, {thin:+thin.toFixed(0),thick:+thick.toFixed(0)}); }
 { const small=vol(base({woBack:'cleat',woFront:'none',woCleatLip:4})), big=vol(base({woBack:'cleat',woFront:'none',woCleatLip:16}));
   chk('deeper cleat lip → more material', big>small, {small:+small.toFixed(0),big:+big.toFixed(0)}); }
 

@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v101';
+const APP_VERSION = 'v102';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2738,7 +2738,14 @@ function computeWeldedNormals(tris) {
   return normals;
 }
 
-function trisToBinarySTL(tris) {
+/* The app models in Y-UP (height is +Y everywhere — floors at y=0, walls rising in +Y), but STL and 3MF are
+   consumed by slicers in Z-UP. Writing the internal coordinates verbatim is what made every export arrive
+   lying on its side. Rotate +90° about X on the way out: (x,y,z) → (x,−z,y). That is a proper rotation
+   (det +1), so triangle winding — and therefore every face normal — stays correct without re-orienting. Only
+   the export boundary converts; all modelling, print checks and bed limits keep working in Y-up. */
+function toPrintFrameTris(tris){ return tris.map(T=>T.map(v=>[v[0], -v[2], v[1]])); }
+function trisToBinarySTL(trisIn) {
+  const tris = toPrintFrameTris(trisIn);
   const n = tris.length;
   const buffer = new ArrayBuffer(84 + n*50);
   const view = new DataView(buffer);
@@ -2805,7 +2812,8 @@ function makeZipStore(entries){
   return new Blob(parts, { type: 'model/3mf' });
 }
 // One model's tris → a 3MF <object> (vertices deduped after 3-decimal rounding; degenerates dropped).
-function tris3MFObject(id, tris){
+function tris3MFObject(id, trisIn){
+  const tris = toPrintFrameTris(trisIn);          // Y-up → Z-up, same as the STL writer
   const r3 = v => Math.round(v * 1000) / 1000;
   const vmap = new Map(), verts = [], faces = [];
   const idx = (p) => {
@@ -3473,6 +3481,8 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipKnuckles', label:'Петля: число узлов (нечётное)', min:3, max:21, step:2, default:5, unit:'', int:true},
     {group:'Петля (печать в сборе)', key:'pipPinD', label:'Петля: Ø штифта (0 = авто)', min:0, max:10, step:0.5, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipPin', label:'Петля: штифт', type:'select', default:'inplace',
+      options:[{v:'inplace',t:'печать в сборе (штифт вплавлен)'},{v:'removable',t:'разборная (штифт вставляется)'}]},
     {group:'Петля (печать в сборе)', key:'pipGap', label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewD', label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewN', label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
@@ -6799,8 +6809,11 @@ function buildClamshell(p){
     for(const sx of [-1,1])                                                 // side walls, inset so no face is shared
       add(boxSpanTris(sx<0 ? -L/2 : L/2-bw, sx<0 ? -L/2+bw : L/2, y0, y1-0.15, zLo+0.4, zHi-0.4));
   }
-  cylX(-L/2, L/2, rimY, 0, pinR);                        // pin rod (body A)
-  const bTz0 = pinR+gap+0.4;                             // B's tongue starts clear of the pin
+  // Separable variant: bore every knuckle and emit no pin, so a rod can be threaded after printing and pulled
+  // to split the case in two. A bored A knuckle means A's tongue must clear the axis just like B's.
+  const sep = p.pipPin === 'removable';
+  const bTz0 = pinR+gap+0.4;                             // tongue stand-off from the pin
+  if(!sep) cylX(-L/2, L/2, rimY, 0, pinR);               // pin rod (body A)
   const tY0 = rimY-rK*0.7, tY1 = rimY+rK*0.7;
   // 45° self-supporting gussets under the tongues. Without them the tongue leaves the wall into open air
   // (the hinge channel has no floor) and the barrel below it starts mid-air — both droop. A right triangle
@@ -6818,11 +6831,11 @@ function buildClamshell(p){
   // and the underside runs parallel, so the cross-section is a parallelogram — convex (a slope-then-flat top
   // would be reflex and break the prism) and self-supporting on both faces. Drop is clamped so a tongue never
   // reaches the floor. zA/zB are each tongue's span from the barrel out to its own wall.
-  const zAo = -zIn-0.5, zBi = bTz0, zBo = zIn+0.5, dropMax = Math.max(0, tY0-floorT-0.3);
-  const dropA = Math.min(zIn+0.5, dropMax), dropB = Math.min(zBo-zBi, dropMax);
+  const zAo = -zIn-0.5, zAi = sep ? -bTz0 : 0, zBi = bTz0, zBo = zIn+0.5, dropMax = Math.max(0, tY0-floorT-0.3);
+  const dropA = Math.min(zAi-zAo, dropMax), dropB = Math.min(zBo-zBi, dropMax);
   for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
-    if(i%2===0){ cylX(x0,x1, rimY,0, rK);                                                               // A: barrel + wedge tongue
-      add(convexPrismXTris([[tY1,0],[tY1-dropA,zAo],[tY0-dropA,zAo],[tY0,0]], x0, x1)); }
+    if(i%2===0){ if(sep) tubeX(x0,x1, rimY,0, rK, pinR+gap); else cylX(x0,x1, rimY,0, rK);              // A: barrel (bored if separable)
+      add(convexPrismXTris([[tY1,zAi],[tY1-dropA,zAo],[tY0-dropA,zAo],[tY0,zAi]], x0, x1)); }
     else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin
       add(convexPrismXTris([[tY1,zBi],[tY1-dropB,zBo],[tY0-dropB,zBo],[tY0,zBi]], x0, x1)); }
   }
@@ -6878,10 +6891,16 @@ function buildHinge(p){
   };
   leafPlate(-leafW, -fingerLen);                          // leaf A plate (−Z)
   leafPlate(+fingerLen, leafW);                           // leaf B plate (+Z)
-  cylX(-L/2, L/2, cyMid, 0, pinR);                        // pin rod (body A): fused in A knuckles, free in B tubes
-  const bTz0 = pinR+gap+0.4;                              // B tongue stays clear of the pin, bites the tube wall
+  // SEPARABLE (разборная): every knuckle is bored right through and NO pin is generated — you thread a rod
+  // (a length of 1.75 mm filament works) after printing and pull it to take the hinge apart. Captive mode keeps
+  // the classic print-in-place pin fused into body A. With a bored A knuckle its tongue must ALSO stop short of
+  // the axis, exactly like B's — otherwise it fills the very channel the pin needs.
+  const sep = p.pipPin === 'removable';
+  const bTz0 = pinR+gap+0.4;                              // tongue stand-off: clears the pin, bites the tube wall
+  if(!sep) cylX(-L/2, L/2, cyMid, 0, pinR);               // pin rod (body A): fused in A knuckles, free in B tubes
   for(let i=0;i<N;i++){ const xi=-L/2+(i+0.5)*w, x0=xi-wf/2, x1=xi+wf/2;
-    if(i%2===0){ cylX(x0,x1, cyMid,0, zEdge); boxSpan(x0,x1, 0,leafT, -fingerLen-emb, emb); }        // A: solid barrel + tongue
+    if(i%2===0){ if(sep) tubeX(x0,x1, cyMid,0, zEdge, pinR+gap); else cylX(x0,x1, cyMid,0, zEdge);   // A: barrel (bored if separable)
+      boxSpan(x0,x1, 0,leafT, -fingerLen-emb, sep ? -bTz0 : emb); }                                  // A: tongue
     else {       tubeX(x0,x1, cyMid,0, zEdge, pinR+gap); boxSpan(x0,x1, 0,leafT, bTz0, fingerLen+emb); } // B: tube + tongue
   }
   return tris.map(T=>T.map(v=>[v[0], v[1]-cyMid, v[2]]));  // center on Y
@@ -7387,10 +7406,11 @@ function buildWallOrg(p){
     // 135° cleat: the mating face undercuts the OTHER way vs a 45° tooth — the wedge's sloped face runs from the
     // front-top down to the back, so the plate hangs on a wall rail whose bevel faces up-and-out (135° included).
     for(const T of prismXTris([[H,0.5],[H,-lip],[H-lip,-lip]], -W/2+0.3, W/2-0.3)) tris.push(T);
-    // Reinforcement above the hook: the wedge's thin upper edge is where the whole load hangs, so back it with a
-    // solid band across the plate — without it the cleat snaps off at the root.
+    // Reinforcement: the wedge's thin upper edge carries the whole hanging load. Cap it with a band that runs
+    // the FULL DEPTH — from the wedge's back edge forward to the plate — so the top of the cleat is a solid
+    // rectangular section. (Sticking the band out in front of the plate instead just makes a useless T.)
     const rb=Math.max(2.5, lip*0.45);
-    for(const T of boxSpanTris(-W/2+0.3, W/2-0.3, H-rb-lip*0.15, H, 0.4, t+rb*0.8)) tris.push(T);
+    for(const T of boxSpanTris(-W/2+0.3, W/2-0.3, H-rb, H, -lip+0.25, t-0.35)) tris.push(T);
   } else {                                                                               // pegboard pins (protrude −Z into the board)
     const pr=Math.max(1.5,(p.woPegD||6)/2), sp=Math.max(15,p.woPegSpacing||25.4), pl=Math.max(6,p.woPegLen||10);
     const n=Math.max(1,Math.round(p.woPegN||2)), seg=Math.max(12,Math.round(pr*4));
@@ -10530,9 +10550,89 @@ function projectToScreen(pos3, rect) {
   return { x:(v.x*0.5+0.5)*rect.width, y:(-v.y*0.5+0.5)*rect.height, behind: v.z > 1 };
 }
 
+/* ---- Orientation gizmo («кубик вида») ------------------------------------------------------------
+   A small labelled cube in the corner, the OrcaSlicer / Bambu Studio idiom: it turns with the model so
+   you always know which way you are looking, and clicking a face snaps the camera to that view.
+
+   It is drawn as a SECOND scene into a scissored corner of the same canvas after the main pass — no extra
+   renderer, no extra canvas to keep in sync. Its camera sits at a fixed distance along the main camera's
+   own view direction, so the cube mirrors the orbit exactly. Clicks are ray-cast into the gizmo scene only
+   when the pointer is inside that corner, so it never steals a drag from the viewport.
+
+   Faces are labelled in the MODEL's frame (Y-up: верх = +Y, перед = +Z, право = +X) — the same frame the
+   parameters use — so "перед" on the cube is the face a +Z hole is placed on. */
+const NAV_SIZE = 96, NAV_MARGIN = 10;
+let navScene = null, navCamera = null, navCube = null;
+const NAV_FACES = [   // order matches BoxGeometry material slots: +X, −X, +Y, −Y, +Z, −Z
+  {label:'ПРАВО', theta:Math.PI/2,  phi:Math.PI/2},
+  {label:'ЛЕВО',  theta:-Math.PI/2, phi:Math.PI/2},
+  {label:'ВЕРХ',  theta:0,          phi:0.001},
+  {label:'НИЗ',   theta:0,          phi:Math.PI-0.001},
+  {label:'ПЕРЕД', theta:0,          phi:Math.PI/2},
+  {label:'ЗАД',   theta:Math.PI,    phi:Math.PI/2},
+];
+function navFaceTexture(label){
+  const s=128, c=document.createElement('canvas'); c.width=c.height=s;
+  const g=c.getContext('2d');
+  g.fillStyle='#20638f'; g.fillRect(0,0,s,s);
+  g.strokeStyle='#9fd0ea'; g.lineWidth=6; g.strokeRect(3,3,s-6,s-6);
+  g.fillStyle='#eaf6ff'; g.textAlign='center'; g.textBaseline='middle';
+  let fs=26; g.font='700 '+fs+'px "IBM Plex Sans", Arial, sans-serif';
+  while(g.measureText(label).width > s-18 && fs>10){ fs-=2; g.font='700 '+fs+'px "IBM Plex Sans", Arial, sans-serif'; }
+  g.fillText(label, s/2, s/2);
+  const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
+}
+function initNavCube(){
+  navScene = new THREE.Scene();
+  navCamera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+  navScene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.1));
+  const mats = NAV_FACES.map(f=>new THREE.MeshBasicMaterial({map:navFaceTexture(f.label)}));
+  navCube = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), mats);
+  navScene.add(navCube);
+}
+// Corner box in CSS pixels, measured from the canvas's top-left. BOTTOM-right: the top-right corner is
+// already occupied by the viewport toolbar buttons, which sit above the canvas and would swallow every click.
+function navRect(){
+  const r = renderer.domElement.getBoundingClientRect();
+  return { x: r.width - NAV_SIZE - NAV_MARGIN, y: r.height - NAV_SIZE - NAV_MARGIN, w: NAV_SIZE, h: NAV_SIZE, cw: r.width, ch: r.height };
+}
+function renderNavCube(){
+  if(!navScene) return;
+  const dir = new THREE.Vector3().subVectors(camera.position, controls ? controls.target : new THREE.Vector3()).normalize();
+  navCamera.position.copy(dir.multiplyScalar(3));
+  navCamera.up.copy(camera.up);
+  navCamera.lookAt(0,0,0);
+  const n = navRect(), pr = renderer.getPixelRatio();
+  // WebGL viewport origin is bottom-left, the rect is measured from the top.
+  const vx = n.x*pr, vy = (n.ch - n.y - n.h)*pr, vs = n.w*pr;
+  const oldScissor = renderer.getScissorTest();
+  renderer.setViewport(vx, vy, vs, vs);
+  renderer.setScissor(vx, vy, vs, vs);
+  renderer.setScissorTest(true);
+  renderer.render(navScene, navCamera);
+  renderer.setScissorTest(oldScissor);
+  renderer.setViewport(0, 0, n.cw*pr, n.ch*pr);      // restore for the next main pass
+  renderer.setScissor(0, 0, n.cw*pr, n.ch*pr);
+}
+// Returns the clicked face index, or -1 when the pointer is outside the gizmo / misses the cube.
+function navPick(clientX, clientY){
+  if(!navScene) return -1;
+  const r = renderer.domElement.getBoundingClientRect();
+  const px = clientX - r.left, py = clientY - r.top, n = navRect();
+  if(px < n.x || px > n.x+n.w || py < n.y || py > n.y+n.h) return -1;
+  const ndc = new THREE.Vector2(((px-n.x)/n.w)*2-1, -(((py-n.y)/n.h)*2-1));
+  const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, navCamera);
+  const hit = ray.intersectObject(navCube, false);
+  return hit.length ? (hit[0].face.materialIndex != null ? hit[0].face.materialIndex : Math.floor(hit[0].faceIndex/2)) : -1;
+}
+function navSnapTo(i){
+  const f = NAV_FACES[i]; if(!f || !controls) return;
+  controls.theta = f.theta; controls.phi = f.phi; controls.update();
+}
 function animate() {
   requestAnimationFrame(animate);
   renderer.render(scene, camera);
+  renderNavCube();
   if (dimsVisible) {
     const rect = renderer.domElement.getBoundingClientRect();
     const wrapRect = document.getElementById('viewport').getBoundingClientRect();
@@ -10754,6 +10854,15 @@ function initScene3D() {
   initDimensionOverlay();
   controls = new SimpleOrbit(camera, renderer.domElement);
   attachModelDrag();
+  initNavCube();
+  // Snap-to-view on the gizmo. The listener sits on the #viewport CONTAINER in the capture phase — the same
+  // place model-dragging binds — because the dimension overlay covers the canvas, so a listener on the canvas
+  // itself would never see the click. stopPropagation here keeps the orbit (bound to the canvas below) from
+  // arming a drag; a miss returns -1 and falls straight through.
+  document.getElementById('viewport').addEventListener('pointerdown', (e) => {
+    const i = navPick(e.clientX, e.clientY);
+    if (i >= 0) { e.stopPropagation(); e.preventDefault(); navSnapTo(i); }
+  }, true);
 }
 
 init();

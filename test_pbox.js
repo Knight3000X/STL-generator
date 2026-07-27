@@ -50,6 +50,29 @@ console.log('=== posts & standoffs add material ===');
 { const both=base({pbPart:'both'}); const b=computeBBox(both);
   chk('both parts span wider in X than a single tray', (b.maxX-b.minX) > 80, {x:+(b.maxX-b.minX).toFixed(1)}); }
 
+console.log('=== connector cutouts in the walls ===');
+function holed(ov, holes){ const t=base(ov); boxHoles.length=0; for(const h of holes) boxHoles.push(h);
+  Object.assign(paramState.box, ov||{}); return buildTrisForShape('box',paramState.box); }
+{ // a cutout on each face must stay watertight AND actually remove material from that wall
+  for(const face of ['+Z','-Z','+X','-X','-Y']){
+    const solid=vol(base({pbW:100,pbD:80,pbH:40}));
+    const t=holed({pbW:100,pbD:80,pbH:40},[{id:7,face,u0:0,v0:0,shape:'circle',diameter:10}]);
+    const mc=manifoldCheck(t,4);
+    chk('cutout on '+face+' watertight + removes material', mc.watertight && vol(t)<solid, {wt:mc.watertight,bad:mc.badEdges});
+    boxHoles.length=0; }
+}
+{ // the real use case: a USB-C port + a barrel jack + a side vent, all at once
+  const t=holed({pbW:100,pbD:80,pbH:40},[{id:1,face:'+Z',u0:-20,v0:0,shape:'rrect',portW:9,portH:3.4,cornerR:1.6},
+                                          {id:2,face:'+Z',u0:20,v0:0,shape:'circle',diameter:6},
+                                          {id:3,face:'-X',u0:0,v0:0,shape:'circle',diameter:12}]);
+  const mc=manifoldCheck(t,4);
+  chk('multi-port enclosure (USB-C + jack + vent) watertight', mc.watertight && vol(t)>0, {wt:mc.watertight,bad:mc.badEdges,open:mc.openEdges});
+  boxHoles.length=0; }
+{ const solid=vol(base({pbPart:'lid',pbW:100,pbD:80,pbH:40}));
+  const t=holed({pbPart:'lid',pbW:100,pbD:80,pbH:40},[{id:9,face:'+Y',u0:0,v0:0,shape:'circle',diameter:12}]);
+  chk('top-face cutout lands on the lid', manifoldCheck(t,4).watertight && vol(t)<solid, {});
+  boxHoles.length=0; }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('box add-ons skipped on a project box', a===b, {a,b}); }

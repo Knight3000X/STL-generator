@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v120';
+const APP_VERSION = 'v121';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3686,6 +3686,8 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'folLen', label:'Толкатель: длина штока', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Шестерня', key:'folPadD', label:'Толкатель: Ø плоской пяты (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Шестерня', key:'folPadT', label:'Толкатель: толщина пяты', min:1, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Шестерня', key:'gearWheelRim', label:'Червячное колесо: венец', type:'select', default:'straight',
+      options:[{v:'straight',t:'прямой (цилиндрический)'},{v:'throated',t:'обнимающий червяк (глобоидный)'}]},
     {group:'Шестерня', key:'ujShaftD', label:'Карданчик: Ø вала', min:4, max:60, step:0.5, default:10, unit:'мм'},
     {group:'Шестерня', key:'ujShaftLen', label:'Карданчик: вылет вала с каждой стороны', min:4, max:150, step:1, default:18, unit:'мм'},
     {group:'Шестерня', key:'ujBoreD', label:'Карданчик: Ø отверстия в валу (0 = сплошной)', min:0, max:40, step:0.5, default:0, unit:'мм'},
@@ -7303,13 +7305,19 @@ function ratchetOutline(N, m){
 }
 // Loft a star-shaped 2D outline P along Y (th) with a concentric bore, optionally TWISTED (helical gears).
 // The bore ring is sampled per-point at the outline's own angle, so end faces close as a clean annulus.
-function extrudeProfileY(P, boreFn, th, twist, scaleFn){
-  const hasScale = scaleFn !== undefined; scaleFn = scaleFn || (()=>1);
-  const n=P.length, tris=[], M=Math.max(hasScale?8:1, Math.round(Math.abs(twist)/(5*Math.PI/180)), 1);
+// `scaleFn(u)` scales a layer about the axis (bevel taper); `growFn(u)` pushes every outline point OUTWARD
+// by a fixed radial distance instead. The two are not interchangeable: a throated worm wheel has to keep
+// its tooth shape and thickness while the whole profile slides out along the worm's arc, and scaling would
+// fatten the teeth along with it.
+function extrudeProfileY(P, boreFn, th, twist, scaleFn, growFn){
+  const hasScale = scaleFn !== undefined, hasGrow = growFn !== undefined;
+  scaleFn = scaleFn || (()=>1); growFn = growFn || (()=>0);
+  const n=P.length, tris=[], M=Math.max(hasGrow?16:(hasScale?8:1), Math.round(Math.abs(twist)/(5*Math.PI/180)), 1);
   const rot=(q,a)=>[q[0]*Math.cos(a)-q[1]*Math.sin(a), q[0]*Math.sin(a)+q[1]*Math.cos(a)];
   const ang=P.map(q=>Math.atan2(q[1],q[0]));
   const B=ang.map(a=>{ const r=boreFn(a); return [r*Math.cos(a), r*Math.sin(a)]; });   // AXIAL bore (keyway stays straight)
-  const lP=[]; for(let k=0;k<=M;k++){ const s=scaleFn(k/M); lP.push(P.map(q=>{ const r=rot(q,twist*k/M); return [r[0]*s, r[1]*s]; })); }  // twist + taper
+  const lP=[]; for(let k=0;k<=M;k++){ const s=scaleFn(k/M), g=growFn(k/M);            // twist + taper + throat
+    lP.push(P.map(q=>{ const r=rot(q,twist*k/M), f=s+g/(Math.hypot(r[0],r[1])||1); return [r[0]*f, r[1]*f]; })); }
   const yAt=k=>-th/2+th*k/M;
   for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1];
     for(let i=0;i<n;i++){ const j=(i+1)%n;
@@ -7720,14 +7728,24 @@ function buildGear(p){
   const rB=Math.max(0.6, Math.min(p.gearBore>0?p.gearBore/2:o.rf*0.35, o.rf-0.8));
   const keyW=Math.max(0,Math.min(p.gearKeyW||0, rB*1.4)), keyD=Math.max(0,Math.min(p.gearKeyD||0, o.rf-rB-0.6));
   const boreFn=a=>boreRadiusAt(a, rB, keyW, keyD);
-  let twist=0;
+  let twist=0, grow;
   // Worm wheel: for a 90° shaft angle the wheel's helix angle EQUALS the worm's lead angle,
   // λ = atan(starts·module / worm pitch Ø) — so it is derived from the mating worm rather than typed in, and
-  // the pair actually meshes. This is the non-throated (straight-bored) form: a true worm wheel is hollowed
-  // along the worm's radius to wrap it, which needs a per-layer concave scale and is a separate job.
+  // the pair actually meshes.
+  //
+  // THROATED (globoid) rim: the wheel wraps the worm instead of standing off it as a straight cylinder.
+  // Put the wheel's axis on Y and the worm's axis across it at the centre distance C = rp + rw. A wheel
+  // point at axial offset y meets the worm at radius C − √(rw² − y²), so the whole tooth profile has to
+  // slide OUTWARD by δ(y) = rw − √(rw² − y²) as you move away from the mid-plane — the rim comes out
+  // concave, like a pulley groove, and more teeth carry load at once. δ is a radial OFFSET, not a scale:
+  // the tooth keeps its involute shape and its thickness, it just rides out along the worm's arc.
+  // The wrap is capped at ±45°. Past that the rim starts closing over the worm and the pair could no
+  // longer be assembled — a cap is honest, silently letting the rim swallow the worm would not be.
   if(mode==='wormwheel'){ const dW=Math.max(m*2,(p.gearWormD>0?p.gearWormD:m*8));
     const lam=Math.atan(Math.max(1,Math.round(p.gearStarts||1))*m/dW);
-    twist = th*Math.tan(lam)/Math.max(1,rp); }
+    twist = th*Math.tan(lam)/Math.max(1,rp);
+    if((p.gearWheelRim||'straight')==='throated'){ const rw=dW/2, yMax=rw*Math.SQRT1_2;
+      grow = u => { const y=Math.min(Math.abs(th*(u-0.5)), yMax); return rw - Math.sqrt(rw*rw - y*y); }; } }
   if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
   const spokes=Math.max(0,Math.round(p.gearSpokes||0));
   let tris;
@@ -7745,7 +7763,7 @@ function buildGear(p){
     for(let s=0;s<spokes;s++){ const a=2*Math.PI*s/spokes, ca=Math.cos(a), sa=Math.sin(a);   // radial bars, rotated about Y
       for(const T of boxSpanTris(rHub-1.5, rRim+1.5, -th/2, th/2, -spokeW/2, spokeW/2))
         tris.push(T.map(v=>[v[0]*ca - v[2]*sa, v[1], v[0]*sa + v[2]*ca])); }
-  } else tris=extrudeProfileY(o.P, boreFn, th, twist);
+  } else tris=extrudeProfileY(o.P, boreFn, th, twist, undefined, grow);
   const hubD=p.gearHub||0, hubH=Math.max(0,p.gearHubH||0);   // raised hub (boss) around the bore on the +Y face
   if(hubD>2*rB+1 && hubH>0.5){ const hubR=Math.min(hubD/2, o.rf-0.4), seg=Math.max(20,Math.round(hubR*4));
     tris=tris.concat(tubeYTris(0,0, hubR, rB+0.05, th/2-1, th/2+hubH, seg));   // +0.05 avoids a coaxial coincidence with the bore
@@ -10769,7 +10787,7 @@ function activeShapeLabel() {
   if (p.fnOn) return 'воронка (Ø' + Math.round(p.fnMouthD||70) + ')';
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:'червячное колесо',planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба';

@@ -159,5 +159,30 @@ for(const m of [1,2,4]) for(const L of [10,30,80]) for(const st of [1,2,4]) for(
 { const shortW=vol(base({gearMode:'worm',gearWormLen:15})), longW=vol(base({gearMode:'worm',gearWormLen:60}));
   chk('longer cut → more material', longW>shortW, {short:+shortW.toFixed(0),long:+longW.toFixed(0)}); }
 
+
+console.log('=== cam (кулачок) ===');
+for(const cb of [10,24,80]) for(const lift of [1,8,40]) for(const rise of [30,120,180]) for(const bore of [0,6]){
+  const t=base({gearMode:'cam',camBase:cb,camLift:lift,camRise:rise,camDwell:60,camFall:rise,gearThick:6,gearBore:bore});
+  const mc=manifoldCheck(t,4);
+  chk('cam base'+cb+' lift'+lift+' rise'+rise+' bore'+bore+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+}
+{ // Peak radius = base/2 + lift. Measure the true RADIUS over the mesh, not a bbox extent — the peak sits
+  //   wherever the dwell falls and generally is not aligned with an axis.
+  const t=base({gearMode:'cam',camBase:24,camLift:8,gearThick:6});
+  let rMax=0; for(const T of t)for(const v of T) rMax=Math.max(rMax, Math.hypot(v[0],v[2]));
+  chk('cam peak radius = base/2 + lift', Math.abs(rMax-(12+8))<0.4, {rMax:+rMax.toFixed(2),expect:20}); }
+{ // The harmonic law is the reason to prefer this over a linear ramp: zero slope at BOTH ends of the rise
+  //   (no acceleration step, so the follower does not hammer), steep in the middle.
+  const o=camOutline(12,8,120,60,120,720);
+  const r=a=>{ const i=((Math.round(a/(2*Math.PI)*720))%720+720)%720; return Math.hypot(o.P[i][0],o.P[i][1]); };
+  const d=a=>(r(a+0.01)-r(a-0.01))/0.02;
+  chk('cam rise starts with ~zero slope (harmonic, not linear)', Math.abs(d(0.02))<0.5, {s:+d(0.02).toFixed(3)});
+  chk('cam rise ends with ~zero slope', Math.abs(d(120*Math.PI/180-0.02))<0.5, {s:+d(120*Math.PI/180-0.02).toFixed(3)});
+  chk('cam is steep mid-rise', Math.abs(d(60*Math.PI/180))>1, {s:+d(60*Math.PI/180).toFixed(3)}); }
+{ const lo=vol(base({gearMode:'cam',camLift:2})), hi=vol(base({gearMode:'cam',camLift:30}));
+  chk('more lift → more material', hi>lo, {lo:+lo.toFixed(0),hi:+hi.toFixed(0)}); }
+{ const noBore=vol(base({gearMode:'cam',gearBore:0.001})), bored=vol(base({gearMode:'cam',gearBore:8}));
+  chk('cam shaft bore removes material', bored<noBore, {}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

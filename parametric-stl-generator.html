@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v118';
+const APP_VERSION = 'v119';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3286,6 +3286,150 @@ function buildLogoExtrudeTris(logo, sizeX, sizeZ, thickness, N) {
   return tris;
 }
 
+/* ---- Labels / relief on the shapes that have no face to displace -----------------------------
+   The cube family renders logo relief by MOVING GRID VERTICES, which needs a finely tessellated
+   face. A gear, a funnel, a project box or a hook has no such face — their geometry is assembled
+   from coarse primitives, and subdividing every one of them would mean rewriting every builder.
+   So on those shapes the same artwork (image / text / QR / texture — the logo cards are unchanged)
+   is emitted as its OWN closed body standing on the chosen face of the model's bounding box: a
+   height-field slab, one cell per grid square, sunk LOGO_PLATE_EMBED into the host so the two
+   interpenetrate. That is the identical watertight-by-construction trick the rest of the app uses.
+     depth > 0 → the glyph stands proud (emboss); the field between glyphs sits just BELOW the
+                 surface, hidden inside the host, so nothing is coplanar with the host's own skin.
+     depth < 0 → the glyph is sunk into a raised plaque. Cutting into the host itself would need a
+                 CSG engine; a plaque needs none and reads the same on a printed part. It is
+                 auto-thickened to |depth| + 0.6 so the sunk floor keeps material under it.
+   The slab is placed on the BOUNDING-BOX face, so it is meant for a flat one. On a curved face
+   (a funnel's cone, a gear's rim) it will bridge the curvature — give it a plaque so it lands. */
+const LOGO_PLATE_EMBED = 0.8;
+// (normal axis, outward sign, u axis, v axis) — the same u/v convention as FACE_AXES, so a logo
+// placed on the cube lands in the same spot after switching to another base shape.
+const PLATE_FACE_AXES = {
+  '+X':[0,+1,1,2], '-X':[0,-1,1,2], '+Y':[1,+1,0,2], '-Y':[1,-1,0,2], '+Z':[2,+1,0,1], '-Z':[2,-1,0,1],
+};
+function bboxOfTris(tris){
+  const lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+  for(const T of tris) for(const p of T) for(let a=0;a<3;a++){ if(p[a]<lo[a])lo[a]=p[a]; if(p[a]>hi[a])hi[a]=p[a]; }
+  return {lo,hi};
+}
+// The OUTERMOST flat surface of the host under (pu,pv), facing `sgn` along `nAx` — or null if there
+// is none. Not the bounding-box face: on a project box the widest thing is the floor plate, and its
+// walls sit several millimetres inside that, so a slab parked on the box face would float in mid-air.
+// On a gear the box's ±X faces are tangent lines with no surface at all, and the answer is honestly
+// "nowhere" — better no label than a slab welded into the host's skin. Only triangles perpendicular
+// to the axis count, which is the same as asking for a face the label can actually sit flat on.
+function outermostFlatPlaneAt(tris, nAx, sgn, uAx, vAx, samples){
+  const ar=(u,v,w)=>(v[0]-u[0])*(w[1]-u[1])-(w[0]-u[0])*(v[1]-u[1]);
+  const covers=(T, plane, P)=>{
+    if (Math.abs(T[0][nAx]-plane) > 1e-6) return false;
+    const a=[T[0][uAx],T[0][vAx]], b=[T[1][uAx],T[1][vAx]], d=[T[2][uAx],T[2][vAx]];
+    if (Math.abs(ar(a,b,d)) < 1e-12) return false;                                 // edge-on: no area
+    const d1=ar(P,a,b), d2=ar(P,b,d), d3=ar(P,d,a);
+    return !(((d1<0)||(d2<0)||(d3<0)) && ((d1>0)||(d2>0)||(d3>0)));
+  };
+  const perp = tris.filter(T => Math.abs(T[1][nAx]-T[0][nAx]) <= 1e-6 && Math.abs(T[2][nAx]-T[0][nAx]) <= 1e-6);
+  // Outermost plane covering the label's CENTRE...
+  let best = null;
+  for(const T of perp){ const c = T[0][nAx];
+    if (best !== null && sgn*c <= sgn*best) continue;
+    if (covers(T, c, samples[0])) best = c; }
+  if (best === null) return null;
+  // ...and every corner has to land on that same surface. A tooth flank on a gear happens to be
+  // perpendicular to X, but it is millimetres across — a label parked on it would hang half in air
+  // with its walls buried in the host's skin. Requiring the WHOLE footprint to be supported is what
+  // separates "a face you can letter" from "a facet that merely faces the right way".
+  for(let i=1;i<samples.length;i++){
+    let ok=false;
+    for(const T of perp) if(covers(T, best, samples[i])) { ok=true; break; }
+    if(!ok) return null;
+  }
+  return best;
+}
+function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
+  if (!logo || !logo.heightmap) return [];
+  const spec = PLATE_FACE_AXES[logo.face === '-Y-inner' ? '-Y' : logo.face];
+  if (!spec) return [];
+  const [nAx, sgn, uAx, vAx] = spec;
+  const depth = logo.depth || 0;
+  if (!depth) return [];
+  let plate = Math.max(0, plateParam || 0);
+  if (depth < 0) plate = Math.max(plate, -depth + 0.6);
+
+  // Footprint, grown to cover the corners a rotated logo sweeps into, then clamped into the face.
+  const ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+  const faceHalfU = (bb.hi[uAx]-bb.lo[uAx])/2, faceHalfV = (bb.hi[vAx]-bb.lo[vAx])/2;
+  const cU = (bb.hi[uAx]+bb.lo[uAx])/2, cV = (bb.hi[vAx]+bb.lo[vAx])/2;
+  // Keep a margin off the face border. Running the patch exactly to the bounding box edge puts its
+  // side wall in the host's own surface, where snapWeldTris then merges the two and the plate stops
+  // being a closed body of its own. A label that wide is unreadable anyway.
+  const MARGIN = 0.6;
+  const halfU = Math.min(ext.halfX, Math.max(0, faceHalfU - MARGIN));
+  const halfV = Math.min(ext.halfY, Math.max(0, faceHalfV - MARGIN));
+  if (!(halfU > 0.5) || !(halfV > 0.5)) return [];
+  const u0 = cU + Math.max(-(faceHalfU-halfU), Math.min(faceHalfU-halfU, logo.u0||0));
+  const v0 = cV + Math.max(-(faceHalfV-halfV), Math.min(faceHalfV-halfV, logo.v0||0));
+
+  const want = Math.max(8, Math.min(220, res || 120));
+  const cell = Math.max(0.1, Math.min(halfU, halfV) * 2 / want);
+  const N = Math.max(4, Math.min(400, Math.ceil(2*halfU/cell)));
+  const M = Math.max(4, Math.min(400, Math.ceil(2*halfV/cell)));
+  const rad = (logo.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
+  const mask = new Uint8Array(N*M);
+  let any=false;
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){
+    const du = (i+0.5)/N*2*halfU - halfU, dv = (j+0.5)/M*2*halfV - halfV;
+    const lu = du*cosR - dv*sinR, lv = du*sinR + dv*cosR;   // rotate into image space
+    if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) continue;
+    let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);
+    if (logo.invert) val = 1 - val;
+    if (val > logo.threshold) { mask[j*N+i]=1; any=true; }
+  }
+  if (!any && plate <= 0) return [];
+  // Cells touching only at a CORNER would put four wall quads on one vertical edge — non-manifold.
+  // Fill one of the two empty diagonal neighbours until none are left (each pass only ADDS cells).
+  for (let changed=true; changed; ){ changed=false;
+    for(let j=0;j+1<M;j++) for(let i=0;i+1<N;i++){
+      const a=mask[j*N+i], b=mask[j*N+i+1], c=mask[(j+1)*N+i], d=mask[(j+1)*N+i+1];
+      if(a&&d&&!b&&!c){ mask[j*N+i+1]=1; changed=true; }
+      else if(b&&c&&!a&&!d){ mask[j*N+i]=1; changed=true; } } }
+
+  // Probe OUTSIDE the footprint (×1.06), not just inside it: the surface has to extend past the label
+  // on all four sides. A label that exactly fills its face puts its walls in the host's own border,
+  // where welding merges the two and both stop being closed.
+  const K = 1.06;
+  const probe = [[u0,v0], [u0-halfU*K, v0-halfV*K], [u0+halfU*K, v0-halfV*K],
+                 [u0+halfU*K, v0+halfV*K], [u0-halfU*K, v0+halfV*K]];
+  const plane = hostTris ? outermostFlatPlaneAt(hostTris, nAx, sgn, uAx, vAx, probe)
+                        : (sgn > 0 ? bb.hi[nAx] : bb.lo[nAx]);
+  if (plane === null) return [];      // nothing flat to sit on — no label rather than a broken one
+  const base  = plate > 0 ? plate : -0.15;     // field between glyphs: the plaque, or just under the skin
+  const yb    = -LOGO_PLATE_EMBED;
+  const hOf = (i,j) => (i<0||j<0||i>=N||j>=M) ? null : (mask[j*N+i] ? plate + depth : base);
+  const P = (uu,vv,out) => { const q=[0,0,0]; q[nAx]=plane + sgn*out; q[uAx]=uu; q[vAx]=vv; return q; };
+  const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
+  const nOut=[0,0,0]; nOut[nAx]=sgn; const nIn=[0,0,0]; nIn[nAx]=-sgn;
+  const out=[];
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){
+    const h=hOf(i,j), ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
+    out.push(orient([P(ua,va,h),P(ub,va,h),P(ub,vb,h)], nOut), orient([P(ua,va,h),P(ub,vb,h),P(ua,vb,h)], nOut));
+    out.push(orient([P(ua,va,yb),P(ub,va,yb),P(ub,vb,yb)], nIn), orient([P(ua,va,yb),P(ub,vb,yb),P(ua,vb,yb)], nIn));
+    // Walls: the TALLER cell owns the step, so each is emitted exactly once; on the patch border
+    // there is no neighbour and the wall runs all the way down to the buried bottom.
+    const sides=[[1,0,ub,va,ub,vb],[-1,0,ua,vb,ua,va],[0,1,ub,vb,ua,vb],[0,-1,ua,va,ub,va]];
+    for(const [di,dj,pu,pv,qu,qv] of sides){
+      const hn = hOf(i+di, j+dj), lo = (hn===null) ? yb : hn;
+      if (!(h > lo)) continue;
+      const wref=[0,0,0]; wref[uAx]=di; wref[vAx]=dj;
+      out.push(orient([P(pu,pv,lo),P(qu,qv,lo),P(qu,qv,h)], wref),
+               orient([P(pu,pv,lo),P(qu,qv,h),P(pu,pv,h)], wref));
+    }
+  }
+  return out;
+}
+// Which base shapes get their labels as a plate. The cube family displaces its own vertices, dice
+// and keycaps have their own face/legend machinery, and the 3D-logo model IS the artwork.
+const LOGO_PLATE_MODES = new Set(['sheet','thread','hinge','gear','mount','hook','wallorg','pbox','stand','funnel']);
+
 // Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
 // (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
 // the extra room its corners sweep into, not just its unrotated w/h.
@@ -3350,6 +3494,15 @@ function faceFilletInsets(face, p) {
   }
 }
 function clampLogoToFace(logo) {
+  // On a shape that is NOT the cube family, the cube's width/height/depth say nothing about the face
+  // the label will land on — clamping against them would shrink a perfectly good label on a gear to
+  // fit a box that isn't being built. Those shapes get the label as a plate, and buildLogoPlateTris
+  // clamps it against the real bounding box at build time, where the true extents are known.
+  if (LOGO_PLATE_MODES.has(dominantMode(paramState.box))) {
+    logo.w = Math.max(1, Math.min(400, logo.w));
+    logo.h = Math.max(1, Math.min(400, logo.h));
+    return;
+  }
   const dims = BOX_FACE_DIMS[logo.face](paramState.box);
   const margin = 1.5;
   const ins = faceFilletInsets(logo.face, paramState.box);
@@ -3705,6 +3858,7 @@ const SHAPE_PARAMS = {
     {group:'Разрезка на фрагменты', key:'fragPinClear', label:'Штифт: зазор в гнезде (на сторону)', min:0, max:1, step:0.05, default:0.2, unit:'мм'},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
+    {group:'Логотипы (рельеф на гранях)', key:'logoPlate', label:'Этикетка: подложка под надпись (0 = без подложки)', min:0, max:6, step:0.2, default:0, unit:'мм'},
     {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
@@ -4186,7 +4340,9 @@ function sectionRelevant(key, mode, hollow){
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подставка (телефон / планшет)': return mode==='stand';
     case 'Воронка': return mode==='funnel';
-    case 'Логотипы (рельеф на гранях)': return mode==='box' || mode==='die' || mode==='keycap';
+    // Every base shape can carry a label now: the cube family by displacing its own vertices, the
+    // rest by the plate in buildLogoPlateTris. The 3D-logo model IS the artwork, so not there.
+    case 'Логотипы (рельеф на гранях)': return mode!=='logo3d' && mode!=='baseplate';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
     case 'Позиция модели (в сборке)': case 'Поворот (для печати)': case 'Отображение':
@@ -9076,6 +9232,14 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildMountEars(p));
   if (shape === 'box' && !p.logo3d && !poly && p.gripWall && p.gripWall !== 'none')
     tris = tris.concat(buildFingerGrip(p));
+  // Labels on a shape with no tessellated face to displace — see buildLogoPlateTris. Measured off
+  // the finished mesh's bounding box, so it works the same whatever the shape turned out to be.
+  if (shape === 'box' && logos.length > 0 && LOGO_PLATE_MODES.has(dominantMode(p))) {
+    const bb = bboxOfTris(tris);
+    const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;
+    const host = tris;
+    for (const lg of logos) tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
+  }
   return snapWeldTris(tris);
 }
 function buildTrisForShapeCore(shape, p) {
@@ -9461,7 +9625,7 @@ const GROUP_TAB = {
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
-  'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish',
+  'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Логотипы (рельеф на гранях)':'finish',
 };
 function buildAllParamUI() {
   for (const shapeKey in SHAPE_PARAMS) {

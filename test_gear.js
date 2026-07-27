@@ -200,5 +200,23 @@ console.log('=== cam follower (толкатель) ===');
 { const s2=computeBBox(base({gearMode:'follower',folLen:10})), l2=computeBBox(base({gearMode:'follower',folLen:80}));
   chk('longer rod → taller follower', (l2.maxY-l2.minY)>(s2.maxY-s2.minY)+60, {}); }
 
+
+console.log('=== worm wheel (червячное колесо) ===');
+{ let n=0,bad=0;
+  for(const m of [1,2,4]) for(const Z of [20,40]) for(const st of [1,2,4]) for(const dW of [0,16,40]){
+    const t=base({gearMode:'wormwheel',gearModule:m,gearTeeth:Z,gearStarts:st,gearWormD:dW,gearThick:8,gearBore:6});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++; }
+  chk('worm wheel: all '+n+' module × teeth × starts × worm-Ø combos watertight', bad===0, {n,bad}); }
+{ // For a 90° shaft angle the wheel's helix angle EQUALS the worm's lead angle, λ = atan(starts·m / worm Ø).
+  //   It is derived from the mating worm rather than typed in, which is what makes the pair actually mesh.
+  const lam=(m,st,dW)=>Math.atan(st*m/dW)*180/Math.PI;
+  chk('lead angle grows with starts', lam(2,4,16) > lam(2,1,16)+5, {one:+lam(2,1,16).toFixed(2),four:+lam(2,4,16).toFixed(2)});
+  chk('lead angle shrinks on a fatter worm', lam(2,1,40) < lam(2,1,12), {thin:+lam(2,1,12).toFixed(2),fat:+lam(2,1,40).toFixed(2)}); }
+{ const shallow=base({gearMode:'wormwheel',gearStarts:1,gearWormD:40,gearThick:8}).length;
+  const steep=base({gearMode:'wormwheel',gearStarts:4,gearWormD:12,gearThick:8}).length;
+  chk('steeper lead → more loft layers', steep>shallow, {shallow,steep}); }
+{ const b=computeBBox(base({gearMode:'wormwheel',gearModule:2,gearTeeth:20}));
+  chk('worm wheel keeps the standard outer Ø = m(Z+2)', Math.abs((b.maxX-b.minX)-44)<1.5, {x:+(b.maxX-b.minX).toFixed(1)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

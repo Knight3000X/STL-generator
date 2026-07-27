@@ -7,7 +7,7 @@ function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
     pbPart:'tray',pbW:80,pbD:60,pbH:30,pbWall:2.4,pbFloor:2.4,pbFlange:1.5,pbScrewD:3,pbPostD:8,pbClear:0.35,
     pbLidT:2.4,pbLipH:5,pbBossNX:0,pbBossNZ:0,pbBossD:6,pbBossH:5,pbBossBore:2.6,
-    woBack:'none',hookMount:'none',tpmsType:'none',mntMode:'none',gearMode:'none',pipMode:'none',threadMode:'none',
+    woBack:'none',hookMount:'none',mntMode:'none',gearMode:'none',pipMode:'none',threadMode:'none',
     sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
   return buildTrisForShape('box',paramState.box); }

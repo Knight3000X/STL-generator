@@ -5,7 +5,7 @@ function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b
 function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
     fnOn:true,fnMouthD:70,fnSpoutD:12,fnSpoutLen:25,fnConeH:45,fnWall:1.6,
-    psOn:false,pbPart:'none',woBack:'none',hookMount:'none',tpmsType:'none',mntMode:'none',gearMode:'none',
+    psOn:false,pbPart:'none',woBack:'none',hookMount:'none',mntMode:'none',gearMode:'none',
     pipMode:'none',threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
   return buildTrisForShape('box',paramState.box); }

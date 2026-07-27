@@ -992,7 +992,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v102';
+const APP_VERSION = 'v103';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3607,6 +3607,9 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbClear', label:'Корпус: зазор посадки крышки', min:0.1, max:1, step:0.05, default:0.35, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLidT', label:'Крышка: толщина', min:1, max:10, step:0.1, default:2.4, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLipH', label:'Крышка: высота внутреннего борта (заходит в лоток)', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbBoard', label:'PCB: пресет платы (перекрывает сетку)', type:'select', default:'none',
+      options:[{v:'none',t:'нет (задать сеткой вручную)'},{v:'pi4',t:'Raspberry Pi 4 / 3B+ (85×56)'},{v:'pizero',t:'Raspberry Pi Zero (65×30)'},
+               {v:'uno',t:'Arduino Uno / R3 (68.6×53.4)'},{v:'nano',t:'Arduino Nano (43.2×17.8)'},{v:'esp32',t:'ESP32 DevKit V1 (51.4×25.4)'}]},
     {group:'Корпус (электроника)', key:'pbBossNX', label:'PCB-стойки: число по X (0=выкл)', min:0, max:8, step:1, default:0, unit:'', int:true},
     {group:'Корпус (электроника)', key:'pbBossNZ', label:'PCB-стойки: число по Z (0=выкл)', min:0, max:8, step:1, default:0, unit:'', int:true},
     {group:'Корпус (электроника)', key:'pbBossD', label:'PCB-стойки: Ø', min:4, max:20, step:0.5, default:6, unit:'мм'},
@@ -7475,6 +7478,17 @@ function rectRingYTris(cx,cz, Wo,Do, t, y0,y1){   // closed rectangular annulus 
   }
   return out;
 }
+/* Mounting-hole patterns of common boards, as centres relative to the BOARD's centre (mm) plus the screw
+   the board expects. Taken from each board's published mechanical drawing. Note the Arduino Uno: its four
+   holes are famously NOT a rectangular grid, which is exactly why presets carry explicit centres rather
+   than a spacing. `size` is the board outline, used only to warn when it cannot fit the enclosure. */
+const PCB_BOARDS = {
+  pi4:    { label:'Raspberry Pi 4 / 3B+', size:[85,56],     screw:2.7, holes:[[-29,-24.5],[29,-24.5],[29,24.5],[-29,24.5]] },
+  pizero: { label:'Raspberry Pi Zero',    size:[65,30],     screw:2.7, holes:[[-29,-11.5],[29,-11.5],[29,11.5],[-29,11.5]] },
+  uno:    { label:'Arduino Uno / R3',     size:[68.6,53.4], screw:3.2, holes:[[-20.33,-24.16],[-19.06,24.1],[31.74,8.86],[31.74,-19.08]] },
+  nano:   { label:'Arduino Nano',         size:[43.2,17.8], screw:1.9, holes:[[-20.32,-7.62],[20.32,-7.62],[20.32,7.62],[-20.32,7.62]] },
+  esp32:  { label:'ESP32 DevKit V1',      size:[51.4,25.4], screw:2.7, holes:[[-22.5,-10.2],[22.5,-10.2],[22.5,10.2],[-22.5,10.2]] },
+};
 function buildProjectBox(p){
   const part  = p.pbPart || 'tray';
   const W = Math.max(20, p.pbW||80), D = Math.max(20, p.pbD||60), H = Math.max(8, p.pbH||30);
@@ -7531,16 +7545,23 @@ function buildProjectBox(p){
     const rO=postD/2, rB=Math.max(0.6,screwD*0.42), seg=Math.max(18,Math.round(postD*3));
     for(const [cx,cz] of postPos) for(const T of tubeYTris(cx,cz, rO, rB, floorT-0.6, H, seg)) t.push(T);   // lid-screw posts
     const nX=Math.max(0,Math.round(p.pbBossNX||0)), nZ=Math.max(0,Math.round(p.pbBossNZ||0));
-    if(nX>0 && nZ>0){                                                              // optional PCB standoffs (blind bore)
-      const bD=Math.max(4,p.pbBossD||6), bH=Math.max(2,p.pbBossH||5), bR=Math.max(0.8,(p.pbBossBore||2.6)/2);
+    const preset = PCB_BOARDS[p.pbBoard];                                          // a named board overrides the grid
+    if(preset || (nX>0 && nZ>0)){                                                  // PCB standoffs (blind bore for a self-tapper)
+      const bD=Math.max(4,p.pbBossD||6), bH=Math.max(2,p.pbBossH||5);
+      const bR=Math.max(0.8,(preset ? preset.screw : (p.pbBossBore||2.6))/2);      // a preset also carries its screw size
       const brO=bD/2, bseg=Math.max(16,Math.round(bD*3));
-      // Keep the whole grid inside the corner-post ring, else the outer standoffs grow into the posts.
+      // Keep everything inside the corner-post ring, else the outer standoffs grow into the posts.
       const gx=Math.max(0, postInX-brO-0.6), gz=Math.max(0, postInZ-brO-0.6);
-      const offX=Math.max(-gx,Math.min(gx,p.pbBossOffX||0)), offZ=Math.max(-gz,Math.min(gz,p.pbBossOffZ||0));  // shift the grid to suit a real board
+      const offX=Math.max(-gx,Math.min(gx,p.pbBossOffX||0)), offZ=Math.max(-gz,Math.min(gz,p.pbBossOffZ||0));
       const clearsPosts=(cx,cz)=>postPos.every(([px,pz])=>Math.hypot(cx-px,cz-pz) > brO+postD/2+0.3);
-      for(let ix=0;ix<nX;ix++) for(let iz=0;iz<nZ;iz++){
-        const cx=(nX===1?0:-gx+2*gx*ix/(nX-1))+offX, cz=(nZ===1?0:-gz+2*gz*iz/(nZ-1))+offZ;
-        if(!clearsPosts(cx,cz)) continue;                                        // no room in this box — skip rather than fuse into a post
+      // A real board's mounting holes are NOT always a rectangular grid (the Uno's four are famously irregular),
+      // so a preset supplies explicit centres; the manual nX×nZ grid stays for everything else.
+      const pos = preset ? preset.holes.map(([hx,hz])=>[hx+offX, hz+offZ]) : (()=>{ const o=[];
+        for(let ix=0;ix<nX;ix++) for(let iz=0;iz<nZ;iz++)
+          o.push([(nX===1?0:-gx+2*gx*ix/(nX-1))+offX, (nZ===1?0:-gz+2*gz*iz/(nZ-1))+offZ]);
+        return o; })();
+      for(const [cx,cz] of pos){
+        if(!clearsPosts(cx,cz)) continue;                                          // no room here — skip rather than fuse into a post
         for(const T of tubeYTris(cx,cz, brO, bR, floorT-0.6, floorT+bH, bseg)) t.push(T); }
     }
     return t;
@@ -10594,7 +10615,9 @@ function initNavCube(){
 // already occupied by the viewport toolbar buttons, which sit above the canvas and would swallow every click.
 function navRect(){
   const r = renderer.domElement.getBoundingClientRect();
-  return { x: r.width - NAV_SIZE - NAV_MARGIN, y: r.height - NAV_SIZE - NAV_MARGIN, w: NAV_SIZE, h: NAV_SIZE, cw: r.width, ch: r.height };
+  // Scale down on a narrow viewport so the gizmo stays a corner badge on a phone instead of a billboard.
+  const s = Math.max(56, Math.min(NAV_SIZE, Math.min(r.width, r.height) * 0.22));
+  return { x: r.width - s - NAV_MARGIN, y: r.height - s - NAV_MARGIN, w: s, h: s, cw: r.width, ch: r.height };
 }
 function renderNavCube(){
   if(!navScene) return;
@@ -10602,17 +10625,19 @@ function renderNavCube(){
   navCamera.position.copy(dir.multiplyScalar(3));
   navCamera.up.copy(camera.up);
   navCamera.lookAt(0,0,0);
-  const n = navRect(), pr = renderer.getPixelRatio();
-  // WebGL viewport origin is bottom-left, the rect is measured from the top.
-  const vx = n.x*pr, vy = (n.ch - n.y - n.h)*pr, vs = n.w*pr;
+  const n = navRect();
+  // setViewport/setScissor take CSS pixels — three.js multiplies by the pixel ratio itself. Doing it here as
+  // well double-scales the rect, which is invisible at ratio 1 but wrecks the whole view on a phone (ratio 2–3).
+  // WebGL's viewport origin is bottom-left, while the rect is measured from the top.
+  const vx = n.x, vy = n.ch - n.y - n.h, vs = n.w;
   const oldScissor = renderer.getScissorTest();
   renderer.setViewport(vx, vy, vs, vs);
   renderer.setScissor(vx, vy, vs, vs);
   renderer.setScissorTest(true);
   renderer.render(navScene, navCamera);
   renderer.setScissorTest(oldScissor);
-  renderer.setViewport(0, 0, n.cw*pr, n.ch*pr);      // restore for the next main pass
-  renderer.setScissor(0, 0, n.cw*pr, n.ch*pr);
+  renderer.setViewport(0, 0, n.cw, n.ch);            // restore for the next main pass
+  renderer.setScissor(0, 0, n.cw, n.ch);
 }
 // Returns the clicked face index, or -1 when the pointer is outside the gizmo / misses the cube.
 function navPick(clientX, clientY){

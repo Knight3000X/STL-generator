@@ -73,6 +73,25 @@ function holed(ov, holes){ const t=base(ov); boxHoles.length=0; for(const h of h
   chk('top-face cutout lands on the lid', manifoldCheck(t,4).watertight && vol(t)<solid, {});
   boxHoles.length=0; }
 
+console.log('=== PCB board presets ===');
+for(const board of ['pi4','pizero','uno','nano','esp32'])
+  for(const s of [{pbW:100,pbD:75,pbH:35},{pbW:160,pbD:110,pbH:50}]){
+    const t=base(Object.assign({pbPart:'tray',pbBoard:board},s)); const mc=manifoldCheck(t,4);
+    chk(board+' '+JSON.stringify(s)+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+  }
+{ const none=vol(base({pbPart:'tray',pbW:160,pbD:110,pbH:40,pbBoard:'none'}));
+  for(const b of ['pi4','uno','nano'])
+    chk(b+' preset adds standoffs', vol(base({pbPart:'tray',pbW:160,pbD:110,pbH:40,pbBoard:b}))>none, {}); }
+{ // the Uno's four holes are famously NOT a rectangular grid — the preset must preserve that
+  const h=PCB_BOARDS.uno.holes, xs=new Set(h.map(q=>q[0].toFixed(2))), zs=new Set(h.map(q=>q[1].toFixed(2)));
+  chk('Uno preset keeps its irregular (non-grid) pattern', xs.size>2 || zs.size>2, {xs:xs.size,zs:zs.size}); }
+{ // a board bigger than the enclosure must degrade safely (standoffs outside the post ring are dropped)
+  const t=base({pbPart:'tray',pbW:60,pbD:45,pbH:25,pbBoard:'pi4'});
+  chk('oversized board degrades safely', manifoldCheck(t,4).watertight && vol(t)>0, {}); }
+{ const grid=vol(base({pbPart:'tray',pbW:160,pbD:110,pbBoard:'none',pbBossNX:2,pbBossNZ:2}));
+  const preset=vol(base({pbPart:'tray',pbW:160,pbD:110,pbBoard:'pi4',pbBossNX:2,pbBossNZ:2}));
+  chk('preset overrides the manual grid', Math.abs(preset-grid)>1, {grid:+grid.toFixed(0),preset:+preset.toFixed(0)}); }
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('box add-ons skipped on a project box', a===b, {a,b}); }

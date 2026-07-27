@@ -801,7 +801,7 @@
       <button id="btn-add-lid" title="Накидная — колпак внахлёст; защёлки — бампы на стенках + окна в юбке; петля — проушины сзади + пластина, ось из филамента 1.75">+ Крышка</button>
     </div>
     <button id="btn-add-baseplate" title="Отдельная модель: Gridfinity-базплейт (сетка гнёзд под ножки бинов)">+ Базплейт (Gridfinity)</button>
-    <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью.">✂ Разрезать на фрагменты</button>
+    <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью. С «Регистрационными штифтами» на срезах появятся штифт и ответное гнездо — фрагменты собираются без подгонки на глаз.">✂ Разрезать на фрагменты</button>
     <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL или OBJ) отдельной моделью сборки — например скан мыши для грипов. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ</button>
     <input type="file" id="mesh-import-input" accept=".stl,.obj,model/stl,model/obj" style="display:none">
     <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
@@ -994,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v114';
+const APP_VERSION = 'v115';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3712,6 +3712,11 @@ const SHAPE_PARAMS = {
       options:[{v:'none',t:'нет'},{v:'all',t:'все 4 стенки'}]},
     {group:'Сетчатое дно', key:'latticeRes', label:'Сетка: детализация дна', min:10, max:500, step:1, default:50, unit:'', int:true},
     {group:'Разрезка на фрагменты', key:'fragSize', label:'Размер фрагмента (макс. по каждой оси)', min:10, max:1000000, step:1, default:180, unit:'мм'},
+    {group:'Разрезка на фрагменты', key:'fragPins', label:'Регистрационные штифты на срезах', type:'bool', default:true},
+    {group:'Разрезка на фрагменты', key:'fragPinDia', label:'Штифт: Ø', min:2, max:20, step:0.5, default:5, unit:'мм'},
+    {group:'Разрезка на фрагменты', key:'fragPinLen', label:'Штифт: глубина гнезда', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Разрезка на фрагменты', key:'fragPinN', label:'Штифтов на срез', min:1, max:4, step:1, default:2, unit:'', int:true},
+    {group:'Разрезка на фрагменты', key:'fragPinClear', label:'Штифт: зазор в гнезде (на сторону)', min:0, max:1, step:0.05, default:0.2, unit:'мм'},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
@@ -3959,7 +3964,14 @@ function sliceActiveModel(){
   const src = getActiveModel();
   if (!src || !src.rawTris || !src.rawTris.length) { alert('Модель пуста — нечего разрезать.'); return; }
   const size = Math.max(10, +paramState.box.fragSize || 180);
-  const { frags, bb } = sliceMeshIntoFragments(src.rawTris, size, size, size);
+  const pb = paramState.box;
+  const pin = pb.fragPins ? {
+    dia:   Math.max(2, pb.fragPinDia || 5),
+    len:   Math.max(2, pb.fragPinLen || 5),
+    n:     Math.max(1, Math.min(4, Math.round(pb.fragPinN || 2))),
+    clear: Math.max(0, fitTuned(pb, pb.fragPinClear != null ? pb.fragPinClear : 0.2)),
+  } : null;
+  const { frags, bb } = sliceMeshIntoFragments(src.rawTris, size, size, size, pin);
   if (frags.length <= 1) { alert('Модель уже помещается в заданный размер фрагмента — резать не на что.\nУменьшите «Размер фрагмента».'); return; }
   const need = models.length - 1 + frags.length;
   if (need > MAX_MODELS) { alert('Слишком много фрагментов ('+frags.length+') — всего получилось бы '+need+' моделей при лимите '+MAX_MODELS+'.\nУвеличьте «Размер фрагмента».'); return; }
@@ -8604,10 +8616,47 @@ const sliceMeshIntoFragments = (function(){
     for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
       if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
   function triArea2(a,b,c){ return (b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]); }
+  function samePt2(P,Q){ return P===Q || (Math.abs(P[0]-Q[0])<1e-9 && Math.abs(P[1]-Q[1])<1e-9); }
   function pointInTriStrict(p,a,b,c){ const d1=triArea2(p,a,b), d2=triArea2(p,b,c), d3=triArea2(p,c,a);
     const hasNeg=(d1<-1e-12)||(d2<-1e-12)||(d3<-1e-12), hasPos=(d1>1e-12)||(d2>1e-12)||(d3>1e-12); return !(hasNeg&&hasPos); }
+  // Can M see outer[idx]? The bridge may not properly cross any edge of the polygon already built
+  // (including a hole bridged in earlier) or of the hole being bridged now, may not graze a third
+  // vertex, and must run through the interior.
+  function bridgeVisible(outer, hole, M, idx){
+    const P=outer[idx], m=outer.length;
+    for(let k=0;k<m;k++){ const k1=(k+1)%m;
+      if(k===idx||k1===idx) continue;
+      if(segCross(M,P,outer[k],outer[k1])) return false; }
+    for(let k=0,h=hole.length;k<h;k++) if(segCross(M,P,hole[k],hole[(k+1)%h])) return false;
+    const dx=P[0]-M[0], dy=P[1]-M[1], L2=dx*dx+dy*dy;
+    if(L2 < 1e-18) return false;
+    for(const arr of [outer,hole]) for(const Q of arr){
+      if(samePt2(Q,P)||samePt2(Q,M)) continue;
+      if(Math.abs(triArea2(M,P,Q)) > 1e-9) continue;
+      const t=((Q[0]-M[0])*dx+(Q[1]-M[1])*dy)/L2;
+      if(t>1e-9 && t<1-1e-9) return false; }
+    const mid=[(M[0]+P[0])/2, (M[1]+P[1])/2];
+    let inside=false;
+    for(let k=0,j=m-1;k<m;j=k++){ const p=outer[k], q=outer[j];
+      if(((p[1]>mid[1])!==(q[1]>mid[1])) && (mid[0] < (q[0]-p[0])*(mid[1]-p[1])/(q[1]-p[1])+p[0])) inside=!inside; }
+    if(!inside) return false;
+    // ...and not inside the hole we are about to cut out
+    let inHole=false;
+    for(let k=0,j=hole.length-1;k<hole.length;j=k++){ const p=hole[k], q=hole[j];
+      if(((p[1]>mid[1])!==(q[1]>mid[1])) && (mid[0] < (q[0]-p[0])*(mid[1]-p[1])/(q[1]-p[1])+p[0])) inHole=!inHole; }
+    return !inHole; }
   function bridgeHole(outer, hole){
     let hi=0; for(let i=1;i<hole.length;i++) if(hole[i][0]>hole[hi][0]) hi=i; const M=hole[hi];
+    // Nearest vertex M can actually SEE. The textbook "cast a ray to the right and take the vertex of
+    // the edge it hits" shortcut skips the visibility test, and with two holes in the same x band the
+    // second bridge then runs straight through the first — a merged polygon so tangled that no ear
+    // clipper recovers it. Checking visibility outright is O(n²) per hole, which these caps can afford.
+    {
+      const order=[]; for(let i=0;i<outer.length;i++){ const dx=outer[i][0]-M[0], dy=outer[i][1]-M[1];
+        order.push({i, d:dx*dx+dy*dy}); }
+      order.sort((a,b)=>a.d-b.d);
+      for(const {i} of order) if(bridgeVisible(outer, hole, M, i)) return mergeBridge(outer, hole, hi, i);
+    }
     let bestX=Infinity, edgeI=-1, Ipt=null;
     for(let i=0;i<outer.length;i++){ const A=outer[i], B=outer[(i+1)%outer.length];
       if((A[1]>M[1])!==(B[1]>M[1])){ const t=(M[1]-A[1])/(B[1]-A[1]); const x=A[0]+(B[0]-A[0])*t;
@@ -8619,12 +8668,47 @@ const sliceMeshIntoFragments = (function(){
       for(let i=0;i<outer.length;i++){ const R=outer[i];
         if(R[0]>M[0]-1e-9 && pointInTriStrict(R,M,Ipt,P)){ const ang=Math.atan2(Math.abs(R[1]-M[1]), R[0]-M[0]);
           if(ang<bestAng-1e-12){ bestAng=ang; best=i; } } } candIdx=best; }
+    return mergeBridge(outer, hole, hi, candIdx); }
+  // Splice the hole into the polygon along the bridge outer[candIdx] — hole[hi], walking the hole and
+  // coming back. Both endpoints appear twice, which is what makes the slit zero-width.
+  function mergeBridge(outer, hole, hi, candIdx){
     const merged=[];
     for(let i=0;i<=candIdx;i++) merged.push(outer[i]);
     for(let k=0;k<hole.length;k++) merged.push(hole[(hi+k)%hole.length]);
     merged.push(hole[hi]); merged.push(outer[candIdx]);
     for(let i=candIdx+1;i<outer.length;i++) merged.push(outer[i]);
     return merged; }
+  // Do segments p1p2 and q1q2 cross properly (endpoints touching doesn't count)?
+  function segCross(p1,p2,q1,q2){
+    const sgn=(a,b,c)=>{ const v=triArea2(a,b,c); return v>1e-12?1:(v<-1e-12?-1:0); };
+    return sgn(p1,p2,q1)!==sgn(p1,p2,q2) && sgn(q1,q2,p1)!==sgn(q1,q2,p2); }
+  // Is list[ia]—list[ib] a usable diagonal: crosses no edge, and its midpoint lies in the interior?
+  function validDiagonal(pts, list, ia, ib){
+    const m=list.length, A=pts[list[ia]], B=pts[list[ib]];
+    if(samePt2(A,B)) return false;
+    // Neither end may be a place the polygon visits twice: splitting there gives two halves that
+    // both wrap through the pinch point and so emit the same triangles twice.
+    for(let k=0;k<m;k++){ if(k===ia||k===ib) continue;
+      if(samePt2(pts[list[k]],A) || samePt2(pts[list[k]],B)) return false; }
+    for(let k=0;k<m;k++){ const k1=(k+1)%m;
+      if(k===ia||k1===ia||k===ib||k1===ib) continue;
+      if(segCross(A,B,pts[list[k]],pts[list[k1]])) return false; }
+    // The diagonal must not lie ALONG the boundary. Index adjacency isn't enough to rule that out:
+    // bridging repeats points, so two far-apart indices can be the same place, and an outer run can
+    // carry collinear vertices. Emitting such a "diagonal" would put a boundary edge in four triangles.
+    const dx=B[0]-A[0], dy=B[1]-A[1], L2=dx*dx+dy*dy;
+    for(let k=0;k<m;k++){ const P=pts[list[k]];
+      if(samePt2(P,A)||samePt2(P,B)) continue;
+      if(Math.abs(triArea2(A,B,P)) > 1e-9) continue;
+      const t=((P[0]-A[0])*dx+(P[1]-A[1])*dy)/L2;
+      if(t>1e-9 && t<1-1e-9) return false; }
+    for(let k=0;k<m;k++){ const P=pts[list[k]], Q=pts[list[(k+1)%m]];
+      if((samePt2(P,A)&&samePt2(Q,B)) || (samePt2(P,B)&&samePt2(Q,A))) return false; }
+    const M=[(A[0]+B[0])/2, (A[1]+B[1])/2];
+    let inside=false;
+    for(let k=0,j=m-1;k<m;j=k++){ const p=pts[list[k]], q=pts[list[j]];
+      if(((p[1]>M[1])!==(q[1]>M[1])) && (M[0] < (q[0]-p[0])*(M[1]-p[1])/(q[1]-p[1])+p[0])) inside=!inside; }
+    return inside; }
   function earClip(poly, out){
     const n0=poly.length; if(n0<3) return;
     let list=poly.map((p,i)=>i); if(signedArea(poly)<0) list.reverse();
@@ -8635,9 +8719,38 @@ const sliceMeshIntoFragments = (function(){
         const i0=list[(i+m-1)%m], i1=list[i], i2=list[(i+1)%m]; const a=pts[i0], b=pts[i1], c=pts[i2];
         if(triArea2(a,b,c) <= 1e-10) continue;
         let ear=true;
-        for(let j=0;j<m;j++){ const vj=list[j]; if(vj===i0||vj===i1||vj===i2) continue; if(pointInTriStrict(pts[vj],a,b,c)){ ear=false; break; } }
+        // bridgeHole stitches a hole in by repeating two vertices, so the polygon legitimately visits
+        // the same POINT at two different indices. pointInTriStrict counts on-edge as inside, so such a
+        // twin would veto every ear touching its partner and drive the loop into the "clip the biggest
+        // triangle anyway" fallback — which overlaps triangles and leaves the cap full of open edges.
+        // Skip vertices that ARE one of the ear's corners, not merely ones with a different index.
+        // Only a REFLEX vertex can genuinely be trapped inside an ear of a simple polygon; a convex
+        // one at most touches it. Testing convex vertices too is the second half of the same problem:
+        // on a bridged polygon it vetoes almost every ear.
+        for(let j=0;j<m;j++){ const vj=list[j]; if(vj===i0||vj===i1||vj===i2) continue;
+          const P=pts[vj];
+          if(samePt2(P,a)||samePt2(P,b)||samePt2(P,c)) continue;
+          if(triArea2(pts[list[(j+m-1)%m]], P, pts[list[(j+1)%m]]) > 1e-12) continue;  // convex: can't trap
+          if(pointInTriStrict(P,a,b,c)){ ear=false; break; } }
         if(ear){ out.push([a,b,c]); list.splice(i,1); clipped=true; break; } }
-      if(!clipped){ let bi=-1, ba=1e-10;
+      if(!clipped){
+        // No ear anywhere. That is not a contradiction of the two-ears theorem — bridgeHole leaves a
+        // polygon that TOUCHES itself along each bridge, and two holes bridged to the same outer vertex
+        // pinch it so that every convex corner's ear spans a hole. The repair is the standard one: find
+        // any diagonal that stays inside, cut the polygon in two along it, and clip each half. The
+        // diagonal lands in both halves with opposite orientation, so the seam still closes.
+        let split=false;
+        for(let i=0;i<m && !split;i++){
+          for(let j=i+2;j<m;j++){
+            if(i===0 && j===m-1) continue;
+            if(!validDiagonal(pts, list, i, j)) continue;
+            const L1=[], L2=[];
+            for(let k=i;k!==j;k=(k+1)%m) L1.push(pts[list[k]]); L1.push(pts[list[j]]);
+            for(let k=j;k!==i;k=(k+1)%m) L2.push(pts[list[k]]); L2.push(pts[list[i]]);
+            earClip(L1, out); earClip(L2, out); split=true; break; } }
+        if(split) return;
+        // Truly degenerate input: salvage the biggest triangle and carry on.
+        let bi=-1, ba=1e-10;
         for(let i=0;i<m;i++){ const a=pts[list[(i+m-1)%m]], b=pts[list[i]], c=pts[list[(i+1)%m]]; const ar=triArea2(a,b,c); if(ar>ba){ ba=ar; bi=i; } }
         if(bi<0) break; const i0=list[(bi+m-1)%m], i2=list[(bi+1)%m]; out.push([pts[i0],pts[list[bi]],pts[i2]]); list.splice(bi,1); } }
     if(list.length===3){ const a=pts[list[0]],b=pts[list[1]],c=pts[list[2]]; if(Math.abs(triArea2(a,b,c))>1e-10) out.push([a,b,c]); } }
@@ -8664,7 +8777,77 @@ const sliceMeshIntoFragments = (function(){
         do{ const nx=take(cur); if(nx<0){ ok=false; break; } loop.push(pts[cur]); cur=nx; steps++; } while(cur!==start && steps<500000);
         if(ok && loop.length>=3) loops.push(loop); } }
     return loops; }
-  function splitOne(tris, axis, c){
+  /* ---- registration pins on the cut face ---------------------------------------------------
+     A plane cut leaves two flat mating faces that can slide freely against each other, so glueing a
+     big printed part back together is guesswork. We give the LOW side a protruding dowel and the HIGH
+     side a matching blind socket, both built from the cap machinery that's already here:
+       · the socket is a circular HOLE in the high side's cap (triangulate2D already accepts hole loops)
+         closed by a bore wall + floor — the only way to REMOVE material without a CSG engine;
+       · the pin is an ordinary closed cylinder that interpenetrates the low side, the same
+         watertight-by-construction trick the rest of the app uses to ADD material.
+     A spot is only used if the part is actually thick enough there — see materialDepth. */
+  const PIN_SEG = 28;
+  // Distance from the cut plane to the far side of the material along an axis-aligned ray through
+  // (u,v). The ray starts ON the cap, so only strictly positive hits count. dir = +1 into `greater`.
+  function materialDepth(tris, axis, c, uAx, vAx, pu, pv, dir){
+    let best = Infinity;
+    for(const T of tris){
+      const A=T[0], B=T[1], C=T[2];
+      if(pu < Math.min(A[uAx],B[uAx],C[uAx]) || pu > Math.max(A[uAx],B[uAx],C[uAx])) continue;
+      if(pv < Math.min(A[vAx],B[vAx],C[vAx]) || pv > Math.max(A[vAx],B[vAx],C[vAx])) continue;
+      const a=[A[uAx],A[vAx]], b=[B[uAx],B[vAx]], cc=[C[uAx],C[vAx]], P=[pu,pv];
+      const den=triArea2(a,b,cc); if(Math.abs(den)<1e-12) continue;   // edge-on to the ray: no crossing
+      const w0=triArea2(P,b,cc)/den, w1=triArea2(a,P,cc)/den, w2=triArea2(a,b,P)/den;
+      if(w0<-1e-9||w1<-1e-9||w2<-1e-9) continue;
+      const t=(w0*A[axis] + w1*B[axis] + w2*C[axis] - c)*dir;
+      if(t>1e-6 && t<best) best=t;
+    }
+    return best;
+  }
+  function distToLoops(loops, p){
+    let best=Infinity;
+    for(const lp of loops) for(let i=0,n=lp.length;i<n;i++){
+      const A=lp[i], B=lp[(i+1)%n], dx=B[0]-A[0], dy=B[1]-A[1], L2=dx*dx+dy*dy;
+      let t = L2>1e-18 ? ((p[0]-A[0])*dx+(p[1]-A[1])*dy)/L2 : 0; t = t<0?0:t>1?1:t;
+      const qx=A[0]+dx*t-p[0], qy=A[1]+dy*t-p[1], d=Math.sqrt(qx*qx+qy*qy);
+      if(d<best) best=d; }
+    return best; }
+  // Odd-winding test across ALL loops at once, so a spot inside a hole (or inside a hole's island)
+  // is classified correctly without having to work out the nesting.
+  function insideLoops(loops, p){ let inside=false; for(const lp of loops) if(pointInPoly(p,lp)) inside=!inside; return inside; }
+  // Candidate spots on the cap: on a coarse grid, inside the section, at least `need` mm clear of every
+  // section edge, and `need` mm clear of every OTHER cut plane (a later cut would otherwise saw the pin
+  // in half). Returned deepest-inside first; the caller then spreads its picks apart.
+  function pinCandidates(loops, need, uAx, vAx, avoid){
+    let lo0=Infinity, hi0=-Infinity, lo1=Infinity, hi1=-Infinity;
+    for(const lp of loops) for(const p of lp){
+      if(p[0]<lo0)lo0=p[0]; if(p[0]>hi0)hi0=p[0]; if(p[1]<lo1)lo1=p[1]; if(p[1]>hi1)hi1=p[1]; }
+    if(!(hi0-lo0>2*need) || !(hi1-lo1>2*need)) return [];
+    const avU=(avoid&&avoid[uAx])||[], avV=(avoid&&avoid[vAx])||[], N=18, out=[];
+    for(let i=0;i<=N;i++) for(let j=0;j<=N;j++){
+      const p=[lo0+(hi0-lo0)*i/N, lo1+(hi1-lo1)*j/N];
+      if(!insideLoops(loops,p)) continue;
+      const d=distToLoops(loops,p); if(d<need) continue;
+      let clash=false;
+      for(const a of avU) if(Math.abs(p[0]-a)<need){ clash=true; break; }
+      if(!clash) for(const a of avV) if(Math.abs(p[1]-a)<need){ clash=true; break; }
+      if(clash) continue;
+      out.push({p,d}); }
+    out.sort((a,b)=>b.d-a.d);
+    return out; }
+  function ringPts(cx, cy, r, cw){
+    const out=[]; for(let i=0;i<PIN_SEG;i++){ const t=(cw?-1:1)*2*Math.PI*i/PIN_SEG;
+      out.push([cx+r*Math.cos(t), cy+r*Math.sin(t)]); } return out; }
+  // Did triangulate2D actually cover the region it was given? Hole elimination bridges each hole into
+  // the outer loop with a zero-width slit, which leaves the polygon only WEAKLY simple — ear clipping
+  // can stall on it, and the salvage path then overlaps triangles. Summed signed triangle area equals
+  // summed signed loop area exactly when the cover is right, so this catches every such failure for
+  // the price of one pass. Cheaper and far more certain than trying to prove the triangulator total.
+  function capCovers(loops, tris){
+    let pa=0; for(const lp of loops) pa+=signedArea(lp);
+    let ta=0; for(const T of tris) ta+=triArea2(T[0],T[1],T[2])/2;
+    return Math.abs(ta-pa) < 1e-6*Math.max(1, Math.abs(pa)); }
+  function splitOne(tris, axis, c, pin, avoid){
     const less=[], greater=[]; let rawCap=[];
     const u=(axis===0)?1:0, v=(axis===2)?1:2;
     let crossed=false, anyLess=false, anyGreater=false;
@@ -8703,15 +8886,76 @@ const sliceMeshIntoFragments = (function(){
       let loops=extractLoops(kept, q);
       let net=0; for(const lp of loops) net+=signedArea(lp);
       if(net<0) loops=loops.map(lp=>lp.slice().reverse());
-      const t2=triangulate2D(loops);
-      for(const T of t2){ const P=T.map(pt=>{ const p=[0,0,0]; p[axis]=c; p[u]=pt[0]; p[v]=pt[1]; return p; });
-        let a=P[0],b=P[1],cc=P[2]; if(faceNormal(a,b,cc)[axis] < 0){ const t=b;b=cc;cc=t; }
-        less.push([a,b,cc]); greater.push([a,cc,b]); } }
+      const P3=(pu,pv,pc)=>{ const p=[0,0,0]; p[axis]=pc; p[u]=pu; p[v]=pv; return p; };
+      // Push a triangle with its normal forced to point along `want` (a signed world axis).
+      const emit=(dst,A,B,C,want)=>{ const fn=faceNormal(A,B,C);
+        if(fn[0]*fn[0]+fn[1]*fn[1]+fn[2]*fn[2] < 1e-16) return;
+        if(dot(fn,want)<0) dst.push([A,C,B]); else dst.push([A,B,C]); };
+
+      // --- pick pin spots, then build socket bores (greater) + dowels (less) ---
+      const holeLoops=[], spots=[];
+      let capG=null;
+      if(pin && pin.n>0){
+        const pinR=pin.dia/2, sockR=pinR+pin.clear, depth=pin.len;
+        const cand=pinCandidates(loops, sockR+1.5, u, v, avoid);
+        for(const cd of cand){
+          if(spots.length>=pin.n) break;
+          // spread the picks: a second pin right next to the first stops no rotation
+          let tooClose=false;
+          for(const s of spots) if(Math.hypot(s[0]-cd.p[0], s[1]-cd.p[1]) < 4*sockR+3){ tooClose=true; break; }
+          if(tooClose) continue;
+          // the bore must stay buried in the high side, and the dowel root in the low side
+          if(materialDepth(greater, axis, c, u, v, cd.p[0], cd.p[1], +1) < depth+1.2) continue;
+          if(materialDepth(less,    axis, c, u, v, cd.p[0], cd.p[1], -1) < 2.0) continue;
+          // Accept the spot only if the cap still triangulates cleanly with its hole in place. Adding
+          // holes one at a time and re-checking means a section the triangulator can't take simply
+          // comes out with fewer pins — never with a fragment that isn't closed.
+          const ring=ringPts(cd.p[0], cd.p[1], sockR, true);  // clockwise → negative area → read as a hole
+          const trial=loops.concat(holeLoops, [ring]), tri=triangulate2D(trial);
+          if(!capCovers(trial, tri)) continue;
+          holeLoops.push(ring); spots.push(cd.p); capG=tri;
+        }
+        for(const s of spots){
+          const rTop=holeLoops[spots.indexOf(s)];
+          const top=rTop.map(pt=>P3(pt[0],pt[1],c)), bot=rTop.map(pt=>P3(pt[0],pt[1],c+depth));
+          const ctr=P3(s[0], s[1], c+depth), inAxis=[0,0,0]; inAxis[axis]=-1;
+          for(let i=0;i<PIN_SEG;i++){ const k=(i+1)%PIN_SEG;
+            // bore wall: "outward" (away from material) means pointing at the bore axis
+            const mid=[(rTop[i][0]+rTop[k][0])/2 - s[0], (rTop[i][1]+rTop[k][1])/2 - s[1]];
+            const wantW=P3(-mid[0], -mid[1], 0);
+            emit(greater, top[i], top[k], bot[k], wantW);
+            emit(greater, top[i], bot[k], bot[i], wantW);
+            emit(greater, ctr, bot[i], bot[k], inAxis);   // blind floor, opening back toward the cut
+          }
+          // dowel: a closed cylinder rooted 1 mm inside the low side, standing 0.6 mm short of the
+          // socket floor so the mating faces — not the dowel tip — decide how the halves seat
+          const rPin=ringPts(s[0], s[1], pinR, false);
+          const y0=c-1.0, y1=c+depth-0.6;
+          const lo=rPin.map(pt=>P3(pt[0],pt[1],y0)), hi=rPin.map(pt=>P3(pt[0],pt[1],y1));
+          const cLo=P3(s[0],s[1],y0), cHi=P3(s[0],s[1],y1);
+          const upAxis=[0,0,0]; upAxis[axis]=1; const dnAxis=[0,0,0]; dnAxis[axis]=-1;
+          for(let i=0;i<PIN_SEG;i++){ const k=(i+1)%PIN_SEG;
+            const mid=[(rPin[i][0]+rPin[k][0])/2 - s[0], (rPin[i][1]+rPin[k][1])/2 - s[1]];
+            const wantW=P3(mid[0], mid[1], 0);
+            emit(less, lo[i], lo[k], hi[k], wantW);
+            emit(less, lo[i], hi[k], hi[i], wantW);
+            emit(less, cLo, lo[k], lo[i], dnAxis);
+            emit(less, cHi, hi[i], hi[k], upAxis);
+          }
+        }
+      }
+      // The two caps are no longer identical once a socket is bored, so each side gets its own.
+      const capL=triangulate2D(loops);
+      if(!holeLoops.length) capG=capL;
+      const place=(T)=>T.map(pt=>P3(pt[0],pt[1],c));
+      const capUp=[0,0,0]; capUp[axis]=1; const capDn=[0,0,0]; capDn[axis]=-1;
+      for(const T of capL){ const P=place(T); emit(less, P[0], P[1], P[2], capUp); }
+      for(const T of capG){ const P=place(T); emit(greater, P[0], P[1], P[2], capDn); } }
     return {less, greater}; }
-  function splitAll(list, axis, positions){
+  function splitAll(list, axis, positions, pin, avoid){
     let cur=list;
     for(const c of positions){ const nxt=[];
-      for(const s of cur){ const {less,greater}=splitOne(s,axis,c); if(less.length)nxt.push(less); if(greater.length)nxt.push(greater); }
+      for(const s of cur){ const {less,greater}=splitOne(s,axis,c,pin,avoid); if(less.length)nxt.push(less); if(greater.length)nxt.push(greater); }
       cur=nxt; }
     return cur; }
   function weldFragment(tris, tol){
@@ -8726,10 +8970,14 @@ const sliceMeshIntoFragments = (function(){
       if(a===b||b===c||a===c) continue; const A=reps[a],B=reps[b],C=reps[c];
       const n=faceNormal(A,B,C); if(n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-14) continue; out.push([A,B,C]); }
     return out; }
-  const slice = function(tris, sizeX, sizeY, sizeZ){
+  const slice = function(tris, sizeX, sizeY, sizeZ, pin){
     const bb=bboxOf(tris);
     const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
-    let cells=[tris]; cells=splitAll(cells,0,ix); cells=splitAll(cells,1,iy); cells=splitAll(cells,2,iz);
+    // Every cut coordinate on the OTHER two axes is a no-go zone for a pin: a plane that later saws
+    // through a dowel would leave half a dowel in each piece.
+    const avoid={0:ix, 1:iy, 2:iz};
+    let cells=[tris];
+    cells=splitAll(cells,0,ix,pin,avoid); cells=splitAll(cells,1,iy,pin,avoid); cells=splitAll(cells,2,iz,pin,avoid);
     const frags=cells.map(c=>weldFragment(c, 1.5e-4)).filter(c=>c.length>=4).map(c=>({tris:c, bb:bboxOf(c)}));
     return {frags, bb};
   };

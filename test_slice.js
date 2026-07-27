@@ -13,7 +13,7 @@ function build(ov){
   logos.length=0; boxHoles.length=0;
   Object.assign(paramState.box,{ width:80,height:60,depth:70,hollow:false,rim:false,wallThickness:3,
     latticeFloor:false,latticeWalls:'none',squircle:0,squircleVBot:0,gfOn:false,scoopDir:'none',labelTab:'none',
-    mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,filletRadius:0,filletTop:0,filletBottom:0,
+    mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,frozenId:undefined,filletRadius:0,filletTop:0,filletBottom:0,
     filletVert:0,filletInnerFloor:0,filletInnerVert:0,filletInnerLip:0,chamferTop:0,hingeRole:undefined,logo3d:false,fragSize:180,
     taperXPlus:0,taperXMinus:0,taperZPlus:0,taperZMinus:0,taperYPlusX:0,taperYPlusZ:0,taperYMinusX:0,taperYMinusZ:0,
     bulgeXPlus:0,bulgeXMinus:0,bulgeZPlus:0,bulgeZMinus:0,bulgeYPlus:0,bulgeYMinus:0 }, ov);
@@ -78,6 +78,193 @@ console.log('=== sliceActiveModel creates fragment models ===');
   Object.assign(paramState.box, { fragSize: 500 }); saveActiveModel();
   const n2 = models.length; sliceActiveModel();
   chk('no split when the model already fits', models.length === n2);
+}
+
+/* ============================================================================================
+   REGISTRATION PINS. A cut leaves two flat faces that slide freely against each other; the low
+   side gets a dowel, the high side a matching blind socket. The dowel is added by interpenetration
+   (a closed cylinder), the socket by boring a hole through the cap triangulation — the only way to
+   remove material here, since there is no CSG engine. Both must leave every fragment watertight.
+   ============================================================================================ */
+console.log('=== registration pins on the cut face ===');
+const SEG = 28;                       // PIN_SEG inside the slicer
+const RING = SEG, DISC = SEG + 1;     // verts on a bare ring / on a fan disc (ring + centre)
+// Unique vertices lying exactly on plane `axis == c` — used to count pin tops / socket floors,
+// each of which is a fan disc and so contributes exactly DISC unique points.
+function vertsOnPlane(tris, axis, c, eps){
+  const s=new Set();
+  for(const T of tris) for(const p of T) if(Math.abs(p[axis]-c) < (eps||1e-6))
+    s.add(p.map(x=>Math.round(x*1e4)).join(','));
+  return [...s].map(k=>k.split(',').map(x=>+x/1e4));
+}
+function radiusAbout(pts, axis, ctr){
+  const u=(axis===0)?1:0, v=(axis===2)?1:2; let mx=0;
+  for(const p of pts){ const d=Math.hypot(p[u]-ctr[0], p[v]-ctr[1]); if(d>mx) mx=d; }
+  return mx;
+}
+function centroid2(pts, axis){
+  const u=(axis===0)?1:0, v=(axis===2)?1:2; let su=0, sv=0;
+  for(const p of pts){ su+=p[u]; sv+=p[v]; }
+  return [su/pts.length, sv/pts.length];
+}
+{
+  const tris = build({});                                  // 80×60×70 solid, so the cut is at x=0
+  const cfg  = {dia:5, len:6, n:2, clear:0.2};
+  const pinR = cfg.dia/2, sockR = pinR + cfg.clear;
+  const plain  = sliceMeshIntoFragments(tris, 40, 999, 999).frags;
+  const pinned = sliceMeshIntoFragments(tris, 40, 999, 999, cfg).frags;
+  chk('pins: same fragment count as an unpinned cut', pinned.length === plain.length && pinned.length === 2,
+      {plain:plain.length, pinned:pinned.length});
+  let wt=true, worst=null;
+  for(const f of pinned){ const mc=manifoldCheck(f.tris,4); if(!mc.watertight){ wt=false; worst=worst||mc; } }
+  chk('pins: every fragment still watertight', wt, worst);
+  chk('pins: no NaN', !pinned.some(f=>hasNaN(f.tris)));
+
+  const low  = pinned.find(f => f.bb.lo[0] < -1), high = pinned.find(f => f.bb.lo[0] > -1);
+  const lowP = plain .find(f => f.bb.lo[0] < -1), highP= plain .find(f => f.bb.lo[0] > -1);
+  chk('pins: dowels stand proud of the cut plane', low.bb.hi[0] > 0 + (cfg.len-0.6) - 1e-6,
+      {hi:+low.bb.hi[0].toFixed(3), want:cfg.len-0.6});
+  chk('pins: the high side stops AT the cut plane (socket is a blind bore, not a boss)',
+      Math.abs(high.bb.lo[0]) < 1e-6, {lo:high.bb.lo[0]});
+
+  // Each pin top and each socket floor is one fan disc → exactly DISC unique vertices per pin.
+  const tops  = vertsOnPlane(low.tris,  0, cfg.len-0.6);
+  const floors= vertsOnPlane(high.tris, 0, cfg.len);
+  chk('pins: 2 dowel tops built',   tops.length   === 2*DISC, {got:tops.length,   want:2*DISC});
+  chk('pins: 2 socket floors built',floors.length === 2*DISC, {got:floors.length, want:2*DISC});
+
+  // Dowel Ø and socket Ø, measured off the built mesh — their difference IS the fit clearance.
+  const halfT = tops.filter(p => p[2] < 0), halfF = floors.filter(p => p[2] < 0);
+  const rT = radiusAbout(halfT, 0, centroid2(halfT, 0)), rF = radiusAbout(halfF, 0, centroid2(halfF, 0));
+  chk('pins: dowel radius == dia/2',  Math.abs(rT - pinR)  < 1e-3, {rT:+rT.toFixed(4), want:pinR});
+  chk('pins: socket radius == dowel + clearance', Math.abs(rF - sockR) < 1e-3, {rF:+rF.toFixed(4), want:sockR});
+
+  // Material bookkeeping: the low side GAINED the dowels, the high side LOST the bores.
+  const dLow = vol(low.tris) - vol(lowP.tris), dHigh = vol(high.tris) - vol(highP.tris);
+  const wantLow  =  2 * Math.PI*pinR*pinR  * (cfg.len - 0.6 + 1.0);
+  const wantHigh = -2 * Math.PI*sockR*sockR * cfg.len;
+  chk('pins: low side gained 2 dowel volumes',  Math.abs(dLow  - wantLow ) < Math.abs(wantLow )*0.05,
+      {got:+dLow.toFixed(2),  want:+wantLow.toFixed(2)});
+  chk('pins: high side lost 2 socket volumes',  Math.abs(dHigh - wantHigh) < Math.abs(wantHigh)*0.05,
+      {got:+dHigh.toFixed(2), want:+wantHigh.toFixed(2)});
+  chk('pins: dowels fit their sockets with room to spare', wantLow < -wantHigh);
+}
+
+// Spot selection has to REFUSE where the geometry can't carry a pin: too thin, or too close to a
+// section edge. Both are silent skips, not failures — the cut still happens, just without pins.
+{
+  const cfg = {dia:5, len:6, n:2, clear:0.2};
+  // 3 mm walls: a 6 mm deep bore would burst straight out the back, so no pin may be placed.
+  const thin = sliceMeshIntoFragments(build({hollow:true, wallThickness:3}), 40, 999, 999, cfg).frags;
+  let wt=true; for(const f of thin) if(!manifoldCheck(f.tris,4).watertight) wt=false;
+  chk('thin walls: fragments watertight', wt);
+  const lowT = thin.find(f => f.bb.lo[0] < -1);
+  chk('thin walls: no dowel placed (nothing to bore into)', lowT.bb.hi[0] < 1e-6, {hi:lowT.bb.hi[0]});
+  // A dowel bigger than the section it sits on can't clear the edges either.
+  const huge = sliceMeshIntoFragments(build({width:80,height:14,depth:14}), 40, 999, 999,
+                                      {dia:12, len:6, n:2, clear:0.2}).frags;
+  let wt2=true; for(const f of huge) if(!manifoldCheck(f.tris,4).watertight) wt2=false;
+  chk('oversized dowel: fragments watertight', wt2);
+  chk('oversized dowel: refused on a 14×14 section',
+      huge.find(f=>f.bb.lo[0] < -1).bb.hi[0] < 1e-6);
+}
+
+// Pins must survive the full 3-axis pipeline, and must never be sawn in half by a LATER cut.
+{
+  const cfg = {dia:4, len:5, n:2, clear:0.2};
+  for(const [nm, sz] of [['/40',40],['/30',30],['/25',25]]){
+    const frags = sliceMeshIntoFragments(build({}), sz,sz,sz, cfg).frags;
+    let wt=true, worst=null, proud=0;
+    for(const f of frags){ const mc=manifoldCheck(f.tris,4); if(!mc.watertight){ wt=false; worst=worst||mc; } }
+    // a dowel shows up as a fan disc floating one pin-length off a cell boundary; just confirm
+    // SOME fragment grew past a plain cut's cell in at least one axis
+    const plain = sliceMeshIntoFragments(build({}), sz,sz,sz).frags;
+    const span = (l)=>l.reduce((m,f)=>Math.max(m, f.bb.hi[0]-f.bb.lo[0], f.bb.hi[1]-f.bb.lo[1], f.bb.hi[2]-f.bb.lo[2]), 0);
+    proud = span(frags) - span(plain);
+    chk(`3-axis ${nm}: every fragment watertight`, wt, worst);
+    chk(`3-axis ${nm}: dowels present`, proud > cfg.len - 1.1, {proud:+proud.toFixed(2)});
+    chk(`3-axis ${nm}: fragment count unchanged`, frags.length === plain.length, {a:frags.length, b:plain.length});
+  }
+}
+
+// Curved and holed sections: the cap is no longer a rectangle, so spot rejection near the edges
+// and the two-loop (outer + cavity) case both get exercised.
+{
+  const cfg = {dia:5, len:5, n:2, clear:0.25};
+  // NB: a SOLID squircle is deliberately not in this list — sliceMeshIntoFragments leaves open edges on
+  // it with or without pins (a pre-existing defect, see IDEAS.md); asserting on it here would blame the
+  // pins for someone else's bug. The hollow squircle exercises the same curved cross-sections.
+  const cases = [
+    ['squircle',   build({squircle:60, hollow:true, wallThickness:6})],
+    ['fillet',     build({filletRadius:8})],
+    ['taper',      build({taperXPlus:10, taperZMinus:8})],
+    ['thick hollow', build({hollow:true, wallThickness:12})],
+  ];
+  for(const [nm, t] of cases){
+    const frags = sliceMeshIntoFragments(t, 35,35,35, cfg).frags;
+    let wt=true, worst=null, nan=false, sum=0;
+    for(const f of frags){ const mc=manifoldCheck(f.tris,4); if(!mc.watertight){ wt=false; worst=worst||mc; }
+      if(hasNaN(f.tris)) nan=true; sum+=vol(f.tris); }
+    chk(`${nm} + pins: all fragments watertight`, wt && !nan, worst);
+    chk(`${nm} + pins: volume within 6% of the original`, Math.abs(sum-vol(t)) < Math.abs(vol(t))*0.06,
+        {orig:+vol(t).toFixed(0), sum:+sum.toFixed(0)});
+  }
+}
+
+// Pin count and clearance are parameters, so sweep them.
+{
+  const base = build({});
+  for(const n of [1,2,3,4]){
+    const frags = sliceMeshIntoFragments(base, 40,999,999, {dia:5,len:6,n,clear:0.2}).frags;
+    const low = frags.find(f=>f.bb.lo[0] < -1);
+    chk(`n=${n}: exactly ${n} dowel(s)`, vertsOnPlane(low.tris,0,5.4).length === n*DISC,
+        {got:vertsOnPlane(low.tris,0,5.4).length/DISC});
+    chk(`n=${n}: watertight`, frags.every(f=>manifoldCheck(f.tris,4).watertight));
+  }
+  for(const clear of [0, 0.15, 0.4, 0.8]){
+    const frags = sliceMeshIntoFragments(base, 40,999,999, {dia:6,len:5,n:2,clear}).frags;
+    const high = frags.find(f=>f.bb.lo[0] > -1);
+    const fl = vertsOnPlane(high.tris,0,5).filter(p=>p[2]<0);
+    const r = radiusAbout(fl, 0, centroid2(fl,0));
+    chk(`clear=${clear}: socket radius == 3 + ${clear}`, Math.abs(r - (3+clear)) < 1e-3, {r:+r.toFixed(4)});
+    chk(`clear=${clear}: watertight`, frags.every(f=>manifoldCheck(f.tris,4).watertight));
+  }
+  for(const dia of [2,3,8,12,20]){
+    const frags = sliceMeshIntoFragments(base, 40,999,999, {dia,len:6,n:2,clear:0.2}).frags;
+    chk(`dia=${dia}: watertight`, frags.every(f=>manifoldCheck(f.tris,4).watertight));
+  }
+  for(const len of [2,4,10,20,30]){
+    const frags = sliceMeshIntoFragments(base, 40,999,999, {dia:5,len,n:2,clear:0.2}).frags;
+    chk(`len=${len}: watertight`, frags.every(f=>manifoldCheck(f.tris,4).watertight));
+    const low = frags.find(f=>f.bb.lo[0] < -1);
+    // len 30 needs 31.2 mm of stock behind the face but only 40 is there — still fine; len must
+    // always show up as protrusion len-0.6 when it was accepted at all
+    const proud = low.bb.hi[0];
+    chk(`len=${len}: protrusion is len-0.6 or no pin`, Math.abs(proud-(len-0.6))<1e-6 || proud<1e-6, {proud});
+  }
+}
+
+// sliceActiveModel must pick the pin settings up from paramState (fragPins default = on).
+{
+  models.length = 0; activeModelId = null; nextModelId = 1;
+  models.push(makeModelRecord('Деталь', defaultBoxParams()));
+  activeModelId = models[0].id;
+  Object.assign(paramState.box, defaultBoxParams(), { width:80, height:60, depth:70, fragSize:40 });
+  saveActiveModel(); regenerate();
+  sliceActiveModel();
+  chk('UI path: all fragment models watertight with pins on',
+      models.every(m => manifoldCheck(m.rawTris, 4).watertight));
+  const grew = models.some(m => { const b=bbox(m.rawTris); return (b.hi[0]-b.lo[0]) > 40.001; });
+  chk('UI path: fragPins default put dowels on the cuts', grew);
+
+  models.length = 0; activeModelId = null; nextModelId = 1;
+  models.push(makeModelRecord('Деталь', defaultBoxParams()));
+  activeModelId = models[0].id;
+  Object.assign(paramState.box, defaultBoxParams(), { width:80, height:60, depth:70, fragSize:40, fragPins:false });
+  saveActiveModel(); regenerate();
+  sliceActiveModel();
+  chk('UI path: fragPins off → no fragment exceeds the cell',
+      models.every(m => { const b=bbox(m.rawTris); return (b.hi[0]-b.lo[0]) <= 40.001; }));
 }
 
 paramState.box.fragSize = 180;

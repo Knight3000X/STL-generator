@@ -153,6 +153,27 @@ for(const mode of ['bolt','nut','wingnut'])
 { const lo=computeBBox(base({threadMode:'nut',threadHeadH:6})), hi=computeBBox(base({threadMode:'nut',threadHeadH:16}));
   chk('taller nut height follows threadHeadH', Math.abs(((hi.maxY-hi.minY)-(lo.maxY-lo.minY))-10)<0.5, {lo:+(lo.maxY-lo.minY).toFixed(1),hi:+(hi.maxY-hi.minY).toFixed(1)}); }
 
+console.log('=== cable gland (кабельный ввод) ===');
+for(const D of [10,16,25,40]) for(const bore of [0,4,10]) for(const hand of ['right','left']){
+  const t=base({threadMode:'gland',threadD:D,threadBore:bore,threadHand:hand,threadLen:12,threadFlange:3});
+  const mc=manifoldCheck(t,4);
+  chk('gland Ø'+D+' bore'+bore+' '+hand+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+}
+{ const stud=vol(base({threadMode:'stud',threadD:20,threadPitch:2.5,threadLen:12}));
+  const gl=vol(base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8}));
+  chk('gland is hollow (less material than the solid stud)', gl<stud, {stud:+stud.toFixed(0),gland:+gl.toFixed(0)}); }
+{ // the cable channel must be open end to end: nothing may sit inside the bore radius at any height
+  const t=base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8,threadFlange:3});
+  let minR=1e9; for(const T of t)for(const v of T){ const r=Math.hypot(v[0],v[2]); if(r<minR) minR=r; }
+  chk('cable bore is clear end to end', Math.abs(minR-4)<0.05, {minR:+minR.toFixed(2)}); }
+
+console.log('=== global fit tolerance (fitTune) ===');
+{ const tight=vol(base({threadMode:'nut',threadD:20,threadPitch:2.5,fitTune:0}));
+  const loose=vol(base({threadMode:'nut',threadD:20,threadPitch:2.5,fitTune:0.4}));
+  chk('fitTune opens the nut bore', loose<tight, {tight:+tight.toFixed(0),loose:+loose.toFixed(0)}); }
+for(const ft of [-0.3,0,0.25,0.5])
+  chk('fitTune '+ft+' stays watertight', manifoldCheck(base({threadMode:'nut',fitTune:ft}),4).watertight && manifoldCheck(base({threadMode:'cap',fitTune:ft}),4).watertight);
+
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a threaded part', a===b, {a,b}); }

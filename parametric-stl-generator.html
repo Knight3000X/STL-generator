@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v104';
+const APP_VERSION = 'v105';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3449,7 +3449,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3473,6 +3473,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyW', label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBore', label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
@@ -3670,6 +3671,7 @@ const SHAPE_PARAMS = {
     {group:'Разрезка на фрагменты', key:'fragSize', label:'Размер фрагмента (макс. по каждой оси)', min:10, max:1000000, step:1, default:180, unit:'мм'},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
+    {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
     {group:'Перегородки (полый)', key:'divZ', label:'Секций по Z', min:1, max:8, step:1, default:1, unit:'', int:true},
@@ -4147,7 +4149,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
     case 'Позиция модели (в сборке)': case 'Поворот (для печати)': case 'Отображение':
-    case 'Сводка': case 'Экспорт': case 'Конфигурация сборки': case 'Приложение': return true;
+    case 'Сводка': case 'Экспорт': case 'Конфигурация сборки': case 'Приложение': case 'Допуски печати': return true;
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
@@ -5389,6 +5391,10 @@ function threadProfile(t, flat){
   if (t < 1 - f)     return 1 - (t - (0.5 + f)) / ramp;  // falling flank
   return 0;                                              // root flat (wraps to t=0)
 }
+// Global print-fit trim: ONE slider that nudges every mating clearance at once. Printers vary far more than
+// designs do, so calibrating this once beats hand-editing five separate numbers on every model. Applied where
+// each clearance is read; each site still clamps to its own valid range afterwards.
+function fitTuned(p, v){ return Math.max(0, v + (p.fitTune||0)); }
 function buildThread(p){
   const mode  = p.threadMode;
   const D     = Math.max(4, p.threadD||30);              // male major diameter
@@ -5396,7 +5402,7 @@ function buildThread(p){
   const S     = Math.max(1, Math.round(p.threadStarts||1));
   const hand  = (p.threadHand==='left') ? -1 : 1;
   const flat  = (p.threadFlat!=null) ? p.threadFlat : 0.14;
-  const clr   = Math.max(0, p.threadClear!=null ? p.threadClear : 0.4);
+  const clr   = Math.max(0, fitTuned(p, p.threadClear!=null ? p.threadClear : 0.4));
   const majorR= D/2;
   const h     = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
   const minorR= Math.max(0.5, majorR - h);               // male root
@@ -5412,17 +5418,28 @@ function buildThread(p){
   const leadLen = Math.max(0, Math.min(p.threadLead!=null ? p.threadLead : 2, len*0.45));
   const lead = d => leadLen>0 ? Math.max(0, Math.min(1, d/leadLen)) : 1;   // d = distance INTO the thread from the entry
 
-  if (mode === 'stud'){
+  if (mode === 'stud' || mode === 'gland'){
+    // 'gland' (кабельный ввод) is the stud with a cable bore straight through it: the solid top fan and the
+    // solid flange disc become annuli closed by a bore wall. Screw it through an enclosure wall and lock it
+    // with a plain `nut` of the same Ø/pitch.
     const flangeThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
     const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
+    const bored = mode === 'gland';
+    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.55, minorR-0.8));
     const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
     const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat), a=th(i);
       return [r*Math.cos(a), y, r*Math.sin(a)]; };   // lead-in fades at the top (engagement end)
-    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),B=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
-      const ref=[A[0]+B[0],0,A[2]+B[2]];
-      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
-    const ct=[0,y1,0];                                   // top fan
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
+    const B=(y,i)=>{ const a=th(i); return [rBore*Math.cos(a), y, rBore*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
+      const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+      tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    if(!bored){ const ct=[0,y1,0];                       // solid stud: top fan
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
+    } else { for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i2))/2, rin=[-Math.cos(mid),0,-Math.sin(mid)];
+        tris.push(orient([V(i,Ny),B(y1,i),B(y1,i2)],[0,1,0]));      // top annulus: thread crest → bore
+        tris.push(orient([V(i,Ny),B(y1,i2),V(i2,Ny)],[0,1,0]));
+        tris.push(orient([B(0,i),B(0,i2),B(y1,i2)],rin));           // cable bore, right through the flange
+        tris.push(orient([B(0,i),B(y1,i2),B(y1,i)],rin)); } }
     const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
     const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rref=[Math.cos(mid),0,Math.sin(mid)];
@@ -5430,7 +5447,9 @@ function buildThread(p){
       tris.push(orient([V(i,0),outT(i2),V(i2,0)],[0,1,0]));
       tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
       tris.push(orient([outT(i),outB(i2),outT(i2)],rref));
-      tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }     // flange bottom disc
+      if(bored){ tris.push(orient([B(0,i),outB(i2),outB(i)],[0,-1,0]));   // flange bottom annulus (bore → flangeR)
+                 tris.push(orient([B(0,i),B(0,i2),outB(i2)],[0,-1,0])); }
+      else tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }      // flange bottom disc
   } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
@@ -6785,7 +6804,7 @@ function buildClamshell(p){
   const floorT = Math.max(1.2, p.pipLeafT||6);
   const wh     = Math.max(2, p.pipBoxH||10);            // wall height of EACH half (closed cavity = 2·wh)
   const bw     = Math.max(1.2, p.pipWall||2);
-  const gap    = Math.max(0.15, Math.min(0.8, p.pipGap!=null?p.pipGap:0.35));
+  const gap    = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
   const kWall  = Math.max(1.0, gap+0.9);
   const pinR   = Math.max(0.8, p.pipPinD>0 ? p.pipPinD/2 : 1.0);
   const rK     = pinR + kWall;                          // knuckle outer radius
@@ -6866,7 +6885,7 @@ function buildHinge(p){
   const L     = Math.max(10, p.pipLen||60);
   const leafT = Math.max(2, p.pipLeafT||6);
   const zEdge = leafT/2;                                  // knuckle radius = half the leaf thickness (folds flat)
-  const gap   = Math.max(0.15, Math.min(0.8, p.pipGap!=null?p.pipGap:0.35));
+  const gap   = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
   const wall  = Math.max(1.0, gap+0.9);                   // knuckle wall thickness
   const pinR  = Math.max(0.8, (p.pipPinD>0 ? p.pipPinD/2 : zEdge - wall));
   const fingerLen = zEdge + Math.max(1.5, leafT*0.35);    // z where the flat leaf plate begins
@@ -7543,7 +7562,7 @@ function buildProjectBox(p){
   const wall  = Math.max(1.2, Math.min(Math.min(W,D)/4, p.pbWall||2.4));
   const floorT= Math.max(1.0, p.pbFloor||2.4), lidT = Math.max(1.0, p.pbLidT||2.4);
   const flange= Math.max(0.6, Math.min(6, p.pbFlange!=null ? p.pbFlange : 1.5));   // base lip past the walls
-  const clr   = Math.max(0.1, Math.min(1.0, p.pbClear!=null ? p.pbClear : 0.35));   // lid↔cavity fit clearance
+  const clr   = Math.max(0.1, Math.min(1.0, fitTuned(p, p.pbClear!=null ? p.pbClear : 0.35)));   // lid↔cavity fit clearance
   const screwD= Math.max(2, p.pbScrewD||3), postD = Math.max(screwD+3, p.pbPostD||(screwD+5));
   const emb   = Math.min(floorT*0.6, 1.0);
   const Ww = W-2*flange, Dw = D-2*flange;             // wall (frame) outer footprint (inset by the flange)
@@ -7707,7 +7726,7 @@ function buildStackFeet(p) {
   const wall = clampWallThickness(W, H, D, p.wallThickness || 2);
   const uni = p.filletRadius || 0, oBot = p.filletBottom > 0 ? p.filletBottom : uni;
   const rim = Math.max(wall, oBot);                       // stay clear of wall AND bottom rounding
-  const clear = Math.max(0.2, Math.min(2, p.stackClear || 0.6));
+  const clear = Math.max(0.2, Math.min(2, fitTuned(p, p.stackClear || 0.6)));
   const fh = Math.max(0.5, Math.min(5, p.stackFootH || 1.6));
   const foot = Math.min(8, (W - 2*rim - 2*clear) * 0.3, (D - 2*rim - 2*clear) * 0.3);
   if (foot < 2) return [];                                // no room for a useful pad
@@ -8861,7 +8880,7 @@ const GROUP_TAB = {
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
-  'Gridfinity':'cavity','Разрезка на фрагменты':'export',
+  'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish',
 };
 function buildAllParamUI() {
   for (const shapeKey in SHAPE_PARAMS) {
@@ -9879,7 +9898,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек'})[p.threadMode] || 'резьба';
+  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

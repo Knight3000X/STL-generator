@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v106';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3527,7 +3527,13 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'}]},
+    {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
+      options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
+    {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootH', label:'Ножка: глубина посадки', min:4, max:100, step:1, default:22, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootPad', label:'Ножка: толщина подошвы', min:1.2, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootClear', label:'Ножка: зазор посадки на ножку', min:0, max:1.5, step:0.05, default:0.3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntW', label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntT', label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegA', label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
@@ -7514,7 +7520,40 @@ function buildPhoneStand(p){
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }
+// Solid cylinder along Y (fan caps + side wall) — the pad under a furniture foot.
+function discYTris(cx,cz,r,y0,y1,seg){ const out=[], R=k=>{const a=2*Math.PI*k/seg;return [cx+r*Math.cos(a),cz+r*Math.sin(a)];};
+  for(let k=0;k<seg;k++){ const k1=(k+1)%seg,A=R(k),B=R(k1),ref=[(A[0]+B[0])/2-cx,0,(A[1]+B[1])/2-cz];
+    out.push(orient([[A[0],y0,A[1]],[B[0],y0,B[1]],[B[0],y1,B[1]]],ref));
+    out.push(orient([[A[0],y0,A[1]],[B[0],y1,B[1]],[A[0],y1,A[1]]],ref));
+    out.push(orient([[cx,y0,cz],[B[0],y0,B[1]],[A[0],y0,A[1]]],[0,-1,0]));
+    out.push(orient([[cx,y1,cz],[A[0],y1,A[1]],[B[0],y1,B[1]]],[0,1,0])); }
+  return out; }
+/* Furniture foot / glide (ножка-накладка): a socket that slips over the end of a chair or table leg, on a
+   pad that meets the floor. Round legs get a tube + disc pad, square legs a rectangular ring + slab pad —
+   both helpers already exist, so this is just the right pair of closed prisms interpenetrating the pad. The
+   socket is sized leg + fit clearance on each side, so it presses on rather than rattles. */
+function buildFoot(p){
+  const round = (p.mntFootShape||'square') === 'round';
+  const leg  = Math.max(6, p.mntFootLeg||25);
+  const wall = Math.max(1.2, p.mntT||3);
+  const depth= Math.max(4, p.mntFootH||22);
+  const padT = Math.max(1.2, p.mntFootPad||3);
+  const clr  = fitTuned(p, Math.max(0, p.mntFootClear!=null ? p.mntFootClear : 0.3));
+  const inR  = leg/2 + clr, outR = inR + wall, emb = Math.min(padT*0.6, 0.8);
+  const tris = [];
+  if(round){
+    const seg = Math.max(28, Math.round(2*Math.PI*outR/1.0));
+    for(const T of discYTris(0,0, outR, 0, padT)) tris.push(T);                       // pad
+    for(const T of tubeYTris(0,0, outR, inR, padT-emb, padT+depth, seg)) tris.push(T); // socket wall
+  } else {
+    for(const T of boxSpanTris(-outR,outR, 0,padT, -outR,outR)) tris.push(T);          // pad
+    for(const T of rectRingYTris(0,0, 2*outR, 2*outR, wall, padT-emb, padT+depth)) tris.push(T);
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 function buildMount(p){
+  if(p.mntMode==='foot') return buildFoot(p);
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
   if(p.mntMode==='tool') return buildTool(p);
@@ -9894,7 +9933,7 @@ function activeShapeLabel() {
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

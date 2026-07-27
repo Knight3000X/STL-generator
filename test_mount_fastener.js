@@ -62,5 +62,25 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('mntMode none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+console.log('=== furniture foot / glide (ножка-накладка) ===');
+{ let n=0,bad=0;
+  for(const sh of ['square','round']) for(const leg of [10,25,60,100]) for(const d of [6,22,60]) for(const w of [1.5,3,6]){
+    const t=buildMount({mntMode:'foot',mntFootShape:sh,mntFootLeg:leg,mntFootH:d,mntT:w,mntFootClear:0.3,mntFootPad:3});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++;
+  }
+  chk('foot: all '+n+' shape × leg × depth × wall combos watertight', bad===0, {n,bad}); }
+{ const b=computeBBox(buildMount({mntMode:'foot',mntFootShape:'square',mntFootLeg:30,mntT:3,mntFootClear:0.3}));
+  chk('square foot outer = leg + 2·(clearance + wall)', Math.abs((b.maxX-b.minX)-(30+2*0.3+2*3))<0.5, {x:+(b.maxX-b.minX).toFixed(2)}); }
+{ const b=computeBBox(buildMount({mntMode:'foot',mntFootH:20,mntFootPad:4}));
+  chk('foot height = socket depth + pad', Math.abs((b.maxY-b.minY)-24)<0.6, {y:+(b.maxY-b.minY).toFixed(2)}); }
+{ // the socket must be OPEN at the top so the leg can enter, and its bore must widen with the fit clearance
+  const bore=(c)=>{ const t=buildMount({mntMode:'foot',mntFootShape:'round',mntFootLeg:30,mntFootH:20,mntT:3,mntFootClear:c});
+    const b=computeBBox(t); let mn=1e9; for(const T of t)for(const v of T) if(v[1]>b.maxY-0.3) mn=Math.min(mn,Math.hypot(v[0],v[2])); return mn; };
+  chk('round socket is open at the top', bore(0.3) > 14, {r:+bore(0.3).toFixed(2)});
+  chk('more clearance → wider socket bore', bore(1.0) > bore(0)+0.5, {tight:+bore(0).toFixed(2),loose:+bore(1.0).toFixed(2)}); }
+{ const boreF=(ft)=>{ const t=buildMount({mntMode:'foot',mntFootShape:'round',mntFootLeg:30,mntFootClear:0,fitTune:ft});
+    const b=computeBBox(t); let mn=1e9; for(const T of t)for(const v of T) if(v[1]>b.maxY-0.3) mn=Math.min(mn,Math.hypot(v[0],v[2])); return mn; };
+  chk('global fitTune widens the socket too', boreF(0.5) > boreF(0)+0.3, {tight:+boreF(0).toFixed(2),loose:+boreF(0.5).toFixed(2)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

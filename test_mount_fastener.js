@@ -82,5 +82,31 @@ console.log('=== furniture foot / glide (ножка-накладка) ===');
     const b=computeBBox(t); let mn=1e9; for(const T of t)for(const v of T) if(v[1]>b.maxY-0.3) mn=Math.min(mn,Math.hypot(v[0],v[2])); return mn; };
   chk('global fitTune widens the socket too', boreF(0.5) > boreF(0)+0.3, {tight:+boreF(0).toFixed(2),loose:+boreF(0.5).toFixed(2)}); }
 
+
+console.log('=== fit-clearance calibration print (калибровка зазора) ===');
+{ let n=0,bad=0;
+  for(const cnt of [2,5,10]) for(const d of [3,6,12,30]) for(const g0 of [0,0.1,0.5]) for(const dg of [0.02,0.1,0.5]){
+    const t=buildMount({mntMode:'fittest',mntFitN:cnt,mntFitD:d,mntFitStart:g0,mntFitStep:dg,mntT:4});
+    const mc=manifoldCheck(t,4); n++; if(!(mc.watertight&&vol(t)>0)) bad++;
+  }
+  chk('fit test: all '+n+' step × Ø × start × increment combos watertight', bad===0, {n,bad}); }
+{ // EVERY step must survive. buildBoxWithHoles judges hole blocks in coarse grid-index space and silently
+  // drops ones it thinks clash, which would quietly delete exactly the wide-clearance steps being measured —
+  // hence one hole per tile. Verify each expected bore is really in the mesh.
+  const present=(cfg)=>{ const p=Object.assign({mntMode:'fittest',mntT:4},cfg), t=buildMount(p);
+    const n=p.mntFitN, nom=p.mntFitD, g0=p.mntFitStart, dg=p.mntFitStep;
+    const rMax=nom/2+g0+dg*(n-1), tile=2*rMax+8, pitch=tile+2, W=n*pitch-2;
+    const D=tile+(nom*0.8+6)+(nom+8), zTile=-D/2+tile/2;
+    let found=0;
+    for(let k=0;k<n;k++){ const r=nom/2+g0+dg*k, cx=-W/2+tile/2+pitch*k;
+      for(const T of t){ let hit=false; for(const v of T) if(Math.abs(Math.hypot(v[0]-cx,v[2]-zTile)-r)<0.35){hit=true;break;}
+        if(hit){found++;break;} } }
+    return found===n; };
+  for(const cfg of [{mntFitN:5,mntFitD:6,mntFitStart:0.1,mntFitStep:0.1},{mntFitN:5,mntFitD:6,mntFitStart:0.1,mntFitStep:0.5},
+                    {mntFitN:10,mntFitD:12,mntFitStart:0.5,mntFitStep:0.5},{mntFitN:10,mntFitD:3,mntFitStart:0,mntFitStep:0.02}])
+    chk('no calibration step is dropped: '+JSON.stringify(cfg), present(cfg), {}); }
+{ const few=vol(buildMount({mntMode:'fittest',mntFitN:2})), many=vol(buildMount({mntMode:'fittest',mntFitN:8}));
+  chk('more steps → bigger calibration part', many>few, {n2:+few.toFixed(0),n8:+many.toFixed(0)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

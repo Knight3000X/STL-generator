@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v106';
+const APP_VERSION = 'v107';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3527,7 +3527,11 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'}]},
+    {group:'Крепёж / монтаж', key:'mntFitD', label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFitN', label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntFitStart', label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFitStep', label:'Калибровка: шаг зазора', min:0.02, max:0.5, step:0.02, default:0.1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -7552,7 +7556,46 @@ function buildFoot(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+/* Fit-clearance calibration print (калибровка зазора). A plate carrying a row of holes whose diameter steps
+   by a fixed increment, plus a row of loose pins of the ONE nominal diameter standing beside it. Print it,
+   push a pin into each hole, and the first hole it enters is your printer's real clearance — which is exactly
+   the number the global `fitTune` slider wants. Holes run left→right from the smallest clearance up.
+
+   Everything is separate closed solids standing on the bed (no print-in-place contact to get wrong), so it is
+   watertight by construction and the pins simply lift off the plate when printing finishes. */
+function buildFitTest(p){
+  const n   = Math.max(2, Math.min(10, Math.round(p.mntFitN||5)));
+  const nom = Math.max(3, p.mntFitD||6);
+  const g0  = Math.max(0, p.mntFitStart!=null ? p.mntFitStart : 0.1);
+  const dg  = Math.max(0.02, p.mntFitStep||0.1);
+  const t   = Math.max(2, p.mntT||4);
+  // One hole per TILE rather than one plate with a row of holes. buildBoxWithHoles reserves each hole's block
+  // in GRID-INDEX space, and that grid is coarse (~1/24 of the largest side), so rounding inflates the blocks
+  // and neighbouring holes are judged to clash — and silently dropped — even when they are geometrically well
+  // apart. Exactly the widest-clearance steps, the ones being measured, would vanish. A tile carries a single
+  // centred hole, so no clash is possible at any diameter or step; a spine behind the tiles ties them into one
+  // part by interpenetration.
+  const rMax = nom/2 + g0 + dg*(n-1);
+  const tile = 2*rMax + 8, gapT = 2, pitch = tile + gapT;
+  const W = n*pitch - gapT, spineD = nom*0.8 + 6, pinBand = nom + 8;
+  const D = tile + spineD + pinBand, tris = [];
+  const xAt = k => -W/2 + tile/2 + pitch*k, zTile = -D/2 + tile/2;
+  for(let k=0;k<n;k++){
+    const r = nom/2 + g0 + dg*k;
+    for(const T of buildBoxWithHoles(tile, t, tile, [{axis:1, cp:0, cq:0, r}]))
+      tris.push(T.map(v=>[v[0]+xAt(k), v[1]+t/2, v[2]+zTile]));
+  }
+  // Spine: overlaps every tile's back edge, so the tiles never touch each other (no coincident faces) yet the
+  // whole thing lifts off the bed as one piece.
+  for(const T of boxSpanTris(-W/2+0.4, W/2-0.4, 0, t, zTile+tile/2-1.5, zTile+tile/2+spineD)) tris.push(T);
+  const pinH = t + 6, seg = Math.max(20, Math.round(nom*4));
+  for(let k=0;k<n;k++)                                                          // loose gauge pins, all at nominal Ø
+    for(const T of discYTris(xAt(k), D/2 - pinBand/2, nom/2, 0, pinH, seg)) tris.push(T);
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 function buildMount(p){
+  if(p.mntMode==='fittest') return buildFitTest(p);
   if(p.mntMode==='foot') return buildFoot(p);
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
@@ -9933,7 +9976,7 @@ function activeShapeLabel() {
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

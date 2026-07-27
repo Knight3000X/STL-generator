@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v117';
+const APP_VERSION = 'v118';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -8532,9 +8532,13 @@ const sliceMeshIntoFragments = (function(){
       if(ai) out.push(A);
       if(ai!==bi){ const t=(c-av)/(bv-av); const P=[A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]; P[axis]=c; out.push(P); } }
     return out; }
+  // Degeneracy filters below use "> 0" rather than an epsilon, on purpose. Slicing a triangle fan close
+  // to its apex genuinely produces slivers a fraction of a micron wide; they are harmless in an STL, but
+  // dropping one leaves its edges used an odd number of times and the fragment stops being closed. Only a
+  // triangle with NO area at all — which contributes nothing to the boundary either way — may be skipped.
   function fanInto(dst, poly, refNormal){
     for(let t=1;t<poly.length-1;t++){ let a=poly[0],b=poly[t],c=poly[t+1];
-      const fn=faceNormal(a,b,c); if(Math.abs(fn[0])+Math.abs(fn[1])+Math.abs(fn[2]) < 1e-14) continue;
+      const fn=faceNormal(a,b,c); if(!(Math.abs(fn[0])+Math.abs(fn[1])+Math.abs(fn[2]) > 0)) continue;
       if(dot(fn,refNormal)<0){ const tmp=b;b=c;c=tmp; } dst.push([a,b,c]); } }
   function signedArea(loop){ let a=0; for(let i=0,n=loop.length;i<n;i++){ const p=loop[i], q=loop[(i+1)%n]; a+=p[0]*q[1]-q[0]*p[1]; } return a/2; }
   function pointInPoly(pt, poly){ let inside=false; const x=pt[0], y=pt[1];
@@ -8649,7 +8653,7 @@ const sliceMeshIntoFragments = (function(){
     let list=poly.map((p,i)=>i); if(signedArea(poly)<0) list.reverse();
     const pts=poly; let guard=0;
     while(list.length>3 && guard++ < n0*n0+50){
-      let clipped=false, m=list.length;
+      let clipped=false, m=list.length, bestQ=-Infinity, bestI=-1, bestT=null;
       for(let i=0;i<m;i++){
         const i0=list[(i+m-1)%m], i1=list[i], i2=list[(i+1)%m]; const a=pts[i0], b=pts[i1], c=pts[i2];
         if(triArea2(a,b,c) <= 1e-10) continue;
@@ -8667,7 +8671,17 @@ const sliceMeshIntoFragments = (function(){
           if(samePt2(P,a)||samePt2(P,b)||samePt2(P,c)) continue;
           if(triArea2(pts[list[(j+m-1)%m]], P, pts[list[(j+1)%m]]) > 1e-12) continue;  // convex: can't trap
           if(pointInTriStrict(P,a,b,c)){ ear=false; break; } }
-        if(ear){ out.push([a,b,c]); list.splice(i,1); clipped=true; break; } }
+        // Take the BEST ear, not the first one. Clipping the first available ear degenerates into a fan
+        // from wherever the scan happens to start, and a fan's long thin triangles are what later cuts
+        // slice near the apex — five crossings inside a tenth of a millimetre, which no amount of welding
+        // untangles cleanly. Scoring by normalised shape quality (1 for equilateral, →0 for a sliver)
+        // keeps the cap's triangles compact, and the pathological clusters never form. Same cost: the
+        // scan already walked the ring looking for the first ear.
+        if(ear){
+          const q = 2*Math.sqrt(3)*triArea2(a,b,c) /
+            ((((b[0]-a[0])**2+(b[1]-a[1])**2) + ((c[0]-b[0])**2+(c[1]-b[1])**2) + ((a[0]-c[0])**2+(a[1]-c[1])**2)) || 1);
+          if(q>bestQ){ bestQ=q; bestI=i; bestT=[a,b,c]; } } }
+      if(bestI>=0){ out.push(bestT); list.splice(bestI,1); clipped=true; }
       if(!clipped){
         // No ear anywhere. That is not a contradiction of the two-ears theorem — bridgeHole leaves a
         // polygon that TOUCHES itself along each bridge, and two holes bridged to the same outer vertex
@@ -8688,7 +8702,7 @@ const sliceMeshIntoFragments = (function(){
         let bi=-1, ba=1e-10;
         for(let i=0;i<m;i++){ const a=pts[list[(i+m-1)%m]], b=pts[list[i]], c=pts[list[(i+1)%m]]; const ar=triArea2(a,b,c); if(ar>ba){ ba=ar; bi=i; } }
         if(bi<0) break; const i0=list[(bi+m-1)%m], i2=list[(bi+1)%m]; out.push([pts[i0],pts[list[bi]],pts[i2]]); list.splice(bi,1); } }
-    if(list.length===3){ const a=pts[list[0]],b=pts[list[1]],c=pts[list[2]]; if(Math.abs(triArea2(a,b,c))>1e-10) out.push([a,b,c]); } }
+    if(list.length===3){ const a=pts[list[0]],b=pts[list[1]],c=pts[list[2]]; if(Math.abs(triArea2(a,b,c))>0) out.push([a,b,c]); } }
   function triangulate2D(loops){
     const outers=[], holes=[];
     for(const lp of loops){ if(lp.length<3) continue; const a=signedArea(lp); if(a>1e-10) outers.push(lp); else if(a<-1e-10) holes.push(lp); }
@@ -8838,7 +8852,7 @@ const sliceMeshIntoFragments = (function(){
       const P3=(pu,pv,pc)=>{ const p=[0,0,0]; p[axis]=pc; p[u]=pu; p[v]=pv; return p; };
       // Push a triangle with its normal forced to point along `want` (a signed world axis).
       const emit=(dst,A,B,C,want)=>{ const fn=faceNormal(A,B,C);
-        if(fn[0]*fn[0]+fn[1]*fn[1]+fn[2]*fn[2] < 1e-16) return;
+        if(!(fn[0]*fn[0]+fn[1]*fn[1]+fn[2]*fn[2] > 0)) return;
         if(dot(fn,want)<0) dst.push([A,C,B]); else dst.push([A,B,C]); };
 
       // --- pick pin spots, then build socket bores (greater) + dowels (less) ---
@@ -8908,12 +8922,20 @@ const sliceMeshIntoFragments = (function(){
       cur=nxt; }
     return cur; }
   function weldFragment(tris, tol){
-    const cell=tol, grid=new Map(), reps=[];
-    const repFor=(p)=>{ const gx=Math.floor(p[0]/cell), gy=Math.floor(p[1]/cell), gz=Math.floor(p[2]/cell);
+    const cell=tol, grid=new Map(), reps=[], memo=new Map();
+    // Memoised BY EXACT COORDINATES, and that is the whole point. Proximity welding is not transitive:
+    // where a triangle fan is sliced near its apex, three crossings can land within a couple of tenths of
+    // a micron with the outer two just too far apart to merge. The rep list grows as we go, so the same
+    // middle point would bind to whichever neighbour happened to exist when it was first asked — one rep
+    // early on, a different one later. Both answers are defensible; using BOTH tears the mesh, because
+    // the triangles sharing that point stop sharing it. One coordinate, one representative, forever.
+    const key=(p)=>p[0]+'|'+p[1]+'|'+p[2];
+    const repFor=(p)=>{ const mk=key(p); const hit=memo.get(mk); if(hit!==undefined) return hit;
+      const gx=Math.floor(p[0]/cell), gy=Math.floor(p[1]/cell), gz=Math.floor(p[2]/cell);
       for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){
         const arr=grid.get((gx+dx)+','+(gy+dy)+','+(gz+dz)); if(!arr) continue;
-        for(const ri of arr){ const r=reps[ri]; if(Math.abs(r[0]-p[0])<tol&&Math.abs(r[1]-p[1])<tol&&Math.abs(r[2]-p[2])<tol) return ri; } }
-      const ri=reps.length; reps.push(p); const k=gx+','+gy+','+gz; if(!grid.has(k))grid.set(k,[]); grid.get(k).push(ri); return ri; };
+        for(const ri of arr){ const r=reps[ri]; if(Math.abs(r[0]-p[0])<tol&&Math.abs(r[1]-p[1])<tol&&Math.abs(r[2]-p[2])<tol){ memo.set(mk, ri); return ri; } } }
+      const ri=reps.length; reps.push(p); const k=gx+','+gy+','+gz; if(!grid.has(k))grid.set(k,[]); grid.get(k).push(ri); memo.set(mk, ri); return ri; };
     const out=[];
     for(const t of tris){ const a=repFor(t[0]), b=repFor(t[1]), c=repFor(t[2]);
       if(a===b||b===c||a===c) continue; const A=reps[a],B=reps[b],C=reps[c];

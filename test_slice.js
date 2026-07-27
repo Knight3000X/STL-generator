@@ -275,50 +275,57 @@ function centroid2(pts, axis){
    ============================================================================================ */
 console.log('=== curved cross-sections across cut sizes ===');
 {
+  // Every one of these used to break somewhere in this grid. The three causes were: a containment
+  // tolerance stated as an area instead of a distance, degeneracy filters that threw slivers away and
+  // orphaned their edges, and — the deep one — proximity welding binding the same coordinate to two
+  // different representatives depending on when it was first asked. Sweep the grid so a regression in
+  // any of them shows up immediately.
   const shapes = [
     ['solid squircle',  build({squircle:60})],
+    ['hollow squircle', build({squircle:60, hollow:true, wallThickness:3})],
+    ['thick hollow sq', build({squircle:60, hollow:true, wallThickness:8})],
     ['squircle+fillet', build({squircle:60, filletRadius:6})],
     ['squircle vbot',   build({squircle:60, squircleVBot:40})],
     ['fillet',          build({filletRadius:8})],
+    ['hollow fillet',   build({filletRadius:8, hollow:true, wallThickness:3})],
     ['taper',           build({taperXPlus:10, taperZMinus:8})],
+    ['gridfinity',      build({gfOn:true})],
   ];
+  const SIZES = [40,35,30,25,20,15];   // 15 mm on an 80x60x70 body is 5x4x5 pieces — far past real use
   const broken = (frags) => frags.reduce((n,f)=>n+(manifoldCheck(f.tris,4).watertight?0:1), 0);
   for(const [nm, t] of shapes){
     let worst = null;
-    for(const s of [40,35,30,25]){
+    for(const s of SIZES){
       const b = broken(sliceMeshIntoFragments(t, s,s,s).frags);
       if(b) worst = worst || {s, b};
     }
     chk(`${nm}: watertight at every cut size`, !worst, worst);
   }
-  // ...and pins must never turn a clean cut into a broken one, on ANY of them.
+  // ...and again with pins, which put a hole in every cap they touch.
   for(const [nm, t] of shapes){
-    let regressed = null;
-    for(const s of [40,35,30,25,20]){
-      const plain = broken(sliceMeshIntoFragments(t, s,s,s).frags);
-      const pinned= broken(sliceMeshIntoFragments(t, s,s,s, {dia:5,len:5,n:2,clear:0.25}).frags);
-      if(pinned > plain) regressed = regressed || {s, plain, pinned};
+    let worst = null;
+    for(const s of SIZES){
+      const b = broken(sliceMeshIntoFragments(t, s,s,s, {dia:5,len:5,n:2,clear:0.25}).frags);
+      if(b) worst = worst || {s, b};
     }
-    chk(`${nm}: pins never make a cut worse`, !regressed, regressed);
+    chk(`${nm}: watertight at every cut size WITH pins`, !worst, worst);
   }
 }
-// Two squircle cases are still not sound at the finest cut sizes (see IDEAS.md). Pin them down here,
-// asserting they ARE still broken, so the day someone fixes them this test says so out loud instead of
-// staying quietly wrong. The tolerance sweep says it isn't the same near-collinear cause: widening the
-// containment tolerance to 1e-5 or 1e-4 mm doesn't touch them.
+// Welding must be a FUNCTION of the coordinates: ask for the same point twice, get the same
+// representative, no matter what else was welded in between. This is the invariant whose absence tore
+// the hollow squircle apart, and it is not visible in any single fragment's manifoldCheck — so assert it
+// directly, by welding the same soup with its triangles in a different order.
 {
-  const broken = (f) => f.reduce((n,x)=>n+(manifoldCheck(x.tris,4).watertight?0:1), 0);
-  const hollow = build({hollow:true, wallThickness:3, squircle:60});
-  chk('hollow squircle: coarse cut is clean', broken(sliceMeshIntoFragments(hollow, 40,40,40).frags) === 0);
-  const fine = broken(sliceMeshIntoFragments(hollow, 25,25,25).frags);
-  chk('hollow squircle: fine cut still KNOWN-BROKEN (update this when fixed)', fine > 0, {fine});
-  chk('hollow squircle: pins do not add to the damage',
-      broken(sliceMeshIntoFragments(hollow, 25,25,25, {dia:5,len:5,n:2,clear:0.25}).frags) <= fine);
-  const vbot = build({squircle:60, squircleVBot:40});
-  const v20 = broken(sliceMeshIntoFragments(vbot, 20,20,20).frags);
-  chk('squircle vbot /20 still KNOWN-BROKEN (update this when fixed)', v20 > 0, {v20});
-  chk('squircle vbot /20: pins do not add to the damage',
-      broken(sliceMeshIntoFragments(vbot, 20,20,20, {dia:5,len:5,n:2,clear:0.25}).frags) <= v20);
+  const t = build({squircle:60, hollow:true, wallThickness:3});
+  const a = sliceMeshIntoFragments(t, 25,25,25).frags;
+  const shuffled = t.slice().reverse();
+  const b = sliceMeshIntoFragments(shuffled, 25,25,25).frags;
+  chk('weld is order-independent: same fragment count', a.length === b.length, {a:a.length, b:b.length});
+  const vol2 = (fs)=>fs.reduce((s,f)=>s+vol(f.tris), 0);
+  chk('weld is order-independent: same total volume',
+      Math.abs(vol2(a)-vol2(b)) < Math.abs(vol2(a))*1e-6, {a:+vol2(a).toFixed(3), b:+vol2(b).toFixed(3)});
+  chk('weld is order-independent: both watertight',
+      a.every(f=>manifoldCheck(f.tris,4).watertight) && b.every(f=>manifoldCheck(f.tris,4).watertight));
 }
 
 paramState.box.fragSize = 180;

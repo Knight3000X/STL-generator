@@ -132,5 +132,117 @@ console.log('=== dovetail slide (ласточкин хвост) ===');
 { const lo=vol(buildMount({mntMode:'dovetail',mntDtH:4})), hi=vol(buildMount({mntMode:'dovetail',mntDtH:20}));
   chk('taller tail → more material', hi>lo, {lo:+lo.toFixed(0),hi:+hi.toFixed(0)}); }
 
+console.log('=== L-bracket: every screw hole asked for must actually be there ===');
+// buildBoxWithHoles keeps a hole only when its grid block is strictly disjoint from the ones already kept,
+// so holes crowded onto one row were dropped in silence — four screws on a 40 mm plate produced two. The
+// count is measured by piercing the plate with rays and counting the openings, not by trusting the params.
+// A hole is an extra closed loop in a horizontal section through the plate. Counting loops measures the
+// holes that were actually BUILT, which is the whole point: buildBoxWithHoles silently drops a hole whose
+// grid block collides with one already kept, so four screws crowded onto one row came out as two.
+function sectionLoops(tris, y){
+  const segs=[];
+  for(const T of tris){ const pts=[];
+    for(let k=0;k<3;k++){ const A=T[k], B=T[(k+1)%3];
+      if((A[1]-y)*(B[1]-y)<0){ const t=(y-A[1])/(B[1]-A[1]);
+        pts.push([A[0]+(B[0]-A[0])*t, A[2]+(B[2]-A[2])*t]); } }
+    if(pts.length===2) segs.push(pts); }
+  const key=q=>q.map(c=>Math.round(c*1e3)).join(',');
+  const par=new Map(), find=a=>{ while(par.get(a)!==a){ par.set(a,par.get(par.get(a))); a=par.get(a); } return a; };
+  const add=q=>{ const k=key(q); if(!par.has(k)) par.set(k,k); return k; };
+  for(const sg of segs){ const a=find(add(sg[0])), b=find(add(sg[1])); if(a!==b) par.set(b,a); }
+  const roots=new Set(); for(const k of par.keys()) roots.add(find(k));
+  return roots.size;
+}
+for(const W of [40,60,100])
+  for(const n of [1,2,3,4]){
+    const t=base({mntMode:'lbracket',mntW:W,mntT:4,mntLegA:100,mntLegB:100,mntScrewD:4.5,mntHoleN:n,mntGusset:'no'});
+    const B=computeBBox(t);
+    chk('W'+W+' × '+n+' screws: all of them are drilled on the base', sectionLoops(t, B.minY+2)===n,
+        {W, n, got:sectionLoops(t, B.minY+2)});
+  }
+{ // and "0 = без" on the screw diameter has to mean no holes at all
+  const t=base({mntMode:'lbracket',mntW:60,mntT:4,mntLegA:100,mntLegB:100,mntScrewD:0,mntHoleN:4,mntGusset:'no'});
+  const B=computeBBox(t);
+  chk('mntScrewD 0 leaves the bracket undrilled', sectionLoops(t, B.minY+2)===0, {got:sectionLoops(t,B.minY+2)});
+  chk('and it is still watertight', manifoldCheck(t,4).watertight, {});
+  const solid=vol(t), drilled=vol(base({mntMode:'lbracket',mntW:60,mntT:4,mntLegA:100,mntLegB:100,mntScrewD:6,mntHoleN:4,mntGusset:'no'}));
+  chk('drilling removes material', drilled<solid, {solid:+solid.toFixed(0),drilled:+drilled.toFixed(0)}); }
+{ const t=base({hookMount:'wall',hookScrewD:0});
+  chk('hook wall plate: "0 = без" leaves it undrilled too', manifoldCheck(t,4).watertight &&
+      vol(t) > vol(base({hookMount:'wall',hookScrewD:5})), {}); }
+for(const [W,legA,legB,sd,n] of [[10,12,12,8,4],[16,20,20,4.5,4],[25,45,45,2,3],[300,200,100,12,4],[40,20,45,4.5,2]]){
+  const t=base({mntMode:'lbracket',mntW:W,mntT:4,mntLegA:legA,mntLegB:legB,mntScrewD:sd,mntHoleN:n,mntGusset:'yes'});
+  const mc=manifoldCheck(t,4);
+  chk('cramped W'+W+' A'+legA+' Ø'+sd+' ×'+n+' still watertight', mc.watertight&&vol(t)>0,
+      {open:mc.openEdges,bad:mc.badEdges});
+}
+{ // holes stay ON the plate whenever the head physically fits on it
+  for(const [W,legA,sd] of [[16,16,4.5],[40,100,4.5],[100,100,8],[300,200,12]]){
+    const t=base({mntMode:'lbracket',mntW:W,mntT:4,mntLegA:legA,mntLegB:legA,mntScrewD:sd,mntHoleN:4,mntGusset:'no'});
+    const b=computeBBox(t);
+    chk('W'+W+' A'+legA+' Ø'+sd+': the bracket keeps its outline', Math.abs((b.maxX-b.minX)-W)<0.05,
+        {x:+(b.maxX-b.minX).toFixed(2), W});
+  }
+}
+
+console.log('=== dovetail: the socket must be an UNDERCUT, not a copy of the tail ===');
+// A groove that repeats the tail's taper opens outward, so the parts lift straight apart. The socket has to
+// MIRROR it: narrow at the mouth, wide at the floor.
+function dtSections(ov){
+  const p=Object.assign({}, paramState.box);
+  const t=base(Object.assign({mntMode:'dovetail',mntDtLen:60,mntDtW:18,mntDtH:8,mntDtAngle:12,mntDtClear:0.25,mntT:3}, ov));
+  const B=computeBBox(t);
+  // widths of solid material along z, sampled at two heights, on each half of the plate
+  const solidRuns=(y, xHalf)=>{ const runs=[];
+    let prev=false, start=0;
+    for(let j=0;j<=1400;j++){ const z=B.minZ+(B.maxZ-B.minZ)*j/1400;
+      let n=0;
+      for(const T of t){ const A=T[0],Bv=T[1],C=T[2];
+        const d1=(Bv[0]-A[0])*(z-A[2])-(Bv[2]-A[2])*(xHalf-A[0]);
+        const d2=(C[0]-Bv[0])*(z-Bv[2])-(C[2]-Bv[2])*(xHalf-Bv[0]);
+        const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(xHalf-C[0]);
+        if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+        const AR=(Bv[0]-A[0])*(C[2]-A[2])-(Bv[2]-A[2])*(C[0]-A[0]); if(Math.abs(AR)<1e-12) continue;
+        const w1=((Bv[0]-xHalf)*(C[2]-z)-(Bv[2]-z)*(C[0]-xHalf))/AR;
+        const w2=((C[0]-xHalf)*(A[2]-z)-(C[2]-z)*(A[0]-xHalf))/AR;
+        const yy=w1*A[1]+w2*Bv[1]+(1-w1-w2)*C[1]; if(yy>y) n++; }
+      const inside=(n%2)===1;
+      if(inside && !prev) start=z;
+      if(!inside && prev) runs.push([start,z]);
+      prev=inside; }
+    if(prev) runs.push([start,B.maxZ]);
+    return runs; };
+  return {B, solidRuns};
+}
+{ const {B, solidRuns} = dtSections({});
+  const yLow = B.minY + 3 + 1.0, yHigh = B.minY + 3 + 7.0;   // just above the slab, and near the top of the rib
+  const lo=solidRuns(yLow, 0), hi=solidRuns(yHigh, 0);
+  chk('at both heights there is a tail and a socket', lo.length>=3 && hi.length>=3, {lo:lo.length, hi:hi.length});
+  if(lo.length>=3 && hi.length>=3){
+    // the tail is one solid run; the socket is two flanks with a gap between them
+    const tailLo=lo[0][1]-lo[0][0], tailHi=hi[0][1]-hi[0][0];
+    chk('the TAIL widens toward its free end (a real dovetail)', tailHi>tailLo+0.5,
+        {low:+tailLo.toFixed(2), high:+tailHi.toFixed(2)});
+    const gapLo=lo[2][0]-lo[1][1], gapHi=hi[2][0]-hi[1][1];
+    chk('the SOCKET narrows toward its mouth (an undercut, not a copy)', gapHi<gapLo-0.5,
+        {floor:+gapLo.toFixed(2), mouth:+gapHi.toFixed(2)});
+    chk('and the groove is the tail plus the fit clearance at both ends',
+        Math.abs(gapLo-(tailHi+0.5))<0.35 && Math.abs(gapHi-(tailLo+0.5))<0.35,
+        {gapFloor:+gapLo.toFixed(2), tailWide:+tailHi.toFixed(2),
+         gapMouth:+gapHi.toFixed(2), tailNarrow:+tailLo.toFixed(2)});
+  }
+}
+for(const ang of [5,12,20,30]){
+  const {B, solidRuns} = dtSections({mntDtAngle:ang});
+  const lo=solidRuns(B.minY+4, 0), hi=solidRuns(B.minY+10, 0);
+  if(lo.length>=3 && hi.length>=3)
+    chk('undercut angle '+ang+'°: socket still narrows upward', (hi[2][0]-hi[1][1]) < (lo[2][0]-lo[1][1]), {ang});
+  else chk('undercut angle '+ang+'°: sections found', false, {lo:lo.length,hi:hi.length});
+}
+for(const ov of [{mntDtW:4},{mntDtW:120},{mntDtH:3},{mntDtH:60},{mntDtClear:0},{mntDtClear:1},{mntDtLen:10},{mntDtLen:300}]){
+  const t=base(Object.assign({mntMode:'dovetail'}, ov)), mc=manifoldCheck(t,4);
+  chk('dovetail '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

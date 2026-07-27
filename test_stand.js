@@ -39,5 +39,43 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('psOn false → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+console.log('=== cable slot: "0 = без" must actually mean none ===');
+{ // `p.psSlot || 18` turned the documented zero back into the default, so the slot could never be removed.
+  const solid=vol(base({psSlot:0})), slotted=vol(base({psSlot:18}));
+  chk('psSlot 0 removes the slot (more material than a slotted base)', solid>slotted+50,
+      {solid:+solid.toFixed(0), slotted:+slotted.toFixed(0)});
+  const a=base({psSlot:0}), b=base({psSlot:18});
+  chk('and both stay watertight', manifoldCheck(a,4).watertight && manifoldCheck(b,4).watertight, {});
+  chk('psSlot 0 and a hairline slot are not the same model', Math.abs(vol(base({psSlot:2}))-solid)>1e-9, {});
+  const widths=[0,6,12,24].map(w=>vol(base({psSlot:w})));
+  chk('a wider slot removes more material, monotonically',
+      widths[0]>widths[1] && widths[1]>widths[2] && widths[2]>widths[3], widths.map(v=>+v.toFixed(0)));
+}
+{ // Solid-plate test done on the plate ALONE: keep only triangles that fit inside the base slab, so the
+  // lip, the raked support and the gussets (all of which start above it) cannot confuse the count. A ray
+  // straight down then crosses twice where the plate is solid and not at all where the slot went through.
+  const slab=(tris)=>{ const B=computeBBox(tris);
+    return tris.filter(T=>T.every(v=>v[1]<=B.minY+4.2)); };
+  const crossings=(tris,x,z)=>{ let n=0;
+    for(const T of tris){ const [a,b,c]=T;
+      const d1=(b[0]-a[0])*(z-a[2])-(b[2]-a[2])*(x-a[0]);
+      const d2=(c[0]-b[0])*(z-b[2])-(c[2]-b[2])*(x-b[0]);
+      const d3=(a[0]-c[0])*(z-c[2])-(a[2]-c[2])*(x-c[0]);
+      if((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0)) n++; }
+    return n; };
+  const solid=slab(base({psSlot:0})), slotted=slab(base({psSlot:18}));
+  const B=computeBBox(base({psSlot:0}));
+  let inPlate=0, holeSolid=0, holeSlotted=0;
+  for(let i=1;i<40;i++) for(let j=1;j<40;j++){
+    const x=B.minX+(B.maxX-B.minX)*i/40, z=B.minZ+(B.maxZ-B.minZ)*j/40;
+    if(crossings(solid,x,z)!==2) continue;
+    inPlate++;
+    if(crossings(solid,x,z)===0) holeSolid++;
+    if(crossings(slotted,x,z)===0) holeSlotted++; }
+  chk('the probe found the plate', inPlate>200, {inPlate});
+  chk('with the slot off the plate is solid all the way through', holeSolid===0, {holeSolid});
+  chk('and with it on there is a real opening', holeSlotted>5, {holeSlotted});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

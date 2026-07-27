@@ -244,5 +244,87 @@ console.log('=== planetary gearset (планетарный редуктор) ===
 { const few=vol(base({gearMode:'planetary',planetN:2})), many=vol(base({gearMode:'planetary',planetN:4}));
   chk('more planets → more material', many>few, {n2:+few.toFixed(0),n4:+many.toFixed(0)}); }
 
+console.log('=== planetary: the parts must actually MESH, not overlap ===');
+// Slice the layout at the mid-plane and compare the parts as 2D outlines. Teeth ploughing through each
+// other is invisible to a manifold check — every body is still closed — so it has to be measured.
+function planetOutlines(Zs,Zp,N,m,alpha,clr){
+  const Zr=Zs+2*Zp; let n=N; while(n>2 && (Zs+Zr)%n!==0) n--;
+  const oS=gearOutline(m,Zs,alpha), oP=gearOutline(m,Zp,alpha), oR=gearOutline(m,Zr,alpha);
+  const rpS=m*Zs/2, rpP=m*Zp/2, Rpr=m*Zr/2, a=m*(Zs+Zp)/2;
+  const back=Math.max(0.05, clr/(2*Math.sin(alpha*Math.PI/180)));
+  const shr=(P,rp)=>{const s=1-back/Math.max(1,rp);return P.map(q=>[q[0]*s,q[1]*s]);};
+  const rot=(P,r,dx,dz)=>{const c=Math.cos(r),s=Math.sin(r);
+    return P.map(q=>[q[0]*c-q[1]*s+dx, q[0]*s+q[1]*c+dz]);};
+  const planets=[]; for(let k=0;k<n;k++){ const ang=2*Math.PI*k/n;
+    planets.push(rot(shr(oP.P,rpP), ang*(1+Zs/Zp)+Math.PI-Math.PI/Zp, a*Math.cos(ang), a*Math.sin(ang))); }
+  const ringR=outlineRadiusFn(oR.P,(Zp%2)?-Math.PI/Zr:0), ring=[];
+  for(let i=0;i<720;i++){ const t=2*Math.PI*i/720, r=2*Rpr-ringR(t)+back;
+    ring.push([r*Math.cos(t), r*Math.sin(t)]); }
+  return {n, sun:shr(oS.P,rpS), planets, ring, a, rpP, Rpr};
+}
+function inPoly2(pt,P){ let c=false;
+  for(let i=0,j=P.length-1;i<P.length;j=i++)
+    if(((P[i][1]>pt[1])!==(P[j][1]>pt[1])) &&
+       (pt[0]<(P[j][0]-P[i][0])*(pt[1]-P[i][1])/(P[j][1]-P[i][1])+P[i][0])) c=!c;
+  return c; }
+function segDist(p,A,B){ const dx=B[0]-A[0],dy=B[1]-A[1],L2=dx*dx+dy*dy||1;
+  let t=((p[0]-A[0])*dx+(p[1]-A[1])*dy)/L2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p[0]-(A[0]+dx*t), p[1]-(A[1]+dy*t)); }
+function nearDist(P,Q,cx,cy,rad){ let b=1e9;
+  for(const p of P){ if(Math.hypot(p[0]-cx,p[1]-cy)>rad) continue;
+    for(let i=0;i<Q.length;i++){ const d=segDist(p,Q[i],Q[(i+1)%Q.length]); if(d<b)b=d; } }
+  return b; }
+
+for(const [Zs,Zp,N,m] of [[20,16,3,2],[24,18,3,2],[16,16,4,2],[12,11,4,1],[30,15,5,1.5],[40,20,4,3],[10,9,3,1]]){
+  const g=planetOutlines(Zs,Zp,N,m,20,0.25);
+  let insideSun=0, outsideRing=0;
+  for(const pl of g.planets) for(const q of pl){
+    if(inPoly2(q,g.sun)) insideSun++;
+    if(!inPoly2(q,g.ring)) outsideRing++; }
+  chk('Zs'+Zs+' Zp'+Zp+' N'+N+': no planet material inside the sun', insideSun===0, {insideSun});
+  chk('Zs'+Zs+' Zp'+Zp+' N'+N+': no planet material outside the ring bore', outsideRing===0, {outsideRing});
+}
+for(const [Zs,Zp,N,m] of [[20,16,3,2],[24,18,3,2],[16,16,4,2],[12,11,4,1],[30,15,5,1.5]]){
+  const g=planetOutlines(Zs,Zp,N,m,20,0.25);
+  let ms=1e9, mr=1e9;
+  for(let k=0;k<g.planets.length;k++){ const pl=g.planets[k], ang=2*Math.PI*k/g.n;
+    const cx=g.a*Math.cos(ang), cy=g.a*Math.sin(ang);
+    ms=Math.min(ms, nearDist(pl,g.sun,cx*0.5,cy*0.5,g.a), nearDist(g.sun,pl,cx*0.5,cy*0.5,g.a));
+    const ox=(g.a+g.rpP)*Math.cos(ang), oy=(g.a+g.rpP)*Math.sin(ang);
+    mr=Math.min(mr, nearDist(pl,g.ring,ox,oy,g.rpP*1.5), nearDist(g.ring,pl,ox,oy,g.rpP*1.5)); }
+  chk('Zs'+Zs+' Zp'+Zp+': sun↔planet gap is roughly the requested 0.25',
+      ms>0.12 && ms<0.55, {gap:+ms.toFixed(3)});
+  chk('Zs'+Zs+' Zp'+Zp+': planet↔ring gap is roughly the requested 0.25',
+      mr>0.12 && mr<0.55, {gap:+mr.toFixed(3)});
+}
+{ // and the gap tracks the knob
+  const g=(c)=>{ const o=planetOutlines(20,16,3,2,20,c);
+    return nearDist(o.planets[0],o.sun,o.a*0.5,0,o.a); };
+  chk('a bigger fit clearance opens the mesh', g(0.6)>g(0.2)+0.2, {a:+g(0.2).toFixed(3),b:+g(0.6).toFixed(3)}); }
+{ // the ring bore is an INTERNAL profile: tip at Rp − m, root at Rp + 1.25m — not an external one reused.
+  // Measured on the ring's own outline, so the planets reaching into it cannot confuse the reading.
+  for(const [m,Zs,Zp] of [[2,20,16],[1,24,12],[3,16,10]]){
+    const g=planetOutlines(Zs,Zp,3,m,20,0.25);
+    let mn=1e9, mx=0;
+    for(const q of g.ring){ const r=Math.hypot(q[0],q[1]); if(r<mn)mn=r; if(r>mx)mx=r; }
+    const back=Math.max(0.05, 0.25/(2*Math.sin(20*Math.PI/180)));   // the bore is opened by the backlash
+    chk('m'+m+' Zr'+(Zs+2*Zp)+': ring tip ≈ Rp − m', Math.abs(mn-(g.Rpr-m+back))<0.12*m,
+        {mn:+mn.toFixed(3), want:+(g.Rpr-m+back).toFixed(3)});
+    chk('m'+m+' Zr'+(Zs+2*Zp)+': ring root ≈ Rp + 1.25m', Math.abs(mx-(g.Rpr+1.25*m+back))<0.12*m,
+        {mx:+mx.toFixed(3), want:+(g.Rpr+1.25*m+back).toFixed(3)});
+    chk('m'+m+': ring teeth point INWARD (tip below the pitch circle)', mn < g.Rpr && mx > g.Rpr, {});
+  }
+}
+{ // planets must not collide with each other either
+  for(const [Zs,Zp,N] of [[20,16,3],[16,16,4],[30,15,5],[24,12,6]]){
+    const g=planetOutlines(Zs,Zp,N,2,20,0.25);
+    let worst=1e9;
+    for(let i=0;i<g.planets.length;i++){ const j=(i+1)%g.planets.length; if(i===j) continue;
+      for(const q of g.planets[i]) for(let e=0;e<g.planets[j].length;e++)
+        worst=Math.min(worst, segDist(q, g.planets[j][e], g.planets[j][(e+1)%g.planets[j].length])); }
+    chk('Zs'+Zs+' Zp'+Zp+' N'+N+': neighbouring planets clear each other', worst>0.2, {gap:+worst.toFixed(2)});
+  }
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

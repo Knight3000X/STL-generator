@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v121';
+const APP_VERSION = 'v122';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7695,17 +7695,37 @@ function buildPlanetary(p){
   const place=(t, rot, dx, dz)=>{ const c=Math.cos(rot), s=Math.sin(rot);
     for(const T of t) tris.push(T.map(v=>[v[0]*c - v[2]*s + dx, v[1], v[0]*s + v[2]*c + dz])); };
   const oS = gearOutline(m, Zs, alpha), oP = gearOutline(m, Zp, alpha);
-  place(extrudeProfileY(oS.P, ()=>rB, th, 0), 0, 0, 0);                       // sun
+  const rpS = m*Zs/2, rpP = m*Zp/2, Rpr = m*Zr/2;
+  // Backlash. Meshed at the exact centre distance the teeth TOUCH, and printed parts that touch fuse. The
+  // lever the outline gives is a uniform radial shrink δ, and pulling both flanks back by δ opens the mesh
+  // by 2δ·sin α along the tooth normal — so δ = clr / (2 sin α) delivers the clearance that was asked for
+  // instead of a third of it. Measured, not assumed: the tests read the real flank gap off the outlines.
+  // 0.05 mm floor: a user asking for zero clearance still cannot be handed touching outlines, which weld
+  // into shared edges and stop the layout being three separate closed bodies.
+  const back = Math.max(0.05, clr/(2*Math.sin(alpha*Math.PI/180)));
+  const shrunk=(P, rp)=>{ const s=1-back/Math.max(1, rp); return P.map(q=>[q[0]*s, q[1]*s]); };
+  place(extrudeProfileY(shrunk(oS.P, rpS), ()=>rB, th, 0), 0, 0, 0);           // sun
   const a = m*(Zs+Zp)/2;                                                       // carrier radius
+  // Planet orientation is NOT free. Rolling on the fixed sun turns planet k by ang·(1 + Zs/Zp), and the
+  // constant π − π/Zp puts a tooth SPACE on the line of centres where the sun's phase demands one. The
+  // meshing condition is on pitch-circle ARC, not on angle: for an external pair the two phases must SUM
+  // to a half tooth (S + P ≡ ½), because the contact runs one way round the sun and the other way round
+  // the planet. Reading that as a difference is what left the teeth ploughing through each other.
   for(let k=0;k<N;k++){ const ang=2*Math.PI*k/N;
-    place(extrudeProfileY(oP.P, ()=>rB, th, 0), -ang*Zs/Zp, a*Math.cos(ang), a*Math.sin(ang)); }
-  // Ring: plain circular rim outside, tooth profile on the BORE, opened by the fit clearance.
+    place(extrudeProfileY(shrunk(oP.P, rpP), ()=>rB, th, 0),
+          ang*(1 + Zs/Zp) + Math.PI - Math.PI/Zp, a*Math.cos(ang), a*Math.sin(ang)); }
+  // Ring: plain circular rim outside, INTERNAL tooth profile on the bore, opened by the fit clearance.
+  // An internal tooth is not an external one reused — it is the external profile MIRRORED about the pitch
+  // circle, r → 2·Rp − r. Used directly, the external outline put the ring's material at Rp − 1.25m where
+  // an internal tip belongs at Rp − m, i.e. 2.25 modules too deep, straight through the planets.
   const oR = gearOutline(m, Zr, alpha);
-  const rRim = m*Zr/2 + m*1.8 + Math.max(1.5, m*1.2);
+  const rRim = Rpr + m*1.8 + Math.max(1.5, m*1.2);
   const nOut = Math.max(oR.P.length, 256), circ=[];
   for(let i=0;i<nOut;i++){ const t=2*Math.PI*i/nOut; circ.push([rRim*Math.cos(t), rRim*Math.sin(t)]); }
-  const ringR = outlineRadiusFn(oR.P, 0);
-  place(extrudeProfileY(circ, ang=>ringR(ang)+clr, th, 0), 0, 0, 0);
+  // The internal mesh runs the SAME way round both bodies, so there the phases must DIFFER by a half
+  // tooth; carrying that through the sun mesh leaves the ring a half-pitch offset exactly when Zp is odd.
+  const ringR = outlineRadiusFn(oR.P, (Zp%2) ? -Math.PI/Zr : 0);
+  place(extrudeProfileY(circ, ang=>2*Rpr - ringR(ang) + back, th, 0), 0, 0, 0);
   return tris;
 }
 function buildGear(p){
@@ -7800,17 +7820,44 @@ function prismXTris(P, x0, x1){ const out=[], [A,B,C]=P, cy=(A[0]+B[0]+C[0])/3, 
 function buildLBracket(p){
   const W=Math.max(10,p.mntW||40), t=Math.max(2,p.mntT||4);
   const legA=Math.max(t+8,p.mntLegA||45), legB=Math.max(t+8,p.mntLegB||45);
-  const sd=Math.max(0,p.mntScrewD||4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), tris=[];
+  const sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), tris=[];
   // Both legs' countersinks open on the INSIDE of the L — the base's upward (+Y) and the back's forward (+Z).
   // That is the reachable side for a driver; the outer faces bear against the shelf and the wall and stay flat.
   // N screws per leg, spread across the width with the end margin kept clear of the hole itself.
   const nH=Math.max(1,Math.min(4,Math.round(p.mntHoleN||1)));
-  const spread=(span)=>{ const m=Math.max(sd+3, span*0.16), out=[];
-    for(let k=0;k<nH;k++) out.push(nH===1 ? 0 : -span/2+m + (span-2*m)*k/(nH-1)); return out; };
-  const baseHoles = sd>0.5 ? spread(W).map(cp=>({axis:1,cp,cq:legA/2-Math.max(sd+3,legA*0.28),r,head:'sink',headR:hR,headDepth:hD,headSide:1})) : [];
+  // Screws go on a GRID, not one row. buildBoxWithHoles keeps a hole only if its grid block is strictly
+  // disjoint from every hole already kept on the same axis, and a countersink's block is 1.7·headR wide
+  // plus a cell — so four Ø4.5 screws simply do not fit across a 40 mm plate, and the last two used to be
+  // dropped in silence. Work out how many fit ACROSS, wrap the rest into further rows ALONG the leg, and
+  // only then give up a screw. The pitch below mirrors buildBoxWithHoles' own block maths.
+  // A countersink's block is 1.7·headR each way, and the clash test compares GRID INDICES, so the pitch has
+  // to clear the block twice over plus two cells of index rounding. Two holes only clash when BOTH ranges
+  // overlap, so a second row is free — which is what makes four screws fit on a 40 mm plate at all.
+  const layout=(spanP, spanQ, box)=>{
+    const gres=Math.max(box[0],box[1],box[2])/24;
+    const cell=(s)=>s/Math.max(2, Math.round(s/gres));
+    const blk=1.7*Math.max(hR, r), rad=Math.max(hR, r);
+    const pitchP=2*blk + 2.2*cell(spanP), pitchQ=2*blk + 2.2*cell(spanQ);
+    // The centre band is capped so a head can never hang off the plate, however small the plate is.
+    const band=(span,inset)=>Math.max(0, Math.min(span/2 - rad - 0.5, span/2 - Math.max(blk+0.5, span*inset)));
+    const halfP=band(spanP,0.16), halfQ=band(spanQ,0.2);
+    const fit=(half,pitch)=>Math.max(1, Math.floor(2*half/pitch) + 1);
+    const maxC=fit(halfP,pitchP), maxR=fit(halfQ,pitchQ);
+    let cols=Math.min(nH, maxC), rows=Math.min(maxR, Math.ceil(nH/cols));
+    if(cols*rows < nH) cols=Math.min(maxC, Math.ceil(nH/rows));
+    const n=Math.min(nH, cols*rows), out=[];
+    const stepQ=rows>1 ? Math.max(pitchQ, 2*halfQ/(rows-1)) : 0;
+    for(let k=0;k<n;k++){ const j=Math.floor(k/cols), inRow=Math.min(cols, n-j*cols), i=k-j*cols;
+      const stepP=inRow>1 ? Math.max(pitchP, 2*halfP/(inRow-1)) : 0;
+      out.push([inRow===1 ? 0 : -stepP*(inRow-1)/2 + stepP*i, halfQ - stepQ*j]); }
+    return out;
+  };
+  const baseHoles = sd>0.5 ? layout(W, legA, [W,t,legA])
+      .map(([cp,cq])=>({axis:1,cp,cq,r,head:'sink',headR:hR,headDepth:hD,headSide:1})) : [];
   for(const T of buildBoxWithHoles(W,t,legA,baseHoles)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+legA/2]));   // base z∈[0,legA]
   const bw=W-0.6, hb=legB-(t-0.5), yc=(t-0.5+legB)/2, zc=t/2+0.3;
-  const backHoles = sd>0.5 ? spread(bw).map(cp=>({axis:2,cp,cq:(hb/2)-Math.max(sd+3,hb*0.28),r,head:'sink',headR:hR,headDepth:hD,headSide:1})) : [];
+  const backHoles = sd>0.5 ? layout(bw, hb, [bw,hb,t])
+      .map(([cp,cq])=>({axis:2,cp,cq,r,head:'sink',headR:hR,headDepth:hD,headSide:1})) : [];
   for(const T of buildBoxWithHoles(bw,hb,t,backHoles)) tris.push(T.map(v=>[v[0],v[1]+yc,v[2]+zc]));           // back z∈[0.3,t+0.3]
   if(p.mntGusset!=='no'){                                        // stiffening ribs, sizeable (0 = auto from the legs)
     const gl=Math.max(3, Math.min(p.mntGussetLen>0 ? p.mntGussetLen : Math.min(legA,legB)*0.55, Math.min(legA,legB)-t-1));
@@ -7846,7 +7893,7 @@ function buildBoss(p){
 function buildTool(p){
   const W=Math.max(20,p.mntW||90), t=Math.max(2,p.mntT||4);
   const shelfD=Math.max(15,p.mntLegA||35), backH=Math.max(15,p.mntLegB||42);
-  const sd=Math.max(0,p.mntScrewD||4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
+  const sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
   const toolN=Math.max(1,Math.round(p.mntToolN||4)), tr=Math.max(1.5,(p.mntToolD||16)/2), tris=[];
   const m=Math.max(tr+3, W*0.5/toolN), holes=[];                            // a row of tool holes through the shelf (Y)
   for(let k=0;k<toolN;k++){ const cp=toolN===1?0:-W/2+m+(W-2*m)*k/(toolN-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,shelfD/2-1.5)}); }
@@ -7865,7 +7912,7 @@ function buildPipe(p){
   const rP=Math.max(3,(p.mntPipeD||25)/2), sw=Math.max(2,p.mntPipeWall||3), rO=rP+sw;
   const W=Math.max(6,p.mntW||16), t=Math.max(2.5,p.mntT||4), standoff=Math.max(3,p.mntLegA||18);
   const zc=t+standoff+rO, seg=Math.max(28,Math.round(2*Math.PI*rO/1.1)), tris=[];
-  const plateW=Math.max(2*rO, W+12), plateH=Math.max(W, 2*rP+6), sd=Math.max(0,p.mntScrewD||4.5), holes=[];
+  const plateW=Math.max(2*rO, W+12), plateH=Math.max(W, 2*rP+6), sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), holes=[];
   if(sd>0.5){ const r=sd/2, m=Math.max(sd+3, plateW*0.18);
     for(const s of [-1,1]) holes.push({axis:2,cp:s*(plateW/2-m),cq:0,r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:-1}); }
   for(const T of buildBoxWithHoles(plateW,plateH,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]+t/2]));  // wall plate z∈[0,t]
@@ -7933,7 +7980,7 @@ function buildHook(p){
     // sideways — the collar faces front, hook still hangs down and curls in the front plane. (x,y,z)→(z,y,−x).
     tris = tris.map(T=>T.map(v=>[ v[2], v[1], -v[0] ]));
   } else {                                                        // wall plate
-    const t=plateT, sd=Math.max(0,p.hookScrewD||4.5), r=sd/2;
+    const t=plateT, sd=Math.max(0,p.hookScrewD!=null?p.hookScrewD:4.5), r=sd/2;
     const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];
     // Countersinks open on the FRONT (+Z, the hook side) — that is where you drive the screw from; the back
     // face sits flat against the wall and must stay unbroken.
@@ -8028,7 +8075,8 @@ function buildPhoneStand(p){
   const ang  = Math.max(30, Math.min(80, p.psAngle||62)) * Math.PI/180;   // rake, measured from the desk
   const lipH = Math.max(4, p.psLip||14);
   const restL= Math.max(20, p.psRest||70);
-  const slotW= Math.max(0, Math.min(p.psSlot||18, W-2*t-4));              // cable pass-through, 0 = none
+  // `|| 18` would have turned the "0 = none" the label promises back into the default width.
+  const slotW= Math.max(0, Math.min(p.psSlot!=null ? p.psSlot : 18, W-2*t-4));   // cable pass-through, 0 = none
   const zF = -D/2, zB = D/2, tris = [];
   // Base plate, with the charging-cable slot just behind the lip so a plugged-in cable clears the desk.
   const holes = slotW>1 ? [{axis:1, cp:0, cq: zF + lipH + slotW*0.7, ap:slotW/2, aq:Math.min(slotW,D*0.25)/2, rc:Math.min(3, slotW/2-0.4)}] : [];
@@ -8138,12 +8186,16 @@ function buildDovetail(p){
   const zT = -(wT + flank + 6);
   push(boxSpanTris(-L/2, L/2, 0, t, zT-wT-2, zT+wT+2));
   push(convexPrismXTris([[t-emb, zT-wB],[t-emb, zT+wB],[t+hD, zT+wT],[t+hD, zT-wT]], -L/2, L/2));
-  // Socket: floor + two flanks whose inner face follows the tail's slope, opened by the fit clearance.
+  // Socket: floor + two flanks whose inner face MIRRORS the tail's slope, opened by the fit clearance.
+  // Mirrors, not copies. The socket is flipped over onto the tail, so its flank TOPS become the mouth and
+  // meet the tail's narrow root (wB), while its floor meets the tail's wide free end (wT). Repeating the
+  // tail's own taper — wide at the top — would make the groove open outward and retain nothing at all: the
+  // parts would slide together and lift straight back apart, which is not a dovetail.
   const zS = wT + flank + 6, half = wT + clr + flank;
   push(boxSpanTris(-L/2, L/2, 0, t, zS-half, zS+half));
   for(const sgn of [-1,1])
-    push(convexPrismXTris([[t-emb, zS+sgn*half],[t-emb, zS+sgn*(wB+clr)],
-                           [t+hD,  zS+sgn*(wT+clr)],[t+hD,  zS+sgn*half]], -L/2, L/2));
+    push(convexPrismXTris([[t-emb, zS+sgn*half],[t-emb, zS+sgn*(wT+clr)],
+                           [t+hD,  zS+sgn*(wB+clr)],[t+hD,  zS+sgn*half]], -L/2, L/2));
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }

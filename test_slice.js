@@ -191,11 +191,8 @@ function centroid2(pts, axis){
 // and the two-loop (outer + cavity) case both get exercised.
 {
   const cfg = {dia:5, len:5, n:2, clear:0.25};
-  // NB: a SOLID squircle is deliberately not in this list — sliceMeshIntoFragments leaves open edges on
-  // it with or without pins (a pre-existing defect, see IDEAS.md); asserting on it here would blame the
-  // pins for someone else's bug. The hollow squircle exercises the same curved cross-sections.
   const cases = [
-    ['squircle',   build({squircle:60, hollow:true, wallThickness:6})],
+    ['squircle',   build({squircle:60})],
     ['fillet',     build({filletRadius:8})],
     ['taper',      build({taperXPlus:10, taperZMinus:8})],
     ['thick hollow', build({hollow:true, wallThickness:12})],
@@ -265,6 +262,63 @@ function centroid2(pts, axis){
   sliceActiveModel();
   chk('UI path: fragPins off → no fragment exceeds the cell',
       models.every(m => { const b=bbox(m.rawTris); return (b.hi[0]-b.lo[0]) <= 40.001; }));
+}
+
+/* ============================================================================================
+   T-JUNCTIONS ON CURVED CROSS-SECTIONS. A squircle's silhouette puts contour vertices a hair off
+   collinear (y = 3e-8 rather than 0). With the containment tolerance stated as an AREA, an ear
+   spanning 12 mm looked legal at that offset, got clipped, and swallowed the vertex — the cap then
+   had one long edge where the side surface had two, and the fragment was open. Stating the tolerance
+   as a DISTANCE fixes it; keeping sliver triangles through the weld (rather than discarding them and
+   orphaning their edges) is the other half. Sweep sizes, since which vertices land near a cut plane
+   changes with every one of them.
+   ============================================================================================ */
+console.log('=== curved cross-sections across cut sizes ===');
+{
+  const shapes = [
+    ['solid squircle',  build({squircle:60})],
+    ['squircle+fillet', build({squircle:60, filletRadius:6})],
+    ['squircle vbot',   build({squircle:60, squircleVBot:40})],
+    ['fillet',          build({filletRadius:8})],
+    ['taper',           build({taperXPlus:10, taperZMinus:8})],
+  ];
+  const broken = (frags) => frags.reduce((n,f)=>n+(manifoldCheck(f.tris,4).watertight?0:1), 0);
+  for(const [nm, t] of shapes){
+    let worst = null;
+    for(const s of [40,35,30,25]){
+      const b = broken(sliceMeshIntoFragments(t, s,s,s).frags);
+      if(b) worst = worst || {s, b};
+    }
+    chk(`${nm}: watertight at every cut size`, !worst, worst);
+  }
+  // ...and pins must never turn a clean cut into a broken one, on ANY of them.
+  for(const [nm, t] of shapes){
+    let regressed = null;
+    for(const s of [40,35,30,25,20]){
+      const plain = broken(sliceMeshIntoFragments(t, s,s,s).frags);
+      const pinned= broken(sliceMeshIntoFragments(t, s,s,s, {dia:5,len:5,n:2,clear:0.25}).frags);
+      if(pinned > plain) regressed = regressed || {s, plain, pinned};
+    }
+    chk(`${nm}: pins never make a cut worse`, !regressed, regressed);
+  }
+}
+// Two squircle cases are still not sound at the finest cut sizes (see IDEAS.md). Pin them down here,
+// asserting they ARE still broken, so the day someone fixes them this test says so out loud instead of
+// staying quietly wrong. The tolerance sweep says it isn't the same near-collinear cause: widening the
+// containment tolerance to 1e-5 or 1e-4 mm doesn't touch them.
+{
+  const broken = (f) => f.reduce((n,x)=>n+(manifoldCheck(x.tris,4).watertight?0:1), 0);
+  const hollow = build({hollow:true, wallThickness:3, squircle:60});
+  chk('hollow squircle: coarse cut is clean', broken(sliceMeshIntoFragments(hollow, 40,40,40).frags) === 0);
+  const fine = broken(sliceMeshIntoFragments(hollow, 25,25,25).frags);
+  chk('hollow squircle: fine cut still KNOWN-BROKEN (update this when fixed)', fine > 0, {fine});
+  chk('hollow squircle: pins do not add to the damage',
+      broken(sliceMeshIntoFragments(hollow, 25,25,25, {dia:5,len:5,n:2,clear:0.25}).frags) <= fine);
+  const vbot = build({squircle:60, squircleVBot:40});
+  const v20 = broken(sliceMeshIntoFragments(vbot, 20,20,20).frags);
+  chk('squircle vbot /20 still KNOWN-BROKEN (update this when fixed)', v20 > 0, {v20});
+  chk('squircle vbot /20: pins do not add to the damage',
+      broken(sliceMeshIntoFragments(vbot, 20,20,20, {dia:5,len:5,n:2,clear:0.25}).frags) <= v20);
 }
 
 paramState.box.fragSize = 180;

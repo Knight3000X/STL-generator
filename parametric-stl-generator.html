@@ -994,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v115';
+const APP_VERSION = 'v116';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -8617,8 +8617,18 @@ const sliceMeshIntoFragments = (function(){
       if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
   function triArea2(a,b,c){ return (b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]); }
   function samePt2(P,Q){ return P===Q || (Math.abs(P[0]-Q[0])<1e-9 && Math.abs(P[1]-Q[1])<1e-9); }
-  function pointInTriStrict(p,a,b,c){ const d1=triArea2(p,a,b), d2=triArea2(p,b,c), d3=triArea2(p,c,a);
-    const hasNeg=(d1<-1e-12)||(d2<-1e-12)||(d3<-1e-12), hasPos=(d1>1e-12)||(d2>1e-12)||(d3>1e-12); return !(hasNeg&&hasPos); }
+  // Containment with the tolerance expressed as a DISTANCE, not as an area. On a long thin candidate
+  // ear an area tolerance is meaningless: a vertex 3·10⁻⁸ mm off the edge of a 12 mm-long triangle
+  // already clears 1e-12, so the ear looks legal, gets clipped, and swallows that vertex — leaving the
+  // cap with an edge whose neighbour subdivides it. That T-junction is exactly how a sliced squircle
+  // ended up with open edges. Dividing each signed area by its edge length turns it into the
+  // perpendicular distance, which is the quantity a tolerance can sensibly be stated in.
+  function pointInTriStrict(p,a,b,c){
+    const side=(u,v)=>{ const A=triArea2(p,u,v), L=Math.hypot(v[0]-u[0], v[1]-u[1]);
+      const d = L>1e-12 ? A/L : A;
+      return d < -1e-6 ? -1 : (d > 1e-6 ? 1 : 0); };
+    const d1=side(a,b), d2=side(b,c), d3=side(c,a);
+    const hasNeg=(d1<0)||(d2<0)||(d3<0), hasPos=(d1>0)||(d2>0)||(d3>0); return !(hasNeg&&hasPos); }
   // Can M see outer[idx]? The bridge may not properly cross any edge of the polygon already built
   // (including a hole bridged in earlier) or of the hole being bridged now, may not graze a third
   // vertex, and must run through the interior.
@@ -8846,7 +8856,21 @@ const sliceMeshIntoFragments = (function(){
   function capCovers(loops, tris){
     let pa=0; for(const lp of loops) pa+=signedArea(lp);
     let ta=0; for(const T of tris) ta+=triArea2(T[0],T[1],T[2])/2;
-    return Math.abs(ta-pa) < 1e-6*Math.max(1, Math.abs(pa)); }
+    if(Math.abs(ta-pa) >= 1e-6*Math.max(1, Math.abs(pa))) return false;
+    // Area alone can't see a T-junction: a triangle edge that runs straight past a contour vertex
+    // covers the same area but leaves that vertex stranded, and the side surface — which DOES stop
+    // there — then has an edge with no partner. Reject the hole rather than ship an open fragment.
+    const V=[]; for(const lp of loops) for(const q of lp) V.push(q);
+    for(const T of tris) for(let k=0;k<3;k++){
+      const A=T[k], B=T[(k+1)%3], dx=B[0]-A[0], dy=B[1]-A[1], L2=dx*dx+dy*dy;
+      if(L2 < 1e-18) continue;
+      for(const P of V){
+        if(samePt2(P,A) || samePt2(P,B)) continue;
+        const t=((P[0]-A[0])*dx+(P[1]-A[1])*dy)/L2;
+        if(t<=1e-9 || t>=1-1e-9) continue;
+        const qx=A[0]+dx*t-P[0], qy=A[1]+dy*t-P[1];
+        if(qx*qx+qy*qy < 1e-12) return false; } }
+    return true; }
   function splitOne(tris, axis, c, pin, avoid){
     const less=[], greater=[]; let rawCap=[];
     const u=(axis===0)?1:0, v=(axis===2)?1:2;
@@ -8968,17 +8992,40 @@ const sliceMeshIntoFragments = (function(){
     const out=[];
     for(const t of tris){ const a=repFor(t[0]), b=repFor(t[1]), c=repFor(t[2]);
       if(a===b||b===c||a===c) continue; const A=reps[a],B=reps[b],C=reps[c];
-      const n=faceNormal(A,B,C); if(n[0]*n[0]+n[1]*n[1]+n[2]*n[2] < 1e-14) continue; out.push([A,B,C]); }
+      // Deliberately NOT dropping near-zero-area triangles here. A sliver is ugly but harmless in an
+      // STL, whereas discarding one leaves its three edges used an odd number of times — the fragment
+      // stops being closed. Distinct-after-weld vertices are the only requirement.
+      out.push([A,B,C]); }
     return out; }
+  // Is every edge used exactly twice? Same criterion manifoldCheck applies, computed here so the
+  // slicer can judge its own output.
+  function edgesPaired(tris){
+    const m=new Map(), K=p=>Math.round(p[0]*1e4)+','+Math.round(p[1]*1e4)+','+Math.round(p[2]*1e4);
+    for(const T of tris) for(let k=0;k<3;k++){ const a=K(T[k]), b=K(T[(k+1)%3]);
+      const key = a<b ? a+'|'+b : b+'|'+a; m.set(key,(m.get(key)||0)+1); }
+    for(const v of m.values()) if(v!==2) return false;
+    return true; }
   const slice = function(tris, sizeX, sizeY, sizeZ, pin){
     const bb=bboxOf(tris);
     const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
     // Every cut coordinate on the OTHER two axes is a no-go zone for a pin: a plane that later saws
     // through a dowel would leave half a dowel in each piece.
     const avoid={0:ix, 1:iy, 2:iz};
-    let cells=[tris];
-    cells=splitAll(cells,0,ix,pin,avoid); cells=splitAll(cells,1,iy,pin,avoid); cells=splitAll(cells,2,iz,pin,avoid);
-    const frags=cells.map(c=>weldFragment(c, 1.5e-4)).filter(c=>c.length>=4).map(c=>({tris:c, bb:bboxOf(c)}));
+    const run=(usePin)=>{
+      let cells=[tris];
+      cells=splitAll(cells,0,ix,usePin,avoid); cells=splitAll(cells,1,iy,usePin,avoid); cells=splitAll(cells,2,iz,usePin,avoid);
+      return cells.map(c=>weldFragment(c, 1.5e-4)).filter(c=>c.length>=4).map(c=>({tris:c, bb:bboxOf(c)}));
+    };
+    let frags=run(pin);
+    // Last line of defence. The per-cap checks can only judge the cap they are building; a pin can
+    // still leave a seam somewhere else on a shape whose cross-sections the slicer already handles
+    // badly. So: if pins left anything unclosed, cut again without them and keep whichever result has
+    // fewer broken fragments. Pins are a convenience — they may never cost a fragment its
+    // watertightness. (Compared, not just "plain must be perfect", because on a shape the slicer
+    // already mangles the plain cut isn't perfect either, and the pinned one must still not be worse.)
+    const unclosed=(list)=>list.reduce((n,f)=>n+(edgesPaired(f.tris)?0:1), 0);
+    if(pin){ const bad=unclosed(frags);
+      if(bad>0){ const plain=run(null); if(unclosed(plain) < bad) frags=plain; } }
     return {frags, bb};
   };
   return slice;

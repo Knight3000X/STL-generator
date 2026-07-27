@@ -139,5 +139,25 @@ for(const mode of ['vbelt','roundbelt'])
 { const small=vol(base({gearMode:'roundbelt',gearPulleyOD:40,gearBore:3})), big=vol(base({gearMode:'roundbelt',gearPulleyOD:40,gearBore:12}));
   chk('bigger bore removes more material', big<small, {small:+small.toFixed(0),big:+big.toFixed(0)}); }
 
+
+console.log('=== worm (червяк) ===');
+for(const m of [1,2,4]) for(const L of [10,30,80]) for(const st of [1,2,4]) for(const hd of ['right','left']){
+  const t=base({gearMode:'worm',gearModule:m,gearWormLen:L,gearStarts:st,gearHand:hd,gearWormJournal:6});
+  const mc=manifoldCheck(t,4);
+  chk('worm m'+m+' L'+L+' ×'+st+' '+hd+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+}
+{ const b=computeBBox(base({gearMode:'worm',gearModule:2,gearWormD:16,gearWormLen:30,gearWormJournal:6}));
+  chk('worm outer Ø = gearWormD', Math.abs((b.maxX-b.minX)-16)<0.6, {x:+(b.maxX-b.minX).toFixed(2)});
+  chk('worm length = cut + both journals', Math.abs((b.maxY-b.minY)-(30+12))<0.6, {y:+(b.maxY-b.minY).toFixed(2)}); }
+{ // The screw must be REAL: at one angle the radius has to sweep the full tooth depth along the axis. A
+  //   trapezoidal profile has flats, so counting DISTINCT radii proves nothing — measure the range instead.
+  const m=2, P=Math.PI*m, R=8, h=Math.min(R*0.6, 2.25*m*0.5);
+  let mn=1e9,mx=-1e9; for(let k=0;k<=64;k++){ const r=(R-h)+h*threadProfile((P*k/64)/P,0.14); mn=Math.min(mn,r); mx=Math.max(mx,r); }
+  chk('worm profile sweeps the full tooth depth along the axis', Math.abs((mx-mn)-h)<1e-6, {range:+(mx-mn).toFixed(3),h:+h.toFixed(3)}); }
+{ const noJ=computeBBox(base({gearMode:'worm',gearWormJournal:0})), withJ=computeBBox(base({gearMode:'worm',gearWormJournal:10}));
+  chk('journals extend the shaft past the cut', (withJ.maxY-withJ.minY) > (noJ.maxY-noJ.minY)+15, {}); }
+{ const shortW=vol(base({gearMode:'worm',gearWormLen:15})), longW=vol(base({gearMode:'worm',gearWormLen:60}));
+  chk('longer cut → more material', longW>shortW, {short:+shortW.toFixed(0),long:+longW.toFixed(0)}); }
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

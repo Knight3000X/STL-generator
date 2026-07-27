@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v108';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3506,7 +3506,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'ratchet',t:'храповик'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3523,6 +3523,12 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearWormD', label:'Червяк: наружный Ø (0 = авто от модуля)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearWormLen', label:'Червяк: длина нарезки', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Шестерня', key:'gearWormJournal', label:'Червяк: вылет вала с каждой стороны (0 = без)', min:0, max:60, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearStarts', label:'Червяк: число заходов', min:1, max:4, step:1, default:1, unit:'', int:true},
+    {group:'Шестерня', key:'gearHand', label:'Червяк: направление винта', type:'select', default:'right',
+      options:[{v:'right',t:'правое'},{v:'left',t:'левое'}]},
     {group:'Шестерня', key:'gearPulleyOD', label:'Шкив: наружный Ø', min:8, max:200, step:1, default:30, unit:'мм'},
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
@@ -7209,10 +7215,45 @@ function boreRadiusAt(a, rB, keyW, keyD){
   if(Math.abs(cx)>1e-6){ const rSide=(keyW/2)/Math.abs(cx); if(rSide*sx>rB && rSide*sx<rB+keyD) return rSide; } // side wall
   return rB;
 }
+/* Worm (червяк) — the driver half of a worm drive. Geometrically it is a screw, not a toothed wheel, so it
+   is built with the THREAD engine's trick rather than the gear outline: radius rides a helical trapezoidal
+   profile r(θ,y) = minor + depth·profile(y/P − hand·starts·θ/2π), capped by fans at both ends. Watertight for
+   the same reason the threads are — `starts` is an integer, so the seam at θ=2π lands on a whole number of
+   profile periods. Axial pitch is π·module, which is what lets it drive a spur wheel of that module. A plain
+   shaft runs through and out both ends as bearing journals; it interpenetrates the screw body, both closed. */
+function buildWorm(p){
+  const m    = Math.max(0.3, p.gearModule||2);
+  const P    = Math.PI*m;                                  // axial pitch — meshes a wheel of module m
+  const S    = Math.max(1, Math.round(p.gearStarts||1));
+  const hand = (p.gearHand==='left') ? -1 : 1;
+  const R    = Math.max(m*2.5, (p.gearWormD>0 ? p.gearWormD : m*8)/2);
+  const len  = Math.max(P, p.gearWormLen||30);
+  const h    = Math.min(R*0.6, 2.25*m*0.5);                // ≈ standard tooth depth for the module
+  const minorR = Math.max(0.6, R-h);
+  const rSh  = Math.max(0.8, Math.min((p.gearBore>0?p.gearBore:m*3)/2, minorR-0.8));
+  const jour = Math.max(0, p.gearWormJournal!=null ? p.gearWormJournal : m*3);
+  const Nth  = Math.max(80, Math.min(320, Math.round(2*Math.PI*R/0.55))), spp = 24;
+  const Ny   = Math.max(8, Math.min(400, Math.round(len/P*spp)));
+  const tris = [], th = i => 2*Math.PI*(i%Nth)/Nth;
+  const V=(i,j)=>{ const y=len*j/Ny, a=th(i);
+    const r=minorR + h*threadProfile(y/P - hand*S*(i%Nth)/Nth, p.gearFlat!=null?p.gearFlat:0.14);
+    return [r*Math.cos(a), y, r*Math.sin(a)]; };
+  for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),B=V(i2,j),C=V(i2,j+1),D=V(i,j+1);
+    const ref=[A[0]+B[0],0,A[2]+B[2]];
+    tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,D],ref)); }
+  const ct=[0,len,0], cb=[0,0,0];                          // end fans close the screw body
+  for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+    tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
+    tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+  if(jour>0.2) for(const T of discYTris(0,0, rSh, -jour, len+jour, Math.max(20,Math.round(rSh*8)))) tris.push(T);
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
   if(mode==='rack') return buildRack(p);
+  if(mode==='worm') return buildWorm(p);
   if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
   let o, rp=m*Z/2;
   if(mode==='gt2') o=sprocketOutline(Z, 2);
@@ -9977,8 +10018,8 @@ function activeShapeLabel() {
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.tpmsType && p.tpmsType !== 'none') return 'TPMS: ' + ({gyroid:'гироид',schwarzp:'Schwarz-P',diamond:'diamond'})[p.tpmsType];
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
-    + (['rack','vbelt','roundbelt'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt','worm'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод'})[p.threadMode] || 'резьба';
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';

@@ -161,27 +161,14 @@ console.log('=== no pair passes through itself ===');
 // carry no backlash, so a mating flank, a cap rim on a shoulder and a bin's foot in its socket all
 // touch by design. What is checked is that neither part CROSSES into the other.
 //
-// One pair is left out, and the exclusion is a measurement rather than a shrug:
-//
-//   · ЧЕРВЯК ↔ ЧЕРВЯЧНОЕ КОЛЕСО — 299 crossing pairs at best. Swept over every tooth-pitch timing
-//     (12 steps) and both rim types (straight and throated), the minimum never approaches zero. The
-//     two are simply not conjugate: the wheel's teeth are cut without the worm's helix, so at the
-//     textbook centre distance the solids overlap however they are turned. The preview places them
-//     correctly — axes crossed at 90°, centre distance = the two pitch radii — and the parts
-//     themselves are what would bind. Making the wheel by ENVELOPING the worm is the real fix.
-//
-const NO_CROSSING_EXEMPT = new Set(['червяк → колесо', 'колесо → червяк']);
+// Nothing is left out any more. The worm pair used to be — 299 crossing pairs at best over twelve
+// timings and both rim types, because a wheel drawn with involute teeth is not conjugate to a screw —
+// and it now holds the same bar as everything else, on a rim cut by enveloping the worm.
 for(const [nm, cfg] of Object.entries(CASES)){
-  if(NO_CROSSING_EXEMPT.has(nm)) continue;
   const p = setp(cfg), self = buildTrisForShape('box', p), plan = placed(p);
   const r = crossings(self, plan.world);
   chk(nm+': детали не проходят сквозь друг друга', r.n === 0, {crossings:r.n, tested:r.pairs});
 }
-{ // the exclusion is pinned to what was measured, so it cannot quietly get worse
-  const w = setp({gearMode:'worm', gearModule:2, gearTeeth:20});
-  const rw = crossings(buildTrisForShape('box', w), placed(w).world);
-  chk('червячная пара: пересечение зафиксировано как известный дефект', rw.n > 0 && rw.n < 900,
-      {crossings:rw.n}); }
 
 console.log('=== the pipe a collar clips to ===');
 // The one pair whose datum could not be read off a bounding box: buildHook builds the collar at the
@@ -282,11 +269,37 @@ for(const Z of [12, 20, 21, 30, 31]){
 console.log('=== the worm drive crosses at a right angle ===');
 for(const cfg of [{gearMode:'worm', gearModule:2, gearTeeth:20}, {gearMode:'wormwheel', gearModule:2, gearTeeth:20}]){
   const p = setp(cfg), plan = placed(p);
-  chk(cfg.gearMode+': ответная положена на бок (оси перпендикулярны)', plan.rx === 90, {rx:plan.rx});
+  chk(cfg.gearMode+': ответная положена на бок (оси перпендикулярны)', Math.abs(plan.rx) === 90, {rx:plan.rx});
   const self = computeBBox(buildTrisForShape('box', p)), B = computeBBox(plan.world);
   const a = (B.minX+B.maxX)/2 - (self.minX+self.maxX)/2;
-  chk(cfg.gearMode+': межосевое = сумма делительных радиусов', Math.abs(a - 26) < 0.6, {a:+a.toFixed(2)});
+  // An enveloped wheel is chiral: which side of the worm it sits on and which way up are fixed by the
+  // cut, not free. The magnitude is the centre distance either way.
+  chk(cfg.gearMode+': межосевое = сумма делительных радиусов', Math.abs(Math.abs(a) - 26) < 0.6, {a:+a.toFixed(2)});
 }
+
+console.log('=== and the worm pair actually TURNS ===');
+// The static check above says the two do not overlap where the preview puts them. That is necessary and
+// not sufficient: a pair can be clear in one pose and bind in the next. Here they are driven — the worm
+// turned about its own axis by ψ, the wheel about its own by hand·starts/teeth·ψ, right round — and the
+// interference is measured at every station. Zero throughout is what makes it a gear pair rather than
+// two parts that happen to miss each other once.
+//
+// The coupling's SIGN is not a free choice and the reverse run proves it: driven the other way the same
+// two solids grind through each other by the hundreds. Were the sign arbitrary, both would read zero.
+{ const p = setp({gearMode:'wormwheel', gearModule:2, gearTeeth:20, gearThick:10});
+  const wheel = buildTrisForShape('box', p), worm = placed(p).world;
+  const S = 1, Z = 20, hand = 1, k = hand*S/Z, C = wormCentreDist(p);
+  const spinWheel = (T,f) => T.map(v=>[v[0]*Math.cos(f)+v[2]*Math.sin(f), v[1], -v[0]*Math.sin(f)+v[2]*Math.cos(f)]);
+  const spinWorm = (T,psi) => T.map(v=>{ const x=v[0]-C, z=-v[1], a=Math.atan2(z,x)+psi, r=Math.hypot(x,z);
+    return [C + r*Math.cos(a), -r*Math.sin(a), v[2]]; });
+  const run = (sign)=>{ let worst=0, at=null;
+    for(let s=0;s<16;s++){ const psi=2*Math.PI*s/16/S;
+      const n = crossings(wheel.map(T=>spinWheel(T, sign*k*psi)), worm.map(T=>spinWorm(T, psi))).n;
+      if(n>worst){ worst=n; at=+(psi*180/Math.PI).toFixed(0); } }
+    return {worst, at}; };
+  const fwd = run(1), rev = run(-1);
+  chk('червячная пара прокручивается на полный оборот без задевания', fwd.worst === 0, fwd);
+  chk('а в обратной связке — заклинивает (знак передачи не произволен)', rev.worst > 50, rev); }
 
 console.log('=== the active model is not disturbed ===');
 { const p = setp({threadMode:'cap', threadD:30, threadPitch:3, threadLen:16});

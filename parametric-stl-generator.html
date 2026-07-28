@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v140';
+const APP_VERSION = 'v141';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3752,8 +3752,8 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'folLen', label:'Толкатель: длина штока', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Шестерня', key:'folPadD', label:'Толкатель: Ø плоской пяты (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Шестерня', key:'folPadT', label:'Толкатель: толщина пяты', min:1, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Шестерня', key:'gearWheelRim', label:'Червячное колесо: венец', type:'select', default:'straight',
-      options:[{v:'straight',t:'прямой (цилиндрический)'},{v:'throated',t:'обнимающий червяк (глобоидный)'}]},
+    {group:'Шестерня', key:'gearWheelRim', label:'Червячное колесо: венец', type:'select', default:'envelope',
+      options:[{v:'envelope',t:'нарезан огибанием червяка (сопряжённый)'},{v:'straight',t:'прямой (цилиндрический)'},{v:'throated',t:'обнимающий червяк (глобоидный)'}]},
     {group:'Шестерня', key:'ujShaftD', label:'Карданчик: Ø вала', min:4, max:60, step:0.5, default:10, unit:'мм'},
     {group:'Шестерня', key:'ujShaftLen', label:'Карданчик: вылет вала с каждой стороны', min:4, max:150, step:1, default:18, unit:'мм'},
     {group:'Шестерня', key:'ujBoreD', label:'Карданчик: Ø отверстия в валу (0 = сплошной)', min:0, max:40, step:0.5, default:0, unit:'мм'},
@@ -4160,8 +4160,12 @@ function assemblyMate(p){
   // Worm drive: the axes cross at a right angle, so the newcomer is laid on its side and set out
   // along the one direction perpendicular to both. Centre distance = the two pitch radii; the worm's
   // is its own outer radius less one addendum, read off whichever of the two boxes is the worm's.
-  if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:90,
-    seat:(A,B,S)=>({px:S.px + ((A.maxX-A.minX)/2 - m) + m*Z/2, py:S.py, pz:S.pz}) };
+  // The wheel is laid on its side and set out along the one direction perpendicular to both axes; centre
+  // distance = the two pitch radii, taken from the builder rather than from a bounding box. Which SIDE and
+  // which way up are not free: an enveloped wheel is chiral, cut for one presentation of the worm, and only
+  // one of the four rx/side combinations reproduces it — the other three read as hundreds of crossings.
+  if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:-90,
+    seat:(A,B,S)=>({px:S.px - wormCentreDist(p), py:S.py, pz:S.pz}) };
   // Enclosure tray + lid. The tray's geometry runs y = 0 (floor underside) to y = H (wall top), so its
   // wall top IS its maxY. The lid is a plate centred on y = 0 with a drop-in rib reaching lipH below
   // it, so the face that SEATS on that wall top is lipH above the lid's lowest point — neither number
@@ -4196,7 +4200,7 @@ function assemblyMate(p){
     seat:(A,B,S)=>{ const d = hookPipeDatum || {x:0,y:0,z:0};
       return { px:S.px + d.x, py:S.py + d.y, pz:S.pz + d.z }; } };
   if (gr === 'wormwheel') return { name:'Червяк', over:{gearMode:'worm'}, rx:90,
-    seat:(A,B,S)=>({px:S.px + m*Z/2 + ((B.maxX-B.minX)/2 - m), py:S.py, pz:S.pz}) };
+    seat:(A,B,S)=>({px:S.px + wormCentreDist(p), py:S.py, pz:S.pz}) };
   return null;
 }
 function shiftBBox(B, px, py, pz){
@@ -7652,19 +7656,23 @@ function ratchetOutline(N, m){
 }
 // Loft a star-shaped 2D outline P along Y (th) with a concentric bore, optionally TWISTED (helical gears).
 // The bore ring is sampled per-point at the outline's own angle, so end faces close as a clean annulus.
-// `scaleFn(u)` scales a layer about the axis (bevel taper); `growFn(u)` pushes every outline point OUTWARD
+// `scaleFn(u)` scales a layer about the axis (bevel taper); `growFn(u, i)` pushes outline point i OUTWARD
 // by a fixed radial distance instead. The two are not interchangeable: a throated worm wheel has to keep
 // its tooth shape and thickness while the whole profile slides out along the worm's arc, and scaling would
-// fatten the teeth along with it.
-function extrudeProfileY(P, boreFn, th, twist, scaleFn, growFn){
+// fatten the teeth along with it. growFn is handed the point index as well as the layer, which is what lets
+// an ENVELOPED rim — a radius that varies with angle AND height — be lofted by the same machinery.
+// `layers` overrides the layer count, for a grow field that is sampled rather than smooth.
+function extrudeProfileY(P, boreFn, th, twist, scaleFn, growFn, layers){
   const hasScale = scaleFn !== undefined, hasGrow = growFn !== undefined;
   scaleFn = scaleFn || (()=>1); growFn = growFn || (()=>0);
-  const n=P.length, tris=[], M=Math.max(hasGrow?16:(hasScale?8:1), Math.round(Math.abs(twist)/(5*Math.PI/180)), 1);
+  const n=P.length, tris=[], M=layers>0 ? Math.round(layers)
+    : Math.max(hasGrow?16:(hasScale?8:1), Math.round(Math.abs(twist)/(5*Math.PI/180)), 1);
   const rot=(q,a)=>[q[0]*Math.cos(a)-q[1]*Math.sin(a), q[0]*Math.sin(a)+q[1]*Math.cos(a)];
   const ang=P.map(q=>Math.atan2(q[1],q[0]));
   const B=ang.map(a=>{ const r=boreFn(a); return [r*Math.cos(a), r*Math.sin(a)]; });   // AXIAL bore (keyway stays straight)
-  const lP=[]; for(let k=0;k<=M;k++){ const s=scaleFn(k/M), g=growFn(k/M);            // twist + taper + throat
-    lP.push(P.map(q=>{ const r=rot(q,twist*k/M), f=s+g/(Math.hypot(r[0],r[1])||1); return [r[0]*f, r[1]*f]; })); }
+  const lP=[]; for(let k=0;k<=M;k++){ const s=scaleFn(k/M);                           // twist + taper + throat
+    lP.push(P.map((q,i)=>{ const r=rot(q,twist*k/M), g=growFn(k/M, i);
+      const f=s+g/(Math.hypot(r[0],r[1])||1); return [r[0]*f, r[1]*f]; })); }
   const yAt=k=>-th/2+th*k/M;
   for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1];
     for(let i=0;i<n;i++){ const j=(i+1)%n;
@@ -8170,6 +8178,110 @@ function buildWorm(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+// The worm's own radii, as the BUILDER computes them — not read off a bounding box. Both the assembly
+// preview and the enveloping cutter below need the exact centre distance, and a bbox half-width is the
+// widest SAMPLED facet, which lands a few hundredths under the true crest. On a pair whose whole point is
+// that the two never overlap, a few hundredths is the difference between a mesh and an interference.
+function wormOuterR(p){ const m=Math.max(0.3,p.gearModule||2); return Math.max(m*2.5, (p.gearWormD>0?p.gearWormD:m*8)/2); }
+function wormPitchR(p){ return wormOuterR(p) - Math.max(0.3,p.gearModule||2); }   // outer less one addendum
+function wormCentreDist(p){ const m=Math.max(0.3,p.gearModule||2), Z=Math.max(6,Math.round(p.gearTeeth||20));
+  return m*Z/2 + wormPitchR(p); }
+/* Worm wheel cut by ENVELOPING the worm (нарезка огибанием) ---------------------------------------
+   A wheel whose teeth are an involute spur profile is NOT conjugate to a worm. The worm is a screw: its
+   "tooth" is one continuous helical trapezoid, and a wheel drawn with straight involute teeth overlaps it
+   at the textbook centre distance however the two are turned (measured on this very pair: 299 crossing
+   triangle pairs at the best of twelve timings). A real worm wheel is not drawn — it is CUT, by a hob that
+   is a copy of the worm, with blank and hob turning together. This does exactly that, numerically: the
+   wheel's surface radius r(θ,y) is the largest radius that never enters the worm at ANY point of the
+   coupled motion. The helix, the throat and the tooth shape all fall out of that one condition; nothing
+   about the tooth is drawn by hand.
+
+   The kinematics, so the sign is derived rather than guessed. Wheel axis Y; worm axis along world Z
+   through (C, 0, ·), C = rp + rp_worm — the same placement the assembly preview uses. A wheel rotation φ
+   (right-handed about +Y) carries a point at wheel angle θ to world angle β = θ − φ, so the pitch point
+   (rp,0,0) moves with v_z = −φ'·rp. Turning the worm by ψ slides its thread along its own axis by
+   −hand·S·P/2π per radian, and that axis IS world z; with P = πm and rp = mZ/2, matching the two gives
+   φ'/ψ' = hand·S/Z. Enveloping over that motion is what makes the pair a pair.
+
+   Periodicity keeps it cheap: an S-start screw is unchanged by a 2π/S turn about its own axis, which pairs
+   with exactly one tooth pitch of the wheel, so only one pitch of θ is computed and copied Z times. */
+function wormEnvelopeField(p, rBlank, rFloor, th, Nth, M){
+  const m=Math.max(0.3,p.gearModule||2), Z=Math.max(6,Math.round(p.gearTeeth||20));
+  const S=Math.max(1,Math.round(p.gearStarts||1)), hand=(p.gearHand==='left')?-1:1;
+  const flat=p.gearFlat!=null?p.gearFlat:0.14, P=Math.PI*m;
+  const R=wormOuterR(p), h=Math.min(R*0.6, 2.25*m*0.5), minorR=Math.max(0.6, R-h);
+  const C=wormCentreDist(p);
+  const wormHalf=Math.max(P, p.gearWormLen||30)/2;
+  const rSh=Math.max(0.8, Math.min((p.gearBore>0?p.gearBore:m*3)/2, minorR-0.8));
+  const jour=Math.max(0, p.gearWormJournal!=null ? p.gearWormJournal : m*3);
+  const shHalf=wormHalf+jour;
+  const k=hand*S/Z;                                   // dφ_wheel / dψ_worm
+  // Backlash. The two surfaces are conjugate in the continuum, but both are handed to the world as
+  // facets — chords that fall inside a convex flank and outside a concave one — and a printed pair needs
+  // somewhere for the plastic to go besides the mating flank. Held off the true envelope by the fit tune.
+  const clr=Math.max(0.04, fitTuned(p, 0.16));
+  // world (X,Y,Z) → worm-local: x = X−C, y(axial) = Z, z = −Y — which is what rx:90 does to the mate, and
+  // what the placed mesh measures out as. The `+wormHalf` is not cosmetic: buildWorm lays the screw from
+  // y = 0 to y = len and only then recentres on its bounding box, so the profile's phase is measured from
+  // the END of the screw, not from its middle. Leave it out and the whole thread sits a fraction of a
+  // pitch out of step with the wheel being cut for it.
+  const inside=(X,Y,Zw,psi)=>{
+    const u=Zw;                                        // along the worm's axis
+    if(Math.abs(u) > shHalf) return false;
+    const xl=X-C, zl=-Y, rr=Math.hypot(xl, zl);
+    if(rr < rSh) return true;                          // the journal shaft, straight through
+    if(rr >= R || Math.abs(u) > wormHalf) return false;
+    const a=Math.atan2(zl, xl);
+    return rr < minorR + h*threadProfile((u+wormHalf)/P - hand*S*(a-psi)/(2*Math.PI), flat);
+  };
+  // Only a wedge of wheel angle can reach the worm at all: the point needs |Z| ≤ R of the worm's axis,
+  // which puts r·cos β above C − R. Everything outside that wedge keeps the blank — that is the throat.
+  const cosMin=(C-R)/rBlank;
+  const bMax=(cosMin>=1) ? 0 : Math.acos(Math.max(-1, cosMin));
+  const field=new Float64Array((M+1)*Nth).fill(rBlank);
+  if(bMax<=0) return field;
+  const per=Math.max(1, Math.round(Nth/Z));            // columns in one tooth pitch
+  const dPhi=Math.min(2*Math.PI/Nth, 1.2*Math.PI/180); // motion step, at least one column
+  const nPhi=Math.max(8, Math.ceil(2*bMax/dPhi));
+  const dr=0.12, BIS=7;
+  const envAt=(theta,y)=>{
+    if(Math.abs(y) >= R) return rBlank;                // the worm never reaches this slice
+    let best=rBlank;
+    for(let s=0;s<=nPhi;s++){
+      const beta=theta - bMax + 2*bMax*s/nPhi;         // sweep the mesh window directly...
+      const psi=(theta-beta)/k;                        // ...and read the worm phase the motion implies
+      const cb=Math.cos(beta), sb=Math.sin(beta);
+      if(best*cb <= C-R) continue;                     // this whole ray stays clear of the worm
+      if(rFloor*Math.abs(sb) > shHalf) continue;
+      let hitAt=-1;
+      for(let r=rFloor; r<best; r+=dr) if(inside(r*cb, y, r*sb, psi)){ hitAt=r; break; }
+      if(hitAt<0) continue;
+      let lo=Math.max(rFloor, hitAt-dr), hi=hitAt;     // refine the entry point
+      for(let b=0;b<BIS;b++){ const mid=(lo+hi)/2; if(inside(mid*cb, y, mid*sb, psi)) hi=mid; else lo=mid; }
+      best=hi;
+    }
+    return best;
+  };
+  // Each node takes the LOWEST envelope over its own cell, not the value exactly at the node. The surface
+  // is handed to the loft as chords, and a chord across a concave stretch — the tooth root, the throat —
+  // bulges out past the true envelope and back into the worm. Sampling the node alone left twenty crossing
+  // triangle pairs, all of them under a tenth of a millimetre deep; widening the backlash would have hidden
+  // them rather than fixed them.
+  const dth=2*Math.PI/Nth, dy=th/M;
+  for(let j=0;j<=M;j++){
+    const y=-th/2+th*j/M;
+    if(Math.abs(y) >= R + dy) continue;
+    for(let i=0;i<per;i++){
+      const theta=2*Math.PI*i/Nth;
+      let best=Math.min(envAt(theta,y), envAt(theta-dth/2,y), envAt(theta+dth/2,y));
+      if(j>0) best=Math.min(best, envAt(theta, y-dy/2));
+      if(j<M) best=Math.min(best, envAt(theta, y+dy/2));
+      const v=Math.max(rFloor, best-clr);
+      for(let t=i;t<Nth;t+=per) field[j*Nth+t]=v;      // one pitch, repeated round the wheel
+    }
+  }
+  return field;
+}
 /* A star-shaped outline (single-valued in angle, which every gear/sprocket profile here is) turned into a
    RADIUS-BY-ANGLE function. That is the form extrudeProfileY's bore parameter wants, and it is what makes an
    INTERNAL gear possible: the ring's outer face is a plain circle while its BORE carries the tooth profile. */
@@ -8275,15 +8387,30 @@ function buildGear(p){
   // the tooth keeps its involute shape and its thickness, it just rides out along the worm's arc.
   // The wrap is capped at ±45°. Past that the rim starts closing over the worm and the pair could no
   // longer be assembled — a cap is honest, silently letting the rim swallow the worm would not be.
+  let envRim=null;
   if(mode==='wormwheel'){ const dW=Math.max(m*2,(p.gearWormD>0?p.gearWormD:m*8));
     const lam=Math.atan(Math.max(1,Math.round(p.gearStarts||1))*m/dW);
     twist = th*Math.tan(lam)/Math.max(1,rp);
-    if((p.gearWheelRim||'straight')==='throated'){ const rw=dW/2, yMax=rw*Math.SQRT1_2;
-      grow = u => { const y=Math.min(Math.abs(th*(u-0.5)), yMax); return rw - Math.sqrt(rw*rw - y*y); }; } }
+    const rim=p.gearWheelRim||'envelope';
+    if(rim==='throated'){ const rw=dW/2, yMax=rw*Math.SQRT1_2;
+      grow = u => { const y=Math.min(Math.abs(th*(u-0.5)), yMax); return rw - Math.sqrt(rw*rw - y*y); }; }
+    else if(rim==='envelope'){
+      // The rim is CUT, not drawn: a plain blank cylinder at the tip radius, lofted with a per-point,
+      // per-layer radial offset taken from the enveloping field. Everything below the field's floor stays
+      // solid, so the loft is still a closed ring around the bore and the usual end annuli close it.
+      const rBlank=rp+m, rFloor=Math.max(rB+1.2, rp-1.35*m);
+      const per=Math.max(10, Math.min(28, Math.round(2*Math.PI*rBlank/Z/0.55)));
+      const Nc=per*Z, M=Math.max(12, Math.min(64, Math.round(th/0.7)));
+      const F=wormEnvelopeField(p, rBlank, rFloor, th, Nc, M);
+      const circ=[]; for(let i=0;i<Nc;i++){ const a=2*Math.PI*i/Nc; circ.push([rBlank*Math.cos(a), rBlank*Math.sin(a)]); }
+      envRim={ P:circ, M, grow:(u,i)=>F[Math.round(u*M)*Nc+i] - rBlank };
+      twist=0;                                     // the helix comes out of the envelope, not a twist
+    } }
   if(mode==='helical'){ const hx=Math.max(0,Math.min(45,p.gearHelix||15))*Math.PI/180; twist=th*Math.tan(hx)/Math.max(1,rp); }
   const spokes=Math.max(0,Math.round(p.gearSpokes||0));
   let tris;
-  if(mode==='bevel'){                                         // conical (bevel) gear: teeth taper toward the apex
+  if(envRim){ tris=extrudeProfileY(envRim.P, boreFn, th, 0, undefined, envRim.grow, envRim.M); }
+  else if(mode==='bevel'){                                    // conical (bevel) gear: teeth taper toward the apex
     const bevA=Math.max(15,Math.min(75,p.gearBevel||45))*Math.PI/180;
     const sTop=Math.max(0.2, 1 - th*Math.tan(bevA)/rp);       // outline scale at the front face
     tris=extrudeProfileY(o.P, boreFn, th, 0, u=>1-(1-sTop)*u); // back (u=0) full, front (u=1) shrunk
@@ -12086,7 +12213,7 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба';

@@ -1,7 +1,9 @@
-// Worm wheel (червячное колесо), straight and THROATED (globoid), through the REAL buildTrisForShape
-// pipeline. The point of a throated rim is that it wraps the mating worm, so the tests measure the rim
-// radius layer by layer and check it against the worm's own circle — not just that the mesh closes.
-// Run via ./run-all.sh.
+// Worm wheel (червячное колесо) in all three rims — straight, THROATED (globoid) and ENVELOPED — through
+// the REAL buildTrisForShape pipeline. A throated rim wraps the mating worm, so the tests measure the rim
+// radius layer by layer against the worm's own circle rather than just checking that the mesh closes. The
+// enveloped rim is the default and is not drawn at all: it is cut, by the worm, and the tests here ask
+// what came out of that cut. Whether the pair MESHES is settled in test_assembly.js, which places the two
+// and turns them against each other. Run via ./run-all.sh.
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
@@ -126,9 +128,83 @@ console.log('=== throating does not disturb what already worked ===');
   chk('a fatter worm makes a shallower throat', gF<gC, {fat:+gF.toFixed(3), thin:+gC.toFixed(3)}); }
 
 console.log('=== the option does not leak into the other gear modes ===');
-for(const m of ['spur','helical','bevel','worm','gt2','ratchet','cam']){
-  const a=vol(base({gearMode:m,gearWheelRim:'straight'})), b=vol(base({gearMode:m,gearWheelRim:'throated'}));
-  chk(m+' ignores gearWheelRim', Math.abs(a-b)<1e-9, {a:+a.toFixed(3),b:+b.toFixed(3)});
+for(const m of ['spur','helical','bevel','worm','gt2','ratchet','cam'])
+  for(const rim of ['throated','envelope']){
+    const a=vol(base({gearMode:m,gearWheelRim:'straight'})), b=vol(base({gearMode:m,gearWheelRim:rim}));
+    chk(m+' ignores gearWheelRim='+rim, Math.abs(a-b)<1e-9, {a:+a.toFixed(3),b:+b.toFixed(3)});
+  }
+
+console.log('=== the ENVELOPED rim: cut by the worm, not drawn ===');
+// This is the default rim, and the only one that produces a wheel a worm can actually drive. Whether the
+// pair meshes is settled in test_assembly.js, where the two are placed and turned against each other.
+// What is checked HERE is the shape itself: that the rim really was cut, cut only where the worm reaches,
+// cut to the depth the worm's own teeth would cut to, and that it is one tooth pattern repeated Z times.
+for(const m of [1,2,3]) for(const Z of [12,30,60]) for(const th of [4,8,16]) for(const dW of [10,16,30]){
+  const t=base({gearWheelRim:'envelope',gearModule:m,gearTeeth:Z,gearThick:th,gearWormD:dW});
+  const mc=manifoldCheck(t,4);
+  chk('огибанием m'+m+' Z'+Z+' b'+th+' Øч'+dW+' watertight (+vol)', mc.watertight&&vol(t)>0,
+      {wt:mc.watertight,open:mc.openEdges,bad:mc.badEdges});
+}
+for(const ov of [{gearBore:8},{gearKeyW:3,gearKeyD:1.5},{gearStarts:4},{gearHub:20,gearHubH:6},
+                 {gearHand:'left'},{gearWormD:0},{gearWormLen:70},{gearFlat:0.02},{gearFlat:0.22}]){
+  const t=base(Object.assign({gearWheelRim:'envelope'}, ov)), mc=manifoldCheck(t,4);
+  chk('огибанием + '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0,
+      {open:mc.openEdges,bad:mc.badEdges});
+}
+{ const t=base({gearWheelRim:'envelope'});          // m=2, Z=30, b=8, worm Ø16 → rp=30, blank 32
+  chk('заготовка не превышает окружность вершин m(Z+2)/2', rimAt(t,0,4.1) <= 32.001, {r:+rimAt(t,0,4.1).toFixed(3)});
+  // The worm reaches ±rw of the mid-plane; a wheel wider than that keeps its blank at the outer edges,
+  // which is precisely why the enveloped rim comes out throated without anyone drawing a throat.
+  const wide=base({gearWheelRim:'envelope', gearThick:24});
+  chk('за пределами досягаемости червяка венец остаётся заготовкой',
+      Math.abs(rimAt(wide,11.5,0.4) - 32) < 0.05, {r:+rimAt(wide,11.5,0.4).toFixed(3)});
+  chk('а в средней плоскости он прорезан', rimAt(wide,0,0.3) < 32 - 0.1, {r:+rimAt(wide,0,0.3).toFixed(3)});
+}
+{ // Depth of cut. The worm's teeth are 2.25·m/2 deep from its own crest, so the wheel's root cannot sit
+  // higher than the pitch circle less that — nor should the wheel be gouged far past it.
+  for(const m of [1,2,3]){
+    const t=base({gearWheelRim:'envelope', gearModule:m, gearTeeth:30});
+    const rp=m*30/2;
+    let lo=1e9; for(const T of t) for(const v of T){ const d=Math.hypot(v[0],v[2]);
+      if(Math.abs(v[1])<3.9 && d>rp*0.8 && d<lo) lo=d; }   // rim only — the bore ring is nearer the axis
+    chk('m'+m+': впадина ниже делительной окружности, но не глубже полной высоты зуба',
+        lo < rp-0.2*m && lo > rp-1.6*m, {root:+lo.toFixed(2), rp});
+  }
+}
+{ // One tooth, repeated. The wheel is cut over a single pitch and copied Z times; if that copy were off,
+  // the rim radius would not repeat at 2π/Z. Measured on the real mesh, angle by angle.
+  const Z=30, t=base({gearWheelRim:'envelope', gearTeeth:Z});
+  const prof=[]; const NA=360;
+  for(let i=0;i<NA;i++) prof.push(0);
+  for(const T of t) for(const v of T){ if(Math.abs(v[1])>0.3) continue;
+    const a=Math.atan2(v[2],v[0]), k=((Math.round(a/(2*Math.PI)*NA)%NA)+NA)%NA, d=Math.hypot(v[0],v[2]);
+    if(d>prof[k]) prof[k]=d; }
+  const step=NA/Z;                                    // 12 samples per tooth
+  let worst=0;
+  for(let i=0;i<NA;i++) if(prof[i]>0 && prof[(i+step)%NA]>0) worst=Math.max(worst, Math.abs(prof[i]-prof[(i+step)%NA]));
+  chk('венец повторяется ровно через один зубной шаг', worst < 0.02, {worst:+worst.toFixed(4)});
+  // ...and it is NOT flat: something was actually cut, at a depth worth calling a tooth
+  const hi=Math.max(...prof.filter(v=>v>0)), lo=Math.min(...prof.filter(v=>v>0));
+  chk('и это настоящий зуб, а не круг', hi-lo > 1.5, {hi:+hi.toFixed(2), lo:+lo.toFixed(2)});
+}
+{ // The tooth is HELICAL, and the hand follows the worm's. A right-hand worm lays the wheel's tooth trace
+  // one way across the face, a left-hand worm the other — measured as the angular drift of the deepest
+  // point of one root from the wheel's back face to its front.
+  const drift=hand=>{ const t=base({gearWheelRim:'envelope', gearHand:hand, gearThick:12, gearTeeth:30});
+    const at=y=>{ let best=1e9, ang=0;
+      for(const T of t) for(const v of T){ if(Math.abs(v[1]-y)>0.35) continue;
+        const d=Math.hypot(v[0],v[2]); if(d<24) continue;   // rim only, not the bore
+        const a=Math.atan2(v[2],v[0]); if(Math.abs(a)>Math.PI/30) continue;   // one tooth pitch around θ=0
+        if(d<best){ best=d; ang=a; } }
+      return ang; };
+    return at(4.5)-at(-4.5); };
+  const dR=drift('right'), dL=drift('left');
+  chk('зуб винтовой, и рука следует за червяком', Math.sign(dR) === -Math.sign(dL) && Math.abs(dR)>0.005,
+      {right:+dR.toFixed(4), left:+dL.toFixed(4)});
+}
+{ // Cheap enough to keep in the interactive path: the field is computed over ONE tooth pitch and copied.
+  const t0=Date.now(); base({gearWheelRim:'envelope', gearTeeth:60, gearThick:16}); const ms=Date.now()-t0;
+  chk('нарезка укладывается в бюджет пересчёта', ms < 3000, {ms});
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

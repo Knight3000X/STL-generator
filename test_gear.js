@@ -212,11 +212,20 @@ console.log('=== worm wheel (червячное колесо) ===');
   const lam=(m,st,dW)=>Math.atan(st*m/dW)*180/Math.PI;
   chk('lead angle grows with starts', lam(2,4,16) > lam(2,1,16)+5, {one:+lam(2,1,16).toFixed(2),four:+lam(2,4,16).toFixed(2)});
   chk('lead angle shrinks on a fatter worm', lam(2,1,40) < lam(2,1,12), {thin:+lam(2,1,12).toFixed(2),fat:+lam(2,1,40).toFixed(2)}); }
-{ const shallow=base({gearMode:'wormwheel',gearStarts:1,gearWormD:40,gearThick:8}).length;
-  const steep=base({gearMode:'wormwheel',gearStarts:4,gearWormD:12,gearThick:8}).length;
+{ // Layers follow the twist — on the rims that ARE twisted. The enveloped rim is not lofted from a twisted
+  // outline at all: its helix comes out of the cut, and its layer count follows the face width.
+  const shallow=base({gearMode:'wormwheel',gearWheelRim:'straight',gearStarts:1,gearWormD:40,gearThick:8}).length;
+  const steep=base({gearMode:'wormwheel',gearWheelRim:'straight',gearStarts:4,gearWormD:12,gearThick:8}).length;
   chk('steeper lead → more loft layers', steep>shallow, {shallow,steep}); }
-{ const b=computeBBox(base({gearMode:'wormwheel',gearModule:2,gearTeeth:20}));
+{ const b=computeBBox(base({gearMode:'wormwheel',gearWheelRim:'straight',gearModule:2,gearTeeth:20}));
   chk('worm wheel keeps the standard outer Ø = m(Z+2)', Math.abs((b.maxX-b.minX)-44)<1.5, {x:+(b.maxX-b.minX).toFixed(1)}); }
+{ // The enveloped rim starts from that same blank and can only lose material to the cut — never gain. On a
+  // standard worm (outer Ø 8m) the worm's own root is what stops the wheel's tips short of the full
+  // addendum circle, and saying so is the honest reading of the geometry.
+  const b=computeBBox(base({gearMode:'wormwheel',gearModule:2,gearTeeth:20}));
+  const d=b.maxX-b.minX;
+  chk('нарезанный венец не выходит за заготовку m(Z+2), но и не съеден', d<=44.001 && d>44-2*2.25,
+      {d:+d.toFixed(2), blank:44}); }
 
 
 console.log('=== planetary gearset (планетарный редуктор) ===');

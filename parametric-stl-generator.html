@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v122';
+const APP_VERSION = 'v123';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3805,6 +3805,10 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Воронка', key:'fnOn', label:'Воронка (перекрывает всё)', type:'bool', default:false},
+    {group:'Воронка', key:'fnMode', label:'Воронка: режим', type:'select', default:'funnel',
+      options:[{v:'funnel',t:'воронка'},{v:'doser',t:'дозатор (барабанный, печать в сборе)'}]},
+    {group:'Воронка', key:'fnDose', label:'Дозатор: доза за оборот (задаёт размер барабана)', min:0.5, max:100, step:0.5, default:10, unit:'мл'},
+    {group:'Воронка', key:'fnDoseClear', label:'Дозатор: зазор барабана в камере', min:0.15, max:1, step:0.05, default:0.4, unit:'мм'},
     {group:'Воронка', key:'fnMouthD', label:'Воронка: Ø горловины', min:12, max:400, step:1, default:70, unit:'мм'},
     {group:'Воронка', key:'fnSpoutD', label:'Воронка: Ø носика', min:3, max:120, step:0.5, default:12, unit:'мм'},
     {group:'Воронка', key:'fnSpoutLen', label:'Воронка: длина носика', min:2, max:200, step:1, default:25, unit:'мм'},
@@ -7439,7 +7443,105 @@ function latheShellYTris(outer, inner, seg){
 }
 /* Funnel (воронка): a straight spout under a cone, as a constant-thickness shell. Printed spout-down it is
    self-supporting — the cone only ever leans outward. */
+/* ---- Rotary-drum doser (дозатор) ---------------------------------------------------------------
+   A hopper over a drum that turns one measured portion out at a time. The DRUM IS SIZED BY THE DOSE:
+   with a pocket of half-angle β cut to k·rD, the pocket holds V = β(1−k²)·rD²·L, and tying the drum
+   length to the window (L = 1.25·2R·sin w) leaves one unknown, solved by bisection. Ask for 10 ml and
+   the geometry follows; nothing here is a magic number pulled to look right.
+
+   Everything is closed primitives interpenetrating, no CSG:
+     • two annular SECTOR cheeks form the chamber wall and leave two windows — feed and outlet;
+     • four flat plates continue those windows outward as chutes, each overlapping the cheek it grows
+       from (their inner faces sit on the window's OUTER chord, so they never intrude into the window);
+     • two end plates carry the axle bore and double as the legs;
+     • a lathe-shell cone is the hopper, a notched-circle prism plus an axle is the rotor.
+
+   Two constraints decide the angles and are enforced rather than hoped for:
+     • the cheek between the two windows must be WIDER than the pocket, or at some rotation the pocket
+       bridges feed to outlet and the hopper simply drains — 70° of cheek against a 60° pocket;
+     • the outlet is at 130°, not straight down, so the rotor still has cheek beneath it. A window at the
+       bottom would leave the rotor starting in mid-air over the base, needing support inside a sealed
+       chamber, which no one could remove. */
+function buildDoser(p){
+  const wall  = Math.max(2, p.fnWall||1.6);
+  const clr   = Math.max(0.15, Math.min(1, fitTuned(p, p.fnDoseClear!=null ? p.fnDoseClear : 0.4)));
+  const dose  = Math.max(0.5, Math.min(100, p.fnDose||10)) * 1000;      // ml → mm³
+  const BETA=Math.PI/6, WHALF=Math.PI/6, GAMMA=130*Math.PI/180, kP=0.45;
+  const lip=0.8;
+  // The pocket is only as long as the ROTOR, which is shorter than the chamber by the end-plate lips and
+  // the running clearance. Solving the dose against the chamber length would hand out 13 % less than asked.
+  const Lof = r => 1.25*2*(r+clr+wall)*Math.sin(WHALF);
+  const Vof = r => BETA*(1-kP*kP)*r*r * Math.max(0.5, Lof(r) - 2*(lip+clr));
+  let lo=1, hi=300; for(let i=0;i<70;i++){ const mid=(lo+hi)/2; if(Vof(mid) < dose) lo=mid; else hi=mid; }
+  const rD=lo, rP=kP*rD, rc=rD+clr, R=rc+wall, Zw=2*R*Math.sin(WHALF), L=Lof(rD);
+  const seg = Math.max(96, Math.round(2*Math.PI*R/0.9));
+  const tris=[], push=t=>{ for(const T of t) tris.push(T); };
+  const YZ=(u,w,ang)=>[u*Math.cos(ang) - w*Math.sin(ang), u*Math.sin(ang) + w*Math.cos(ang)];
+  // Chamber cheeks. Feed window is ±WHALF about straight up, outlet window ±WHALF about GAMMA.
+  push(sectorShellTris(0,0, rc, R, WHALF, GAMMA-WHALF, -L/2, L/2, seg));
+  push(sectorShellTris(0,0, rc, R, GAMMA+WHALF, 2*Math.PI-WHALF, -L/2, L/2, seg));
+  // Chute walls. Inner face on the window's OUTER chord (±R·sin w from the axis) so it is tangent to the
+  // window at r = R and buried in the cheek below that — which is exactly what welds it to the cheek.
+  const hw = R*Math.sin(WHALF);
+  const uLow = Math.sqrt(Math.max(0.01, rc*rc - hw*hw)) + 0.6;   // first height clear of the drum
+  const yTop = R*1.05 + 1, spout = Math.max(3, Math.min(p.fnSpoutLen||25, R));
+  const chute=(ang, u0, u1)=>{ for(const s of [-1,1]){
+    const q=[[u0, s*hw],[u1, s*hw],[u1, s*(hw+wall)],[u0, s*(hw+wall)]].map(([u,w])=>YZ(u,w,ang));
+    push(convexPrismXTris(q, -L/2, L/2)); } };
+  chute(0, uLow, yTop+wall+0.6);                                 // feed chute, straight up, THROUGH the plate
+  chute(GAMMA, uLow, R+spout);                                   // outlet chute, down and forward
+  // Top plate closes the feed chute except for an opening the size of the drum window.
+  // The plate reaches 0.8 wider than the chute walls, and the walls run past its top face: the two solids
+  // then share a VOLUME instead of only a plane, which is the difference between a union and two solids
+  // kissing on a face.
+  { const hole=[{axis:1, cp:0, cq:0, ap:Math.max(1,L/2-1.2), aq:Math.max(1,hw-1.2), rc:Math.min(3, hw*0.4)}];
+    for(const T of buildBoxWithHoles(L, wall, 2*(hw+wall+0.8), hole))
+      tris.push(T.map(v=>[v[0], v[1]+yTop+wall/2, v[2]])); }
+  // End plates: axle bearing + the legs the whole thing stands on. Sized to swallow the outlet chute so
+  // the spout cannot poke out below the feet.
+  let zMax=R+wall, yMin=-(R+Math.max(6, R*0.25));
+  for(const s of [-1,1]) for(const u of [uLow, R+spout]) for(const w of [s*hw, s*(hw+wall)]){
+    const q=YZ(u,w,GAMMA); zMax=Math.max(zMax, Math.abs(q[1])+1); yMin=Math.min(yMin, q[0]-2); }
+  const yMax=yTop+wall, plateH=yMax-yMin, plateD=2*zMax;
+  const rAx=Math.max(2, Math.min(rP-1.2, rD*0.22));
+  for(const s of [-1,1]){
+    const cx = s*(L/2 - lip + (wall+lip)/2);                     // spans x ∈ [±(L/2−lip), ±(L/2+wall)]
+    const hole=[{axis:0, cp:-(yMin+plateH/2), cq:0, r:rAx+clr}];
+    for(const T of buildBoxWithHoles(wall+lip, plateH, plateD, hole))
+      tris.push(T.map(v=>[v[0]+cx, v[1]+yMin+plateH/2, v[2]])); }
+  // Hopper: a constant-thickness cone that lands ON the top plate, wide enough at the bottom to clear the
+  // feed opening's corners so nothing sits on a ledge.
+  { const rBot=Math.hypot(L/2, hw)+wall+0.5, rM=Math.max(rBot+4, (p.fnMouthD||70)/2);
+    const cH=Math.max(6, p.fnConeH||45), nC=24, outer=[], inner=[];
+    const y0=yTop+wall-0.6;
+    for(let i=0;i<=nC;i++){ const f=i/nC, r=rBot+(rM-rBot)*f;
+      outer.push([r, y0+cH*f]); inner.push([Math.max(0.4, r-wall), y0+cH*f]); }
+    push(latheShellYTris(outer, inner, Math.max(64, Math.round(2*Math.PI*rM/1.2)))); }
+  // Rotor: a circle with one notch — star-shaped in angle, so the gear extruder can loft it — plus an
+  // axle running through its bore and out to the knob. The notch faces the feed at build time, which is
+  // both the filling position and the one that prints as a valley instead of a roof.
+  const toX = t=>t.map(T=>T.map(v=>[v[1], -v[0], v[2]]));
+  const Ldr = L-2*(lip+clr), rBore=rAx*0.55;
+  { const P=[], S=Math.max(10, Math.round(2*BETA*rP/0.5)), Q=Math.max(64, Math.round(2*Math.PI*rD/0.7));
+    const a0=Math.PI-BETA, a1=Math.PI+BETA, span=2*Math.PI-2*BETA-0.008;
+    for(let i=0;i<=S;i++){ const a=a0+2*BETA*i/S; P.push([rP*Math.cos(a), rP*Math.sin(a)]); }
+    for(let i=0;i<=Q;i++){ const a=a1+0.004+span*i/Q; P.push([rD*Math.cos(a), rD*Math.sin(a)]); }
+    push(toX(extrudeProfileY(P, ()=>rBore, Ldr, 0))); }
+  const knobT=Math.max(4, wall*1.5), knobR=Math.max(rD*0.6, rAx+6);
+  const knobX=L/2+wall+clr+knobT/2;
+  // 12 flutes on a sample count that is a multiple of 4: the knob then has exact four-fold symmetry, so it
+  // is round to the eye and to a measurement, not round-ish.
+  { const n=12, M=4*Math.max(24, Math.round(2*Math.PI*knobR/0.8/4)), P=[];
+    for(let i=0;i<M;i++){ const a=2*Math.PI*i/M, r=knobR-0.9*Math.max(0, Math.cos(n*a));
+      P.push([r*Math.cos(a), r*Math.sin(a)]); }
+    for(const T of toX(extrudeProfileY(P, ()=>rBore, knobT, 0))) tris.push(T.map(v=>[v[0]+knobX, v[1], v[2]])); }
+  for(const T of toX(discYTris(0,0, rAx, -(L/2+wall-1), knobX+knobT/2, Math.max(28, Math.round(rAx*10))))) tris.push(T);
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const T of tris) for(const v of T) for(let k=0;k<3;k++){ if(v[k]<mn[k])mn[k]=v[k]; if(v[k]>mx[k])mx[k]=v[k]; }
+  return tris.map(T=>T.map(v=>[v[0]-(mn[0]+mx[0])/2, v[1]-(mn[1]+mx[1])/2, v[2]-(mn[2]+mx[2])/2]));
+}
 function buildFunnel(p){
+  if((p.fnMode||'funnel')==='doser') return buildDoser(p);
   const rM = Math.max(6, (p.fnMouthD||70)/2);
   const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
   const sL = Math.max(2, p.fnSpoutLen||25);
@@ -10836,7 +10938,8 @@ function activeShapeLabel() {
   if (p.woBack && p.woBack !== 'none') return (p.woBack==='peg'?'перфопанель':'фр. планка') + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
-  if (p.fnOn) return 'воронка (Ø' + Math.round(p.fnMouthD||70) + ')';
+  if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
+                                          : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]

@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v124';
+const APP_VERSION = 'v125';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3766,7 +3766,7 @@ const SHAPE_PARAMS = {
     {group:'Крючок', key:'hookClipMouth', label:'На трубу: куда смотрит вырез кольца', type:'select', default:'up',
       options:[{v:'up',t:'вверх (надевается сверху)'},{v:'front',t:'вперёд'},{v:'back',t:'назад'}]},
     {group:'Настенный органайзер', key:'woBack', label:'Настенный органайзер (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cleat',t:'французская планка (45° задник)'},{v:'peg',t:'перфопанель (штыри)'}]},
+      options:[{v:'none',t:'нет'},{v:'cleat',t:'французская планка (45° задник)'},{v:'peg',t:'перфопанель (штыри)'},{v:'hex',t:'соты: держатель с шестигранными зацепами'},{v:'hexpanel',t:'соты: сама панель на стену'}]},
     {group:'Настенный органайзер', key:'woFront', label:'Органайзер: держатель спереди', type:'select', default:'hook',
       options:[{v:'hook',t:'крючок'},{v:'shelf',t:'полка (плоская)'},{v:'tools',t:'полка с гнёздами'},{v:'none',t:'без держателя (пластина)'}]},
     {group:'Настенный органайзер', key:'woW', label:'Органайзер: ширина', min:20, max:200, step:1, default:60, unit:'мм'},
@@ -3777,6 +3777,12 @@ const SHAPE_PARAMS = {
     {group:'Настенный органайзер', key:'woPegSpacing', label:'Перфопанель: шаг штырей', min:15, max:60, step:0.4, default:25.4, unit:'мм'},
     {group:'Настенный органайзер', key:'woPegN', label:'Перфопанель: число штырей', min:1, max:6, step:1, default:2, unit:'', int:true},
     {group:'Настенный органайзер', key:'woPegLen', label:'Перфопанель: длина штыря', min:6, max:30, step:0.5, default:10, unit:'мм'},
+    {group:'Настенный органайзер', key:'hcAF', label:'Соты: размер ячейки под ключ', min:8, max:60, step:0.5, default:25, unit:'мм'},
+    {group:'Настенный органайзер', key:'hcRib', label:'Соты: толщина перемычки', min:1.2, max:10, step:0.2, default:3, unit:'мм'},
+    {group:'Настенный органайзер', key:'hcNX', label:'Соты: ячеек по горизонтали', min:1, max:14, step:1, default:4, unit:'', int:true},
+    {group:'Настенный органайзер', key:'hcNY', label:'Соты: ячеек по вертикали', min:1, max:14, step:1, default:3, unit:'', int:true},
+    {group:'Настенный органайзер', key:'hcPanelT', label:'Соты: толщина панели, под которую зацеп (0 = как задник)', min:0, max:20, step:0.5, default:0, unit:'мм'},
+    {group:'Настенный органайзер', key:'hcClear', label:'Соты: зазор зацепа в ячейке (на сторону)', min:0.05, max:0.8, step:0.05, default:0.3, unit:'мм'},
     {group:'Настенный органайзер', key:'woHookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
     {group:'Настенный органайзер', key:'woHookReach', label:'Крючок: вылет', min:6, max:100, step:1, default:24, unit:'мм'},
     {group:'Настенный органайзер', key:'woHookDrop', label:'Крючок: радиус загиба', min:5, max:60, step:1, default:14, unit:'мм'},
@@ -8117,13 +8123,94 @@ function sphereTris(cx,cy,cz,r,seg){
   }
   return out;
 }
+/* ---- Honeycomb wall system (соты) ---------------------------------------------------------------
+   A panel of hexagonal cells and holders that hang in it. Cell size, rib and fit are all parameters
+   rather than baked-in numbers: set them to the figures of whatever hex system you own and the parts
+   come out to that system, which is the honest offer — nothing here is verified against a third-party
+   standard, only against itself.
+
+   The panel is built out of its RIBS, not as a plate with hexagons removed: every unique cell edge
+   becomes one box, overlapping its neighbours at the nodes. Sharing an edge between two cells would put
+   two boxes' faces in the same place; keying edges by their midpoint means each is built exactly once. */
+function hexCellCentres(nx, ny, s, AF){
+  const out=[];
+  for(let ix=0; ix<nx; ix++) for(let iy=0; iy<ny; iy++)
+    out.push([ix*1.5*s, iy*AF + (ix%2)*AF/2]);
+  return out;
+}
+function hexEdges(centres, s){
+  const seen=new Map();
+  for(const [cx,cy] of centres) for(let k=0;k<6;k++){
+    const a0=k*Math.PI/3, a1=(k+1)*Math.PI/3;
+    const p0=[cx+s*Math.cos(a0), cy+s*Math.sin(a0)], p1=[cx+s*Math.cos(a1), cy+s*Math.sin(a1)];
+    const key=[(p0[0]+p1[0])/2, (p0[1]+p1[1])/2].map(v=>Math.round(v*64)).join(',');
+    if(!seen.has(key)) seen.set(key, [p0,p1]);
+  }
+  return [...seen.values()];
+}
+// Flat-top hexagon of the given across-flats, as a convex polygon in (x,y).
+function hexPoly(AF, cx, cy){
+  const s=AF/Math.sqrt(3), P=[];
+  for(let k=0;k<6;k++){ const a=k*Math.PI/3; P.push([cx+s*Math.cos(a), cy+s*Math.sin(a)]); }
+  return P;
+}
+function buildHexPanel(p){
+  const AF  = Math.max(8, p.hcAF||25);            // CLEAR opening across flats — what calipers read
+  const rib = Math.max(1.2, Math.min(p.hcRib||3, AF*0.4));
+  const nx  = Math.max(1, Math.min(14, Math.round(p.hcNX||4)));
+  const ny  = Math.max(1, Math.min(14, Math.round(p.hcNY||3)));
+  const PT  = Math.max(3, p.woT||5);   // panel thickness
+  // The ribs straddle the cell edges, so the lattice pitch is one rib larger than the opening. Taking the
+  // parameter as the pitch instead would hand back a cell a whole rib too small for the post built to it.
+  const pitch = AF + rib, s = pitch/Math.sqrt(3), tris=[];
+  const centres = hexCellCentres(nx, ny, s, pitch), edges = hexEdges(centres, s);
+  let lo=[1e9,1e9], hi=[-1e9,-1e9];
+  for(const [a,b] of edges) for(const q of [a,b]) for(let k=0;k<2;k++){
+    if(q[k]<lo[k])lo[k]=q[k]; if(q[k]>hi[k])hi[k]=q[k]; }
+  for(const [a,b] of edges){
+    const ang=Math.atan2(b[1]-a[1], b[0]-a[0]), L=Math.hypot(b[0]-a[0], b[1]-a[1])+rib;
+    const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, c=Math.cos(ang), sn=Math.sin(ang);
+    for(const Tq of boxSpanTris(-L/2, L/2, -rib/2, rib/2, 0, PT))
+      tris.push(Tq.map(v=>[v[0]*c - v[1]*sn + mx, v[0]*sn + v[1]*c + my, v[2]]));
+  }
+  // Frame: closes the ragged cells at the border and carries the wall screws. Four boxes overlapping at
+  // the corners, the side pair drilled — one hole per box, so no two can be judged to clash.
+  const fr=Math.max(rib, 4), sd=Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5);
+  const x0=lo[0]-fr, x1=hi[0]+fr, y0=lo[1]-fr, y1=hi[1]+fr;
+  for(const Tq of boxSpanTris(x0, x1, y0, lo[1]+rib*0.5, 0, PT)) tris.push(Tq);
+  for(const Tq of boxSpanTris(x0, x1, hi[1]-rib*0.5, y1, 0, PT)) tris.push(Tq);
+  for(const sgn of [0,1]){
+    const cx = sgn ? (hi[0]+fr/2 - rib*0.25) : (lo[0]-fr/2 + rib*0.25);
+    const w  = fr + rib*0.5, h = y1-y0;
+    const holes = sd>0.5 ? [{axis:2, cp:0, cq:0, r:Math.min(sd/2, w*0.35, h*0.35)}] : [];
+    for(const Tq of buildBoxWithHoles(w, h, PT, holes))
+      tris.push(Tq.map(v=>[v[0]+cx, v[1]+(y0+y1)/2, v[2]+PT/2]));
+  }
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  return tris.map(Tq=>Tq.map(v=>[v[0]-cx, v[1]-cy, v[2]-PT/2]));
+}
 /* ---- Wall organiser (настенный органайзер) ------------------------------------------------------
    A wall-storage ecosystem: a BACK that hangs on a standard (French cleat / pegboard) + a FRONT holder
    (hook / flat shelf / shelf with tool sockets). Plain plate + prisms + swept-tube hook → watertight. */
 function buildWallOrg(p){
+  if((p.woBack||'cleat')==='hexpanel') return buildHexPanel(p);
   const W=Math.max(20,p.woW||60), t=Math.max(3,p.woT||5), H=Math.max(20,p.woH||60), tris=[];
   for(const T of boxSpanTris(-W/2,W/2, 0,H, 0,t)) tris.push(T);                          // back plate, wall at z=0
-  if((p.woBack||'cleat')==='cleat'){                                                     // French-cleat 135° lip at the top-back
+  if((p.woBack||'cleat')==='hex'){
+    // Hex posts on the honeycomb's own pitch, sized cell − 2·clearance so they cannot rotate in the cell.
+    // Two of them in a column already fix the holder in rotation, so no twist-lock is needed; the top post
+    // carries a rear lip, exactly as the pegboard pin does — tilt it in, swing the bottom down, done.
+    const AF=Math.max(8, p.hcAF||25), clr=Math.max(0.05, fitTuned(p, p.hcClear!=null?p.hcClear:0.3));
+    const rib=Math.max(1.2, Math.min(p.hcRib||3, AF*0.4)), pitch=AF+rib;
+    const bT=Math.max(3, p.hcPanelT>0 ? p.hcPanelT : (p.woT||5));
+    const n=Math.max(1, Math.min(6, Math.round(p.woPegN||2))), af=Math.max(2, AF-2*clr);
+    for(let i=0;i<n;i++){ const cy=H*0.72 - i*pitch; if(cy < af/2 + 2) break;
+      for(const T of convexPrismZTris(hexPoly(af, 0, cy), -(bT+clr+2.2), 0.6)) tris.push(T);
+      if(i===0){                                                                          // retaining lip on the top post
+        const lt=Math.max(1.2, af*0.16), lh=Math.max(1.5, af*0.22);
+        for(const T of boxSpanTris(-lt,lt, cy+af/2-0.4, cy+af/2+lh, -(bT+clr+2.2), -(bT+clr)+0.4)) tris.push(T); }
+    }
+  } else if((p.woBack||'cleat')==='cleat'){                                                     // French-cleat 135° lip at the top-back
     const lip=Math.max(4,p.woCleatLip||8);
     // 135° cleat: the mating face undercuts the OTHER way vs a 45° tooth — the wedge's sloped face runs from the
     // front-top down to the back, so the plate hangs on a wall rail whose bevel faces up-and-out (135° included).
@@ -11028,7 +11115,8 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
-  if (p.woBack && p.woBack !== 'none') return (p.woBack==='peg'?'перфопанель':'фр. планка') + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
+  if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
+  if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')

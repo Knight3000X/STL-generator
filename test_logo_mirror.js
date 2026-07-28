@@ -90,11 +90,14 @@ for(const [nm,ov] of Object.entries(MODES))
 // it cannot stand on), so the bar is what the shapes above actually offer, not a round number.
 chk('на чём-то метки вообще встали', placed >= 15, {placed, refused});
 
-console.log('=== ...and on the four upright faces it also reads the right way up ===');
-// The top and the bottom are the ones the report was about: a lid label has to read with the model's
-// front edge at the bottom of the picture, not upside down and not back to front.
+console.log('=== ...and on EVERY face it reads the right way up ===');
+// The top and the bottom were what the report was about: a lid label has to read with the model's
+// front edge at the bottom of the picture, not upside down and not back to front. The two SIDES were
+// a second defect found while fixing that one — FACE_AXES gives them u = Y, so a label laid out with
+// its width along u ran up the side of the box instead of across it. Both are settled by deriving
+// each face's map from how that face is looked at, so all six now hold the same claim.
 for(const [nm,ov] of Object.entries(MODES))
-  for(const face of ['+Y','-Y','+Z','-Z']){
+  for(const face of ['+X','-X','+Y','-Y','+Z','-Z']){
     const fr = imageFrame(ov, face);
     if(!fr) continue;
     const h = handedness(fr, face);
@@ -102,17 +105,27 @@ for(const [nm,ov] of Object.entries(MODES))
         {right:[+h.rx.toFixed(2),+h.ry.toFixed(2)], down:[+h.dx.toFixed(2),+h.dy.toFixed(2)]});
   }
 
-console.log('=== the two sides agree with each other ===');
-// ±X still read the artwork turned a quarter turn (FACE_AXES gives them u = Y), which is a separate
-// defect from mirroring — but after the fix they are at least turned the SAME way, so a label placed
-// on the left and on the right of the same part looks alike instead of being each other's reflection.
+console.log('=== the two sides read alike, and the width runs ACROSS them ===');
 { const a=imageFrame({}, '+X'), b=imageFrame({}, '-X');
   if(a&&b){ const ha=handedness(a,'+X'), hb=handedness(b,'-X');
-    chk('+X и −X повёрнуты одинаково', Math.abs(ha.rx-hb.rx)<0.08 && Math.abs(ha.ry-hb.ry)<0.08,
-        {plus:[+ha.rx.toFixed(2),+ha.ry.toFixed(2)], minus:[+hb.rx.toFixed(2),+hb.ry.toFixed(2)]});
-    chk('и обе — поворот, а не отражение', ha.det>0.5 && hb.det>0.5,
-        {plus:+ha.det.toFixed(2), minus:+hb.det.toFixed(2)}); }
+    chk('+X и −X одинаково ориентированы', Math.abs(ha.rx-hb.rx)<0.08 && Math.abs(ha.ry-hb.ry)<0.08,
+        {plus:[+ha.rx.toFixed(2),+ha.ry.toFixed(2)], minus:[+hb.rx.toFixed(2),+hb.ry.toFixed(2)]}); }
   else chk('±X метки встали', false, {}); }
+{ // On a turned face the artwork's WIDTH runs along the face's v axis, not its u axis. A wide, short
+  // label must therefore come out wide and short on the side of the box — the whole point of the fix.
+  setup({});
+  logos.push({face:'+X', u0:0, v0:0, w:30, h:8, rotation:0, depth:1.6,
+              threshold:0.5, invert:false, heightmap:TL});
+  const t = buildTrisForShape('box', paramState.box);
+  setup({});
+  const plainHi = (()=>{ let m=-Infinity; for(const T of buildTrisForShape('box',paramState.box)) for(const v of T) m=Math.max(m,v[0]); return m; })();
+  let dy=0, dz=0;
+  { let loY=Infinity,hiY=-Infinity,loZ=Infinity,hiZ=-Infinity;
+    for(const T of t) for(const v of T) if(v[0] > plainHi+0.6){
+      loY=Math.min(loY,v[1]); hiY=Math.max(hiY,v[1]); loZ=Math.min(loZ,v[2]); hiZ=Math.max(hiZ,v[2]); }
+    dy=hiY-loY; dz=hiZ-loZ; }
+  chk('на +X ширина 30 идёт поперёк (по Z), а не вверх', dz > dy*1.5, {along_Z:+dz.toFixed(1), along_Y:+dy.toFixed(1)});
+  chk('и логотипы очищены для следующей проверки', (logos.length=0)===0, {}); }
 
 console.log('=== rotation turns the text the same way everywhere ===');
 // The flip is applied to the face offsets BEFORE the logo's own rotation, so "поворот" is not

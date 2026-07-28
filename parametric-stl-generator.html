@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v133';
+const APP_VERSION = 'v134';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3192,20 +3192,54 @@ function makeLogoFrame(logo, taperFn) {
   return { center, TuHat: normalize(TuRaw), TvHat: normalize(TvRaw), magU: vlength(TuRaw), magV: vlength(TvRaw) };
 }
 
-/* Which way round the artwork is read on each face.
-   FACE_AXES gives every face the two world axes that are NOT its normal, in ascending order. That is a
-   naming convention, not an orientation: seen from OUTSIDE the face, the frame (image-right = +u,
-   image-down = −v) is right-handed on +X / −Y / +Z and LEFT-handed on −X / +Y / −Z — so on those three
-   the label came out mirrored. Reported on the top of a project-box lid, but it was never enclosure-
-   specific: any label on −X, +Y or −Z was affected, on every base shape.
-   One sign flip restores the handedness; WHICH sign decides which way up the text then sits, and these
-   are the readable choices: the back face reads left-to-right as you walk round the model, and the top
-   reads with the model's front edge at the bottom — the way you look at a lid lying on the bed.
-   Applied to the face offsets BEFORE the logo's own rotation, so "поворот 30°" turns the visible text
-   the same way on every face instead of backwards on half of them.
-   '-Y-inner' (the floor of the cavity) faces +Y like the top, and takes the top's flip. */
-const LOGO_FACE_FLIP = { '+X':[1,1], '-X':[1,-1], '+Y':[1,-1], '-Y':[1,1], '+Z':[1,1], '-Z':[-1,1], '-Y-inner':[1,-1] };
-function logoFaceFlip(face){ return LOGO_FACE_FLIP[face] || [1,1]; }
+/* Which way round the artwork sits on each face.
+
+   FACE_AXES gives every face the two world axes that are NOT its normal, in ASCENDING order. That is a
+   naming convention and says nothing about orientation, which cost two separate defects:
+
+     · seen from OUTSIDE, the frame (image-right = +u, image-down = −v) is right-handed on +X / −Y / +Z
+       and LEFT-handed on −X / +Y / −Z, so on those three the label came out MIRRORED (fixed v129);
+     · on ±X the u axis is Y, so a label laid out with its width along u read a QUARTER TURN round —
+       text running up the side of a box rather than across it.
+
+   Both are settled here by deriving each face's map from how that face is actually looked at. For a
+   face with outward normal n, screen-right R and screen-up U (R × U = n), the artwork must satisfy
+   image-right = R and image-down = −U. Writing the offsets along the face's own u and v axes as
+   (du, dv), and the artwork's own coordinates as (a, b) — the image spanning |a| <= w/2, |b| <= h/2,
+   image-right = +a and image-down = −b — that gives one signed permutation per face:
+
+     +Z  R=+X=+u  U=+Y=+v   → ( du,  dv)          −Z  R=−X=−u  U=+Y=+v   → (−du,  dv)
+     −Y  R=+X=+u  U=+Z=+v   → ( du,  dv)          +Y  R=+X=+u  U=−Z=−v   → ( du, −dv)
+     +X  R=−Z=−v  U=+Y=+u   → (−dv,  du)          −X  R=+Z=+v  U=+Y=+u   → ( dv,  du)
+
+   The two side faces TRANSPOSE, which also swaps which face axis carries the logo's width — the one
+   thing every footprint and clamp calculation has to know, and the reason logoFaceExtent exists.
+   The map is applied to the face offsets BEFORE the logo's own rotation, so "поворот 30°" turns the
+   visible text the same way on every face instead of backwards or sideways on some of them.
+   '-Y-inner' (the floor of the cavity) faces +Y like the top and takes the top's map. */
+const LOGO_FACE_MAP = {
+  '+Z':[ 1, 0, 0, 1], '-Z':[-1, 0, 0, 1],
+  '-Y':[ 1, 0, 0, 1], '+Y':[ 1, 0, 0,-1], '-Y-inner':[ 1, 0, 0,-1],
+  '+X':[ 0,-1, 1, 0], '-X':[ 0, 1, 1, 0],
+};
+const LOGO_FACE_IDENTITY = [1, 0, 0, 1];
+// `padAxes` opts a record out of all of this. A snap-clip ridge or a stacking foot rides the same
+// relief machinery but is not ARTWORK — it has no reading direction, and its width and height are
+// quoted in the face's own u and v axes by whatever placed it. Turning one a quarter round moves a
+// lid's catch off the window it has to line up with, which is exactly what happened.
+function logoFaceMap(logo){
+  if(!logo || logo.padAxes) return LOGO_FACE_IDENTITY;
+  return LOGO_FACE_MAP[logo.face] || LOGO_FACE_IDENTITY;
+}
+// Does this face lay the artwork's width along its v axis instead of its u axis?
+function logoFaceTurned(logo){ return logoFaceMap(logo)[0] === 0; }
+// Half-extents of the (possibly rotated) artwork along the FACE's u and v axes. On a turned face the
+// two swap, and every footprint, clamp and mesh-refinement zone has to use this rather than
+// rotatedHalfExtents directly, or a label on the side of a box is clamped to the wrong dimension.
+function logoFaceExtent(logo, w, h, rotationDeg){
+  const e = rotatedHalfExtents(w, h, rotationDeg);
+  return logoFaceTurned(logo) ? { halfX: e.halfY, halfY: e.halfX } : e;
+}
 
 // Builds the dispFn for one logo. `taperedPos` (3rd arg, the grid vertex's ALREADY-COMPUTED
 // tapered 3D position) is projected onto the logo's local tangent-plane basis (`frame`) to
@@ -3220,11 +3254,11 @@ function makeLogoDispFn(logo, frame) {
   if (!logo.heightmap) return null;
   const rad = (logo.rotation||0) * Math.PI/180;
   const cosR = Math.cos(-rad), sinR = Math.sin(-rad); // inverse rotation: world -> logo-local
-  const [fu, fv] = logoFaceFlip(logo.face);
+  const fm = logoFaceMap(logo);
   return (u, v, taperedPos) => {
     const offset3D = sub(taperedPos, frame.center);
-    const realDu = fu * dot(offset3D, frame.TuHat);
-    const realDv = fv * dot(offset3D, frame.TvHat);
+    const du = dot(offset3D, frame.TuHat), dv = dot(offset3D, frame.TvHat);
+    const realDu = fm[0]*du + fm[1]*dv, realDv = fm[2]*du + fm[3]*dv;
     const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
     if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
     let u01 = (ldu + logo.w/2) / logo.w;
@@ -3242,10 +3276,11 @@ function makeLogoMaskFn(logo, frame) {
   if (!logo.heightmap) return null;
   const rad = (logo.rotation||0) * Math.PI/180;
   const cosR = Math.cos(-rad), sinR = Math.sin(-rad);
-  const [fu, fv] = logoFaceFlip(logo.face);
+  const fm = logoFaceMap(logo);
   return (u, v, taperedPos) => {
     const offset3D = sub(taperedPos, frame.center);
-    const realDu = fu*dot(offset3D, frame.TuHat), realDv = fv*dot(offset3D, frame.TvHat);
+    const d0 = dot(offset3D, frame.TuHat), d1 = dot(offset3D, frame.TvHat);
+    const realDu = fm[0]*d0 + fm[1]*d1, realDv = fm[2]*d0 + fm[3]*d1;
     const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
     if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
     const u01 = (ldu + logo.w/2) / logo.w, v01 = 1 - (ldv + logo.h/2) / logo.h;
@@ -3383,7 +3418,7 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   if (depth < 0) plate = Math.max(plate, -depth + 0.6);
 
   // Footprint, grown to cover the corners a rotated logo sweeps into, then clamped into the face.
-  const ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+  const ext = logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
   const faceHalfU = (bb.hi[uAx]-bb.lo[uAx])/2, faceHalfV = (bb.hi[vAx]-bb.lo[vAx])/2;
   const cU = (bb.hi[uAx]+bb.lo[uAx])/2, cV = (bb.hi[vAx]+bb.lo[vAx])/2;
   // Keep a margin off the face border. Running the patch exactly to the bounding box edge puts its
@@ -3401,11 +3436,12 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   const N = Math.max(4, Math.min(400, Math.ceil(2*halfU/cell)));
   const M = Math.max(4, Math.min(400, Math.ceil(2*halfV/cell)));
   const rad = (logo.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
-  const [fu, fv] = logoFaceFlip(logo.face);                 // see LOGO_FACE_FLIP: three faces read mirrored
+  const fm = logoFaceMap(logo);                       // see LOGO_FACE_MAP
   const mask = new Uint8Array(N*M);
   let any=false;
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-    const du = fu*((i+0.5)/N*2*halfU - halfU), dv = fv*((j+0.5)/M*2*halfV - halfV);
+    const su = (i+0.5)/N*2*halfU - halfU, sv = (j+0.5)/M*2*halfV - halfV;
+    const du = fm[0]*su + fm[1]*sv, dv = fm[2]*su + fm[3]*sv;
     const lu = du*cosR - dv*sinR, lv = du*sinR + dv*cosR;   // rotate into image space
     if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) continue;
     let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);
@@ -3560,12 +3596,12 @@ function clampLogoToFace(logo) {
     const { magU, magV } = makeLogoFrame({...logo, uAxis,vAxis,nAxis,nOffset}, taperFn);
     const safeMagU = Math.max(1e-3, magU), safeMagV = Math.max(1e-3, magV);
 
-    let ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+    let ext = logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
     let flatHalfW = ext.halfX/safeMagU, flatHalfH = ext.halfY/safeMagV;
     if (flatHalfW > maxHalfW || flatHalfH > maxHalfH) {
       const scale = Math.min(maxHalfW/flatHalfW, maxHalfH/flatHalfH);
       logo.w *= scale; logo.h *= scale;
-      ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+      ext = logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
       flatHalfW = ext.halfX/safeMagU; flatHalfH = ext.halfY/safeMagV;
     }
     const uRange = Math.max(0, maxHalfW - flatHalfW);
@@ -4179,7 +4215,7 @@ function makeBumpPadLogo(face, u0, v0, w, h, depth){
     const ctx = c.getContext && c.getContext('2d');
     if (ctx) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size); previewUrl = c.toDataURL('image/png'); }
   } catch(e) {}
-  return { id: nextLogoId++, face, u0, v0, w, h,
+  return { id: nextLogoId++, face, u0, v0, w, h, padAxes: true,
     depth, threshold: 0.5, invert: false, rotation: 0, heightmap: hm, previewUrl };
 }
 // Adds a companion "lid" model auto-sized to cap OVER the active container: a shallow hollow box flipped
@@ -4863,7 +4899,7 @@ function computeLogoZonesByAxis(taperFn) {
     const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
     const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
     const frame = makeLogoFrame(fullLogo, taperFn);
-    const ext = rotatedHalfExtents(logo.w, logo.h, logo.rotation);
+    const ext = logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
     const flatHalfU = ext.halfX / Math.max(1e-3, frame.magU) + margin;
     const flatHalfV = ext.halfY / Math.max(1e-3, frame.magV) + margin;
     zonesByAxis[uAxis].push([logo.u0 - flatHalfU, logo.u0 + flatHalfU]);
@@ -6300,7 +6336,7 @@ function squircleABYZones(p, tInner){
   const hw=p.width/2, hh=p.height/2, hd=p.depth/2, t=tInner||0, mg=2;
   const aZ=[], bZ=[], yZ=[];
   for(const logo of logos){
-    const ext=rotatedHalfExtents(logo.w, logo.h, logo.rotation), f=logo.face;
+    const f=logo.face, ext=logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
     const uLo=logo.u0-ext.halfX-mg, uHi=logo.u0+ext.halfX+mg, vLo=logo.v0-ext.halfY-mg, vHi=logo.v0+ext.halfY+mg;
     if(f==='+Y'||f==='-Y'){ aZ.push([uLo/hw, uHi/hw]); bZ.push([vLo/hd, vHi/hd]); }
     else if(f==='-Y-inner'){ const ihw=Math.max(1,hw-t), ihd=Math.max(1,hd-t); aZ.push([uLo/ihw, uHi/ihw]); bZ.push([vLo/ihd, vHi/ihd]); }
@@ -10676,7 +10712,7 @@ function buildTrisForShapeCore(shape, p) {
         lat.floorMask = (buildCombinedLogoMaskFns(q => q))['-Y-inner'] || null;
         lat.solidRects = [];
         for (const l of logos) if (l.face === '-Y-inner') {
-          const ext = rotatedHalfExtents(l.w, l.h, l.rotation), mg = 1.5;
+          const ext = logoFaceExtent(l, l.w, l.h, l.rotation), mg = 1.5;
           lat.solidRects.push({ x0:l.u0-ext.halfX-mg, x1:l.u0+ext.halfX+mg, z0:l.v0-ext.halfY-mg, z1:l.v0+ext.halfY+mg });
         }
       }

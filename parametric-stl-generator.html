@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v129';
+const APP_VERSION = 'v130';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3884,6 +3884,10 @@ const SHAPE_PARAMS = {
     {group:'Скругление углов', key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
+    {group:'Фаска рёбер (любая форма)', key:'edgeBevelWhere', label:'Фаска рёбер: где (любая форма с многоугольным основанием)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'bottom',t:'низ (снять слоновью ногу)'},{v:'top',t:'верх'},{v:'both',t:'низ и верх'}]},
+    {group:'Фаска рёбер (любая форма)', key:'edgeBevel', label:'Фаска рёбер: ширина (0 = без фаски)', min:0, max:20, step:0.2, default:0, unit:'мм'},
+    {group:'Фаска рёбер (любая форма)', key:'edgeBevelAngle', label:'Фаска рёбер: угол (от горизонтали)', min:15, max:80, step:5, default:45, unit:'°'},
     {group:'Squircle / супереллипс', key:'squircle', label:'Squircle / супереллипс (0=прямо, 100=эллипс)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {group:'Squircle / супереллипс', key:'squircleVTop', label:'Squircle: скругление верха (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
     {group:'Squircle / супереллипс', key:'squircleVBot', label:'Squircle: скругление низа (0=плоско)', min:0, max:100, step:1, default:0, unit:'%', int:true},
@@ -4411,6 +4415,9 @@ function sectionRelevant(key, mode, hollow){
     case 'Воронка': return mode==='funnel';
     // Every base shape can carry a label now: the cube family by displacing its own vertices, the
     // rest by the plate in buildLogoPlateTris. The 3D-logo model IS the artwork, so not there.
+    // The edge bevel runs on the FINISHED mesh, so unlike every other group here it is not tied to a
+    // base shape: it belongs to all of them, including the ones whose own group otherwise takes over.
+    case 'Фаска рёбер (любая форма)': return mode!=='baseplate';
     case 'Логотипы (рельеф на гранях)': return mode!=='logo3d' && mode!=='baseplate';
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
@@ -9817,6 +9824,42 @@ const sliceMeshIntoFragments = (function(){
       const key = a<b ? a+'|'+b : b+'|'+a; m.set(key,(m.get(key)||0)+1); }
     for(const v of m.values()) if(v!==2) return false;
     return true; }
+  /* ---- a cut by an ARBITRARY plane, for callers other than the slicer ------------------------
+     Everything above cuts on X, Y or Z, because a slicer only ever needs boxes. An edge chamfer needs
+     a TILTED plane, and the hard part of a cut is not the clipping — it is capping the hole it leaves,
+     which splitOne already does and has been debugged into submission. So rather than write a second
+     capper, the triangles are rotated so the plane's normal becomes +Y, cut there, and rotated back.
+     The rotation is orthonormal and is applied per call from the ORIGINAL coordinates, so a vertex the
+     cut never touches maps to the same value every time and shared vertices stay shared — and the ones
+     that pass straight through are handed back byte-identical, looked up by the map below rather than
+     rotated home, so repeated cuts cannot creep. Keeps the side with n·p <= c. */
+  function planeFrame(n){
+    const L=Math.hypot(n[0],n[1],n[2]) || 1, N=[n[0]/L, n[1]/L, n[2]/L];
+    const a = Math.abs(N[0])<0.9 ? [1,0,0] : [0,0,1];
+    let e1=[N[1]*a[2]-N[2]*a[1], N[2]*a[0]-N[0]*a[2], N[0]*a[1]-N[1]*a[0]];
+    const l1=Math.hypot(e1[0],e1[1],e1[2]) || 1; e1=[e1[0]/l1, e1[1]/l1, e1[2]/l1];
+    const e2=[e1[1]*N[2]-e1[2]*N[1], e1[2]*N[0]-e1[0]*N[2], e1[0]*N[1]-e1[1]*N[0]];  // e1 × N
+    return {e1, N, e2, L};
+  }
+  function cutByPlane(tris, n, c){
+    if(!tris.length) return tris;
+    const F=planeFrame(n), e1=F.e1, N=F.N, e2=F.e2, cc=c/F.L;
+    const home=new Map();
+    const rot=(p)=>{ const q=[e1[0]*p[0]+e1[1]*p[1]+e1[2]*p[2],
+                              N[0]*p[0]+ N[1]*p[1]+ N[2]*p[2],
+                              e2[0]*p[0]+e2[1]*p[1]+e2[2]*p[2]];
+      home.set(q[0]+'|'+q[1]+'|'+q[2], p); return q; };
+    const inv=(q)=>{ const hit=home.get(q[0]+'|'+q[1]+'|'+q[2]); if(hit) return hit;
+      return [e1[0]*q[0]+N[0]*q[1]+e2[0]*q[2],
+              e1[1]*q[0]+N[1]*q[1]+e2[1]*q[2],
+              e1[2]*q[0]+N[2]*q[1]+e2[2]*q[2]]; };
+    const R=new Array(tris.length);
+    for(let i=0;i<tris.length;i++){ const t=tris[i]; R[i]=[rot(t[0]),rot(t[1]),rot(t[2])]; }
+    const {less} = splitOne(R, 1, cc, null, null);
+    const out=new Array(less.length);
+    for(let i=0;i<less.length;i++){ const t=less[i]; out[i]=[inv(t[0]),inv(t[1]),inv(t[2])]; }
+    return out;
+  }
   const slice = function(tris, sizeX, sizeY, sizeZ, pin){
     const bb=bboxOf(tris);
     const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
@@ -9840,6 +9883,12 @@ const sliceMeshIntoFragments = (function(){
       if(bad>0){ const plain=run(null); if(unclosed(plain) < bad) frags=plain; } }
     return {frags, bb};
   };
+  // Handed out so the edge-chamfer modifier can reuse the cut-and-cap machinery instead of growing a
+  // second copy of it. `edgesPaired` goes with it: a caller that cuts is the one that has to be able
+  // to tell whether its own result is still closed.
+  slice.cutByPlane = cutByPlane;
+  slice.edgesPaired = edgesPaired;
+  slice.weldFragment = weldFragment;
   return slice;
 })();
 
@@ -9911,8 +9960,197 @@ function parseMeshFile(buf, name){
   return /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
 }
 
+/* ---- Edge chamfer / rounding as a general modifier ----------------------------------------------
+   Runs on the FINISHED mesh, whatever built it, so it is one control that works on all 40-odd base
+   shapes instead of forty separate bevel options. What it can honestly do, and what it cannot:
+
+   · A chamfer is an INTERSECTION with a half-space, and intersection distributes over union:
+     (A ∪ B) ∩ H = (A ∩ H) ∪ (B ∩ H). Every model here is a union of independently closed shells that
+     interpenetrate, so cutting each shell on its own and putting them back together is EXACTLY the
+     same solid as cutting the union would be. No CSG, no special cases.
+   · Cutting the shells one at a time is not just an optimisation, it is what makes the cut correct.
+     A plane meets ONE closed surface in a set of disjoint simple loops — precisely what the cap
+     triangulator is entitled to assume. Handed the whole soup at once it would see the loops of
+     overlapping shells crossing each other and cap nonsense. snapWeldTris guarantees shells never
+     share a vertex, so a connected component of the welded mesh IS one shell.
+   · The bevel runs along the CONVEX HULL of the model's plan view, one tilted plane per hull edge.
+     On the prismatic and round parts this is aimed at — boxes, cylinders, hex prisms, brackets — the
+     hull IS the outline and the chamfer is exact, mitred corners and all. On a non-convex footprint
+     (a cross, an L) the concave stretches keep their sharp edge: the hull-tangent planes never reach
+     them. That is a real limit, and it is stated in the UI rather than hidden.
+   · Using the hull of the WHOLE model rather than of the bottom band is deliberate: it guarantees no
+     plane can ever bite into geometry above the bevel, whatever the silhouette does with height. The
+     price is that a part whose base is inset from its widest point simply gets no chamfer there.
+   · Rounding is the same machinery with more planes: the tangent planes of a quarter-circle. It is a
+     faceted arc, not an analytic fillet, and the step count says so.
+
+   A general fillet on arbitrary interpenetrating geometry — every edge, inside corners included — is
+   the CSG-shaped problem this engine is built to avoid, and is not what this does. */
+// Plan-view hull sides the chamfer will take on; see bevelledMesh for why there is a ceiling at all.
+const EDGE_BEVEL_MAX_HULL = 16;
+// Why the last build did not chamfer, for the summary panel to show. A refusal the user cannot see is
+// indistinguishable from a bug, and this one is easy to hit (any round footprint).
+let edgeBevelNote = '';
+// Connected components by EXACT vertex identity — one per closed shell (see above).
+function meshComponents(tris){
+  if(tris.length<2) return [tris];
+  const idx=new Map(), par=[];
+  const find=(a)=>{ while(par[a]!==a){ par[a]=par[par[a]]; a=par[a]; } return a; };
+  const uni=(a,b)=>{ a=find(a); b=find(b); if(a!==b) par[b]=a; };
+  const vid=(p)=>{ const k=p[0]+'|'+p[1]+'|'+p[2]; let i=idx.get(k);
+    if(i===undefined){ i=par.length; par.push(i); idx.set(k,i); } return i; };
+  const root=new Array(tris.length);
+  for(let i=0;i<tris.length;i++){ const t=tris[i], a=vid(t[0]), b=vid(t[1]), c=vid(t[2]);
+    uni(a,b); uni(b,c); root[i]=a; }
+  const groups=new Map();
+  for(let i=0;i<tris.length;i++){ const r=find(root[i]);
+    let g=groups.get(r); if(!g){ g=[]; groups.set(r,g); } g.push(tris[i]); }
+  return Array.from(groups.values());
+}
+// Convex hull of the plan view (XZ), counter-clockwise, collinear points dropped so a box comes back
+// with four corners and not four hundred. Monotone chain.
+function hullXZ(tris){
+  const pts=[];
+  for(const T of tris) for(const v of T) pts.push([v[0], v[2]]);
+  if(pts.length<3) return [];
+  pts.sort((a,b)=> a[0]-b[0] || a[1]-b[1]);
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const half=(arr)=>{ const h=[];
+    for(const p of arr){ while(h.length>=2 && cr(h[h.length-2], h[h.length-1], p) <= 1e-9) h.pop(); h.push(p); }
+    return h; };
+  const lo=half(pts), hi=half(pts.slice().reverse());
+  return lo.slice(0,-1).concat(hi.slice(0,-1));
+}
+/* The half-spaces that cut the chamfer along one hull edge.
+
+   Work in the 2D section across that edge:  s = how far out past the hull line, t = how far IN from
+   the chamfered end (t = sigma·(Y − yEnd), sigma = +1 at the bottom, −1 at the top). Material lives at
+   s <= 0, t >= 0, and the chamfer is the corner at the origin. The cut is the tangent line at tilt
+   phi = atan(w/h) from the vertical, touching the corner w back along s:
+
+       cos phi · s  −  sin phi · t  <=  −w · cos phi
+
+   Substituting s = nx·x + nz·z − d and t = sigma(Y − yEnd) turns it into a world-space plane.
+
+   A ROUNDED edge is the same family with several tilts, tangent to a quarter circle, and it was built
+   and then taken out again: past about four facets the successive near-tangent sections keep landing
+   on the caps the previous ones left, and the shell stops closing — measured on a plain cube, five
+   facets and up fell back to no bevel at all, and where it did survive it cost 700–3300 triangles to
+   round one cube's base. A control that silently does nothing on half its settings is worse than no
+   control, so this ships as a chamfer. A real fillet wants an offset surface, which is the CSG-shaped
+   problem this engine is built to avoid. */
+function bevelPlanes(hull, yEnd, sigma, w, h){
+  const phi=Math.atan2(w, h), cs=Math.cos(phi), sn=Math.sin(phi), k=-w*cs;
+  const out=[], n=hull.length;
+  for(let i=0;i<n;i++){
+    const A=hull[i], B=hull[(i+1)%n];
+    const dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz);
+    if(!(L>1e-9)) continue;
+    const nx=dz/L, nz=-dx/L;                           // outward normal of a counter-clockwise polygon
+    const d=nx*A[0]+nz*A[1];
+    out.push({ n:[cs*nx, -sigma*sn, cs*nz], c: k + cs*d - sigma*sn*yEnd });
+  }
+  return out;
+}
+function bevelledMesh(tris, p){
+  const where = p.edgeBevelWhere || 'none';
+  const w0 = Math.max(0, p.edgeBevel || 0);
+  edgeBevelNote = '';
+  if(where === 'none' || !(w0 > 0.01) || !tris.length) return tris;
+  const B = computeBBox(tris);
+  const ang = Math.max(15, Math.min(80, p.edgeBevelAngle || 45)) * Math.PI/180;
+  const spanY = B.maxY - B.minY, spanXZ = Math.min(B.maxX-B.minX, B.maxZ-B.minZ);
+  const sides = where === 'both' ? [-1, 1] : [where === 'top' ? 1 : -1];
+  // Never let the bevel eat the part: at most 40% of the smaller plan dimension across, and at most
+  // 40% of the height tall (a quarter of it when both ends are bevelled, so they cannot meet).
+  const hRoom = spanY * (sides.length > 1 ? 0.2 : 0.4);
+  let w = Math.min(w0, spanXZ * 0.4);
+  let h = w * Math.tan(ang);
+  if(h > hRoom){ const k = hRoom / h; h *= k; w *= k; }
+  if(!(w > 0.01) || !(h > 0.01)) return tris;
+
+  const hull = hullXZ(tris);
+  if(hull.length < 3) return tris;
+  // Where this stops. One plane per hull edge means each of the N chamfer facets is later re-cut by
+  // all of its neighbours' planes, so the triangle count grows as N²: a 4-sided hull adds ~30
+  // triangles, a 32-sided one turns 128 into 1030, and past about 48 the capper stops closing the
+  // shell at all and the whole bevel is dropped. Refusing above EDGE_BEVEL_MAX_HULL is not a
+  // performance guard — it is the line past which this construction stops being the right one. A
+  // round footprint wants a CONE clipper (one curved cut, not sixty flat ones), which needs a capper
+  // for non-planar sections; that is the follow-up, and until it exists the answer here is a plain no.
+  if(hull.length > EDGE_BEVEL_MAX_HULL){
+    edgeBevelNote = 'фаска рёбер: контур основания слишком круглый ('+hull.length+
+                    ' сторон, предел '+EDGE_BEVEL_MAX_HULL+') — не применена';
+    return tris;
+  }
+  const planes = [];
+  // sigma = +1 at the bottom (t grows upward), −1 at the top.
+  for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
+  if(!planes.length) return tris;
+
+  const EPS = 1e-7;   // wider than splitOne's own 1e-9, so the two agree on every borderline triangle
+  const ends = sides.map(dir => ({ yEnd: dir > 0 ? B.maxY : B.minY, sg: dir > 0 ? -1 : 1 }));
+  // How deep into the part a triangle would have to reach before any plane could touch it. At t = h and
+  // s = 0 a point sits EXACTLY on its plane (tan phi is w/h by construction), so anything strictly
+  // deeper is strictly inside every one of them and can be set aside untouched. That is not merely an
+  // optimisation — without it a 60-edge hull on a 48k-triangle thread re-welded the whole shell sixty
+  // times over and took thirteen seconds.
+  const reachable = (T) => {
+    for(const e of ends){
+      let tmin = Infinity;
+      for(const v of T){ const t = e.sg*(v[1]-e.yEnd); if(t < tmin) tmin = t; }
+      if(tmin <= h + 1e-6) return true;
+    }
+    return false;
+  };
+  const out = [];
+  for(const comp of meshComponents(tris)){
+    const held = [];
+    let cur = [];
+    for(const T of comp) (reachable(T) ? cur : held).push(T);
+    // The section of a closed shell by any of these planes lies wholly inside the band, so cutting the
+    // band alone gives the same loops — and the same caps — as cutting the whole shell would.
+    for(const pl of planes){
+      const n = pl.n, c = pl.c, keep = [], mixed = [];
+      let removed = false;
+      for(const T of cur){
+        const d0 = n[0]*T[0][0]+n[1]*T[0][1]+n[2]*T[0][2] - c;
+        const d1 = n[0]*T[1][0]+n[1]*T[1][1]+n[2]*T[1][2] - c;
+        const d2 = n[0]*T[2][0]+n[1]*T[2][1]+n[2]*T[2][2] - c;
+        if(d0 < -EPS && d1 < -EPS && d2 < -EPS) keep.push(T);
+        else if(d0 > EPS && d1 > EPS && d2 > EPS) removed = true;
+        else { mixed.push(T); removed = true; }
+      }
+      if(!removed) continue;                       // this plane misses the shell entirely: nothing to do
+      const cut = sliceMeshIntoFragments.cutByPlane(mixed, n, c);
+      // Weld after EVERY plane, not once at the end. Adjacent hull edges give chamfer planes that meet
+      // exactly on the mitre line, so the next plane's section runs straight at the corner vertex the
+      // last one left — and lands a fraction of a micron off it, because w·tan(45°) is not w. That
+      // stray vertex splits an edge its neighbour does not split, and the shell stops being closed.
+      // (Measured: a plain box chamfered 4 mm at 45° went from 0 bad edges to 4 without this.)
+      cur = sliceMeshIntoFragments.weldFragment(keep.concat(cut), 1.5e-4);
+      if(!cur.length) break;
+    }
+    // A shell whose section the capper could not close keeps its sharp edge rather than shipping a
+    // leak. Two shells welded into one component by coincidence is the case this catches.
+    const done = held.concat(cur);
+    if(cur.length && sliceMeshIntoFragments.edgesPaired(done)) out.push(done);
+    else { out.push(comp); edgeBevelNote = 'фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'; }
+  }
+  const merged = out.length === 1 ? out[0] : [].concat(...out);
+  // Last check, on the WHOLE model rather than shell by shell. Cutting each shell separately is exact
+  // for the union, but it can still break the invariant the rest of the engine rests on: two shells
+  // that merely interpenetrated now get capped on the SAME plane, and where their sections touch they
+  // come out sharing an edge — which is a coincident face, not a union. Seen on the wall organiser.
+  // A chamfer is a convenience; it may never cost the model its watertightness.
+  if(!sliceMeshIntoFragments.edgesPaired(merged)){
+    edgeBevelNote = 'фаска рёбер: срез сажает две оболочки на общее ребро — не применена';
+    return tris;
+  }
+  return merged;
+}
 function buildTrisForShape(shape, p) {
-  if (p && p.importId != null && importedMeshes.has(p.importId)) return scaleImportedMesh(importedMeshes.get(p.importId), p);
+  if (p && p.importId != null && importedMeshes.has(p.importId)) return bevelledMesh(snapWeldTris(scaleImportedMesh(importedMeshes.get(p.importId), p)), p);
   if (p && p.frozenId != null && frozenMeshes.has(p.frozenId)) return frozenMeshes.get(p.frozenId);
   if (shape === 'box') p = normalizeBoxParams(p);
   if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
@@ -9949,7 +10187,9 @@ function buildTrisForShape(shape, p) {
     const host = tris;
     for (const lg of logos) tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
   }
-  return snapWeldTris(tris);
+  // The edge bevel goes LAST, on the finished union — see bevelledMesh. Welding first is required,
+  // not tidy: it is what makes a connected component equal one closed shell.
+  return bevelledMesh(snapWeldTris(tris), p);
 }
 function buildTrisForShapeCore(shape, p) {
   if (shape === 'box') {
@@ -10332,6 +10572,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 const GROUP_TAB = {
   'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
+  'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
   'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Логотипы (рельеф на гранях)':'finish',
@@ -11613,6 +11854,9 @@ function collectPrintWarnings(p){
   if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
+  // Set by the last bevelledMesh call — it is the only thing here that cannot be read off the
+  // parameters, because whether a chamfer is possible depends on the finished mesh's outline.
+  if (typeof edgeBevelNote === 'string' && edgeBevelNote) w.push(edgeBevelNote);
   return w;
 }
 // Signed mesh volume (divergence theorem, mm³). Valid for closed, consistently-oriented meshes —

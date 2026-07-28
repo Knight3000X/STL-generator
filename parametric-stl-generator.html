@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v136';
+const APP_VERSION = 'v137';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4753,12 +4753,17 @@ function applyParamSearch(q){
   // current kind is shown anyway, dimmed, with the button that switches to the kind it belongs to.
   document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => { el.style.display = ''; });
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  // Which parameters match is decided by paramSearchHits and NOWHERE else. Matching the DOM labels
+  // here as well would be a second implementation of the same rule — and the tested one would not be
+  // the one that runs, which is the worst of both.
+  const matched = new Set(paramSearchHits(q, p).map(h => h.key));
   // filter rows inside each group
   document.querySelectorAll('#panel details.param-cat').forEach(cat => {
     let hits = 0;
     cat.querySelectorAll('.param-row, .toggle-row').forEach(row => {
-      const lbl = (row.querySelector('.param-label, span')?.textContent || '').toLowerCase();
-      const hit = lbl.includes(q); row.style.display = hit ? '' : 'none'; if (hit) hits++;
+      const el = row.querySelector('[data-key]');
+      const hit = !!el && matched.has(el.dataset.key);
+      row.style.display = hit ? '' : 'none'; if (hit) hits++;
     });
     cat.style.display = hits ? '' : 'none';
     if (!hits) return;
@@ -5844,37 +5849,6 @@ function sheetTexRaised(cx, cz, pitch, rib, pattern){
 }
 // SOLID plate whose central rect has a RAISED texture on top (grooves between proud cells), solid
 // underneath; a 1-cell flat border welds it to the smooth annulus/edge. yb..yt slab + bumps to yt+texH.
-function buildSheetTexture(tris, ring, hw, hd, yb, yt, texH, pitch, rib, pattern, res){
-  const R=polyInscribedRect(ring, Math.max(pitch,2));
-  if(R.rw<pitch || R.rz<pitch) return false;
-  const maxDim=2*Math.max(hw,hd), step=netGridStep(maxDim, pitch, rib, res);   // resolve cell + rib (groove)
-  const nx=Math.max(4,Math.round(2*R.rw/step)), nz=Math.max(4,Math.round(2*R.rz/step));
-  const X=i=>R.cx-R.rw+2*R.rw*i/nx, Z=j=>R.cz-R.rz+2*R.rz*j/nz, b=1;
-  const sol=Array.from({length:nx},()=>new Array(nz).fill(false));
-  for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(i<b||i>=nx-b||j<b||j>=nz-b) continue;
-    sol[i][j]=sheetTexRaised((X(i)+X(i+1))/2-R.cx, (Z(j)+Z(j+1))/2-R.cz, pitch, rib, pattern); }
-  for(let ch=true;ch;){ ch=false;   // dissolve checkerboard pinches (corner-touching raised cells → non-manifold)
-    for(let i=0;i+1<nx;i++)for(let j=0;j+1<nz;j++){ const a=sol[i][j],bb=sol[i+1][j],c2=sol[i][j+1],d=sol[i+1][j+1];
-      if(a&&d&&!bb&&!c2){sol[i+1][j]=true;ch=true;} else if(bb&&c2&&!a&&!d){sol[i][j]=true;ch=true;} } }
-  const raised=(i,j)=>(i>=0&&j>=0&&i<nx&&j<nz)?sol[i][j]:false;
-  const at=raised;
-  const quad=(A,B,C,D,ref)=>{tris.push(orient([A,B,C],ref));tris.push(orient([A,C,D],ref));};
-  for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){
-    const rj=raised(i,j), y=rj?yt+texH:yt;
-    quad([X(i),y,Z(j)],[X(i+1),y,Z(j)],[X(i+1),y,Z(j+1)],[X(i),y,Z(j+1)],[0,1,0]);       // textured top
-    quad([X(i),yb,Z(j)],[X(i+1),yb,Z(j)],[X(i+1),yb,Z(j+1)],[X(i),yb,Z(j+1)],[0,-1,0]);   // solid bottom
-    const w=(iN,jN,ax,az,bx,bz,ref)=>{ if(!rj || at(iN,jN)) return;                        // groove wall, from raised side
-      quad([ax,yt,az],[bx,yt,bz],[bx,yt+texH,bz],[ax,yt+texH,az], ref); };
-    w(i+1,j,X(i+1),Z(j),X(i+1),Z(j+1),[1,0,0]); w(i-1,j,X(i),Z(j),X(i),Z(j+1),[-1,0,0]);
-    w(i,j+1,X(i),Z(j+1),X(i+1),Z(j+1),[0,0,1]); w(i,j-1,X(i),Z(j),X(i+1),Z(j),[0,0,-1]);
-  }
-  const perim=[]; for(let i=0;i<nx;i++)perim.push([X(i),Z(0)]); for(let j=0;j<nz;j++)perim.push([X(nx),Z(j)]);
-  for(let i=nx;i>0;i--)perim.push([X(i),Z(nz)]); for(let j=nz;j>0;j--)perim.push([X(0),Z(j)]);
-  const c=[R.cx,R.cz];
-  for(const T of polyStitchAnnulus(ring, perim, c)) tris.push(orient(T.map(q=>[q[0],yt,q[1]]),[0,1,0]));
-  for(const T of polyStitchAnnulus(ring, perim, c)) tris.push(orient(T.map(q=>[q[0],yb,q[1]]),[0,-1,0]));
-  return true;
-}
 // Full-coverage grip texture: the raised pattern over the WHOLE outline (clipped just inside the edge),
 // appended as ONE watertight extruded-silhouette slab that straddles the plate top (sunk `embed`, proud
 // `texH`). The smooth solid plate carries the shape; the slab adds the bumps (like a mouse side-pad).
@@ -6334,7 +6308,6 @@ function buildSuperellipsoid(w, h, d, eH, eVTop, eVBot, resolution){
    height-field-over-a-grid argument as the flat-box logos. Logos are clamped off the face edges
    (clampLogoToFace), so relief is 0 along every seam (side↔cap, pole), which keeps those closed.
    Taper is applied afterwards (taperBoxTris), so frames are built in flat/identity-taper space. */
-function approxRingPerimeter(ring){ let s=0; for(let i=0;i<ring.length;i++){ const a=ring[i], b=ring[(i+1)%ring.length]; s+=Math.hypot(b[0]-a[0], b[1]-a[1]); } return s; }
 // Emboss combined logo relief onto one curved-surface point. `dispFns` is buildCombinedLogoDispFns'
 // per-face map (fn(u,v,point3D)->depth); the face is chosen by `normal`'s dominant axis so each
 // vertex takes at most one face's relief, pushed along `normal` (kept ⟂ to the curved wall).
@@ -10371,7 +10344,9 @@ function parseMeshFile(buf, name){
      plane, so the triangle count grew as N² and the capper gave up past about 48 sides — a 32-side
      hull turned 128 triangles into 1030. In one pass it is exactly 2× at every size, 4 sides or 96.
      On a non-convex footprint (a cross, an L) the concave stretches keep their sharp edge: the
-     hull-tangent planes never reach them. That is a real limit, and a quiet one — no warning fires.
+     hull-tangent planes never reach them. That limit needs a true polygon offset to remove, so it
+     stays — but it is no longer SILENT: the plan view is compared against the hull by area and the
+     summary says so.
    · Using the hull of the WHOLE model rather than of the bottom band is deliberate: it guarantees no
      plane can ever bite into geometry above the bevel, whatever the silhouette does with height. The
      price is that a part whose base is inset from its widest point simply gets no chamfer there.
@@ -10382,9 +10357,11 @@ function parseMeshFile(buf, name){
 
    A general fillet on arbitrary interpenetrating geometry — every edge, inside corners included — is
    the CSG-shaped problem this engine is built to avoid, and is not what this does. */
-// Why the last build did not chamfer, for the summary panel to show. A refusal the user cannot see is
-// indistinguishable from a bug, and this one is easy to hit (any round footprint).
+// What the last build could not chamfer, for the summary panel to show. A limitation the user cannot
+// see is indistinguishable from a bug. Notes ACCUMULATE: a part can be both concave in plan and have a
+// shell that would not close, and hearing only one of the two is how the other gets missed.
 let edgeBevelNote = '';
+function noteEdgeBevel(msg){ edgeBevelNote = edgeBevelNote ? (edgeBevelNote + '; ' + msg) : msg; }
 // Connected components by EXACT vertex identity — one per closed shell (see above).
 function meshComponents(tris){
   if(tris.length<2) return [tris];
@@ -10468,6 +10445,41 @@ function bevelledMesh(tris, p){
   // No ceiling on how round the footprint may be: cutByHalfspaces takes every hull side in a single
   // pass, so the cost is linear in hull sides instead of quadratic and the capper is never handed a
   // facet that a later plane has already carved up.
+  // A CONCAVE outline gets no chamfer along its concave stretches: the planes are tangent to the
+  // convex hull and never reach into a notch. That limit is not going away without a true polygon
+  // offset, but being SILENT about it is a separate fault — a cross-shaped part comes back with its
+  // inner corners still sharp and nothing said. Measured by area: rasterise the plan view of the
+  // band triangles onto a coarse grid and compare what is filled against the hull. A convex outline
+  // fills its hull; the further below, the more of the outline the chamfer cannot reach.
+  {
+    const G = 64, hx0 = Math.min(...hull.map(q=>q[0])), hx1 = Math.max(...hull.map(q=>q[0]));
+    const hz0 = Math.min(...hull.map(q=>q[1])), hz1 = Math.max(...hull.map(q=>q[1]));
+    const cw = Math.max(1e-6, (hx1-hx0)/G), ch = Math.max(1e-6, (hz1-hz0)/G);
+    const filled = new Uint8Array(G*G);
+    const bandY = sides.map(dir => dir > 0 ? B.maxY - h : B.minY + h);
+    for(const T of tris){
+      let touches = false;
+      for(let k=0;k<sides.length && !touches;k++)
+        for(const v of T){ if(sides[k] > 0 ? v[1] >= bandY[k]-1e-6 : v[1] <= bandY[k]+1e-6){ touches = true; break; } }
+      if(!touches) continue;
+      // conservative: fill the cells the triangle's plan-view bounding box covers
+      let x0=1e30,x1=-1e30,z0=1e30,z1=-1e30;
+      for(const v of T){ if(v[0]<x0)x0=v[0]; if(v[0]>x1)x1=v[0]; if(v[2]<z0)z0=v[2]; if(v[2]>z1)z1=v[2]; }
+      const i0=Math.max(0,Math.floor((x0-hx0)/cw)), i1=Math.min(G-1,Math.floor((x1-hx0)/cw));
+      const j0=Math.max(0,Math.floor((z0-hz0)/ch)), j1=Math.min(G-1,Math.floor((z1-hz0)/ch));
+      for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) filled[j*G+i]=1;
+    }
+    let inHull = 0, both = 0;
+    const insideHull = (x,z)=>{ for(let i=0;i<hull.length;i++){ const A=hull[i], C=hull[(i+1)%hull.length];
+      if((C[0]-A[0])*(z-A[1]) - (C[1]-A[1])*(x-A[0]) < -1e-9) return false; } return true; };
+    for(let j=0;j<G;j++) for(let i=0;i<G;i++){
+      if(!insideHull(hx0+(i+0.5)*cw, hz0+(j+0.5)*ch)) continue;
+      inHull++; if(filled[j*G+i]) both++;
+    }
+    if(inHull > 0 && both/inHull < 0.88)
+      noteEdgeBevel('фаска рёбер: контур основания вогнутый (' + Math.round(100*both/inHull) +
+                    '% выпуклой оболочки) — вогнутые участки остались острыми');
+  }
   const planes = [];
   // sigma = +1 at the bottom (t grows upward), −1 at the top.
   for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
@@ -10496,7 +10508,8 @@ function bevelledMesh(tris, p){
     // A shell whose section the capper could not close keeps its sharp edge rather than shipping a
     // leak. Two shells welded into one component by coincidence is the case this catches.
     if(done.length && sliceMeshIntoFragments.edgesPaired(done)) out.push(done);
-    else { out.push(comp); edgeBevelNote = 'фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'; }
+    else { out.push(comp);
+      noteEdgeBevel('фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'); }
   }
   const merged = out.length === 1 ? out[0] : [].concat(...out);
   // Last check, on the WHOLE model rather than shell by shell. Cutting each shell separately is exact
@@ -10505,7 +10518,7 @@ function bevelledMesh(tris, p){
   // come out sharing an edge — which is a coincident face, not a union. Seen on the wall organiser.
   // A chamfer is a convenience; it may never cost the model its watertightness.
   if(!sliceMeshIntoFragments.edgesPaired(merged)){
-    edgeBevelNote = 'фаска рёбер: срез сажает две оболочки на общее ребро — не применена';
+    noteEdgeBevel('фаска рёбер: срез сажает две оболочки на общее ребро — не применена');
     return tris;
   }
   return merged;

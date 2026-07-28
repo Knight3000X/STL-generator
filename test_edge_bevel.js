@@ -119,6 +119,30 @@ for(const [nm,ov] of Object.entries({squircle:{squircle:60}, шестерня:{g
       !collectPrintWarnings(paramState.box).some(w=>/слишком круглый/.test(w)), {note:edgeBevelNote});
 }
 
+console.log('=== a concave outline is no longer chamfered in silence ===');
+// The hull-tangent planes never reach into a notch, so a cross- or L-shaped part keeps its inner
+// corners sharp. That limit needs a true polygon offset to remove and is not going anywhere — but
+// saying nothing about it is a separate fault, and this is the part that can be fixed.
+{ for(const [nm,ov] of [['куб',{}], ['призма6',{polyN:6}], ['почти круг',{polyN:32}],
+                        ['squircle',{squircle:60}], ['холдер',{mntMode:'battery'}]]){
+    mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
+    chk(nm+': выпуклый контур — жалоб нет', !/вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
+  }
+  for(const [nm,ov] of [['крючок на стену',{hookMount:'wall'}], ['органайзер',{woBack:'cleat'}],
+                        ['ласточкин хвост',{mntMode:'dovetail'}], ['темп-башня',{mntMode:'temptower'}]]){
+    mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
+    chk(nm+': вогнутый контур — сказано вслух', /вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
+    chk(nm+': и это доходит до сводки',
+        collectPrintWarnings(paramState.box).some(w=>/вогнут/.test(w)), {});
+  }
+  // and the model is still whole either way
+  for(const ov of [{hookMount:'wall'}, {woBack:'cleat'}, {mntMode:'dovetail'}]){
+    const t = mk({...ov, edgeBevelWhere:'both', edgeBevel:2});
+    chk('вогнутая форма всё равно замкнута: '+JSON.stringify(ov), manifoldCheck(t,4).watertight,
+        manifoldCheck(t,4));
+  }
+}
+
 console.log('=== off by default, and off means untouched ===');
 { const plain = mk({});
   for(const ov of [{}, {edgeBevel:5}, {edgeBevelWhere:'none', edgeBevel:5}, {edgeBevelWhere:'bottom', edgeBevel:0}]){

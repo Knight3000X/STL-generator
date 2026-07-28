@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v145';
+const APP_VERSION = 'v146';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3679,7 +3679,7 @@ const SHAPE_PARAMS = {
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: что сверху', type:'select', default:'none',
+    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: что сверху — воронка или носик', type:'select', default:'none',
       options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
@@ -10748,12 +10748,16 @@ function bevelledMesh(tris, p){
   const ang = Math.max(15, Math.min(80, p.edgeBevelAngle || 45)) * Math.PI/180;
   const spanY = B.maxY - B.minY, spanXZ = Math.min(B.maxX-B.minX, B.maxZ-B.minZ);
   let sides = where === 'both' ? [-1, 1] : [where === 'top' ? 1 : -1];
-  // A Gridfinity bin's feet ARE an interface — the standard profile is the whole point of them. A chamfer
-  // across the bottom files that mate off and the bin stops sitting in a baseplate, so the bottom is
-  // refused and says why. The top is nobody's interface and is cut as asked.
-  if(p.gfOn && sides.indexOf(-1) >= 0){
-    sides = sides.filter(d => d > 0);
-    noteEdgeBevel('фаска рёбер: низ Gridfinity-бина не срезается — ножки держат стандартный профиль');
+  // Gridfinity mates ARE interfaces — the standard profile is the whole point of them — and a chamfer
+  // across one files the mate off. Which END is the interface differs: a BIN carries its feet underneath,
+  // a BASEPLATE carries its sockets on top. So each refuses its own end, says why, and lets the other
+  // through, rather than the whole feature being refused or, worse, silently obeyed.
+  const gfKeep = p.gfBaseplate ? -1 : (p.gfOn ? 1 : 0);
+  if(gfKeep && sides.indexOf(-gfKeep) >= 0){
+    sides = sides.filter(d => d === gfKeep);
+    noteEdgeBevel(p.gfBaseplate
+      ? 'фаска рёбер: верх Gridfinity-плиты не срезается — гнёзда держат стандартный профиль'
+      : 'фаска рёбер: низ Gridfinity-бина не срезается — ножки держат стандартный профиль');
     if(!sides.length) return tris;
   }
   // Never let the bevel eat the part: at most 40% of the smaller plan dimension across, and at most
@@ -10912,7 +10916,9 @@ function buildTrisForShape(shape, p) {
   if (p && p.importId != null && importedMeshes.has(p.importId)) return bevelledMesh(snapWeldTris(scaleImportedMesh(importedMeshes.get(p.importId), p)), p);
   if (p && p.frozenId != null && frozenMeshes.has(p.frozenId)) return frozenMeshes.get(p.frozenId);
   if (shape === 'box') p = normalizeBoxParams(p);
-  if (shape === 'box' && p.gfBaseplate) return snapWeldTris(buildGridfinityBaseplate(p));
+  // Through bevelledMesh like everything else. Returning straight from here meant a chamfer on a
+  // Gridfinity BASEPLATE was dropped without a word — the one hole left in "either a chamfer or a reason".
+  if (shape === 'box' && p.gfBaseplate) return bevelledMesh(snapWeldTris(buildGridfinityBaseplate(p)), p);
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
   const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;

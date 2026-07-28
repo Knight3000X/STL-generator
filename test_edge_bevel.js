@@ -259,12 +259,23 @@ for(const [nm,ov] of Object.entries({ 'ваза':{fnOn:true,fnMode:'vase'}, 'в�
   const r = bevelOf(ov);
   chk(nm+': низ действительно срезан', r.cut > 1.0, {срез:+r.cut.toFixed(2)});
 }
-{ // A Gridfinity bin's feet are an interface. The bottom is refused ON PURPOSE and says so; the top is not
-  // an interface and is cut as asked.
-  const bot = bevelOf({gfOn:true}, 'bottom'), top = bevelOf({gfOn:true}, 'top');
-  chk('низ Gridfinity-бина не срезается', bot.cut < 0.01, {срез:+bot.cut.toFixed(3)});
-  chk('и объясняет, почему', /Gridfinity/.test(bot.note||''), {note:bot.note});
-  chk('а верх — срезается', top.bev.length > top.plain.length, {from:top.plain.length, to:top.bev.length});
+{ // Gridfinity mates are interfaces, and which END is the interface differs: a BIN carries its feet
+  // underneath, a BASEPLATE its sockets on top. Each refuses its own end and cuts the other. The plate
+  // also had to be routed THROUGH the chamfer at all — it used to return straight out of the builder, so
+  // a chamfer on it vanished without a word: the one hole left in "either a chamfer or a reason".
+  const binB = bevelOf({gfOn:true}, 'bottom'), binT = bevelOf({gfOn:true}, 'top');
+  chk('низ Gridfinity-бина не срезается', binB.cut < 0.01, {срез:+binB.cut.toFixed(3)});
+  chk('и объясняет, почему', /ножки/.test(binB.note||''), {note:binB.note});
+  chk('а верх бина — срезается', binT.bev.length > binT.plain.length, {from:binT.plain.length, to:binT.bev.length});
+  const plT = bevelOf({gfBaseplate:true}, 'top'), plB = bevelOf({gfBaseplate:true}, 'bottom');
+  chk('верх Gridfinity-плиты не срезается', plT.bev.length === plT.plain.length, {from:plT.plain.length, to:plT.bev.length});
+  chk('и объясняет, почему', /гнёзда/.test(plT.note||''), {note:plT.note});
+  chk('а низ плиты — срезается', plB.bev.length > plB.plain.length, {from:plB.plain.length, to:plB.bev.length});
+  chk('плита остаётся замкнутой', plB.watertight && plT.watertight, {});
+  // both ends at once: each part keeps its interface and loses the other edge
+  const binBoth = bevelOf({gfOn:true}, 'both'), plBoth = bevelOf({gfBaseplate:true}, 'both');
+  chk('бин «оба конца»: низ сохранён, верх срезан', binBoth.cut < 0.01 && binBoth.bev.length > binBoth.plain.length, {});
+  chk('плита «оба конца»: верх сохранён, низ срезан', plBoth.bev.length > plBoth.plain.length && /гнёзда/.test(plBoth.note||''), {});
 }
 { // A J-hook and a French cleat hang on a rounded bar end: there is no edge down there to take off, and
   // that is a different sentence from "it broke".

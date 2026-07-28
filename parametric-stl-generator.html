@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v125';
+const APP_VERSION = 'v126';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3710,12 +3710,21 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtAngle', label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
     {group:'Крепёж / монтаж', key:'mntDtClear', label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battType', label:'Холдер: типоразмер элемента', type:'select', default:'aa',
+      options:[{v:'aaa',t:'AAA (Ø10.5 × 44.5)'},{v:'aa',t:'AA (Ø14.5 × 50.5)'},{v:'c',t:'C (Ø26.2 × 50)'},{v:'d',t:'D (Ø34.2 × 61.5)'},{v:'18650',t:'18650 (Ø18.6 × 65.2)'},{v:'21700',t:'21700 (Ø21.2 × 70.2)'},{v:'custom',t:'свой размер'}]},
+    {group:'Крепёж / монтаж', key:'battN', label:'Холдер: число элементов', min:1, max:8, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'battD', label:'Холдер: Ø элемента (свой размер)', min:4, max:60, step:0.1, default:14.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battLen', label:'Холдер: длина элемента (свой размер)', min:8, max:140, step:0.5, default:50.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battWall', label:'Холдер: толщина стенки', min:1.2, max:8, step:0.2, default:2.4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battSpring', label:'Холдер: запас длины под пружинный контакт', min:0, max:12, step:0.5, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battMouth', label:'Холдер: раскрытие горловины (% Ø, <100 = защёлк.)', min:50, max:98, step:1, default:88, unit:'%'},
+    {group:'Крепёж / монтаж', key:'battClear', label:'Холдер: зазор посадки элемента', min:0, max:1, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCalN', label:'Калибровка: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntCalH', label:'Калибровка: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntBrSpan', label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
@@ -8365,6 +8374,63 @@ function buildFitTest(p){
    built as three convex solids instead: two flank walls whose inner edge follows the tail's slope, plus a
    floor slab they both sink into. The flanks never touch each other (the groove separates them), so the
    appended shells stay watertight. Socket = tail + clearance per side, and it picks up the global fitTune. */
+/* ---- Battery holder (батарейный холдер) ----------------------------------------------------------
+   A row of snap-in troughs for cylindrical cells, with a slotted end wall at each end for the contacts.
+   The trough is the SAME annular-sector shell the cable clip is built from: its mouth is deliberately
+   narrower than the cell, so the cell snaps past it and stays put — that is what holds a printed holder
+   together, not a lid.
+
+   Troughs OVERLAP rather than sit tangent. Two shells a diameter apart touch along a line, which is a
+   shared face, not a union; pulling them 0.6 wall closer makes the neighbours share material instead —
+   and it is also how a real holder saves space, one wall doing duty for two cells. The pitch still has
+   to clear rI + rO, or a neighbour's wall would bulge into this cell's bore.
+
+   The cavity is longer than the cell by `battSpring`, because a spring contact needs somewhere to be
+   compressed; a cavity cut to the nominal cell length fits a cell and nothing else. */
+const BATT_CELLS = { aaa:[10.5,44.5], aa:[14.5,50.5], c:[26.2,50.0], d:[34.2,61.5],
+                     '18650':[18.6,65.2], '21700':[21.2,70.2] };
+function buildBatteryHolder(p){
+  const kind = p.battType||'aa';
+  const spec = BATT_CELLS[kind] || null;
+  const D    = Math.max(4, spec ? spec[0] : (p.battD||14.5));
+  const cellL= Math.max(8, spec ? spec[1] : (p.battLen||50.5));
+  const clr  = Math.max(0, fitTuned(p, p.battClear!=null ? p.battClear : 0.35));
+  const wall = Math.max(1.2, p.battWall||2.4);
+  const n    = Math.max(1, Math.min(8, Math.round(p.battN||2)));
+  const spring = Math.max(0, p.battSpring!=null ? p.battSpring : 3);
+  const pct  = Math.max(50, Math.min(98, p.battMouth||88));
+  const rI = D/2 + clr, rO = rI + wall, L = cellL + spring;
+  const mouth = Math.asin(Math.min(0.985, pct/100));            // half-angle of the top opening
+  const pitch = Math.max(rI + rO + 0.4, 2*rO - wall*0.6);        // share a wall, but never break into the bore
+  const seg = Math.max(48, Math.round(2*Math.PI*rO/0.8));
+  const baseT = Math.max(1.2, wall*0.8), tris=[];
+  const zAt = k => (k - (n-1)/2)*pitch;
+  for(let k=0;k<n;k++)
+    for(const T of sectorShellTris(rO, zAt(k), rI, rO, mouth, 2*Math.PI-mouth, -L/2, L/2, seg)) tris.push(T);
+  const Wz = (n-1)*pitch + 2*rO;
+  for(const T of boxSpanTris(-L/2-wall, L/2+wall, -baseT, 0.6, -Wz/2, Wz/2)) tris.push(T);
+  // End walls, one box per cell so each carries its own contact slot: buildBoxWithHoles reserves a hole's
+  // block in grid indices and drops any that collide, and a row of slots on one plate would collide.
+  const sw = Math.max(1.5, D*0.55), sh = Math.max(1.5, D*0.5);
+  for(let k=0;k<n;k++) for(const sgn of [-1,1]){
+    const hole=[{axis:0, cp:0, cq:0, ap:sw/2, aq:sh/2, rc:Math.min(sw,sh)*0.2}];
+    // 0.8 wider than the pitch so neighbouring end walls OVERLAP. Sized exactly to the pitch they would
+    // abut face to face, and these faces carry a grid — hundreds of shared edges, not a union.
+    for(const T of buildBoxWithHoles(wall, 2*rO, Math.min(pitch+0.8, 2*rO), hole))
+      tris.push(T.map(v=>[v[0]+sgn*(L/2+wall/2), v[1]+rO, v[2]+zAt(k)]));
+  }
+  const sd = Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5);
+  if(sd>0.5 && n>=1){                                            // one mounting tab at each end of the base
+    const tab = Math.max(sd*2.4, 8);
+    for(const sgn of [-1,1]){
+      const hole=[{axis:1, cp:0, cq:0, r:sd/2}];
+      for(const T of buildBoxWithHoles(tab, baseT, tab, hole))
+        tris.push(T.map(v=>[v[0]+sgn*(L/2+wall+tab/2-1.2), v[1]-baseT/2+0.3, v[2]]));
+    }
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 /* ---- Calibration prints ------------------------------------------------------------------------
    Three prints that measure a printer rather than make a part. Each answers ONE question, because a
    tower that mixes five effects tells you which segment failed and never which setting caused it.
@@ -8481,6 +8547,7 @@ function buildDovetail(p){
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
+  if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
   if(p.mntMode==='retract') return buildRetractTest(p);
@@ -11122,7 +11189,7 @@ function activeShapeLabel() {
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
                                           : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

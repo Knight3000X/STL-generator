@@ -119,28 +119,61 @@ for(const [nm,ov] of Object.entries({squircle:{squircle:60}, шестерня:{g
       !collectPrintWarnings(paramState.box).some(w=>/слишком круглый/.test(w)), {note:edgeBevelNote});
 }
 
-console.log('=== a concave outline is no longer chamfered in silence ===');
-// The hull-tangent planes never reach into a notch, so a cross- or L-shaped part keeps its inner
-// corners sharp. That limit needs a true polygon offset to remove and is not going anywhere — but
-// saying nothing about it is a separate fault, and this is the part that can be fixed.
-{ for(const [nm,ov] of [['куб',{}], ['призма6',{polyN:6}], ['почти круг',{polyN:32}],
-                        ['squircle',{squircle:60}], ['холдер',{mntMode:'battery'}]]){
-    mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
-    chk(nm+': выпуклый контур — жалоб нет', !/вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
+console.log('=== the outline is followed per SHELL, and what is left is said out loud ===');
+// The hull is taken per connected shell rather than once over the whole model. Most concave outlines
+// here are concave only because SEVERAL shells add up to one — a wall plate plus its bar, a backplate
+// plus its hook, the two halves of a dovetail — and each shell on its own is very nearly convex.
+// Measured on the parts that used to warn: one global hull was 56-95% filled by the real footprint,
+// per-shell hulls are 99-101%. These four are the regression guard for that.
+for(const [nm,ov] of [['крючок на стену',{hookMount:'wall'}], ['органайзер',{woBack:'cleat'}],
+                      ['ласточкин хвост',{mntMode:'dovetail'}], ['темп-башня',{mntMode:'temptower'}]]){
+  const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
+  chk(nm+': контур больше не считается вогнутым', !/вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
+  chk(nm+': и деталь замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+}
+// A genuinely concave outline still cannot be followed — hull-tangent planes do not reach into a
+// notch, and no amount of splitting into shells helps. The pipe collar is the honest example: it has
+// a mouth, so its plan really is a C.
+{ const t = mk({hookMount:'pipe', hookPipeD:25, edgeBevelWhere:'top', edgeBevel:2});
+  chk('хомут на трубу: C-образный контур назван вогнутым', /вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
+  chk('и это доходит до сводки', collectPrintWarnings(paramState.box).some(w=>/вогнут/.test(w)), {});
+  chk('но деталь всё равно замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4)); }
+// ...and nothing round or hollow is ever called concave. The band of ANY hollow part is an annulus,
+// and leaving its bore empty made every container, vase, jar and funnel read as concave when their
+// outline is a perfect circle — the measure fills enclosed holes before comparing.
+for(const [nm,ov] of [['куб',{}], ['призма6',{polyN:6}], ['почти круг',{polyN:32}], ['squircle',{squircle:60}],
+                      ['полый',{hollow:true}], ['банка',{threadMode:'jar'}], ['крышка резьбы',{threadMode:'cap'}],
+                      ['ваза',{fnOn:true,fnMode:'vase'}], ['воронка',{fnOn:true}],
+                      ['холдер',{mntMode:'battery'}], ['крышка корпуса',{pbPart:'lid'}]])
+  for(const wh of ['bottom','top']){
+    mk({...ov, edgeBevelWhere:wh, edgeBevel:2});
+    chk(nm+' '+wh+': выпуклый/полый контур вогнутым не назван', !/вогнут/.test(edgeBevelNote),
+        {note:edgeBevelNote});
   }
-  for(const [nm,ov] of [['крючок на стену',{hookMount:'wall'}], ['органайзер',{woBack:'cleat'}],
-                        ['ласточкин хвост',{mntMode:'dovetail'}], ['темп-башня',{mntMode:'temptower'}]]){
-    mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
-    chk(nm+': вогнутый контур — сказано вслух', /вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
-    chk(nm+': и это доходит до сводки',
-        collectPrintWarnings(paramState.box).some(w=>/вогнут/.test(w)), {});
-  }
-  // and the model is still whole either way
-  for(const ov of [{hookMount:'wall'}, {woBack:'cleat'}, {mntMode:'dovetail'}]){
-    const t = mk({...ov, edgeBevelWhere:'both', edgeBevel:2});
-    chk('вогнутая форма всё равно замкнута: '+JSON.stringify(ov), manifoldCheck(t,4).watertight,
-        manifoldCheck(t,4));
-  }
+
+console.log('=== a grid that lands ON the cut is still capped ===');
+// The section of a shell by one chamfer plane is collected triangle by triangle. A triangle with two
+// vertices exactly ON the plane bounds the cap just as a crossing one does — and a 45° chamfer through
+// a regular wall grid puts a hundred of them on the cut at once. Skipping them returned the section as
+// an OPEN chain, so no cap was built and the whole shell was dropped: every hollow container, jar,
+// bracket and stand came back with no chamfer at all. These are the shapes that used to lose it.
+// (A jar and a hex panel still fall back — see IDEAS.md: on a mesh whose plan hull runs to ~170 sides
+// the surface is clipped in 3D while its cap is clipped in 2D, and the two paths disagree by rounding
+// at the mitre points. They keep a sharp edge and say so; nothing ships broken.)
+for(const [nm,ov] of [['полый',{hollow:true,wallThickness:2}],
+                      ['L-кронштейн',{mntMode:'lbracket'}], ['подставка',{psOn:true}]]){
+  const plain = mk(ov);
+  const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
+  chk(nm+': фаска реально снята', vol(t) < vol(plain) - 1e-6,
+      {before:+vol(plain).toFixed(1), after:+vol(t).toFixed(1)});
+  chk(nm+': и деталь замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  chk(nm+': и оболочка не осталась острой', !/не срезалась/.test(edgeBevelNote), {note:edgeBevelNote});
+}
+// the wall thickness decides where the grid lands, so sweep it — this is the case that used to break
+for(const wt of [1.2, 2, 2.5, 3, 4]){
+  const t = mk({hollow:true, wallThickness:wt, edgeBevelWhere:'both', edgeBevel:2});
+  chk('полый, стенка '+wt+': замкнут и срезан', manifoldCheck(t,4).watertight &&
+      vol(t) < vol(mk({hollow:true, wallThickness:wt})) - 1e-6, manifoldCheck(t,4));
 }
 
 console.log('=== off by default, and off means untouched ===');

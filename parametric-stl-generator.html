@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v138';
+const APP_VERSION = 'v139';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10172,11 +10172,19 @@ const sliceMeshIntoFragments = (function(){
       const raw = [];
       for(const tri of tris){
         const dd = tri.map(v => nd[0]*v[0]+nd[1]*v[1]+nd[2]*v[2] - cc);
-        let nPos=0, nNeg=0;
-        for(const d of dd){ if(d>1e-9) nPos++; else if(d<-1e-9) nNeg++; }
-        if(!(nPos>0 && nNeg>0)) continue;                       // grazing faces contribute nothing
+        let nPos=0, nNeg=0, nZero=0;
+        for(const d of dd){ if(d>1e-9) nPos++; else if(d<-1e-9) nNeg++; else nZero++; }
+        // A triangle with two vertices exactly ON the plane and its third on the KEEP side bounds the
+        // cap just as a crossing one does, and it must contribute the same edge. Skipping those is not
+        // a rounding detail: where the surface grid happens to land on the cut — which is exactly what
+        // a 45° chamfer through a regular wall grid does — a hundred triangles graze at once and the
+        // section comes back as an OPEN chain, so no cap is built and the shell is dropped. That is
+        // what left every hollow container, jar, bracket and stand without a chamfer at all.
+        const twoOn = (nZero === 2 && nNeg > 0);
+        if(!twoOn && !(nPos>0 && nNeg>0)) continue;
         const ip=[];
-        for(let e=0;e<3;e++){ const A=tri[e], Bv=tri[(e+1)%3], da=dd[e], db=dd[(e+1)%3];
+        if(twoOn){ for(let e=0;e<3;e++) if(Math.abs(dd[e])<=1e-9) ip.push(tri[e]); }
+        else for(let e=0;e<3;e++){ const A=tri[e], Bv=tri[(e+1)%3], da=dd[e], db=dd[(e+1)%3];
           if(Math.abs(da)<1e-9) ip.push(A);
           else if((da<-1e-9&&db>1e-9)||(da>1e-9&&db<-1e-9)){ const t=da/(da-db);
             ip.push([A[0]+(Bv[0]-A[0])*t, A[1]+(Bv[1]-A[1])*t, A[2]+(Bv[2]-A[2])*t]); } }
@@ -10462,51 +10470,6 @@ function bevelledMesh(tris, p){
   if(h > hRoom){ const k = hRoom / h; h *= k; w *= k; }
   if(!(w > 0.01) || !(h > 0.01)) return tris;
 
-  const hull = hullXZ(tris);
-  if(hull.length < 3) return tris;
-  // No ceiling on how round the footprint may be: cutByHalfspaces takes every hull side in a single
-  // pass, so the cost is linear in hull sides instead of quadratic and the capper is never handed a
-  // facet that a later plane has already carved up.
-  // A CONCAVE outline gets no chamfer along its concave stretches: the planes are tangent to the
-  // convex hull and never reach into a notch. That limit is not going away without a true polygon
-  // offset, but being SILENT about it is a separate fault — a cross-shaped part comes back with its
-  // inner corners still sharp and nothing said. Measured by area: rasterise the plan view of the
-  // band triangles onto a coarse grid and compare what is filled against the hull. A convex outline
-  // fills its hull; the further below, the more of the outline the chamfer cannot reach.
-  {
-    const G = 64, hx0 = Math.min(...hull.map(q=>q[0])), hx1 = Math.max(...hull.map(q=>q[0]));
-    const hz0 = Math.min(...hull.map(q=>q[1])), hz1 = Math.max(...hull.map(q=>q[1]));
-    const cw = Math.max(1e-6, (hx1-hx0)/G), ch = Math.max(1e-6, (hz1-hz0)/G);
-    const filled = new Uint8Array(G*G);
-    const bandY = sides.map(dir => dir > 0 ? B.maxY - h : B.minY + h);
-    for(const T of tris){
-      let touches = false;
-      for(let k=0;k<sides.length && !touches;k++)
-        for(const v of T){ if(sides[k] > 0 ? v[1] >= bandY[k]-1e-6 : v[1] <= bandY[k]+1e-6){ touches = true; break; } }
-      if(!touches) continue;
-      // conservative: fill the cells the triangle's plan-view bounding box covers
-      let x0=1e30,x1=-1e30,z0=1e30,z1=-1e30;
-      for(const v of T){ if(v[0]<x0)x0=v[0]; if(v[0]>x1)x1=v[0]; if(v[2]<z0)z0=v[2]; if(v[2]>z1)z1=v[2]; }
-      const i0=Math.max(0,Math.floor((x0-hx0)/cw)), i1=Math.min(G-1,Math.floor((x1-hx0)/cw));
-      const j0=Math.max(0,Math.floor((z0-hz0)/ch)), j1=Math.min(G-1,Math.floor((z1-hz0)/ch));
-      for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) filled[j*G+i]=1;
-    }
-    let inHull = 0, both = 0;
-    const insideHull = (x,z)=>{ for(let i=0;i<hull.length;i++){ const A=hull[i], C=hull[(i+1)%hull.length];
-      if((C[0]-A[0])*(z-A[1]) - (C[1]-A[1])*(x-A[0]) < -1e-9) return false; } return true; };
-    for(let j=0;j<G;j++) for(let i=0;i<G;i++){
-      if(!insideHull(hx0+(i+0.5)*cw, hz0+(j+0.5)*ch)) continue;
-      inHull++; if(filled[j*G+i]) both++;
-    }
-    if(inHull > 0 && both/inHull < 0.88)
-      noteEdgeBevel('фаска рёбер: контур основания вогнутый (' + Math.round(100*both/inHull) +
-                    '% выпуклой оболочки) — вогнутые участки остались острыми');
-  }
-  const planes = [];
-  // sigma = +1 at the bottom (t grows upward), −1 at the top.
-  for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
-  if(!planes.length) return tris;
-
   const ends = sides.map(dir => ({ yEnd: dir > 0 ? B.maxY : B.minY, sg: dir > 0 ? -1 : 1 }));
   // How deep into the part a triangle would have to reach before any plane could touch it. At t = h and
   // s = 0 a point sits EXACTLY on its plane (tan phi is w/h by construction), so anything strictly
@@ -10519,13 +10482,71 @@ function bevelledMesh(tris, p){
     }
     return false;
   };
+  // How much of a hull the shape inside it actually fills, in plan. Used to say when a chamfer cannot
+  // follow the outline (see below); a coarse grid is plenty for a yes/no that only fires under 88%.
+  const hullFill = (shell, hull) => {
+    const G = 64, hx0 = Math.min(...hull.map(q=>q[0])), hx1 = Math.max(...hull.map(q=>q[0]));
+    const hz0 = Math.min(...hull.map(q=>q[1])), hz1 = Math.max(...hull.map(q=>q[1]));
+    const cw = Math.max(1e-6, (hx1-hx0)/G), ch = Math.max(1e-6, (hz1-hz0)/G);
+    const filled = new Uint8Array(G*G);
+    for(const T of shell){
+      let x0=1e30,x1=-1e30,z0=1e30,z1=-1e30;
+      for(const v of T){ if(v[0]<x0)x0=v[0]; if(v[0]>x1)x1=v[0]; if(v[2]<z0)z0=v[2]; if(v[2]>z1)z1=v[2]; }
+      const i0=Math.max(0,Math.floor((x0-hx0)/cw)), i1=Math.min(G-1,Math.floor((x1-hx0)/cw));
+      const j0=Math.max(0,Math.floor((z0-hz0)/ch)), j1=Math.min(G-1,Math.floor((z1-hz0)/ch));
+      for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) filled[j*G+i]=1;
+    }
+    // Fill the ENCLOSED holes before comparing. A chamfer only ever follows the OUTER outline, and the
+    // band of any hollow part is an annulus — leaving its bore empty made every container, vase, jar
+    // and funnel read as "concave" when their outline is a perfect circle. Flood the complement in
+    // from the border: whatever the flood cannot reach is either material or a hole inside it, and
+    // both are on the near side of the outline.
+    const outside = new Uint8Array(G*G), stack = [];
+    const push = (i,j) => { if(i<0||j<0||i>=G||j>=G) return;
+      const k=j*G+i; if(outside[k]||filled[k]) return; outside[k]=1; stack.push(k); };
+    for(let i=0;i<G;i++){ push(i,0); push(i,G-1); }
+    for(let j=0;j<G;j++){ push(0,j); push(G-1,j); }
+    while(stack.length){ const k=stack.pop(), i=k%G, j=(k-i)/G;
+      push(i+1,j); push(i-1,j); push(i,j+1); push(i,j-1); }
+    const inHull=(x,z)=>{ for(let i=0;i<hull.length;i++){ const A=hull[i], C=hull[(i+1)%hull.length];
+      if((C[0]-A[0])*(z-A[1]) - (C[1]-A[1])*(x-A[0]) < -1e-9) return false; } return true; };
+    let inside=0, both=0;
+    for(let j=0;j<G;j++) for(let i=0;i<G;i++){
+      if(!inHull(hx0+(i+0.5)*cw, hz0+(j+0.5)*ch)) continue;
+      inside++; if(!outside[j*G+i]) both++;
+    }
+    return inside > 0 ? both/inside : 1;
+  };
+
   const out = [];
+  let worstFill = 1;
   for(const comp of meshComponents(tris)){
     const held = [], band = [];
     for(const T of comp) (reachable(T) ? band : held).push(T);
-    // One pass over ALL the planes at once — see cutByHalfspaces. Doing them one at a time is what
-    // used to make this quadratic and force a ceiling on how round a footprint could be.
-    const cut = band.length ? sliceMeshIntoFragments.cutByHalfspaces(band, planes) : band;
+    if(!band.length){ out.push(comp); continue; }
+    // The hull is taken PER SHELL, not once over the whole model. Most concave outlines here are
+    // concave only because SEVERAL shells add up to one — a wall plate plus its bar, a backplate plus
+    // its hook, the two halves of a dovetail. Each shell on its own is very nearly convex, and cutting
+    // each by its own hull is still exactly right, because intersection with a half-space distributes
+    // over union and a shell is only ever cut by planes derived from itself. Measured on the parts that
+    // used to warn: a single global hull was 56-95% filled by the real footprint, per-shell hulls are
+    // 99-101%. It also keeps the guarantee that no plane bites into geometry above the band, since each
+    // hull covers the whole of its own shell.
+    const hull = hullXZ(comp);
+    if(hull.length < 3){ out.push(comp); continue; }
+    // The BAND against the BAND's own hull. Not the whole shell (a tube standing on its rim reads as
+    // 19% concave when its outline is a perfect circle), and not the band against the SHELL's hull (a
+    // vase's mouth is inset from its belly, which is "nothing to cut here", not "concave"). What the
+    // warning claims is that the part of the shell the chamfer actually cuts has a concave outline,
+    // and that is what this measures.
+    const bandHull = hullXZ(band);
+    const fill = bandHull.length >= 3 ? hullFill(band, bandHull) : 1;
+    if(fill < worstFill) worstFill = fill;
+    const planes = [];
+    // sigma = +1 at the bottom (t grows upward), −1 at the top.
+    for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
+    if(!planes.length){ out.push(comp); continue; }
+    const cut = sliceMeshIntoFragments.cutByHalfspaces(band, planes);
     const done = sliceMeshIntoFragments.weldFragment(held.concat(cut), 1.5e-4);
     // A shell whose section the capper could not close keeps its sharp edge rather than shipping a
     // leak. Two shells welded into one component by coincidence is the case this catches.
@@ -10533,6 +10554,12 @@ function bevelledMesh(tris, p){
     else { out.push(comp);
       noteEdgeBevel('фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'); }
   }
+  // What is left after per-shell hulls: a SINGLE shell that is itself concave in plan (a cross, an L
+  // cut from one piece). The hull-tangent planes cannot reach into its notches and no amount of
+  // splitting helps — that needs a real polygon offset. Saying so is the part that can be done.
+  if(worstFill < 0.88)
+    noteEdgeBevel('фаска рёбер: оболочка вогнута в плане (' + Math.round(100*worstFill) +
+                  '% выпуклой оболочки) — вогнутые участки остались острыми');
   const merged = out.length === 1 ? out[0] : [].concat(...out);
   // Last check, on the WHOLE model rather than shell by shell. Cutting each shell separately is exact
   // for the union, but it can still break the invariant the rest of the engine rests on: two shells

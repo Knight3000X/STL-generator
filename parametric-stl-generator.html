@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v135';
+const APP_VERSION = 'v136';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4111,6 +4111,11 @@ function addModel(){
    centre, the lid's seating plane, the depth of the foot socket — and none of the three can be
    recovered from a bounding box. Each needs its builder to publish that one number, which is a
    deliberate edit per builder rather than a guess made here. */
+// The drop-in rib's depth below the lid plate — buildProjectBox's own clamp, repeated here so the two
+// cannot drift apart.
+function pbLipHeight(p){ return Math.max(2, Math.min(Math.max(8, p.pbH||30)*0.5, p.pbLipH||5)); }
+// How deep buildGridfinityBaseplate cuts its sockets from the top face.
+const GF_SOCKET_DEPTH = 4.75;
 function threadHeadHeight(p){ const D=Math.max(6,p.threadD||30); return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6); }
 function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3); }
 // Every screwed pair is stood off by the joint's own fit clearance rather than driven dead home. Not
@@ -4130,6 +4135,7 @@ function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p))
 // model's own position, so the answer is an absolute px/py/pz for the newcomer.
 function assemblyMate(p){
   const th = p.threadMode || 'none', gr = p.gearMode || 'none';
+  const pb = (p.pbPart && p.pbPart !== 'none') ? p.pbPart : 'none';   // 'both' already holds the pair
   const m  = Math.max(0.3, p.gearModule || 2), Z = Math.max(6, Math.round(p.gearTeeth || 20));
   // seat(A, B, S) — A and B are the two ROTATED bounding boxes (A already shifted by the active
   // model's position), S is the active model's own origin. Sideways alignment comes from S, never
@@ -4154,10 +4160,24 @@ function assemblyMate(p){
   // is its own outer radius less one addendum, read off whichever of the two boxes is the worm's.
   if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:90,
     seat:(A,B,S)=>({px:S.px + ((A.maxX-A.minX)/2 - m) + m*Z/2, py:S.py, pz:S.pz}) };
+  // Enclosure tray + lid. The tray's geometry runs y = 0 (floor underside) to y = H (wall top), so its
+  // wall top IS its maxY. The lid is a plate centred on y = 0 with a drop-in rib reaching lipH below
+  // it, so the face that SEATS on that wall top is lipH above the lid's lowest point — neither number
+  // is visible from the outside of either part, which is why this pair waited for the builder.
+  if (pb === 'tray') return { name:'Крышка корпуса', over:{pbPart:'lid'},
+    seat:(A,B,S)=>({px:S.px, py:A.maxY - (B.minY + pbLipHeight(p)), pz:S.pz}) };
+  if (pb === 'lid') return { name:'Лоток корпуса', over:{pbPart:'tray'},
+    seat:(A,B,S)=>({px:S.px, py:(A.minY + pbLipHeight(p)) - B.maxY, pz:S.pz}) };
+  // Gridfinity bin + baseplate. buildGridfinityBaseplate cuts its sockets socketD deep from the top,
+  // so a bin's feet reach that floor: 4.75 mm below the plate's own maxY.
+  if (p.gfBaseplate) return { name:'Gridfinity бин', over:{gfBaseplate:false, gfOn:true},
+    seat:(A,B,S)=>({px:S.px, py:A.maxY - GF_SOCKET_DEPTH - B.minY, pz:S.pz}) };
+  if (p.gfOn) return { name:'Gridfinity плита', over:{gfBaseplate:true},
+    seat:(A,B,S)=>({px:S.px, py:A.minY + GF_SOCKET_DEPTH - B.maxY, pz:S.pz}) };
   // The pipe a snap-on collar clips to. Its bore centre is not something to be inferred from a
   // bounding box — buildHook puts the collar at the origin of its own frame and then maps the whole
   // clip by (x,y,z)→(z,y,−x), so the centre stays at the origin and the pipe's axis is Z. That is the
-  // builder publishing its datum, which is what the other three pairs on the wish list still need.
+  // builder publishing its datum, the same way the enclosure and Gridfinity pairs above do.
   // The pipe is a REFERENCE part, not something to print: it is handed over as a frozen mesh.
   if ((p.hookMount || 'none') === 'pipe') return { name:'Труба (образец)', rx:90,
     frozen: (pp)=>{ const rP=Math.max(4,(pp.hookPipeD||25)/2), wall=Math.max(1.5, rP*0.12);
@@ -11205,7 +11225,7 @@ function renderModelCards() {
       mb.disabled = full || !spec;
       mb.textContent = spec ? ('+ ' + spec.name + ' (в сборке)') : '+ Ответная деталь (в сборке)';
       mb.title = spec ? ('Построить «'+spec.name+'» и поставить её так, как она встанет в сборке')
-                      : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо, крючок на трубу↔труба'; } }
+                      : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо, крючок на трубу↔труба, лоток↔крышка корпуса, Gridfinity бин↔плита'; } }
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
   const bp = document.getElementById('btn-add-baseplate'); if (bp) bp.disabled = full;
 }

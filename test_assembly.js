@@ -5,8 +5,11 @@
 // Run via ./run-all.sh.
 let pass=0, fail=0;
 function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
+// gfBaseplate is NOT in SHAPE_PARAMS, so defaultBoxParams() does not carry it and a plain reset leaves
+// a previous `true` in place — which quietly made every later case look like a Gridfinity baseplate.
+// Cleared explicitly here rather than left as a trap for the next test that touches it.
 function setp(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
-  Object.assign(paramState.box, defaultBoxParams(), ov); return paramState.box; }
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false}, ov); return paramState.box; }
 
 // Is q inside the solid A? Depth counting along +X over the crossings AHEAD of q only — so an interior
 // point sees nothing but EXITS, each of them a face whose normal agrees with the ray, and the sum comes
@@ -100,8 +103,8 @@ for(const [nm, cfg] of Object.entries(CASES)){
   const spec = assemblyMate(setp(cfg));
   chk(nm+': пара найдена и названа верно', spec && spec.name===cfg.mate, {got: spec && spec.name});
 }
-for(const ov of [{}, {hollow:true}, {polyN:6}, {platonic:'d6'}, {sheetShape:'rect'}, {pbPart:'tray'},
-                 {gfOn:true}, {mntMode:'lbracket'}, {gearMode:'rack'},
+for(const ov of [{}, {hollow:true}, {polyN:6}, {platonic:'d6'}, {sheetShape:'rect'},
+                 {mntMode:'lbracket'}, {gearMode:'rack'},
                  {gearMode:'cam'}, {threadMode:'anchor'}, {threadMode:'wingnut'}]){
   chk('без пары: '+JSON.stringify(ov)+' → null', assemblyMate(setp(ov)) === null, {});
 }
@@ -175,6 +178,43 @@ for(const D of [16, 25, 40]){
 }
 { const wall = setp({hookMount:'wall'});
   chk('крючок на стену трубы не просит', assemblyMate(wall) === null, {}); }
+
+console.log('=== enclosure tray + lid, and Gridfinity bin + baseplate ===');
+// The other two pairs whose datum lives inside the builder. The tray's geometry runs y = 0 (floor
+// underside) to y = H (wall top), so its wall top is its maxY; the lid is a plate centred on y = 0
+// with a drop-in rib reaching lipH below it, so the face that SEATS is lipH above its lowest point.
+// The baseplate cuts its sockets 4.75 mm down from the top, which is exactly how far a bin's feet go.
+{ const H = 30, lipH = 5;
+  for(const [nm, ov, mate] of [['лоток', {pbPart:'tray', pbW:80, pbD:60, pbH:H, pbLipH:lipH}, 'Крышка корпуса'],
+                               ['крышка',{pbPart:'lid',  pbW:80, pbD:60, pbH:H, pbLipH:lipH}, 'Лоток корпуса']]){
+    const p = setp(ov), self = buildTrisForShape('box', p), plan = placed(p);
+    chk(nm+': пара — '+mate, plan && plan.name === mate, {got: plan && plan.name});
+    const A = computeBBox(self), B = computeBBox(plan.world);
+    const ovl = Math.min(A.maxY,B.maxY) - Math.max(A.minY,B.minY);
+    chk(nm+': борт заходит ровно на его высоту ('+lipH+' мм)', Math.abs(ovl - lipH) < 0.05, {overlap:+ovl.toFixed(2)});
+    chk(nm+': ответная замкнута', manifoldCheck(plan.tris,4).watertight, {});
+    chk(nm+': и они соосны', Math.abs((A.minX+A.maxX)/2-(B.minX+B.maxX)/2) < 0.01 &&
+        Math.abs((A.minZ+A.maxZ)/2-(B.minZ+B.maxZ)/2) < 0.01, {});
+  }
+  // the rib's depth follows its own parameter, so the seating must follow it too
+  for(const lp of [3, 8, 12]){
+    const p = setp({pbPart:'tray', pbW:80, pbD:60, pbH:H, pbLipH:lp}), plan = placed(p);
+    const A = computeBBox(buildTrisForShape('box', p)), B = computeBBox(plan.world);
+    const ovl = Math.min(A.maxY,B.maxY) - Math.max(A.minY,B.minY);
+    chk('борт '+lp+' мм: посадка идёт за ним', Math.abs(ovl - lp) < 0.05, {overlap:+ovl.toFixed(2)});
+  }
+}
+for(const [nm, ov, mate] of [['бин',  {gfOn:true, gfX:2, gfY:1},      'Gridfinity плита'],
+                             ['плита',{gfBaseplate:true, gfX:2, gfY:1},'Gridfinity бин']]){
+  const p = setp(ov), self = buildTrisForShape('box', p), plan = placed(p);
+  chk(nm+': пара — '+mate, plan && plan.name === mate, {got: plan && plan.name});
+  const A = computeBBox(self), B = computeBBox(plan.world);
+  const ovl = Math.min(A.maxY,B.maxY) - Math.max(A.minY,B.minY);
+  chk(nm+': ножка садится ровно на дно гнезда (4.75 мм)', Math.abs(ovl - 4.75) < 0.05, {overlap:+ovl.toFixed(2)});
+  chk(nm+': ответная замкнута', manifoldCheck(plan.tris,4).watertight, {});
+}
+{ const both = setp({pbPart:'both', pbW:80, pbD:60, pbH:30});
+  chk('«лоток + крышка» пары не просит — она уже целиком', assemblyMate(both) === null, {}); }
 
 console.log('=== the gear pair is set out by the textbook, not by eye ===');
 for(const Z of [12, 20, 21, 30, 31]){

@@ -90,17 +90,34 @@ for(const w of [15, 40, 200]){
       halfWidthAt(t, (B.minY+B.maxY)/2, 0) > 19.99, {mid:+halfWidthAt(t,(B.minY+B.maxY)/2,0).toFixed(2)});
 }
 
-console.log('=== where it cannot work it says so ===');
-// A round footprint is refused outright: one plane per hull side makes the triangle count grow as N².
-{ const plain = mk({squircle:60});                 // plain FIRST: every build resets edgeBevelNote
-  const t = mk({squircle:60, edgeBevelWhere:'bottom', edgeBevel:2});
-  chk('круглый контур: модель отдана нетронутой', t.length===plain.length && Math.abs(vol(t)-vol(plain))<1e-9, {});
-  chk('и отказ объявлен', /слишком круглый/.test(edgeBevelNote), {note:edgeBevelNote});
-  chk('и он доходит до сводки', collectPrintWarnings(paramState.box).some(w=>/фаска рёбер/.test(w)),
-      collectPrintWarnings(paramState.box)); }
-{ const t = mk({edgeBevelWhere:'bottom', edgeBevel:2});
-  chk('на форме, которую фаска берёт, жалоб нет', edgeBevelNote==='' &&
-      !collectPrintWarnings(paramState.box).some(w=>/фаска рёбер/.test(w)), {note:edgeBevelNote}); }
+console.log('=== a round footprint is chamfered too, and costs only what it should ===');
+// This is the regression this section exists for. One plane per hull side applied ONE AT A TIME made
+// each facet get re-carved by every later plane: triangles grew as N² (a 32-side hull turned 128 into
+// 1030) and past ~48 sides the capper stopped closing the shell, so round footprints had to be
+// refused outright. Applying every half-space in a single pass makes the cost linear.
+{ const sizes=[4,6,8,12,16,24,32,48,64,96], ratio=[];
+  for(const N of sizes){
+    const plain = mk({polyN:N});
+    const t = mk({polyN:N, edgeBevelWhere:'bottom', edgeBevel:2});
+    chk('N='+N+'-гранник: срезан и закрыт', manifoldCheck(t,4).watertight && t.length>plain.length,
+        {from:plain.length, to:t.length});
+    ratio.push(t.length/plain.length);
+  }
+  // The spread is the real signal: quadratic growth would send the ratio climbing with N (it went
+  // 1.6× at four sides to 8× at thirty-two before). A constant multiple is what linear looks like.
+  chk('и рост треугольников линейный, а не квадратичный',
+      Math.max(...ratio) < 3 && Math.max(...ratio)/Math.min(...ratio) < 1.2,
+      ratio.map(r=>+r.toFixed(2)));
+}
+for(const [nm,ov] of Object.entries({squircle:{squircle:60}, шестерня:{gearMode:'spur'},
+                                     резьба:{threadMode:'cap'}, ваза:{fnOn:true,fnMode:'vase'},
+                                     'скруглённый куб':{filletRadius:5}})){
+  const plain = mk(ov);
+  const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:1.5});
+  chk(nm+': круглый контур больше не отказ', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  chk(nm+': и жалобы в сводку не идёт',
+      !collectPrintWarnings(paramState.box).some(w=>/слишком круглый/.test(w)), {note:edgeBevelNote});
+}
 
 console.log('=== off by default, and off means untouched ===');
 { const plain = mk({});

@@ -994,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v131';
+const APP_VERSION = 'v132';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3885,7 +3885,7 @@ const SHAPE_PARAMS = {
     {group:'Скругление углов', key:'filletTop', label:'Скругление верхних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletBottom', label:'Скругление нижних рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletVert', label:'Скругление вертикальных рёбер (0=общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Фаска рёбер (любая форма)', key:'edgeBevelWhere', label:'Фаска рёбер: где (любая форма с многоугольным основанием)', type:'select', default:'none',
+    {group:'Фаска рёбер (любая форма)', key:'edgeBevelWhere', label:'Фаска рёбер: где (работает на всех формах)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'bottom',t:'низ (снять слоновью ногу)'},{v:'top',t:'верх'},{v:'both',t:'низ и верх'}]},
     {group:'Фаска рёбер (любая форма)', key:'edgeBevel', label:'Фаска рёбер: ширина (0 = без фаски)', min:0, max:20, step:0.2, default:0, unit:'мм'},
     {group:'Фаска рёбер (любая форма)', key:'edgeBevelAngle', label:'Фаска рёбер: угол (от горизонтали)', min:15, max:80, step:5, default:45, unit:'°'},
@@ -9975,6 +9975,143 @@ const sliceMeshIntoFragments = (function(){
     for(let i=0;i<less.length;i++){ const t=less[i]; out[i]=[inv(t[0]),inv(t[1]),inv(t[2])]; }
     return out;
   }
+  /* ---- a cut by MANY half-spaces at once ----------------------------------------------------
+     Cutting a shell with N planes one after another is quadratic, and not for a subtle reason: each
+     of the N cap facets the first passes leave is then re-cut by every later plane, so the triangle
+     count grows as N² and the capper eventually loses (a 32-side hull turned 128 triangles into 1030;
+     past about 48 it stopped closing at all). That is what forced the edge chamfer to refuse round
+     footprints.
+
+     The fix is to stop capping in between. The intersection of half-spaces is CONVEX, so every source
+     triangle can be clipped against all N of them in one Sutherland–Hodgman pass — it comes out as a
+     single convex polygon, never as a pile of fragments. The caps are then built once, at the end,
+     from the cut edges: an edge of a clipped polygon lies on plane i exactly when both its ends do,
+     and collecting those per plane gives each cap facet its own closed contour. The mitre line
+     between two facets lies on BOTH planes and is collected twice, in opposite directions — which is
+     precisely what each of the two contours needs.
+
+     Keeps the region where n·p <= c for every plane. Cost is O(triangles × planes) with no growth. */
+  function cutByHalfspaces(tris, planes){
+    if(!tris.length || !planes.length) return tris;
+    const P = planes.map(pl=>{ const L=Math.hypot(pl.n[0],pl.n[1],pl.n[2])||1;
+      return { n:[pl.n[0]/L, pl.n[1]/L, pl.n[2]/L], c: pl.c/L }; });
+    const EPS = 1e-9, out = [];
+    // --- 1. the SURFACE: clip every source triangle by all the half-spaces in one pass ---
+    for(const tri of tris){
+      let allIn = true, allOut = false;
+      for(const pl of P){
+        let nIn = 0;
+        for(const v of tri) if(pl.n[0]*v[0]+pl.n[1]*v[1]+pl.n[2]*v[2] - pl.c <= EPS) nIn++;
+        if(nIn === 0){ allOut = true; break; }
+        if(nIn < 3) allIn = false;
+      }
+      if(allOut) continue;
+      if(allIn){ out.push(tri); continue; }
+      const nrm = faceNormal(tri[0], tri[1], tri[2]);
+      let poly = [tri[0], tri[1], tri[2]];
+      for(let k=0;k<P.length && poly.length>=3;k++){
+        const pl = P[k], np=[];
+        for(let i=0;i<poly.length;i++){
+          const A=poly[i], B=poly[(i+1)%poly.length];
+          const da = pl.n[0]*A[0]+pl.n[1]*A[1]+pl.n[2]*A[2] - pl.c;
+          const db = pl.n[0]*B[0]+pl.n[1]*B[1]+pl.n[2]*B[2] - pl.c;
+          const ai = da <= EPS, bi = db <= EPS;
+          if(ai) np.push(A);
+          if(ai !== bi){ const t = da/(da-db);
+            np.push([A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]); }
+        }
+        poly = np;
+      }
+      if(poly.length < 3) continue;
+      fanInto(out, poly, nrm);
+    }
+    // --- 2. the CAPS, one per plane ---
+    // The section of the shell by plane k is taken on its OWN, from the untouched triangles, and the
+    // OTHER planes are then applied to that contour as ordinary 2D half-planes. Collecting the cut
+    // edges out of step 1 instead does not work and is worth saying why: a cap facet is bounded partly
+    // by the shell and partly by its MITRE lines with the neighbouring facets, and a mitre line is
+    // never an edge of any clipped triangle — it is where two planes meet, not where a plane meets the
+    // surface. Caps built that way come out open (18 stray edges on a plain hexagonal prism).
+    for(let k=0;k<P.length;k++){
+      const F = planeFrame(P[k].n), e1=F.e1, e2=F.e2, nd=P[k].n, cc=P[k].c;
+      const to2 = p => [ e1[0]*p[0]+e1[1]*p[1]+e1[2]*p[2], e2[0]*p[0]+e2[1]*p[1]+e2[2]*p[2] ];
+      const raw = [];
+      for(const tri of tris){
+        const dd = tri.map(v => nd[0]*v[0]+nd[1]*v[1]+nd[2]*v[2] - cc);
+        let nPos=0, nNeg=0;
+        for(const d of dd){ if(d>1e-9) nPos++; else if(d<-1e-9) nNeg++; }
+        if(!(nPos>0 && nNeg>0)) continue;                       // grazing faces contribute nothing
+        const ip=[];
+        for(let e=0;e<3;e++){ const A=tri[e], Bv=tri[(e+1)%3], da=dd[e], db=dd[(e+1)%3];
+          if(Math.abs(da)<1e-9) ip.push(A);
+          else if((da<-1e-9&&db>1e-9)||(da>1e-9&&db<-1e-9)){ const t=da/(da-db);
+            ip.push([A[0]+(Bv[0]-A[0])*t, A[1]+(Bv[1]-A[1])*t, A[2]+(Bv[2]-A[2])*t]); } }
+        if(ip.length!==2) continue;
+        const nrm = faceNormal(tri[0],tri[1],tri[2]);
+        const sd=[nrm[1]*nd[2]-nrm[2]*nd[1], nrm[2]*nd[0]-nrm[0]*nd[2], nrm[0]*nd[1]-nrm[1]*nd[0]];
+        const A2=to2(ip[0]), B2=to2(ip[1]);
+        const seg=[ip[1][0]-ip[0][0], ip[1][1]-ip[0][1], ip[1][2]-ip[0][2]];
+        if(dot(seg,sd) >= 0) raw.push([A2,B2]); else raw.push([B2,A2]);
+      }
+      if(!raw.length) continue;
+      const q=1e6, cnt=new Map(), kf=p=>Math.round(p[0]*q)+','+Math.round(p[1]*q);
+      for(const e of raw){ const key=kf(e[0])+'|'+kf(e[1]); cnt.set(key,(cnt.get(key)||0)+1); }
+      const kept=[], done=new Set();
+      for(const e of raw){ const ka=kf(e[0]), kb=kf(e[1]), key=ka+'|'+kb, rev=kb+'|'+ka;
+        if(done.has(key)) continue; done.add(key);
+        if(((cnt.get(key)||0)-(cnt.get(rev)||0)) > 0) kept.push(e); }
+      if(!kept.length) continue;
+      let loops = extractLoops(kept, q);
+      let net=0; for(const lp of loops) net += signedArea(lp);
+      if(net < 0) loops = loops.map(lp=>lp.slice().reverse());
+      // every OTHER plane, seen from inside plane k, is a straight 2D boundary on this facet
+      const cuts2 = [];
+      for(let j=0;j<P.length;j++){
+        if(j===k) continue;
+        const a = P[j].n[0]*e1[0]+P[j].n[1]*e1[1]+P[j].n[2]*e1[2];
+        const b = P[j].n[0]*e2[0]+P[j].n[1]*e2[1]+P[j].n[2]*e2[2];
+        if(Math.hypot(a,b) < 1e-9) continue;                    // parallel to this facet: no boundary
+        // n_j·(e1·x + e2·y + n_k·c_k) <= c_j
+        const rhs = P[j].c - (P[j].n[0]*nd[0]+P[j].n[1]*nd[1]+P[j].n[2]*nd[2])*cc;
+        cuts2.push([a, b, rhs]);
+      }
+      const clip2 = (poly) => {
+        for(const [a,b,r] of cuts2){
+          if(poly.length<3) return [];
+          const np=[];
+          for(let i=0;i<poly.length;i++){
+            const A=poly[i], B=poly[(i+1)%poly.length];
+            const da=a*A[0]+b*A[1]-r, db=a*B[0]+b*B[1]-r;
+            const ai=da<=1e-9, bi=db<=1e-9;
+            if(ai) np.push(A);
+            if(ai!==bi){ const t=da/(da-db); np.push([A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t]); }
+          }
+          poly=np;
+        }
+        return poly;
+      };
+      // Clipping leaves duplicate and collinear vertices wherever a boundary passes exactly through a
+      // contour point, and the ear clipper stalls on them — it returned no triangles at all on a plain
+      // hexagonal prism, which is how the caps came out missing rather than merely ugly.
+      const dedup = (lp) => { const o=[];
+        for(let i=0;i<lp.length;i++){ const a=lp[i], b=lp[(i+1)%lp.length];
+          if(Math.abs(a[0]-b[0])>1e-9 || Math.abs(a[1]-b[1])>1e-9) o.push(a); }
+        return o; };
+      const trimmed = [];
+      for(const lp of loops){ const c2 = dedup(clip2(lp)); if(c2.length>=3) trimmed.push(c2); }
+      if(!trimmed.length) continue;
+      const back = (Q) => [ e1[0]*Q[0]+e2[0]*Q[1] + nd[0]*cc,
+                            e1[1]*Q[0]+e2[1]*Q[1] + nd[1]*cc,
+                            e1[2]*Q[0]+e2[2]*Q[1] + nd[2]*cc ];
+      for(const T of triangulate2D(trimmed)){
+        const A=back(T[0]), Bv=back(T[1]), C=back(T[2]);
+        const fn=faceNormal(A,Bv,C);
+        if(!(Math.abs(fn[0])+Math.abs(fn[1])+Math.abs(fn[2]) > 0)) continue;
+        if(dot(fn, nd) < 0) out.push([A,C,Bv]); else out.push([A,Bv,C]);
+      }
+    }
+    return out;
+  }
   const slice = function(tris, sizeX, sizeY, sizeZ, pin){
     const bb=bboxOf(tris);
     const ix=interiorCuts(bb.lo[0],bb.hi[0],sizeX), iy=interiorCuts(bb.lo[1],bb.hi[1],sizeY), iz=interiorCuts(bb.lo[2],bb.hi[2],sizeZ);
@@ -10002,6 +10139,7 @@ const sliceMeshIntoFragments = (function(){
   // second copy of it. `edgesPaired` goes with it: a caller that cuts is the one that has to be able
   // to tell whether its own result is still closed.
   slice.cutByPlane = cutByPlane;
+  slice.cutByHalfspaces = cutByHalfspaces;
   slice.edgesPaired = edgesPaired;
   slice.weldFragment = weldFragment;
   return slice;
@@ -10088,21 +10226,23 @@ function parseMeshFile(buf, name){
      triangulator is entitled to assume. Handed the whole soup at once it would see the loops of
      overlapping shells crossing each other and cap nonsense. snapWeldTris guarantees shells never
      share a vertex, so a connected component of the welded mesh IS one shell.
-   · The bevel runs along the CONVEX HULL of the model's plan view, one tilted plane per hull edge.
-     On the prismatic and round parts this is aimed at — boxes, cylinders, hex prisms, brackets — the
-     hull IS the outline and the chamfer is exact, mitred corners and all. On a non-convex footprint
-     (a cross, an L) the concave stretches keep their sharp edge: the hull-tangent planes never reach
-     them. That is a real limit, and it is stated in the UI rather than hidden.
+   · The bevel runs along the CONVEX HULL of the model's plan view, one tilted plane per hull edge,
+     and all of them are applied in ONE pass (cutByHalfspaces) rather than one after another. That is
+     what makes a round footprint possible: cutting sequentially re-carves each facet with every later
+     plane, so the triangle count grew as N² and the capper gave up past about 48 sides — a 32-side
+     hull turned 128 triangles into 1030. In one pass it is exactly 2× at every size, 4 sides or 96.
+     On a non-convex footprint (a cross, an L) the concave stretches keep their sharp edge: the
+     hull-tangent planes never reach them. That is a real limit, and a quiet one — no warning fires.
    · Using the hull of the WHOLE model rather than of the bottom band is deliberate: it guarantees no
      plane can ever bite into geometry above the bevel, whatever the silhouette does with height. The
      price is that a part whose base is inset from its widest point simply gets no chamfer there.
-   · Rounding is the same machinery with more planes: the tangent planes of a quarter-circle. It is a
-     faceted arc, not an analytic fillet, and the step count says so.
+   · Rounding — the same family with several tilts, tangent to a quarter circle — was built and taken
+     out again. Past about five facets the near-tangent sections land on the caps the previous ones
+     left; on a plain cube five and up fell back to no bevel at all, and where it survived it cost
+     700-3300 triangles to round one base. A real fillet wants an offset surface, i.e. CSG.
 
    A general fillet on arbitrary interpenetrating geometry — every edge, inside corners included — is
    the CSG-shaped problem this engine is built to avoid, and is not what this does. */
-// Plan-view hull sides the chamfer will take on; see bevelledMesh for why there is a ceiling at all.
-const EDGE_BEVEL_MAX_HULL = 16;
 // Why the last build did not chamfer, for the summary panel to show. A refusal the user cannot see is
 // indistinguishable from a bug, and this one is easy to hit (any round footprint).
 let edgeBevelNote = '';
@@ -10186,30 +10326,18 @@ function bevelledMesh(tris, p){
 
   const hull = hullXZ(tris);
   if(hull.length < 3) return tris;
-  // Where this stops. One plane per hull edge means each of the N chamfer facets is later re-cut by
-  // all of its neighbours' planes, so the triangle count grows as N²: a 4-sided hull adds ~30
-  // triangles, a 32-sided one turns 128 into 1030, and past about 48 the capper stops closing the
-  // shell at all and the whole bevel is dropped. Refusing above EDGE_BEVEL_MAX_HULL is not a
-  // performance guard — it is the line past which this construction stops being the right one. A
-  // round footprint wants a CONE clipper (one curved cut, not sixty flat ones), which needs a capper
-  // for non-planar sections; that is the follow-up, and until it exists the answer here is a plain no.
-  if(hull.length > EDGE_BEVEL_MAX_HULL){
-    edgeBevelNote = 'фаска рёбер: контур основания слишком круглый ('+hull.length+
-                    ' сторон, предел '+EDGE_BEVEL_MAX_HULL+') — не применена';
-    return tris;
-  }
+  // No ceiling on how round the footprint may be: cutByHalfspaces takes every hull side in a single
+  // pass, so the cost is linear in hull sides instead of quadratic and the capper is never handed a
+  // facet that a later plane has already carved up.
   const planes = [];
   // sigma = +1 at the bottom (t grows upward), −1 at the top.
   for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
   if(!planes.length) return tris;
 
-  const EPS = 1e-7;   // wider than splitOne's own 1e-9, so the two agree on every borderline triangle
   const ends = sides.map(dir => ({ yEnd: dir > 0 ? B.maxY : B.minY, sg: dir > 0 ? -1 : 1 }));
   // How deep into the part a triangle would have to reach before any plane could touch it. At t = h and
   // s = 0 a point sits EXACTLY on its plane (tan phi is w/h by construction), so anything strictly
-  // deeper is strictly inside every one of them and can be set aside untouched. That is not merely an
-  // optimisation — without it a 60-edge hull on a 48k-triangle thread re-welded the whole shell sixty
-  // times over and took thirteen seconds.
+  // deeper is strictly inside every one of them and can be set aside untouched.
   const reachable = (T) => {
     for(const e of ends){
       let tmin = Infinity;
@@ -10220,36 +10348,15 @@ function bevelledMesh(tris, p){
   };
   const out = [];
   for(const comp of meshComponents(tris)){
-    const held = [];
-    let cur = [];
-    for(const T of comp) (reachable(T) ? cur : held).push(T);
-    // The section of a closed shell by any of these planes lies wholly inside the band, so cutting the
-    // band alone gives the same loops — and the same caps — as cutting the whole shell would.
-    for(const pl of planes){
-      const n = pl.n, c = pl.c, keep = [], mixed = [];
-      let removed = false;
-      for(const T of cur){
-        const d0 = n[0]*T[0][0]+n[1]*T[0][1]+n[2]*T[0][2] - c;
-        const d1 = n[0]*T[1][0]+n[1]*T[1][1]+n[2]*T[1][2] - c;
-        const d2 = n[0]*T[2][0]+n[1]*T[2][1]+n[2]*T[2][2] - c;
-        if(d0 < -EPS && d1 < -EPS && d2 < -EPS) keep.push(T);
-        else if(d0 > EPS && d1 > EPS && d2 > EPS) removed = true;
-        else { mixed.push(T); removed = true; }
-      }
-      if(!removed) continue;                       // this plane misses the shell entirely: nothing to do
-      const cut = sliceMeshIntoFragments.cutByPlane(mixed, n, c);
-      // Weld after EVERY plane, not once at the end. Adjacent hull edges give chamfer planes that meet
-      // exactly on the mitre line, so the next plane's section runs straight at the corner vertex the
-      // last one left — and lands a fraction of a micron off it, because w·tan(45°) is not w. That
-      // stray vertex splits an edge its neighbour does not split, and the shell stops being closed.
-      // (Measured: a plain box chamfered 4 mm at 45° went from 0 bad edges to 4 without this.)
-      cur = sliceMeshIntoFragments.weldFragment(keep.concat(cut), 1.5e-4);
-      if(!cur.length) break;
-    }
+    const held = [], band = [];
+    for(const T of comp) (reachable(T) ? band : held).push(T);
+    // One pass over ALL the planes at once — see cutByHalfspaces. Doing them one at a time is what
+    // used to make this quadratic and force a ceiling on how round a footprint could be.
+    const cut = band.length ? sliceMeshIntoFragments.cutByHalfspaces(band, planes) : band;
+    const done = sliceMeshIntoFragments.weldFragment(held.concat(cut), 1.5e-4);
     // A shell whose section the capper could not close keeps its sharp edge rather than shipping a
     // leak. Two shells welded into one component by coincidence is the case this catches.
-    const done = held.concat(cur);
-    if(cur.length && sliceMeshIntoFragments.edgesPaired(done)) out.push(done);
+    if(done.length && sliceMeshIntoFragments.edgesPaired(done)) out.push(done);
     else { out.push(comp); edgeBevelNote = 'фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'; }
   }
   const merged = out.length === 1 ? out[0] : [].concat(...out);

@@ -161,7 +161,7 @@ console.log('=== no pair passes through itself ===');
 // carry no backlash, so a mating flank, a cap rim on a shoulder and a bin's foot in its socket all
 // touch by design. What is checked is that neither part CROSSES into the other.
 //
-// Two pairs are left out, and both exclusions are measurements rather than shrugs:
+// One pair is left out, and the exclusion is a measurement rather than a shrug:
 //
 //   · ЧЕРВЯК ↔ ЧЕРВЯЧНОЕ КОЛЕСО — 299 crossing pairs at best. Swept over every tooth-pitch timing
 //     (12 steps) and both rim types (straight and throated), the minimum never approaches zero. The
@@ -170,12 +170,6 @@ console.log('=== no pair passes through itself ===');
 //     correctly — axes crossed at 90°, centre distance = the two pitch radii — and the parts
 //     themselves are what would bind. Making the wheel by ENVELOPING the worm is the real fix.
 //
-//   · КРЮЧОК НА ТРУБУ ↔ ТРУБА — the hook's own geometry sits in the pipe's bore from about Ø20 up
-//     (2.5 mm deep at Ø20, 5.9 at Ø25, 16.2 at Ø40, 28.9 at Ø60; nothing at Ø16). It is inside the
-//     collar's MOUTH sector, so a pipe of that size cannot be snapped in past the hook.
-//
-// Both are recorded in IDEAS.md. Neither is a placement problem, and asserting zero here would only
-// mean deleting the test that found them.
 const NO_CROSSING_EXEMPT = new Set(['червяк → колесо', 'колесо → червяк']);
 for(const [nm, cfg] of Object.entries(CASES)){
   if(NO_CROSSING_EXEMPT.has(nm)) continue;
@@ -183,14 +177,11 @@ for(const [nm, cfg] of Object.entries(CASES)){
   const r = crossings(self, plan.world);
   chk(nm+': детали не проходят сквозь друг друга', r.n === 0, {crossings:r.n, tested:r.pairs});
 }
-{ // the two exclusions are pinned to what was measured, so neither can quietly get worse
+{ // the exclusion is pinned to what was measured, so it cannot quietly get worse
   const w = setp({gearMode:'worm', gearModule:2, gearTeeth:20});
   const rw = crossings(buildTrisForShape('box', w), placed(w).world);
   chk('червячная пара: пересечение зафиксировано как известный дефект', rw.n > 0 && rw.n < 900,
-      {crossings:rw.n});
-  const h = setp({hookMount:'pipe', hookPipeD:16});
-  const rh = crossings(buildTrisForShape('box', h), placed(h).world);
-  chk('крючок Ø16 ещё чист — дефект начинается выше', rh.n === 0, {crossings:rh.n}); }
+      {crossings:rw.n}); }
 
 console.log('=== the pipe a collar clips to ===');
 // The one pair whose datum could not be read off a bounding box: buildHook builds the collar at the
@@ -205,18 +196,27 @@ for(const D of [16, 25, 40]){
   chk('Ø'+D+': труба замкнута', manifoldCheck(plan.tris,4).watertight, manifoldCheck(plan.tris,4));
   chk('Ø'+D+': отдана геометрией, а не параметрами', !!plan.frozenTris, {});
   const B = computeBBox(plan.world);
-  chk('Ø'+D+': диаметр ровно заказанный', Math.abs((B.maxX-B.minX) - D) < 0.05, {got:+(B.maxX-B.minX).toFixed(2)});
+  // drawn a fit clearance under nominal — see the note in assemblyMate
+  chk('Ø'+D+': диаметр — заказанный минус посадочный зазор',
+      (B.maxX-B.minX) < D && (B.maxX-B.minX) > D-1.0, {got:+(B.maxX-B.minX).toFixed(2), nominal:D});
   chk('Ø'+D+': ось идёт по Z', (B.maxZ-B.minZ) > (B.maxX-B.minX)*1.4, {z:+(B.maxZ-B.minZ).toFixed(1)});
-  chk('Ø'+D+': соосна расточке хомута (центр в начале координат)',
-      Math.abs(B.minX+B.maxX) < 1e-6 && Math.abs(B.minY+B.maxY) < 1e-6, {cx:(B.minX+B.maxX)/2, cy:(B.minY+B.maxY)/2});
+  // buildHook recentres its output on the bounding box, so the bore is NOT at the origin — it
+  // publishes where it ended up. Assuming the origin here is exactly the mistake that produced a
+  // phantom "the hook sits in its own pipe" defect.
+  // Tolerance, not equality: the tube is a polygon and its facet count comes out odd at some radii,
+  // so its bounding box is not centred on its own axis. A hundredth of a millimetre is facet noise;
+  // the misplacement this guards against was ten to thirty MILLIMETRES.
+  chk('Ø'+D+': соосна расточке хомута (по опубликованному датуму)',
+      hookPipeDatum && Math.abs((B.minX+B.maxX)/2 - hookPipeDatum.x) < 0.05 &&
+      Math.abs((B.minY+B.maxY)/2 - hookPipeDatum.y) < 0.05,
+      {centre:[(B.minX+B.maxX)/2, (B.minY+B.maxY)/2], datum:hookPipeDatum});
+  chk('Ø'+D+': и датум действительно не в начале координат',
+      hookPipeDatum && (Math.abs(hookPipeDatum.x) > 0.5 || Math.abs(hookPipeDatum.y) > 0.5), hookPipeDatum);
   // the collar grips the pipe: its bore is drawn AT the pipe radius, so they touch — but the pipe may
   // not sink into the clip's material any deeper than that contact
-  // Non-interference is NOT asserted here: from about Ø20 up the hook's own geometry sits in the
-  // bore (see the section above). What is asserted is that the preview puts the pipe where the
-  // collar's bore is — the thing this pair was added to do.
   const self = buildTrisForShape('box', p);
   const r = crossings(self, plan.world);
-  chk('Ø'+D+': пересечение с крючком не выросло сверх замеренного', r.n < 400, {crossings:r.n});
+  chk('Ø'+D+': труба не проходит сквозь крючок', r.n === 0, {crossings:r.n, tested:r.pairs});
 }
 { const wall = setp({hookMount:'wall'});
   chk('крючок на стену трубы не просит', assemblyMate(wall) === null, {}); }

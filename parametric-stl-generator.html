@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v137';
+const APP_VERSION = 'v138';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4180,10 +4180,19 @@ function assemblyMate(p){
   // builder publishing its datum, the same way the enclosure and Gridfinity pairs above do.
   // The pipe is a REFERENCE part, not something to print: it is handed over as a frozen mesh.
   if ((p.hookMount || 'none') === 'pipe') return { name:'Труба (образец)', rx:90,
-    frozen: (pp)=>{ const rP=Math.max(4,(pp.hookPipeD||25)/2), wall=Math.max(1.5, rP*0.12);
+    frozen: (pp)=>{
+      // Drawn a fit clearance UNDER the nominal radius. The collar's bore is drawn exactly ON the
+      // nominal diameter, so a pipe at nominal size shares that surface — and two faceted cylinders of
+      // equal radius but different segment counts cut through each other's chords, which reads as
+      // hundreds of interference hits that mean nothing. A real pipe goes into a printed collar with
+      // clearance; showing it that way is both truer and quiet.
+      const clr = Math.max(0.05, fitTuned(pp, 0.2));
+      const rP=Math.max(4,(pp.hookPipeD||25)/2) - clr, wall=Math.max(1.5, rP*0.12);
       const L=Math.max(60, (pp.hookClipW||14)*4);
       return tubeYTris(0, 0, rP, Math.max(0.5, rP-wall), -L/2, L/2, Math.max(32, Math.round(rP*4))); },
-    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+    // hookPipeDatum is set by the build of the ACTIVE part, which assemblyPlacement runs first.
+    seat:(A,B,S)=>{ const d = hookPipeDatum || {x:0,y:0,z:0};
+      return { px:S.px + d.x, py:S.py + d.y, pz:S.pz + d.z }; } };
   if (gr === 'wormwheel') return { name:'Червяк', over:{gearMode:'worm'}, rx:90,
     seat:(A,B,S)=>({px:S.px + m*Z/2 + ((B.maxX-B.minX)/2 - m), py:S.py, pz:S.pz}) };
   return null;
@@ -8405,6 +8414,8 @@ function sweepTubePlanar(path, r, seg){
     out.push(orient([path[N-1],R[N-1][k],R[N-1][k1]],[tN[0],tN[1],tN[2]])); }
   return out;
 }
+// Where the pipe collar's bore ended up after buildHook recentred its output — see the note there.
+let hookPipeDatum = null;
 /* ---- Hooks (крючки) -----------------------------------------------------------------------------
    A round-bar hook (swept tube) on either a WALL plate (screw-mounted) or a snap-on PIPE clip (fits any
    pipe Ø). The bar sweeps a J-curve in the Y-Z plane; the mount interpenetrates the bar's root → watertight. */
@@ -8487,8 +8498,12 @@ function buildHook(p){
     // mouth is at ±π/2; the neck stays at the bottom either way.
     const am = ({front:Math.PI/2, back:-Math.PI/2})[p.hookClipMouth] || 0;
     for(const T of sectorShellTris(0,0, rP,rO, am+gh, am+2*Math.PI-gh, -W/2, W/2, cseg)) tris.push(T);
-    // Neck: weld the ring bottom to the hook stem root (spans the bottom wall; only grazes the bore centre).
-    for(const T of boxSpanTris(-rBar*0.95, rBar*0.95, -rO-0.2, -rP+0.5, -rBar*0.95, rBar*0.95)) tris.push(T);
+    // Neck: welds the ring's bottom to the hook stem's root. It has to interpenetrate BOTH, and the ring's
+    // wall is the band rP…rO — so stopping 0.3 mm short of the bore still overlaps that wall by sw−0.3
+    // (3.2 mm at the default) and the stem by 3.4 mm, with nothing left standing in the bore. It used to
+    // run to −rP+0.5, i.e. half a millimetre PAST the inner face, which put a bump exactly where the pipe
+    // sits: 16–28 triangles of the collar crossed into a correctly-placed reference pipe because of it.
+    for(const T of boxSpanTris(-rBar*0.95, rBar*0.95, -rO-0.2, -rP-0.3, -rBar*0.95, rBar*0.95)) tris.push(T);
     // Turn the whole clip 90° about the vertical Y axis so the PIPE runs toward the viewer (axis Z) instead of
     // sideways — the collar faces front, hook still hangs down and curls in the front plane. (x,y,z)→(z,y,−x).
     tris = tris.map(T=>T.map(v=>[ v[2], v[1], -v[0] ]));
@@ -8504,6 +8519,13 @@ function buildHook(p){
     for(const T of buildBoxWithHoles(pw,ph,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]-t/2]));   // plate z∈[−t,0]
   }
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
+  // The collar's bore is built centred on this frame's origin with its axis along Z, and then EVERYTHING
+  // is recentred on the bounding box below — which moves the bore off the origin by exactly the shift.
+  // Published because it cannot be recovered from the outside: a bounding box says nothing about where
+  // a hole inside the part is. (The assembly preview first placed its reference pipe at the origin,
+  // read the resulting overlap as a fault in the hook, and reported a defect that was not there.)
+  hookPipeDatum = (p.hookMount === 'pipe')
+    ? { x: -(lo[0]+hi[0])/2, y: -(lo[1]+hi[1])/2, z: -(lo[2]+hi[2])/2, axis: 2 } : null;
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }
 function cylZTris(cx,cy,r,z0,z1,seg){ const out=[], R=k=>{const a=2*Math.PI*k/seg;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];};

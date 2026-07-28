@@ -434,12 +434,12 @@
   }
 
   /* ---------- logo / relief cards ---------- */
-  #btn-add-model, #btn-add-lid{
+  #btn-add-model, #btn-add-lid, #btn-add-mate{
     width:100%; padding:9px 0; background:transparent; border:1.5px dashed var(--ink-soft);
     border-radius:2px; color:var(--ink-soft); font-family:inherit; font-size:12.5px; font-weight:600;
     cursor:pointer; margin-bottom:10px;
   }
-  #btn-add-model:hover, #btn-add-lid:hover{ border-color:var(--ink); color:var(--ink); }
+  #btn-add-model:hover, #btn-add-lid:hover, #btn-add-mate:hover{ border-color:var(--ink); color:var(--ink); }
   #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
     border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
     font-size:12px; cursor:pointer; }
@@ -452,7 +452,7 @@
     border:1.5px solid var(--ink-soft); border-radius:2px;
     background:var(--field-bg); font-family:inherit; font-size:12px; color:var(--ink);
   }
-  #btn-add-model:disabled, #btn-add-lid:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-mate:disabled{ opacity:0.4; cursor:not-allowed; }
   .model-card{
     border:1px solid var(--ink-soft);
     border-radius:2px;
@@ -792,6 +792,7 @@
 
     <div id="model-cards"></div>
     <button id="btn-add-model">+ Добавить модель</button>
+    <button id="btn-add-mate" title="Построить сопрягаемую деталь и поставить её так, как она встанет в сборке">+ Ответная деталь (в сборке)</button>
     <div id="lid-row">
       <select id="lid-kind" title="Тип крышки для активной модели">
         <option value="plain">Крышка: накидная</option>
@@ -993,7 +994,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v130';
+const APP_VERSION = 'v131';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4041,6 +4042,120 @@ function addModel(){
   models.push(rec);
   loadModel(rec);
   regenerate();          // fresh record has no cached tris — build it now
+  renderModelCards();
+  if (scene3DReady) frameCamera(sceneUnionBBox());
+}
+/* ---- Assembly preview: the mating part, placed as it would sit assembled -------------------------
+   A part designed against a mate is only half a drawing. This takes the ACTIVE model, works out what
+   it mates with, builds that, and drops it into the scene at the position it would actually occupy —
+   so a cap can be seen sitting on its jar rather than imagined onto it.
+
+   The pair and the seating are both derived from the PARAMETERS, not searched for. Every pair here is
+   built from the same parameter set as its mate, so the engagement is a number the model already
+   carries: a cap screws down its neck by exactly `threadLen`, a nut runs down to the underside of a
+   head exactly `threadHeadH` tall, two spur gears sit at m·(Z₁+Z₂)/2 apart. Nothing is measured
+   except where each part's own datum ended up in its build frame, which comes off the bounding box.
+
+   Tooth phase, since it is the one that looks like magic: a tooth is centred at angle 0 on every gear
+   this app builds, so gear 1 points a tooth straight at gear 2. Gear 2 must therefore present a GAP
+   at its own 180°, and 180° is a tooth centre exactly when its tooth count is even — so an even mate
+   turns by half a pitch and an odd one does not turn at all.
+
+   What is NOT here, and why it is not a matter of trying harder: hook + pipe, enclosure tray + lid and
+   Gridfinity bin + baseplate all mate on a datum that is inside the builder — the collar's bore
+   centre, the lid's seating plane, the depth of the foot socket — and none of the three can be
+   recovered from a bounding box. Each needs its builder to publish that one number, which is a
+   deliberate edit per builder rather than a guess made here. */
+function threadHeadHeight(p){ const D=Math.max(6,p.threadD||30); return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6); }
+function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3); }
+// Every screwed pair is stood off by the joint's own fit clearance rather than driven dead home. Not
+// cosmetic: at exactly full engagement the cap's rim lands ON the jar's shoulder and the nut's face ON
+// the underside of the head, i.e. two solids sharing a plane — which is the one thing this engine
+// never does. Measured on a Ø30×3 cap: 568 of 2539 sampled jar vertices sat inside the cap's material
+// at full depth, and none at all once it was backed off by three tenths.
+// Screwed pairs are stood off rather than driven dead home. Not cosmetic: at exactly full engagement
+// the cap's rim lands ON the jar's shoulder and the nut's face ON the underside of the head — two
+// solids sharing a plane, the one thing this engine never does. Measured on a Ø30×3 cap: 568 of 2539
+// sampled jar vertices sat inside the cap's material at full depth, none once it was backed off.
+function seatGap(p){ return Math.max(0.3, p.threadClear != null ? p.threadClear : 0.4); }
+// Engagement of a screwed pair: the thread length, less that stand-off.
+function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p)); }
+// The mate for a set of parameters, or null when the part has no counterpart in this list.
+// `seat(A, B, p)` places B — A and B are the two ROTATED bounding boxes, A already carrying the active
+// model's own position, so the answer is an absolute px/py/pz for the newcomer.
+function assemblyMate(p){
+  const th = p.threadMode || 'none', gr = p.gearMode || 'none';
+  const m  = Math.max(0.3, p.gearModule || 2), Z = Math.max(6, Math.round(p.gearTeeth || 20));
+  // seat(A, B, S) — A and B are the two ROTATED bounding boxes (A already shifted by the active
+  // model's position), S is the active model's own origin. Sideways alignment comes from S, never
+  // from A's centre: a gear with an ODD tooth count has a tooth on one side and a gap on the other,
+  // so its bounding box is NOT centred on its axis, and using the box put the pair 0.08 mm out.
+  // Axial datums do come off the boxes — that is where each part's own mating face ended up.
+  // `back` = which way along Y separates the pair; the phase snap only ever moves that way.
+  if (th === 'cap') return { name:'Банка', over:{threadMode:'jar'}, back:-1,
+    seat:(A,B,S)=>({px:S.px, py:A.minY + threadEngagement(p) - B.maxY, pz:S.pz}) };
+  if (th === 'jar') return { name:'Крышка', over:{threadMode:'cap'}, back:+1,
+    seat:(A,B,S)=>({px:S.px, py:A.maxY - threadEngagement(p) - B.minY, pz:S.pz}) };
+  if (th === 'bolt') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
+    seat:(A,B,S)=>({px:S.px, py:A.minY + threadHeadHeight(p) + seatGap(p) - B.minY, pz:S.pz}) };
+  if (th === 'nut') return { name:'Болт', over:{threadMode:'bolt'}, back:-1,
+    seat:(A,B,S)=>({px:S.px, py:A.minY - threadHeadHeight(p) - seatGap(p) - B.minY, pz:S.pz}) };
+  if (th === 'stud' || th === 'gland') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
+    seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
+  if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
+    seat:(A,B,S)=>({px:S.px + m*Z, py:S.py, pz:S.pz}) };
+  // Worm drive: the axes cross at a right angle, so the newcomer is laid on its side and set out
+  // along the one direction perpendicular to both. Centre distance = the two pitch radii; the worm's
+  // is its own outer radius less one addendum, read off whichever of the two boxes is the worm's.
+  if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:90,
+    seat:(A,B,S)=>({px:S.px + ((A.maxX-A.minX)/2 - m) + m*Z/2, py:S.py, pz:S.pz}) };
+  if (gr === 'wormwheel') return { name:'Червяк', over:{gearMode:'worm'}, rx:90,
+    seat:(A,B,S)=>({px:S.px + m*Z/2 + ((B.maxX-B.minX)/2 - m), py:S.py, pz:S.pz}) };
+  return null;
+}
+function shiftBBox(B, px, py, pz){
+  return { minX:B.minX+px, maxX:B.maxX+px, minY:B.minY+py, maxY:B.maxY+py, minZ:B.minZ+pz, maxZ:B.maxZ+pz };
+}
+// Everything the caller needs to add the mate as a second model — pure, so the tests drive it directly
+// instead of going through the button. `self` supplies the active model's own rotation and position.
+function assemblyPlacement(p, self){
+  const spec = assemblyMate(p); if (!spec) return null;
+  const s = self || {rx:0, ry:0, rz:0, px:0, py:0, pz:0};
+  const params = Object.assign(deepCopyParams(p), spec.over);
+  const rx = spec.rx||0, ry = spec.ry||0, rz = spec.rz||0;
+  const selfTris = rotateTris(buildTrisForShape('box', p), s.rx||0, s.ry||0, s.rz||0);
+  const mateTris = rotateTris(buildTrisForShape('box', params), rx, ry, rz);
+  const A = shiftBBox(computeBBox(selfTris), s.px||0, s.py||0, s.pz||0);
+  const Bb = computeBBox(mateTris);
+  const off = spec.seat(A, Bb, {px:s.px||0, py:s.py||0, pz:s.pz||0}, p);
+  // Screwed pairs must also be in PHASE. Both thread builders write the profile as
+  // phase(i, y) = y/P − …, with y measured from the part's own build origin — which is exactly that
+  // part's minY, since each of them starts its geometry at y = 0. So the two helices interleave only
+  // when the axial distance between those two origins is a whole number of PITCHES. (The pitch, not
+  // the lead: the profile repeats every pitch even on a multi-start thread.) Snap outward to the next
+  // whole pitch — never inward, which would turn a stand-off into an interference. Left out, an M12
+  // pair sat 82° out of phase and drove the bolt 0.44 mm into the nut, one whole fit clearance.
+  if (spec.back){
+    const P = Math.max(0.1, p.threadPitch || 3);
+    const delta = (Bb.minY + off.py) - A.minY;
+    const r = ((delta % P) + P) % P;
+    off.py += spec.back > 0 ? (P - r) % P : -r;
+  }
+  return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris };
+}
+function addAssemblyMate(){
+  if (models.length >= MAX_MODELS){ alert('Достигнут лимит моделей ('+MAX_MODELS+').'); return; }
+  if (pendingChanges) applyPendingNow();
+  saveActiveModel();
+  const self = getActiveModel();
+  const plan = assemblyPlacement(paramState.box, self);
+  if (!plan){ alert('Для этой детали пары не предусмотрено. Есть: крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо.'); return; }
+  const rec = makeModelRecord(plan.name, plan.params);
+  rec.rx = plan.rx; rec.ry = plan.ry; rec.rz = plan.rz;
+  rec.px = plan.px; rec.py = plan.py; rec.pz = plan.pz;
+  models.push(rec);
+  loadModel(rec);
+  regenerate();                       // a fresh record has no cached tris
   renderModelCards();
   if (scene3DReady) frameCamera(sceneUnionBBox());
 }
@@ -10857,11 +10972,20 @@ function renderModelCards() {
   }
   const full = models.length >= MAX_MODELS;
   const btn = document.getElementById('btn-add-model'); if (btn) btn.disabled = full;
+  // The mate button is off unless this part actually has a counterpart — a dead button that
+  // explains itself beats one that looks live and then apologises in an alert.
+  { const mb = document.getElementById('btn-add-mate');
+    if (mb) { const spec = assemblyMate(paramState.box);
+      mb.disabled = full || !spec;
+      mb.textContent = spec ? ('+ ' + spec.name + ' (в сборке)') : '+ Ответная деталь (в сборке)';
+      mb.title = spec ? ('Построить «'+spec.name+'» и поставить её так, как она встанет в сборке')
+                      : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо'; } }
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
   const bp = document.getElementById('btn-add-baseplate'); if (bp) bp.disabled = full;
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
+  { const b = document.getElementById('btn-add-mate'); if (b) b.addEventListener('click', addAssemblyMate); }
   document.getElementById('btn-add-lid').addEventListener('click', () => {
     const kind = document.getElementById('lid-kind').value;
     if (kind === 'hinge') addHingeLidForActive();

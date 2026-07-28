@@ -101,7 +101,7 @@ for(const [nm, cfg] of Object.entries(CASES)){
   chk(nm+': пара найдена и названа верно', spec && spec.name===cfg.mate, {got: spec && spec.name});
 }
 for(const ov of [{}, {hollow:true}, {polyN:6}, {platonic:'d6'}, {sheetShape:'rect'}, {pbPart:'tray'},
-                 {hookMount:'pipe'}, {gfOn:true}, {mntMode:'lbracket'}, {gearMode:'rack'},
+                 {gfOn:true}, {mntMode:'lbracket'}, {gearMode:'rack'},
                  {gearMode:'cam'}, {threadMode:'anchor'}, {threadMode:'wingnut'}]){
   chk('без пары: '+JSON.stringify(ov)+' → null', assemblyMate(setp(ov)) === null, {});
 }
@@ -149,6 +149,32 @@ for(const [nm, cfg] of Object.entries(CASES)){
   chk(nm+': и деталь не проваливается в ответную', b.worst <= budget,
       {deepest:+b.worst.toFixed(3), points:b.n, budget:+budget.toFixed(2)});
 }
+
+console.log('=== the pipe a collar clips to ===');
+// The one pair whose datum could not be read off a bounding box: buildHook builds the collar at the
+// origin of its own frame and then maps the whole clip by (x,y,z)→(z,y,−x), so the bore centre stays
+// at the origin with its axis along Z. That is the builder publishing the number, not the preview
+// guessing it. The pipe is a REFERENCE part — a frozen mesh, not a parametric model.
+for(const D of [16, 25, 40]){
+  const p = setp({hookMount:'pipe', hookPipeD:D});
+  const spec = assemblyMate(p);
+  chk('Ø'+D+': пара — труба', spec && spec.name === 'Труба (образец)', {got: spec && spec.name});
+  const plan = placed(p);
+  chk('Ø'+D+': труба замкнута', manifoldCheck(plan.tris,4).watertight, manifoldCheck(plan.tris,4));
+  chk('Ø'+D+': отдана геометрией, а не параметрами', !!plan.frozenTris, {});
+  const B = computeBBox(plan.world);
+  chk('Ø'+D+': диаметр ровно заказанный', Math.abs((B.maxX-B.minX) - D) < 0.05, {got:+(B.maxX-B.minX).toFixed(2)});
+  chk('Ø'+D+': ось идёт по Z', (B.maxZ-B.minZ) > (B.maxX-B.minX)*1.4, {z:+(B.maxZ-B.minZ).toFixed(1)});
+  chk('Ø'+D+': соосна расточке хомута (центр в начале координат)',
+      Math.abs(B.minX+B.maxX) < 1e-6 && Math.abs(B.minY+B.maxY) < 1e-6, {cx:(B.minX+B.maxX)/2, cy:(B.minY+B.maxY)/2});
+  // the collar grips the pipe: its bore is drawn AT the pipe radius, so they touch — but the pipe may
+  // not sink into the clip's material any deeper than that contact
+  const self = buildTrisForShape('box', p);
+  const a = penetration(self, plan.world, 500);
+  chk('Ø'+D+': труба не тонет в хомуте', a.worst <= 0.35, {deepest:+a.worst.toFixed(3), points:a.n});
+}
+{ const wall = setp({hookMount:'wall'});
+  chk('крючок на стену трубы не просит', assemblyMate(wall) === null, {}); }
 
 console.log('=== the gear pair is set out by the textbook, not by eye ===');
 for(const Z of [12, 20, 21, 30, 31]){

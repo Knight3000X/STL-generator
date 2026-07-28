@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v134';
+const APP_VERSION = 'v135';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4154,6 +4154,16 @@ function assemblyMate(p){
   // is its own outer radius less one addendum, read off whichever of the two boxes is the worm's.
   if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:90,
     seat:(A,B,S)=>({px:S.px + ((A.maxX-A.minX)/2 - m) + m*Z/2, py:S.py, pz:S.pz}) };
+  // The pipe a snap-on collar clips to. Its bore centre is not something to be inferred from a
+  // bounding box — buildHook puts the collar at the origin of its own frame and then maps the whole
+  // clip by (x,y,z)→(z,y,−x), so the centre stays at the origin and the pipe's axis is Z. That is the
+  // builder publishing its datum, which is what the other three pairs on the wish list still need.
+  // The pipe is a REFERENCE part, not something to print: it is handed over as a frozen mesh.
+  if ((p.hookMount || 'none') === 'pipe') return { name:'Труба (образец)', rx:90,
+    frozen: (pp)=>{ const rP=Math.max(4,(pp.hookPipeD||25)/2), wall=Math.max(1.5, rP*0.12);
+      const L=Math.max(60, (pp.hookClipW||14)*4);
+      return tubeYTris(0, 0, rP, Math.max(0.5, rP-wall), -L/2, L/2, Math.max(32, Math.round(rP*4))); },
+    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (gr === 'wormwheel') return { name:'Червяк', over:{gearMode:'worm'}, rx:90,
     seat:(A,B,S)=>({px:S.px + m*Z/2 + ((B.maxX-B.minX)/2 - m), py:S.py, pz:S.pz}) };
   return null;
@@ -4166,10 +4176,12 @@ function shiftBBox(B, px, py, pz){
 function assemblyPlacement(p, self){
   const spec = assemblyMate(p); if (!spec) return null;
   const s = self || {rx:0, ry:0, rz:0, px:0, py:0, pz:0};
-  const params = Object.assign(deepCopyParams(p), spec.over);
+  const params = Object.assign(deepCopyParams(p), spec.over || {});
   const rx = spec.rx||0, ry = spec.ry||0, rz = spec.rz||0;
   const selfTris = rotateTris(buildTrisForShape('box', p), s.rx||0, s.ry||0, s.rz||0);
-  const mateTris = rotateTris(buildTrisForShape('box', params), rx, ry, rz);
+  // A reference part (the pipe a collar clips to) is not parametric — it is handed over as geometry.
+  const rawMate = spec.frozen ? spec.frozen(p) : buildTrisForShape('box', params);
+  const mateTris = rotateTris(rawMate, rx, ry, rz);
   const A = shiftBBox(computeBBox(selfTris), s.px||0, s.py||0, s.pz||0);
   const Bb = computeBBox(mateTris);
   const off = spec.seat(A, Bb, {px:s.px||0, py:s.py||0, pz:s.pz||0}, p);
@@ -4186,7 +4198,8 @@ function assemblyPlacement(p, self){
     const r = ((delta % P) + P) % P;
     off.py += spec.back > 0 ? (P - r) % P : -r;
   }
-  return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris };
+  return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris,
+           frozenTris: spec.frozen ? rawMate : null };
 }
 function addAssemblyMate(){
   if (models.length >= MAX_MODELS){ alert('Достигнут лимит моделей ('+MAX_MODELS+').'); return; }
@@ -4198,6 +4211,11 @@ function addAssemblyMate(){
   const rec = makeModelRecord(plan.name, plan.params);
   rec.rx = plan.rx; rec.ry = plan.ry; rec.rz = plan.rz;
   rec.px = plan.px; rec.py = plan.py; rec.pz = plan.pz;
+  if (plan.frozenTris){                      // a reference part: geometry, not parameters
+    const id = nextFrozenId++; frozenMeshes.set(id, plan.frozenTris);
+    rec.params = defaultBoxParams(); rec.params.frozenId = id;
+    rec.rawTris = plan.frozenTris; rec.color = '#8fa3ae';
+  }
   models.push(rec);
   loadModel(rec);
   regenerate();                       // a fresh record has no cached tris
@@ -11187,7 +11205,7 @@ function renderModelCards() {
       mb.disabled = full || !spec;
       mb.textContent = spec ? ('+ ' + spec.name + ' (в сборке)') : '+ Ответная деталь (в сборке)';
       mb.title = spec ? ('Построить «'+spec.name+'» и поставить её так, как она встанет в сборке')
-                      : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо'; } }
+                      : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо, крючок на трубу↔труба'; } }
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
   const bp = document.getElementById('btn-add-baseplate'); if (bp) bp.disabled = full;
 }

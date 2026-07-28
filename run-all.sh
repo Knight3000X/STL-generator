@@ -69,7 +69,7 @@ add test_logo_zone.js test_logo_zone.js
 # Extraction tests: real <script> + DOM stubs, then the test appended. Ordered LONGEST FIRST, by measured
 # time: with a fixed pool, total wall time is bounded below by the single longest file, so starting it last
 # leaves three idle cores waiting on it. Re-sort this list if the timings in the summary line drift.
-for t in test_thread.js test_battery.js test_slice.js test_funnel.js test_squircle.js test_wormwheel.js test_poly.js \
+for t in test_thread.js test_battery.js test_hook_styles.js test_vase.js test_slice.js test_funnel.js test_squircle.js test_wormwheel.js test_poly.js \
           test_logo_plate.js test_gear.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js \
           test_dice.js test_keycap.js test_squircle_rport.js test_mount_fastener.js test_lattice_floor.js \
           test_logo3d.js test_lattice_walls.js test_calibration.js test_fillet_logo_hollow.js \

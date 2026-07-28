@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v126';
+const APP_VERSION = 'v128';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3762,6 +3762,15 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntPipeWall', label:'Хомут: толщина кольца', min:2, max:12, step:0.5, default:3, unit:'мм'},
     {group:'Крючок', key:'hookMount', label:'Крючок (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'wall',t:'на стену (винтовая пластина)'},{v:'pipe',t:'на трубу (защёлка, любой Ø)'}]},
+    {group:'Крючок', key:'hookStyle', label:'Крючок: что держим', type:'select', default:'bar',
+      options:[{v:'bar',t:'крючок-пруток (J)'},{v:'headphone',t:'вешалка для наушников (широкое седло)'},{v:'brush',t:'держатель щёток / бритвы (прорези)'},{v:'soap',t:'мыльница с дренажом'}]},
+    {group:'Крючок', key:'hookCradleR', label:'Наушники: радиус седла', min:8, max:60, step:1, default:22, unit:'мм'},
+    {group:'Крючок', key:'hookCradleW', label:'Наушники: ширина седла', min:10, max:120, step:1, default:45, unit:'мм'},
+    {group:'Крючок', key:'hookSlotN', label:'Щётки: число прорезей', min:1, max:8, step:1, default:3, unit:'', int:true},
+    {group:'Крючок', key:'hookSlotW', label:'Щётки: ширина прорези', min:3, max:30, step:0.5, default:9, unit:'мм'},
+    {group:'Крючок', key:'hookTrayW', label:'Мыльница: ширина', min:30, max:200, step:1, default:95, unit:'мм'},
+    {group:'Крючок', key:'hookTrayD', label:'Мыльница: глубина', min:20, max:150, step:1, default:85, unit:'мм'},
+    {group:'Крючок', key:'hookTrayH', label:'Мыльница: высота бортика', min:3, max:40, step:0.5, default:12, unit:'мм'},
     {group:'Крючок', key:'hookBar', label:'Крючок: Ø прутка', min:3, max:20, step:0.5, default:8, unit:'мм'},
     {group:'Крючок', key:'hookReach', label:'Крючок: вылет (длина стержня)', min:6, max:120, step:1, default:28, unit:'мм'},
     {group:'Крючок', key:'hookDrop', label:'Крючок: радиус загиба', min:5, max:80, step:1, default:16, unit:'мм'},
@@ -3825,7 +3834,17 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Воронка', key:'fnOn', label:'Воронка (перекрывает всё)', type:'bool', default:false},
     {group:'Воронка', key:'fnMode', label:'Воронка: режим', type:'select', default:'funnel',
-      options:[{v:'funnel',t:'воронка'},{v:'doser',t:'дозатор (барабанный, печать в сборе)'}]},
+      options:[{v:'funnel',t:'воронка'},{v:'doser',t:'дозатор (барабанный, печать в сборе)'},{v:'vase',t:'ваза / абажур (тело вращения)'}]},
+    {group:'Воронка', key:'vaseH', label:'Ваза: высота', min:20, max:300, step:1, default:120, unit:'мм'},
+    {group:'Воронка', key:'vaseBaseD', label:'Ваза: Ø дна', min:10, max:250, step:1, default:60, unit:'мм'},
+    {group:'Воронка', key:'vaseBellyD', label:'Ваза: Ø в самом широком месте', min:10, max:300, step:1, default:95, unit:'мм'},
+    {group:'Воронка', key:'vaseBellyAt', label:'Ваза: где широкое место (% высоты)', min:5, max:85, step:1, default:35, unit:'%'},
+    {group:'Воронка', key:'vaseNeckD', label:'Ваза: Ø шейки', min:10, max:300, step:1, default:55, unit:'мм'},
+    {group:'Воронка', key:'vaseNeckAt', label:'Ваза: где шейка (% высоты)', min:15, max:95, step:1, default:75, unit:'%'},
+    {group:'Воронка', key:'vaseMouthD', label:'Ваза: Ø устья', min:10, max:300, step:1, default:70, unit:'мм'},
+    {group:'Воронка', key:'vaseFacets', label:'Ваза: число граней (0 = круглая)', min:0, max:24, step:1, default:0, unit:'', int:true},
+    {group:'Воронка', key:'vaseTwist', label:'Ваза: закрутка граней на всю высоту', min:-360, max:360, step:5, default:0, unit:'°'},
+    {group:'Воронка', key:'vaseFloor', label:'Ваза: дно (выкл = абажур)', type:'bool', default:true},
     {group:'Воронка', key:'fnDose', label:'Дозатор: доза за оборот (задаёт размер барабана)', min:0.5, max:100, step:0.5, default:10, unit:'мл'},
     {group:'Воронка', key:'fnDoseClear', label:'Дозатор: зазор барабана в камере', min:0.15, max:1, step:0.05, default:0.4, unit:'мм'},
     {group:'Воронка', key:'fnMouthD', label:'Воронка: Ø горловины', min:12, max:400, step:1, default:70, unit:'мм'},
@@ -7462,6 +7481,74 @@ function latheShellYTris(outer, inner, seg){
 }
 /* Funnel (воронка): a straight spout under a cone, as a constant-thickness shell. Printed spout-down it is
    self-supporting — the cone only ever leans outward. */
+/* ---- Vase / lampshade (ваза, абажур) -------------------------------------------------------------
+   A shell of revolution through four control diameters — foot, belly, neck, mouth — at heights you place.
+   The silhouette between them is a Catmull-Rom spline, not straight segments: a vase made of cones has
+   visible creases at every control point, and the whole reason to name only four numbers is that the curve
+   between them is doing the work.
+
+   Faceting and twist are one mechanism, not two. A facetted cross-section is the polygon radius
+   R·cos(π/N)/cos(θ mod 2π/N − π/N); letting its phase advance with height gives the twisted-prism look in
+   the same loft, with no extra geometry. `seg` is forced to a multiple of N so the facet edges land on
+   samples and come out crisp instead of scalloped.
+
+   Printability is the user's to judge: a silhouette that flares faster than 45° per layer overhangs, and
+   this refuses to second-guess a shape someone chose on purpose. */
+function vaseProfileR(t, pts){
+  // Catmull-Rom through the control points, clamped at the ends.
+  const n=pts.length;
+  let i=0; while(i<n-2 && t>pts[i+1][0]) i++;
+  const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[Math.min(n-1,i+1)], p3=pts[Math.min(n-1,i+2)];
+  const span=(p2[0]-p1[0])||1, u=Math.max(0, Math.min(1, (t-p1[0])/span));
+  const u2=u*u, u3=u2*u;
+  return 0.5*((2*p1[1]) + (-p0[1]+p2[1])*u + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*u2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*u3);
+}
+function vaseShellTris(outer, inner, seg, nFac, twist){
+  const out=[], n=outer.length, TAU=2*Math.PI;
+  const rad=(r, a, f)=>{ if(nFac<3) return r;
+    const k=TAU/nFac, ph=a + twist*f, m=((ph%k)+k)%k - k/2;
+    return r*Math.cos(Math.PI/nFac)/Math.cos(m); };
+  const V=(prof,i,k)=>{ const a=TAU*(k%seg)/seg, f=n>1 ? i/(n-1) : 0;
+    const r=rad(prof[i][0], a, f); return [r*Math.cos(a), prof[i][1], r*Math.sin(a)]; };
+  for(let s=0;s<n-1;s++) for(let k=0;k<seg;k++){
+    const A=V(outer,s,k),B=V(outer,s,k+1),C=V(outer,s+1,k+1),D=V(outer,s+1,k), ro=[A[0]+B[0],0,A[2]+B[2]];
+    out.push(orient([A,B,C],ro)); out.push(orient([A,C,D],ro));
+    const a2=V(inner,s,k),b2=V(inner,s,k+1),c2=V(inner,s+1,k+1),d2=V(inner,s+1,k), ri=[-(a2[0]+b2[0]),0,-(a2[2]+b2[2])];
+    out.push(orient([a2,b2,c2],ri)); out.push(orient([a2,c2,d2],ri));
+  }
+  for(const [idx,nrm] of [[0,[0,-1,0]],[n-1,[0,1,0]]]) for(let k=0;k<seg;k++){
+    const O=V(outer,idx,k),O1=V(outer,idx,k+1),I=V(inner,idx,k),I1=V(inner,idx,k+1);
+    out.push(orient([O,I,I1],nrm)); out.push(orient([O,I1,O1],nrm));
+  }
+  return out;
+}
+function buildVase(p){
+  const H    = Math.max(20, p.vaseH||120);
+  const wall = Math.max(0.8, p.fnWall||1.6);
+  const rB   = Math.max(4, (p.vaseBaseD||60)/2);
+  const rBe  = Math.max(4, (p.vaseBellyD||95)/2);
+  const rN   = Math.max(4, (p.vaseNeckD||55)/2);
+  const rM   = Math.max(4, (p.vaseMouthD||70)/2);
+  let tBe = Math.max(0.05, Math.min(0.85, (p.vaseBellyAt||35)/100));
+  let tN  = Math.max(tBe+0.08, Math.min(0.95, (p.vaseNeckAt||75)/100));
+  const nFac = Math.max(0, Math.min(24, Math.round(p.vaseFacets||0)));
+  const twist= (p.vaseTwist||0)*Math.PI/180;
+  const pts  = [[0,rB],[tBe,rBe],[tN,rN],[1,rM]];
+  const nS   = Math.max(24, Math.round(H/1.5));
+  const rMax = Math.max(rB,rBe,rN,rM);
+  let seg    = Math.max(48, Math.round(2*Math.PI*rMax/1.0));
+  if(nFac>=3) seg = nFac*Math.max(2, Math.round(seg/nFac));      // facet edges land on samples
+  const outer=[], inner=[];
+  for(let i=0;i<=nS;i++){ const t=i/nS, r=Math.max(1.2, vaseProfileR(t, pts)), y=H*t;
+    outer.push([r,y]); inner.push([Math.max(0.4, r-wall), y]); }
+  const tris = vaseShellTris(outer, inner, seg, nFac, twist);
+  if(p.vaseFloor!==false){                                        // a lampshade is the same shell, open
+    const rFloor=Math.max(0.6, Math.max(1.2, vaseProfileR(0.02, pts)) - wall*0.4);
+    for(const T of discYTris(0,0, rFloor, -0.01, wall, Math.max(32, Math.round(2*Math.PI*rFloor/1.2)))) tris.push(T);
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 /* ---- Rotary-drum doser (дозатор) ---------------------------------------------------------------
    A hopper over a drum that turns one measured portion out at a time. The DRUM IS SIZED BY THE DOSE:
    with a pocket of half-angle β cut to k·rD, the pocket holds V = β(1−k²)·rD²·L, and tying the drum
@@ -7561,6 +7648,7 @@ function buildDoser(p){
 }
 function buildFunnel(p){
   if((p.fnMode||'funnel')==='doser') return buildDoser(p);
+  if((p.fnMode||'funnel')==='vase') return buildVase(p);
   const rM = Math.max(6, (p.fnMouthD||70)/2);
   const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
   const sL = Math.max(2, p.fnSpoutLen||25);
@@ -8068,6 +8156,52 @@ function sweepTubePlanar(path, r, seg){
 /* ---- Hooks (крючки) -----------------------------------------------------------------------------
    A round-bar hook (swept tube) on either a WALL plate (screw-mounted) or a snap-on PIPE clip (fits any
    pipe Ø). The bar sweeps a J-curve in the Y-Z plane; the mount interpenetrates the bar's root → watertight. */
+/* The FRONT of a wall/pipe fitting is a separate decision from how it MOUNTS. Everything below builds its
+   business end reaching out along +Z from z = −embed (buried in the mount), and the mount — screw plate or
+   pipe collar — is bolted on afterwards, unchanged. That is why an earphone cradle, a brush rack and a soap
+   dish cost a few boxes each instead of three new models. */
+function hookFrontTris(p, style, rBar, embed){
+  const tris=[], push=t=>{ for(const T of t) tris.push(T); };
+  if(style==='headphone'){
+    // A wide saddle, not a bar: a headband parked on a thin rod takes a crease in the padding, so the
+    // cradle is an annular sector whose radius is the band's, and it opens upward.
+    const R=Math.max(8, p.hookCradleR||22), W=Math.max(10, p.hookCradleW||45);
+    const wall=Math.max(2, rBar*0.7), seg=Math.max(48, Math.round(2*Math.PI*(R+wall)/1.1));
+    const reach=Math.max(6, p.hookReach||28), cz=reach+R*0.15;
+    push(sectorShellTris(0, cz, R, R+wall, 2*Math.PI/3, 4*Math.PI/3, -W/2, W/2, seg));   // saddle, mouth up
+    const armW=Math.max(rBar*1.6, W*0.22);
+    push(boxSpanTris(-armW/2, armW/2, -R-wall, -R*0.55, -embed, cz+0.4));                // arm out to it
+    return tris;
+  }
+  if(style==='brush'){
+    // A rack of slots open at the FRONT: a brush or a razor slides in sideways and hangs by its head, which
+    // is the only way to hold one without a hole big enough to swallow it.
+    const n=Math.max(1, Math.min(8, Math.round(p.hookSlotN||3)));
+    const sw=Math.max(3, p.hookSlotW||9), depth=Math.max(10, p.hookReach||28);
+    const th=Math.max(2.5, rBar*0.8), rib=Math.max(3, rBar*1.1);
+    const W=n*sw + (n+1)*rib;
+    push(boxSpanTris(-W/2-0.4, W/2+0.4, -th/2, th/2, -embed, -embed+rib));                 // spine, wider than the
+    //   outermost fingers: flush with them it would share their outer edges, which is a shared face, not a union
+    for(let k=0;k<=n;k++){ const cx=-W/2 + rib/2 + k*(sw+rib);
+      push(boxSpanTris(cx-rib/2, cx+rib/2, -th/2, th/2, -embed, depth)); }                // fingers between slots
+    return tris;
+  }
+  if(style==='soap'){
+    // A dish that drains: the floor is ribs with gaps, so water leaves instead of standing under the bar.
+    const W=Math.max(30, p.hookTrayW||95), D=Math.max(20, p.hookTrayD||85);
+    const H=Math.max(3, p.hookTrayH||12), th=Math.max(2, rBar*0.5);
+    const nR=Math.max(3, Math.round(W/Math.max(6, rBar*1.6)));
+    const pitch=W/nR, rib=Math.min(pitch*0.55, Math.max(2.4, rBar*0.7));
+    for(let k=0;k<nR;k++){ const cx=-W/2 + pitch/2 + k*pitch;
+      push(boxSpanTris(cx-rib/2, cx+rib/2, -th/2, th/2, -embed, D)); }                    // floor ribs
+    push(boxSpanTris(-W/2+0.4, W/2-0.4, -th/2, th/2+H, -embed, -embed+th));                 // back wall, inside the sides
+    for(const sgn of [-1,1])                                                               // side walls
+      push(boxSpanTris(sgn*(W/2-th), sgn*W/2, -th/2, th/2+H, -embed, D));
+    push(boxSpanTris(-W/2+0.4, W/2-0.4, -th/2, th/2+H*0.45, D-th, D));                      // front lip, low: water runs over it
+    return tris;
+  }
+  return null;
+}
 function buildHook(p){
   const rBar=Math.max(2,(p.hookBar||8)/2), reach=Math.max(6,p.hookReach||28), drop=Math.max(rBar+2,p.hookDrop||16);
   const sweep=Math.max(120,Math.min(300,p.hookSweep||230))*Math.PI/180, seg=Math.max(12,Math.round(rBar*4));
@@ -8075,11 +8209,17 @@ function buildHook(p){
   // bar pokes out the back and fouls the wall — clamp it to just under the plate thickness.
   const plateT=Math.max(3,p.hookPlateT||4), nStem=5, path=[];
   const embed = p.hookMount==='pipe' ? Math.max(3,rBar+1) : Math.min(Math.max(3,rBar+1), plateT-0.6);
+  const style = p.hookStyle||'bar';
+  const front = hookFrontTris(p, style, rBar, embed);
+  let tris;
+  if(front){ tris = front; }
+  else {
   for(let i=0;i<=nStem;i++) path.push([0,0,-embed + (reach+embed)*i/nStem]);   // stem out +Z
   const Cy=-drop, Cz=reach, nArc=Math.max(14,Math.round(sweep/0.18));           // hook curve (arc), centre below stem end
   for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
-  let tris=sweepTubePlanar(path, rBar, seg);
+  tris=sweepTubePlanar(path, rBar, seg);
   { const tip=path[path.length-1]; for(const T of sphereTris(tip[0],tip[1],tip[2], rBar, seg)) tris.push(T); }   // hemispherical rounded tip
+  }
   if(p.hookMount==='pipe'){                                       // snap-on pipe clip: ring on top, J-hook hangs straight DOWN
     const rP=Math.max(4,(p.hookPipeD||25)/2), sw=Math.max(2.5,p.hookClipWall||3.5), rO=rP+sw;
     const W=Math.max(rBar*2+2,p.hookClipW||14), cseg=Math.max(28,Math.round(2*Math.PI*rO/1.1));
@@ -8102,7 +8242,10 @@ function buildHook(p){
     tris = tris.map(T=>T.map(v=>[ v[2], v[1], -v[0] ]));
   } else {                                                        // wall plate
     const t=plateT, sd=Math.max(0,p.hookScrewD!=null?p.hookScrewD:4.5), r=sd/2;
-    const pw=Math.max(rBar*2+10, p.hookPlateW||26), ph=Math.max(rBar*2+16, p.hookPlateH||44), holes=[];
+    // The plate has to be at least as wide as whatever it carries, or a soap dish would hang off a stub.
+    let fw=0, fh=0; for(const T of tris) for(const v of T){ fw=Math.max(fw, Math.abs(v[0])*2); fh=Math.max(fh, Math.abs(v[1])*2); }
+    const pw=Math.max(rBar*2+10, p.hookPlateW||26, style==='bar'?0:fw+6);
+    const ph=Math.max(rBar*2+16, p.hookPlateH||44, style==='bar'?0:fh+6), holes=[];
     // Countersinks open on the FRONT (+Z, the hook side) — that is where you drive the screw from; the back
     // face sits flat against the wall and must stay unbroken.
     if(sd>0.5) for(const s of [-1,1]) holes.push({axis:2,cp:0,cq:s*(ph/2-Math.max(sd+3,ph*0.18)),r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:1});
@@ -11187,8 +11330,9 @@ function activeShapeLabel() {
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
-                                          : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
-  if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
+            : (p.fnMode==='vase') ? ((p.vaseFloor===false ? 'абажур' : 'ваза') + ' (H' + Math.round(p.vaseH||120) + ')')
+            : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
+  if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');

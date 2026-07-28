@@ -73,7 +73,7 @@ for t in test_thread.js test_battery.js test_hook_styles.js test_vase.js test_sl
           test_logo_plate.js test_gear.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js \
           test_dice.js test_keycap.js test_squircle_rport.js test_mount_fastener.js test_lattice_floor.js \
           test_logo3d.js test_lattice_walls.js test_calibration.js test_fillet_logo_hollow.js \
-          test_wall_bulge.js test_assembly.js test_edge_bevel.js test_sheet.js test_logo_mirror.js test_e2e_full.js test_rim_box.js test_ujoint.js \
+          test_wall_bulge.js test_assembly.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js test_e2e_full.js test_rim_box.js test_ujoint.js \
           test_fillet_logo.js test_hollow_taper.js test_stand.js test_pip_hinge.js test_scoop.js \
           test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js \
           test_grip.js test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js \

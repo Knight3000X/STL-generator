@@ -224,6 +224,15 @@
   .param-cat[open] > summary::before{ transform:rotate(90deg); }
   .param-cat > summary:hover{ color:var(--ink); }
   .param-cat-body{ padding:11px 0 4px; }
+  /* A search hit that belongs to another base shape: visible, clearly not live, one click from being live. */
+  .param-cat.off-shape > summary{ opacity:0.62; }
+  .param-cat.off-shape .param-cat-body{ opacity:0.62; }
+  .off-shape-note{ display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    margin:6px 0 2px; padding:6px 9px; border-radius:6px; font-size:12px;
+    background:var(--panel-2,rgba(127,127,127,0.12)); color:var(--ink-soft); }
+  .off-shape-note button{ padding:3px 9px; font-size:12px; border-radius:5px; cursor:pointer;
+    border:1px solid var(--ink-soft); background:transparent; color:var(--ink); }
+  .off-shape-note button:hover{ border-color:var(--ink); }
   /* Tabbed navigation: the panel groups sections into Форма / Полости / Отделка / Экспорт so it reads as a
      few focused screens instead of one endless scroll. A search box filters params across every group. */
   #tabnav{ position:sticky; top:0; z-index:5; background:var(--paper); padding:8px 0 6px; margin:2px 0 4px;
@@ -994,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v132';
+const APP_VERSION = 'v133';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4557,6 +4566,43 @@ function sectionRelevant(key, mode, hollow){
   if (['Сетчатое дно','Перегородки (полый)','Скат (полый)','Полка под ярлык (полый)','Грип-насечка'].includes(key)) return hollow;
   return true;
 }
+/* ---- panel search: reaches into the base shapes that are not on screen ---------------------------
+   Every parameter group belongs to one model kind, and updateSectionVisibility hides the ones that do
+   not apply — which is right for browsing and wrong for SEARCHING. Typing "холдер" while a cube is on
+   screen used to find nothing at all, because the battery-holder parameters live in a group that only
+   exists once «Крепёж» is the base shape. That reads as "this app cannot do that", which is a lie.
+
+   Search now looks everywhere and says WHERE: a hit outside the current kind still shows, dimmed, with
+   the one button that would make it live. Only groups that are exclusive to a kind are listed here —
+   «Многогранник» is reachable from the plain cube too, so it is not a foreign group. */
+const GROUP_KIND = {
+  'Кейкап':'keycap', 'Лист / панель':'sheet', 'Резьба (крышка / штуцер)':'thread',
+  'Петля (печать в сборе)':'hinge', 'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
+  'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
+  'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel',
+};
+const KIND_LABEL = {
+  keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
+  mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
+  funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма',
+};
+// Every parameter whose label matches, with the group it lives in and whether that group is reachable
+// from the CURRENT base shape. Pure — no DOM — so the tests drive it directly.
+function paramSearchHits(q, p){
+  const needle = (q||'').trim().toLowerCase();
+  if(!needle) return [];
+  const mode = dominantMode(p || paramState.box), hollow = !!(p || paramState.box).hollow;
+  const out = [];
+  for(const param of SHAPE_PARAMS.box){
+    const label = (param.label||'').toLowerCase();
+    if(!label.includes(needle)) continue;
+    const group = param.group || 'Параметры';
+    const kind = GROUP_KIND[group] || null;
+    out.push({ key:param.key, label:param.label, group, kind,
+               relevant: sectionRelevant(group, mode, hollow) });
+  }
+  return out;
+}
 let activeTab = 'form';
 try { activeTab = localStorage.getItem('stl-tab') || 'form'; } catch(e) {}
 // Combine tab + mode-relevance: a section shows only when it lives on the active tab AND is relevant to the
@@ -4629,23 +4675,42 @@ function applyParamSearch(q){
   if (!q){ updateSectionVisibility(); return; }
   if (!paramState || !paramState.box) return;
   const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow;
-  // show all tab containers so matches on any tab are reachable
-  document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => {
-    const key = el.dataset.group || el.dataset.fold || el.dataset.relkey || '';
-    const rel = key ? sectionRelevant(key, mode, hollow) : true;
-    el.style.display = rel ? '' : 'none';
-  });
+  // Search reaches every tab AND every base shape — see GROUP_KIND. A group that does not apply to the
+  // current kind is shown anyway, dimmed, with the button that switches to the kind it belongs to.
+  document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => { el.style.display = ''; });
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  // filter rows inside each relevant group
+  // filter rows inside each group
   document.querySelectorAll('#panel details.param-cat').forEach(cat => {
-    if (cat.style.display === 'none') return;
     let hits = 0;
     cat.querySelectorAll('.param-row, .toggle-row').forEach(row => {
       const lbl = (row.querySelector('.param-label, span')?.textContent || '').toLowerCase();
       const hit = lbl.includes(q); row.style.display = hit ? '' : 'none'; if (hit) hits++;
     });
     cat.style.display = hits ? '' : 'none';
-    if (hits) cat.open = true;
+    if (!hits) return;
+    cat.open = true;
+    const gname = cat.dataset.group || '';
+    const kind = GROUP_KIND[gname] || null;
+    const foreign = !!kind && !sectionRelevant(gname, mode, hollow);
+    cat.classList.toggle('off-shape', foreign);
+    let note = cat.querySelector('.off-shape-note');
+    if (foreign) {
+      if (!note) {
+        note = document.createElement('div'); note.className = 'off-shape-note';
+        const txt = document.createElement('span');
+        txt.textContent = 'Это параметры другого типа детали — «' + (KIND_LABEL[kind] || kind) + '».';
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.textContent = 'Переключиться';
+        btn.addEventListener('click', () => {
+          setBaseShape(kind);
+          const box = document.getElementById('tab-search');
+          applyParamSearch(box ? box.value : '');       // same query, now against the new kind
+        });
+        note.appendChild(txt); note.appendChild(btn);
+        cat.insertBefore(note, cat.querySelector('.param-cat-body'));
+      }
+      note.style.display = '';
+    } else if (note) note.style.display = 'none';
   });
 }
 

@@ -176,5 +176,61 @@ console.log('=== the plain funnel is untouched ===');
 { const a=base({fnMode:'funnel',fnDose:1}), b=base({fnMode:'funnel',fnDose:90});
   chk('the dose knob does nothing in funnel mode', Math.abs(vol(a)-vol(b))<1e-9, {}); }
 
+console.log('=== the hopper actually funnels into the drum ===');
+// The top plate is the hopper's FLOOR. It used to be a rectangle L × 2(hw+wall+0.8), and the circle the
+// cone comes down on is drawn through that rectangle's corners — so along the sides the plate stopped
+// 6.4 mm short, the cone hung over the gap holding on by the end cheeks alone, and anything poured in ran
+// straight out through the slot. Measured by pouring: rays sent down the hopper must all meet material.
+//
+// Depth counted, with the area guard taken RELATIVE to each triangle's own size. |A| here IS the
+// y-component of the normal, so an absolute epsilon lets a nearly edge-on facet through and its
+// barycentric coordinates then report a crossing tens of millimetres outside the part — which is exactly
+// how this probe first claimed the fixed hopper still leaked.
+function runsY(tris, x, z){
+  const hits=[];
+  for(const T of tris){ const [a,b,c]=T;
+    const d1=(b[2]-a[2])*(x-a[0])-(b[0]-a[0])*(z-a[2]);
+    const d2=(c[2]-b[2])*(x-b[0])-(c[0]-b[0])*(z-b[2]);
+    const d3=(a[2]-c[2])*(x-c[0])-(a[0]-c[0])*(z-c[2]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+    const A=n[1], mag=Math.hypot(n[0],n[1],n[2]);
+    if(!(Math.abs(A) > 1e-6*mag)) continue;
+    const w1=((b[2]-z)*(c[0]-x)-(b[0]-x)*(c[2]-z))/A, w2=((c[2]-z)*(a[0]-x)-(c[0]-x)*(a[2]-z))/A;
+    hits.push([w1*a[1]+w2*b[1]+(1-w1-w2)*c[1], A<0?1:-1]);
+  }
+  hits.sort((P,Q)=>P[0]-Q[0]);
+  const runs=[]; let d=0, s=null, net=0;
+  for(const [t,dd] of hits){ const pr=d; d+=dd; net=d;
+    if(pr<=0&&d>0) s=t; else if(pr>0&&d<=0){ if(s!==null&&t-s>1e-6) runs.push([s,t]); s=null; } }
+  return {runs, net};
+}
+for(const ov of [{}, {fnDose:2}, {fnDose:40}, {fnWall:2}, {fnWall:5}, {fnMouthD:120}, {fnConeH:20}]){
+  const t=base(ov);
+  // The throat is the circle the cone stands on; sample the whole disc inside it.
+  let leak=0, unbal=0, tested=0, worst=null;
+  for(let i=0;i<48;i++){ const a=2*Math.PI*(i+0.37)/48;
+    for(let r=1.5; r<22; r+=1.0){ const x=r*Math.cos(a), z=r*Math.sin(a);
+      const R=runsY(t,x,z); tested++;
+      if(R.net!==0) unbal++;
+      if(!R.runs.length){ leak++; if(!worst) worst=[+x.toFixed(1),+z.toFixed(1)]; } } }
+  chk('доза '+(ov.fnDose||10)+' '+JSON.stringify(ov)+': из бункера ничего не сыплется мимо барабана',
+      leak===0, {leaks:leak, of:tested, at:worst});
+  chk('доза '+(ov.fnDose||10)+' '+JSON.stringify(ov)+': глубина по лучу всюду сходится',
+      unbal===0, {unbalanced:unbal, of:tested});
+}
+{ // ...and the cone lands ON the plate rather than beside it: material, all the way from the cone's inner
+  // wall in to the drum window, at the plate's own height.
+  const t=base({}), B=computeBBox(t);
+  let plateY=null;                                   // topmost horizontal run under the cone's throat
+  const R=runsY(t, 0, 0.7);                          // straight down the middle: window, so no plate
+  chk('над окном барабана плиты нет — это и есть проход', R.runs.every(r=>r[1]<0), {runs:R.runs.length});
+  for(const r of [16, 18, 20, 22]){                  // out towards the cone: plate must be there
+    const rr=runsY(t, r*Math.cos(0.4), r*Math.sin(0.4));
+    chk('на радиусе '+r+' под конусом есть пол', rr.runs.length>0, {runs:rr.runs.length});
+  }
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

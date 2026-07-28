@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v141';
+const APP_VERSION = 'v142';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -1824,7 +1824,7 @@ function buildAsymRoundedBox(w, h, d, R, resolution, segs, dispFnsByFace, zonesB
     const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(H,ang); const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rr*Math.cos(ang); c[q]=H.cq+rr*Math.sin(ang); return c; };
     for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
       const Ap=ptAt(a0,+ha), Bp=ptAt(a1,+ha), Am=ptAt(a0,-ha), Bm=ptAt(a1,-ha);
-      const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+      const am=ringMidAngle(a0,a1); const mid=[0,0,0]; mid[p]=Math.cos(am); mid[q]=Math.sin(am); const refIn=[-mid[0],-mid[1],-mid[2]];
       tris.push(orient([Ap,Bp,Bm],refIn)); tris.push(orient([Ap,Bm,Am],refIn)); }
   }
   return tris;
@@ -6903,6 +6903,11 @@ function buildSquircleHollow(w, h, d, pexp, eV, t, floorY, wallDispFns, botFn, f
 // by construction (shared vertices, no arbitrary boolean clipping). Only used on the plain solid box:
 // taper / fillet / squircle / bulge / hollow all override it (a flat wall is what keeps the bore exact).
 const HOLE_AXIS_PQ = { 0:[1,2], 1:[0,2], 2:[0,1] }; // bore axis -> the face's (u,v) world axes (match FACE_AXES)
+// Mid-angle of the facet between two consecutive samples of a ring, used as the outward reference for
+// orient(). NOT (a0+a1)/2: the ring closes, so on the last facet a0 is near 2π and a1 near 0, and the plain
+// average lands on the OPPOSITE side of the bore. That one column of every bore wall came out inside-out —
+// invisible to manifoldCheck, which pairs edges and never asks which way a face is turned.
+function ringMidAngle(a0, a1){ return (a1 < a0) ? (a0+a1)/2 + Math.PI : (a0+a1)/2; }
 // Map a rounded-rect port's WIDTH (always horizontal) and HEIGHT (always vertical = world-Y on a side wall)
 // to half-extents along the face's own (u,v)=HOLE_AXIS_PQ axes. On +X/-X the u-axis IS world-Y, so width and
 // height land on the OPPOSITE axes than on +Z/-Z. Without this a 9×3.2 USB-C rotated 90° whenever it was
@@ -7065,7 +7070,7 @@ function buildBoxWithHoles(w,h,d, holes){
       const pt=(ang,ca,rad)=>{ const c=[0,0,0]; c[a]=ca; c[p]=H.cp+rad*Math.cos(ang); c[q]=H.cq+rad*Math.sin(ang); return c; };
       // ruled tube between two coaxial rings (ca0,r0)→(ca1,r1); wall faces the axis (the void)
       const tube=(ca0,r0,ca1,r1)=>{ for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
-        const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+        const am=ringMidAngle(a0,a1); const mid=[0,0,0]; mid[p]=Math.cos(am); mid[q]=Math.sin(am); const refIn=[-mid[0],-mid[1],-mid[2]];
         tris.push(orient([pt(a0,ca0,r0),pt(a1,ca0,r0),pt(a1,ca1,r1)], refIn));
         tris.push(orient([pt(a0,ca0,r0),pt(a1,ca1,r1),pt(a0,ca1,r1)], refIn)); } };
       if (H.head) {
@@ -7098,7 +7103,7 @@ function buildBoxWithHoles(w,h,d, holes){
       for (const [caA, exA, caB, exB] of spans)
         for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
           const Ap=ptAt(a0,caA,exA), Bp=ptAt(a1,caA,exA), Am=ptAt(a0,caB,exB), Bm=ptAt(a1,caB,exB);
-          const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2);
+          const am=ringMidAngle(a0,a1); const mid=[0,0,0]; mid[p]=Math.cos(am); mid[q]=Math.sin(am);
           const refIn=[-mid[0],-mid[1],-mid[2]]; // bore wall faces the void (toward the axis centre-line)
           tris.push(orient([Ap,Bp,Bm], refIn)); tris.push(orient([Ap,Bm,Am], refIn));
         }
@@ -7287,7 +7292,7 @@ function buildHollowBoxWithPorts(w,h,d,t, ports, tf){
     const ptAt=(ang,ca)=>{ const rr=holeRadiusAt(pt,ang); const c=[0,0,0]; c[a]=ca; c[p]=pt.cp+rr*Math.cos(ang); c[q]=pt.cq+rr*Math.sin(ang); return T(c); };
     for(let k=0;k<B;k++){ const k1=(k+1)%B, a0=angs[k], a1=angs[k1];
       const Ao=ptAt(a0,s*ha), Bo=ptAt(a1,s*ha), Ai=ptAt(a0,innerN), Bi=ptAt(a1,innerN);
-      const mid=[0,0,0]; mid[p]=Math.cos((a0+a1)/2); mid[q]=Math.sin((a0+a1)/2); const refIn=[-mid[0],-mid[1],-mid[2]];
+      const am=ringMidAngle(a0,a1); const mid=[0,0,0]; mid[p]=Math.cos(am); mid[q]=Math.sin(am); const refIn=[-mid[0],-mid[1],-mid[2]];
       tris.push(orient([Ao,Bo,Bi],refIn)); tris.push(orient([Ao,Bi,Ai],refIn)); }
   }
   // top rim (y=hh): annulus outer perimeter → cavity opening, 3×3 bands minus centre
@@ -7903,19 +7908,31 @@ function buildDoser(p){
   // window at r = R and buried in the cheek below that — which is exactly what welds it to the cheek.
   const hw = R*Math.sin(WHALF);
   const uLow = Math.sqrt(Math.max(0.01, rc*rc - hw*hw)) + 0.6;   // first height clear of the drum
+  // The top plate rides 0.5 above the end plates' top edge rather than finishing flush with it. Flush meant
+  // two solids sharing a plane exactly — and the plate has to be the HIGHER of the two, or the end plates
+  // stand proud of the hopper floor as a ledge inside the funnel, which is the one thing a hopper must not
+  // have. Overlapping downward into them by 1.5 mm is a volume, not a kiss.
   const yTop = R*1.05 + 1, spout = Math.max(3, Math.min(p.fnSpoutLen||25, R));
+  const plY0 = yTop + 0.5, plY1 = plY0 + wall;
   const chute=(ang, u0, u1)=>{ for(const s of [-1,1]){
     const q=[[u0, s*hw],[u1, s*hw],[u1, s*(hw+wall)],[u0, s*(hw+wall)]].map(([u,w])=>YZ(u,w,ang));
     push(convexPrismXTris(q, -L/2, L/2)); } };
-  chute(0, uLow, yTop+wall+0.6);                                 // feed chute, straight up, THROUGH the plate
+  chute(0, uLow, plY1+0.6);                                      // feed chute, straight up, THROUGH the plate
   chute(GAMMA, uLow, R+spout);                                   // outlet chute, down and forward
-  // Top plate closes the feed chute except for an opening the size of the drum window.
-  // The plate reaches 0.8 wider than the chute walls, and the walls run past its top face: the two solids
-  // then share a VOLUME instead of only a plane, which is the difference between a union and two solids
-  // kissing on a face.
-  { const hole=[{axis:1, cp:0, cq:0, ap:Math.max(1,L/2-1.2), aq:Math.max(1,hw-1.2), rc:Math.min(3, hw*0.4)}];
-    for(const T of buildBoxWithHoles(L, wall, 2*(hw+wall+0.8), hole))
-      tris.push(T.map(v=>[v[0], v[1]+yTop+wall/2, v[2]])); }
+  // Top plate closes the feed chute except for an opening the size of the drum window, and it is the FLOOR
+  // OF THE HOPPER — so it has to reach the cone, all the way round. It used to be a rectangle
+  // L × 2(hw+wall+0.8), and the circle the cone lands on is drawn through that rectangle's CORNERS: along
+  // the sides the plate stopped 6.4 mm short, the cone stood over the gap holding on by the end cheeks
+  // alone, and anything poured in ran out through the slot instead of into the drum. A disc of the cone's
+  // own radius, with the drum window bored through it, is the shape the job actually asks for —
+  // roundedRectDist gives that window as a radius-by-angle, which is the form the loft's bore wants.
+  // The chute walls still run past the plate's top face, so those two share a VOLUME and not just a plane.
+  const rBot=Math.hypot(L/2, hw)+wall+0.5;                       // where the hopper cone comes down
+  { const ap=Math.max(1,L/2-1.2), aq=Math.max(1,hw-1.2), rcr=Math.min(3, hw*0.4);
+    const rPlate=rBot-0.4, nP=Math.max(96, Math.round(2*Math.PI*rPlate/0.8)), circ=[];
+    for(let i=0;i<nP;i++){ const a=2*Math.PI*i/nP; circ.push([rPlate*Math.cos(a), rPlate*Math.sin(a)]); }
+    for(const T of extrudeProfileY(circ, a=>roundedRectDist(ap, aq, rcr, a), wall, 0))
+      tris.push(T.map(v=>[v[0], v[1]+plY0+wall/2, v[2]])); }
   // End plates: axle bearing + the legs the whole thing stands on. Sized to swallow the outlet chute so
   // the spout cannot poke out below the feet.
   let zMax=R+wall, yMin=-(R+Math.max(6, R*0.25));
@@ -7930,9 +7947,9 @@ function buildDoser(p){
       tris.push(T.map(v=>[v[0]+cx, v[1]+yMin+plateH/2, v[2]])); }
   // Hopper: a constant-thickness cone that lands ON the top plate, wide enough at the bottom to clear the
   // feed opening's corners so nothing sits on a ledge.
-  { const rBot=Math.hypot(L/2, hw)+wall+0.5, rM=Math.max(rBot+4, (p.fnMouthD||70)/2);
+  { const rM=Math.max(rBot+4, (p.fnMouthD||70)/2);
     const cH=Math.max(6, p.fnConeH||45), nC=24, outer=[], inner=[];
-    const y0=yTop+wall-0.6;
+    const y0=plY1-0.6;
     for(let i=0;i<=nC;i++){ const f=i/nC, r=rBot+(rM-rBot)*f;
       outer.push([r, y0+cH*f]); inner.push([Math.max(0.4, r-wall), y0+cH*f]); }
     push(latheShellYTris(outer, inner, Math.max(64, Math.round(2*Math.PI*rM/1.2)))); }

@@ -228,5 +228,56 @@ base({width:60,height:50,depth:70,hollow:true,wallThickness:3}); boxHoles.length
 boxHoles.push({id:3,face:'+X',u0:0,v0:0,shape:'rrect',portW:14,portH:5,cornerR:2}); clampHoleToFace(boxHoles[0]);
 chk('+X hollow USB-C port watertight', wt(buildTrisForShape('box',paramState.box)));
 
+// ---- no bore wall is inside-out -------------------------------------------------------------------
+// A ring's facets take their outward reference from the mid-angle between two consecutive samples, and on
+// the CLOSING facet a plain (a0+a1)/2 averages an angle near 2π with one near 0 and lands on the opposite
+// side of the bore. That one column came out facing into the material, on every hole this file builds —
+// and manifoldCheck cannot see it, because it pairs edges and never asks which way a face is turned.
+// It surfaced on the doser's axle bearing, where the inverted column happens to sit at the bore's floor.
+//
+// The claim: over a correctly wound closed shell, a ray's depth counter returns to zero. It is checked on
+// every axis in turn, because which column is inverted depends on where the ring's seam falls.
+function depthNet(tris, ax, p, q){
+  const u=(ax+1)%3, v=(ax+2)%3; let d=0;
+  for(const T of tris){ const [a,b,c]=T;
+    const d1=(b[u]-a[u])*(q-a[v])-(b[v]-a[v])*(p-a[u]);
+    const d2=(c[u]-b[u])*(q-b[v])-(c[v]-b[v])*(p-b[u]);
+    const d3=(a[u]-c[u])*(q-c[v])-(a[v]-c[v])*(p-c[u]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+    const A=n[ax], mag=Math.hypot(n[0],n[1],n[2]);
+    if(!(Math.abs(A) > 1e-6*mag)) continue;           // relative, not absolute: |A| IS the normal's ax term
+    d += A<0 ? 1 : -1; }
+  return d; }
+function wound(tris, halfP, halfQ, ax){
+  let bad=0;
+  for(let i=0;i<26;i++) for(let j=0;j<26;j++){
+    const p=-halfP+2*halfP*(i+0.43)/26, q=-halfQ+2*halfQ*(j+0.31)/26;
+    if(depthNet(tris, ax, p, q)!==0) bad++; }
+  return bad; }
+for(const axis of [0,1,2]){
+  for(const H of [{axis,cp:0,cq:0,r:4},
+                  {axis,cp:2,cq:-3,r:2.5},
+                  {axis,cp:0,cq:0,ap:6,aq:3,rc:1.2},
+                  {axis,cp:0,cq:0,r:3,head:'sink',headR:5,headDepth:2.5,headSide:1},
+                  {axis,cp:0,cq:0,r:3,head:'bore',headR:5,headDepth:3,headSide:-1}]){
+    const t=buildBoxWithHoles(20,30,24,[H]);
+    const kind=(H.head||(H.ap?'паз':'круг'));
+    chk('отверстие вдоль '+'XYZ'[axis]+' ('+kind+'): замкнуто', wt(t));
+    let bad=0;
+    for(const ax of [0,1,2]) bad += wound(t, [10,15,12][(ax+1)%3], [10,15,12][(ax+2)%3], ax);
+    chk('отверстие вдоль '+'XYZ'[axis]+' ('+kind+'): ни один треугольник не вывернут', bad===0, {rays:bad});
+  }
+}
+{ // two holes on different axes at once, and the doser's real case: a bore through a thin plate
+  const t=buildBoxWithHoles(20,30,24,[{axis:0,cp:0,cq:0,r:4},{axis:2,cp:0,cq:8,r:3}]);
+  let bad=0; for(const ax of [0,1,2]) bad += wound(t, [10,15,12][(ax+1)%3], [10,15,12][(ax+2)%3], ax);
+  chk('два отверстия по разным осям: ничего не вывернуто', bad===0 && wt(t), {rays:bad});
+  const thin=buildBoxWithHoles(2.8, 60, 62, [{axis:0, cp:0, cq:0, r:6.4}]);
+  let bad2=0; for(const ax of [0,1,2]) bad2 += wound(thin, [1.4,30,31][(ax+1)%3], [1.4,30,31][(ax+2)%3], ax);
+  chk('подшипник оси в тонкой щеке (случай дозатора)', bad2===0 && wt(thin), {rays:bad2});
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v128';
+const APP_VERSION = 'v129';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3182,6 +3182,21 @@ function makeLogoFrame(logo, taperFn) {
   return { center, TuHat: normalize(TuRaw), TvHat: normalize(TvRaw), magU: vlength(TuRaw), magV: vlength(TvRaw) };
 }
 
+/* Which way round the artwork is read on each face.
+   FACE_AXES gives every face the two world axes that are NOT its normal, in ascending order. That is a
+   naming convention, not an orientation: seen from OUTSIDE the face, the frame (image-right = +u,
+   image-down = −v) is right-handed on +X / −Y / +Z and LEFT-handed on −X / +Y / −Z — so on those three
+   the label came out mirrored. Reported on the top of a project-box lid, but it was never enclosure-
+   specific: any label on −X, +Y or −Z was affected, on every base shape.
+   One sign flip restores the handedness; WHICH sign decides which way up the text then sits, and these
+   are the readable choices: the back face reads left-to-right as you walk round the model, and the top
+   reads with the model's front edge at the bottom — the way you look at a lid lying on the bed.
+   Applied to the face offsets BEFORE the logo's own rotation, so "поворот 30°" turns the visible text
+   the same way on every face instead of backwards on half of them.
+   '-Y-inner' (the floor of the cavity) faces +Y like the top, and takes the top's flip. */
+const LOGO_FACE_FLIP = { '+X':[1,1], '-X':[1,-1], '+Y':[1,-1], '-Y':[1,1], '+Z':[1,1], '-Z':[-1,1], '-Y-inner':[1,-1] };
+function logoFaceFlip(face){ return LOGO_FACE_FLIP[face] || [1,1]; }
+
 // Builds the dispFn for one logo. `taperedPos` (3rd arg, the grid vertex's ALREADY-COMPUTED
 // tapered 3D position) is projected onto the logo's local tangent-plane basis (`frame`) to
 // get its TRUE real-mm offset from the logo's center — this is what the bounds-check and
@@ -3195,10 +3210,11 @@ function makeLogoDispFn(logo, frame) {
   if (!logo.heightmap) return null;
   const rad = (logo.rotation||0) * Math.PI/180;
   const cosR = Math.cos(-rad), sinR = Math.sin(-rad); // inverse rotation: world -> logo-local
+  const [fu, fv] = logoFaceFlip(logo.face);
   return (u, v, taperedPos) => {
     const offset3D = sub(taperedPos, frame.center);
-    const realDu = dot(offset3D, frame.TuHat);
-    const realDv = dot(offset3D, frame.TvHat);
+    const realDu = fu * dot(offset3D, frame.TuHat);
+    const realDv = fv * dot(offset3D, frame.TvHat);
     const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
     if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
     let u01 = (ldu + logo.w/2) / logo.w;
@@ -3216,9 +3232,10 @@ function makeLogoMaskFn(logo, frame) {
   if (!logo.heightmap) return null;
   const rad = (logo.rotation||0) * Math.PI/180;
   const cosR = Math.cos(-rad), sinR = Math.sin(-rad);
+  const [fu, fv] = logoFaceFlip(logo.face);
   return (u, v, taperedPos) => {
     const offset3D = sub(taperedPos, frame.center);
-    const realDu = dot(offset3D, frame.TuHat), realDv = dot(offset3D, frame.TvHat);
+    const realDu = fu*dot(offset3D, frame.TuHat), realDv = fv*dot(offset3D, frame.TvHat);
     const ldu = realDu*cosR - realDv*sinR, ldv = realDu*sinR + realDv*cosR;
     if (Math.abs(ldu) > logo.w/2 || Math.abs(ldv) > logo.h/2) return 0;
     const u01 = (ldu + logo.w/2) / logo.w, v01 = 1 - (ldv + logo.h/2) / logo.h;
@@ -3374,10 +3391,11 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   const N = Math.max(4, Math.min(400, Math.ceil(2*halfU/cell)));
   const M = Math.max(4, Math.min(400, Math.ceil(2*halfV/cell)));
   const rad = (logo.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
+  const [fu, fv] = logoFaceFlip(logo.face);                 // see LOGO_FACE_FLIP: three faces read mirrored
   const mask = new Uint8Array(N*M);
   let any=false;
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-    const du = (i+0.5)/N*2*halfU - halfU, dv = (j+0.5)/M*2*halfV - halfV;
+    const du = fu*((i+0.5)/N*2*halfU - halfU), dv = fv*((j+0.5)/M*2*halfV - halfV);
     const lu = du*cosR - dv*sinR, lv = du*sinR + dv*cosR;   // rotate into image space
     if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) continue;
     let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);

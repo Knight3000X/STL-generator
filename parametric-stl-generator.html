@@ -993,7 +993,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v123';
+const APP_VERSION = 'v124';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3710,12 +3710,16 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtAngle', label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
     {group:'Крепёж / монтаж', key:'mntDtClear', label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCalN', label:'Калибровка: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntCalH', label:'Калибровка: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBrSpan', label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRetGap', label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitD', label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitN', label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntFitStart', label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
@@ -8274,6 +8278,92 @@ function buildFitTest(p){
    built as three convex solids instead: two flank walls whose inner edge follows the tail's slope, plus a
    floor slab they both sink into. The flanks never touch each other (the groove separates them), so the
    appended shells stay watertight. Socket = tail + clearance per side, and it picks up the global fitTune. */
+/* ---- Calibration prints ------------------------------------------------------------------------
+   Three prints that measure a printer rather than make a part. Each answers ONE question, because a
+   tower that mixes five effects tells you which segment failed and never which setting caused it.
+
+   TEMPERATURE TOWER (`temptower`): n stacked segments, each stepped 0.8 mm narrower than the one below
+   so the boundary is unmistakable when you tell the slicer to change temperature at that height. Each
+   segment carries the two things temperature actually decides — a bridged window (its top edge is
+   unsupported, so it sags when the plastic is too hot) and a horizontal fin (droop). Segment k wears
+   k+1 ribs, so the best-looking one can be counted off the print instead of measured off the model.
+
+   BRIDGE / OVERHANG (`bridgetest`): spans that grow linearly to the requested maximum, next to fins
+   whose UNDERSIDE angle sweeps 30° to 80° from vertical. Both on one base, because the answer you want
+   is a pair of numbers — the longest span and the shallowest angle your machine still holds.
+
+   RETRACTION (`retract`): two tapered towers a fixed distance apart. Tapered on purpose: the higher it
+   goes the less material each layer holds, so travel moves get more frequent per unit of extrusion and
+   stringing shows up as a gradient rather than a yes/no. */
+function buildCalTower(p){
+  const n = Math.max(3, Math.min(10, Math.round(p.mntCalN||5)));
+  const H = Math.max(5, p.mntCalH||12);
+  const W = Math.max(16, p.mntW||30), D = Math.max(12, W*0.7), tris=[];
+  for(let k=0;k<n;k++){
+    const w = W - k*0.8, y0 = k*H;                       // narrowing upward keeps every ledge self-supporting
+    // Segments OVERLAP by 0.4 instead of stacking face to face: identical Z extents would put two boxes'
+    // edges in the same place, which is a bad edge, not a union.
+    const yLo = k===0 ? 0 : y0-0.4, hgt = (k+1)*H - yLo;
+    const hole = [{axis:2, cp:0, cq:(y0+H*0.42)-(yLo+hgt/2), ap:Math.max(2,w*0.28), aq:Math.max(1.5,H*0.22), rc:0}];
+    for(const T of buildBoxWithHoles(w, hgt, D, hole)) tris.push(T.map(v=>[v[0], v[1]+yLo+hgt/2, v[2]]));
+    const finL = Math.max(3, W*0.28), finT = Math.max(1.2, H*0.14);
+    for(const T of boxSpanTris(w/2-1.2, w/2+finL, y0+H-finT, y0+H-0.3, -D*0.3, D*0.3)) tris.push(T);  // droop fin
+    const rib = Math.max(1, W*0.035), pitch = Math.min(rib*2.6, (w*0.7)/Math.max(1,k+1));
+    for(let i=0;i<=k;i++){ const cx = -(k*pitch)/2 + i*pitch;                                    // count marks
+      for(const T of boxSpanTris(cx-rib/2, cx+rib/2, y0+H*0.55, y0+H*0.85, -D/2-0.8, -D/2+0.6)) tris.push(T); }
+  }
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+function buildBridgeTest(p){
+  const n = Math.max(3, Math.min(8, Math.round(p.mntCalN||5)));
+  const t = Math.max(2, p.mntT||4);
+  const maxS = Math.max(10, p.mntBrSpan||50);
+  const W = Math.max(6, Math.min(p.mntW||30, 40)*0.5);            // width of one specimen along X
+  const pH = Math.max(8, p.mntCalH||12), post = Math.max(4, W*0.6);
+  const pitch = W + 6, tris=[];
+  const spanAt = k => maxS*(k+1)/n, angAt = k => (30 + 50*k/Math.max(1,n-1))*Math.PI/180;
+  let maxSpanZ = 0; for(let k=0;k<n;k++) maxSpanZ = Math.max(maxSpanZ, spanAt(k)+2*post);
+  const finL = Math.max(5, Math.min(maxS*0.2, 12)), zFin = maxSpanZ/2 + 8;
+  const zBackWall = zFin + t;
+  const Wtot = n*pitch - 6 + 8;
+  const zBase0 = -maxSpanZ/2 - 5, zBase1 = zFin + finL + 6;
+  for(const T of boxSpanTris(-Wtot/2, Wtot/2, 0, t, zBase0, zBase1)) tris.push(T);   // one base, one part
+  const xAt = k => -(n-1)*pitch/2 + k*pitch;
+  for(let k=0;k<n;k++){
+    const s = spanAt(k), x = xAt(k);
+    for(const sgn of [-1,1])                                                          // the two piers
+      for(const T of boxSpanTris(x-W/2, x+W/2, t-0.4, t+pH-0.4, sgn*(s/2), sgn*(s/2+post))) tris.push(T);
+    // The deck runs 0.4 past the pier tops so it interpenetrates them; ending flush would leave the two
+    // solids sharing the pier's top edges.
+    for(const T of boxSpanTris(x-W/2, x+W/2, t+pH-Math.max(1.6,t*0.5), t+pH, -(s/2+post), s/2+post)) tris.push(T);
+  }
+  // Overhang fins: the underside makes `ang` with the VERTICAL, which is the number printers are rated by.
+  // The wall has to clear the STEEPEST fin's rise, or a 30° fin starts below the bed: over a run of finL a
+  // fin at angle a climbs finL/tan(a), largest at the smallest angle.
+  const fT0 = Math.max(1.5, t*0.6);
+  const wallH = fT0 + finL/Math.tan(30*Math.PI/180) + 3;
+  for(const T of boxSpanTris(-Wtot/2+4, Wtot/2-4, t-0.4, t+wallH, zFin, zBackWall)) tris.push(T);
+  const fT = fT0;
+  for(let k=0;k<n;k++){ const a=angAt(k), x=xAt(k), rise=finL/Math.tan(a);
+    const q=[[t+wallH-fT-rise, zBackWall-0.6],[t+wallH-fT, zBackWall+finL],
+             [t+wallH, zBackWall+finL],[t+wallH-rise, zBackWall-0.6]];
+    for(const T of convexPrismXTris(q, x-W/2+0.6, x+W/2-0.6)) tris.push(T); }   // narrower than its pier
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+function buildRetractTest(p){
+  const gap = Math.max(10, p.mntRetGap||35);
+  const H   = Math.max(15, (p.mntCalH||12)*3);
+  const rB  = Math.max(2.5, Math.min(p.mntW||30, 40)*0.18), rT = Math.max(1.2, rB*0.4);
+  const t   = Math.max(1.6, p.mntT||4)*0.6;
+  const seg = Math.max(28, Math.round(rB*8)), tris=[];
+  for(const T of boxSpanTris(-(gap/2+rB+3), gap/2+rB+3, 0, t, -(rB+3), rB+3)) tris.push(T);
+  for(const s of [-1,1]) for(const T of solidLatheYTris([[rB, t-0.4],[rT, t+H]], seg))
+    tris.push(T.map(v=>[v[0]+s*gap/2, v[1], v[2]]));
+  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
 function buildDovetail(p){
   const L    = Math.max(10, p.mntDtLen||60);
   const wB   = Math.max(2, (p.mntDtW||18)/2);            // half width at the root
@@ -8304,6 +8394,9 @@ function buildDovetail(p){
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
+  if(p.mntMode==='temptower') return buildCalTower(p);
+  if(p.mntMode==='bridgetest') return buildBridgeTest(p);
+  if(p.mntMode==='retract') return buildRetractTest(p);
   if(p.mntMode==='foot') return buildFoot(p);
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
@@ -10941,7 +11034,7 @@ function activeShapeLabel() {
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
                                           : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return p.hookMount==='pipe' ? 'крючок (на трубу)' : 'крючок (на стену)';
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:(p.gearWheelRim==='throated'?'глобоидное червячное колесо':'червячное колесо'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';

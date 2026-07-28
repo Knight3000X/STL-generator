@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v139';
+const APP_VERSION = 'v140';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3679,6 +3679,8 @@ const SHAPE_PARAMS = {
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Крышка: воронка сверху — Ø устья (0 = без воронки)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Крышка: высота воронки', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSeal', label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
@@ -5931,6 +5933,10 @@ function buildThread(p){
   const spp   = 26;                                      // samples per pitch vertically (resolves the flank)
   const tris  = [];
   const th    = i => 2*Math.PI*(i%Nth)/Nth;
+  // Mid-angle of the facet between i and i+1, used as the outward reference for orient(). It must NOT be
+  // averaged from th(i) and th(i+1): th() wraps, so on the closing facet the average lands on the far side
+  // of the axis and that one column of triangles comes out inside-out.
+  const thMid = i => 2*Math.PI*(i+0.5)/Nth;
   const phase = (i,y) => y/P - hand*S*(i%Nth)/Nth;       // t = y/P − hand·S·(θ/2π)
   // Lead-in (заходная фаска): fade the thread depth to zero over `leadLen` at the ENGAGEMENT end so the parts
   // self-start without a sharp partial first thread. Male fades to the root (narrower tip), female fades to the
@@ -5960,7 +5966,7 @@ function buildThread(p){
       tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     if(!bored){ const ct=[0,y1,0];                       // solid stud: top fan
       for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
-    } else { for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i2))/2, rin=[-Math.cos(mid),0,-Math.sin(mid)];
+    } else { for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
         tris.push(orient([V(i,Ny),B(y1,i),B(y1,i2)],[0,1,0]));      // top annulus: thread crest → bore
         tris.push(orient([V(i,Ny),B(y1,i2),V(i2,Ny)],[0,1,0]));
         tris.push(orient([B(0,i),B(0,i2),B(y1,i2)],rin));           // cable bore, right through the flange
@@ -5997,7 +6003,7 @@ function buildThread(p){
     // top and bottom rings is a ruled surface, i.e. no thread at all and a hole that looks off-centre.
     const Bo=(y,i)=>{ const a=th(i), r=minorR+h*threadProfile(phase(i,y),flat)+clr; return [r*Math.cos(a),y,r*Math.sin(a)]; };
     const Nn=Math.max(8, Math.min(320, Math.round(nutH/P*spp))), yN=j=>nutH*j/Nn;   // capped: a tall nut on a fine pitch would explode the mesh
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i2))/2, ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
       tris.push(orient([Hx(0,i),Hx(0,i2),Hx(nutH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(nutH,i2),Hx(nutH,i)],ro));         // hex wall
       for(let j=0;j<Nn;j++){ const y0=yN(j), y1=yN(j+1);                                                                    // bore wall (threaded)
         tris.push(orient([Bo(y0,i),Bo(y0,i2),Bo(y1,i2)],ri)); tris.push(orient([Bo(y0,i),Bo(y1,i2),Bo(y1,i)],ri)); }
@@ -6059,13 +6065,51 @@ function buildThread(p){
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);
       const ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];           // bore normal points inward
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    // A pouring funnel instead of a solid top: screw the cap onto the jar (or a PET bottle of the same
+    // thread) and pour through it. The cap's top is bored to a throat and the cone is a SEPARATE closed
+    // shell whose lower rim is buried 0.8 mm inside that top — interpenetrating, never sharing a face.
+    const funD = Math.max(0, p.threadFunnelD||0);
+    const funnel = funD > 2*(minorR*0.35);
+    const rThroat = funnel ? Math.max(1.5, Math.min(minorR-1.0, minorR*0.62)) : 0;
+    const rMouth  = funnel ? Math.max(rThroat+3, funD/2) : 0;
+    const funH    = funnel ? Math.max(4, Math.min(200, p.threadFunnelH>0 ? p.threadFunnelH : 30)) : 0;
+    const Rt=(y,r)=>{ const out=[]; for(let i=0;i<Nth;i++){ const a=th(i); out.push([r*Math.cos(a), y, r*Math.sin(a)]); } return out; };
     const cc=[0,boreDepth,0];                            // bore ceiling (underside of top slab)
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); }
+    if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); } }
+    else { const ring=Rt(boreDepth, rThroat);            // ceiling becomes an annulus around the throat
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+        tris.push(orient([Vb(i,Ny),ring[i],ring[i2]],[0,-1,0]));
+        tris.push(orient([Vb(i,Ny),ring[i2],Vb(i2,Ny)],[0,-1,0])); } }
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vo(i,0),B=Vo(i2,0),C=Vo(i2,capH),Dd=Vo(i,capH);
       const ref=[A[0]+B[0],0,A[2]+B[2]];                 // outer wall
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     const tc=[0,capH,0];                                 // top disc
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([tc,Vo(i,capH),Vo(i2,capH)],[0,1,0])); }
+    if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([tc,Vo(i,capH),Vo(i2,capH)],[0,1,0])); } }
+    else {
+      const rlo=Rt(boreDepth, rThroat), rhi=Rt(capH, rThroat);
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
+        tris.push(orient([rlo[i],rlo[i2],rhi[i2]],rin));  // throat wall through the top slab, opening inward
+        tris.push(orient([rlo[i],rhi[i2],rhi[i]],rin));
+        tris.push(orient([rhi[i],rhi[i2],Vo(i2,capH)],[0,1,0]));   // top annulus: throat → outer
+        tris.push(orient([rhi[i],Vo(i2,capH),Vo(i,capH)],[0,1,0])); }
+      // the cone, as its own closed shell: inner face, outer face, mouth rim, buried bottom rim
+      const y0=capH-0.8, y1=capH+funH, tw=wall;
+      const ci=(y,r)=>Rt(y,r), lerp=(a,b,t)=>a+(b-a)*t;
+      const NS=Math.max(6, Math.round(funH/2));
+      for(let j=0;j<NS;j++){
+        const t0=j/NS, t1=(j+1)/NS, ya=lerp(y0,y1,t0), yb=lerp(y0,y1,t1);
+        const ra=lerp(rThroat,rMouth,t0), rb=lerp(rThroat,rMouth,t1);
+        const Ia=ci(ya,ra), Ib=ci(yb,rb), Oa=ci(ya,ra+tw), Ob=ci(yb,rb+tw);
+        for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i);
+          const rin=[-Math.cos(mid),0,-Math.sin(mid)], rout=[Math.cos(mid),0,Math.sin(mid)];
+          tris.push(orient([Ia[i],Ia[i2],Ib[i2]],rin));  tris.push(orient([Ia[i],Ib[i2],Ib[i]],rin));
+          tris.push(orient([Oa[i],Oa[i2],Ob[i2]],rout)); tris.push(orient([Oa[i],Ob[i2],Ob[i]],rout)); }
+      }
+      const Im=ci(y1,rMouth), Om=ci(y1,rMouth+tw), Ib0=ci(y0,rThroat), Ob0=ci(y0,rThroat+tw);
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+        tris.push(orient([Im[i],Im[i2],Om[i2]],[0,1,0]));   tris.push(orient([Im[i],Om[i2],Om[i]],[0,1,0]));
+        tris.push(orient([Ib0[i],Ob0[i2],Ob0[i]],[0,-1,0])); tris.push(orient([Ib0[i],Ib0[i2],Ob0[i2]],[0,-1,0])); }
+    }
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;          // bottom rim annulus (bore mouth → outer)
       tris.push(orient([Vb(i,0),Vo(i,0),Vo(i2,0)],[0,-1,0]));
       tris.push(orient([Vb(i,0),Vo(i2,0),Vb(i2,0)],[0,-1,0])); }
@@ -8432,8 +8476,14 @@ function hookFrontTris(p, style, rBar, embed){
     const wall=Math.max(2, rBar*0.7), seg=Math.max(48, Math.round(2*Math.PI*(R+wall)/1.1));
     const reach=Math.max(6, p.hookReach||28), cz=reach+R*0.15;
     push(sectorShellTris(0, cz, R, R+wall, 2*Math.PI/3, 4*Math.PI/3, -W/2, W/2, seg));   // saddle, mouth up
+    // The arm is a GUSSET, not a slab. A plain box from the plate to the saddle stands proud of the
+    // bowl with a square outer corner — the shape reads as a shelf with a lump on it rather than a
+    // bracket. This tapers instead: full depth where it meets the plate, thinning to nothing where it
+    // enters the saddle's wall, with its outer end buried in that wall (the top-outer vertex sits at
+    // −R+0.6, i.e. inside the R…R+wall band) so the two interpenetrate rather than merely touch.
     const armW=Math.max(rBar*1.6, W*0.22);
-    push(boxSpanTris(-armW/2, armW/2, -R-wall, -R*0.55, -embed, cz+0.4));                // arm out to it
+    const gusset=[[-R-wall-0.4, -embed], [-R-wall-0.4, cz], [-R+0.6, cz], [-R*0.35, -embed]];
+    push(convexPrismXTris(gusset.map(q=>[q[0], q[1]]), -armW/2, armW/2));
     return tris;
   }
   if(style==='brush'){
@@ -8510,13 +8560,24 @@ function buildHook(p){
   } else {                                                        // wall plate
     const t=plateT, sd=Math.max(0,p.hookScrewD!=null?p.hookScrewD:4.5), r=sd/2;
     // The plate has to be at least as wide as whatever it carries, or a soap dish would hang off a stub.
-    let fw=0, fh=0; for(const T of tris) for(const v of T){ fw=Math.max(fw, Math.abs(v[0])*2); fh=Math.max(fh, Math.abs(v[1])*2); }
+    // The plate is sized and PLACED on what the front geometry actually occupies, not on |y|·2. Taking
+    // twice the largest |y| assumes the load is symmetric about the plate's middle; a headphone saddle
+    // hangs entirely below it, so that made the plate twice as tall as it needed to be and left the
+    // saddle sitting at its very bottom with a bare slab above.
+    let fw=0, fy0=Infinity, fy1=-Infinity;
+    for(const T of tris) for(const v of T){ fw=Math.max(fw, Math.abs(v[0])*2);
+      if(v[1]<fy0) fy0=v[1]; if(v[1]>fy1) fy1=v[1]; }
     const pw=Math.max(rBar*2+10, p.hookPlateW||26, style==='bar'?0:fw+6);
-    const ph=Math.max(rBar*2+16, p.hookPlateH||44, style==='bar'?0:fh+6), holes=[];
+    const fhSpan = (fy1>fy0) ? (fy1-fy0) : 0;
+    const ph=Math.max(rBar*2+16, p.hookPlateH||44, style==='bar'?0:fhSpan+6), holes=[];
+    // Centre of the plate along Y: the middle of what it carries, clamped so a short front on a tall
+    // plate still keeps the plate over the origin rather than sliding off with it.
+    const pyRaw = (fy1>fy0) ? (fy0+fy1)/2 : 0;
+    const py = (style==='bar') ? 0 : Math.max(-ph/2, Math.min(ph/2, pyRaw));
     // Countersinks open on the FRONT (+Z, the hook side) — that is where you drive the screw from; the back
     // face sits flat against the wall and must stay unbroken.
     if(sd>0.5) for(const s of [-1,1]) holes.push({axis:2,cp:0,cq:s*(ph/2-Math.max(sd+3,ph*0.18)),r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:1});
-    for(const T of buildBoxWithHoles(pw,ph,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]-t/2]));   // plate z∈[−t,0]
+    for(const T of buildBoxWithHoles(pw,ph,t,holes)) tris.push(T.map(v=>[v[0],v[1]+py,v[2]-t/2]));   // plate z∈[−t,0]
   }
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   // The collar's bore is built centred on this frame's origin with its axis along Z, and then EVERYTHING

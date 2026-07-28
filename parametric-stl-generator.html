@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v143';
+const APP_VERSION = 'v144';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3679,8 +3679,12 @@ const SHAPE_PARAMS = {
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Крышка: воронка сверху — Ø устья (0 = без воронки)', min:0, max:200, step:1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Крышка: высота воронки', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: что сверху', type:'select', default:'none',
+      options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'}]},
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSpoutD', label:'Носик: Ø кончика (наружный)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSpoutH', label:'Носик: длина', min:5, max:200, step:1, default:35, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSeal', label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
@@ -6069,14 +6073,31 @@ function buildThread(p){
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);
       const ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];           // bore normal points inward
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
-    // A pouring funnel instead of a solid top: screw the cap onto the jar (or a PET bottle of the same
-    // thread) and pour through it. The cap's top is bored to a throat and the cone is a SEPARATE closed
-    // shell whose lower rim is buried 0.8 mm inside that top — interpenetrating, never sharing a face.
-    const funD = Math.max(0, p.threadFunnelD||0);
-    const funnel = funD > 2*(minorR*0.35);
-    const rThroat = funnel ? Math.max(1.5, Math.min(minorR-1.0, minorR*0.62)) : 0;
-    const rMouth  = funnel ? Math.max(rThroat+3, funD/2) : 0;
-    const funH    = funnel ? Math.max(4, Math.min(200, p.threadFunnelH>0 ? p.threadFunnelH : 30)) : 0;
+    // Something other than a solid top. Both options are the SAME cone — the cap's top is bored to a
+    // throat and a separate closed shell stands on it, lower rim buried 0.8 mm inside, interpenetrating
+    // and never sharing a face — and they differ only in which way that cone tapers:
+    //   • ВОРОНКА  — opens outward to a wide mouth. Screw it on and pour through it.
+    //   • НОСИК    — closes inward to a fine tip, the applicator spout of a dye or glue bottle. Squeeze
+    //                and it comes out in a stream you can aim.
+    // The spout's wall TAPERS with it. A constant wall is right for a funnel and wrong for a spout: hold
+    // the wall at 2.5 mm and a 3 mm tip has no passage left at all, it is a solid point.
+    const topMode = (p.threadTop!=null) ? p.threadTop         // older presets carried only the funnel's Ø
+                  : ((p.threadFunnelD>0) ? 'funnel' : 'none');
+    const rThroat0 = Math.max(1.5, Math.min(minorR-1.0, minorR*0.62));
+    let funnel=false, rMouth=0, funH=0, twTop=wall;
+    if(topMode==='funnel'){
+      const funD = Math.max(0, p.threadFunnelD>0 ? p.threadFunnelD : 60);
+      if(funD > 2*(minorR*0.35)){                             // narrower than the throat is a hole, not a funnel
+        funnel=true; rMouth=Math.max(rThroat0+3, funD/2);
+        funH=Math.max(4, Math.min(200, p.threadFunnelH>0 ? p.threadFunnelH : 30)); }
+    } else if(topMode==='spout'){
+      const rTipOut=Math.max(0.75, (p.threadSpoutD>0 ? p.threadSpoutD : 6)/2);
+      twTop=Math.max(0.6, Math.min(wall, rTipOut*0.4));       // thin enough to leave a bore, thick enough to print
+      rMouth=Math.max(0.5, rTipOut-twTop);
+      funnel = rMouth < rThroat0-0.2;                         // a tip no narrower than the throat is not a spout
+      funH=Math.max(6, Math.min(200, p.threadSpoutH>0 ? p.threadSpoutH : 35));
+    }
+    const rThroat = funnel ? rThroat0 : 0;
     const Rt=(y,r)=>{ const out=[]; for(let i=0;i<Nth;i++){ const a=th(i); out.push([r*Math.cos(a), y, r*Math.sin(a)]); } return out; };
     const cc=[0,boreDepth,0];                            // bore ceiling (underside of top slab)
     if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); } }
@@ -6096,20 +6117,22 @@ function buildThread(p){
         tris.push(orient([rlo[i],rhi[i2],rhi[i]],rin));
         tris.push(orient([rhi[i],rhi[i2],Vo(i2,capH)],[0,1,0]));   // top annulus: throat → outer
         tris.push(orient([rhi[i],Vo(i2,capH),Vo(i,capH)],[0,1,0])); }
-      // the cone, as its own closed shell: inner face, outer face, mouth rim, buried bottom rim
-      const y0=capH-0.8, y1=capH+funH, tw=wall;
-      const ci=(y,r)=>Rt(y,r), lerp=(a,b,t)=>a+(b-a)*t;
+      // the cone, as its own closed shell: inner face, outer face, mouth rim, buried bottom rim.
+      // The wall runs from `wall` where it meets the cap to `twTop` at the far end — equal for a funnel,
+      // and thinning for a spout so a fine tip still has a passage through it.
+      const y0=capH-0.8, y1=capH+funH;
+      const ci=(y,r)=>Rt(y,r), lerp=(a,b,t)=>a+(b-a)*t, twAt=t=>lerp(wall, twTop, t);
       const NS=Math.max(6, Math.round(funH/2));
       for(let j=0;j<NS;j++){
         const t0=j/NS, t1=(j+1)/NS, ya=lerp(y0,y1,t0), yb=lerp(y0,y1,t1);
         const ra=lerp(rThroat,rMouth,t0), rb=lerp(rThroat,rMouth,t1);
-        const Ia=ci(ya,ra), Ib=ci(yb,rb), Oa=ci(ya,ra+tw), Ob=ci(yb,rb+tw);
+        const Ia=ci(ya,ra), Ib=ci(yb,rb), Oa=ci(ya,ra+twAt(t0)), Ob=ci(yb,rb+twAt(t1));
         for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i);
           const rin=[-Math.cos(mid),0,-Math.sin(mid)], rout=[Math.cos(mid),0,Math.sin(mid)];
           tris.push(orient([Ia[i],Ia[i2],Ib[i2]],rin));  tris.push(orient([Ia[i],Ib[i2],Ib[i]],rin));
           tris.push(orient([Oa[i],Oa[i2],Ob[i2]],rout)); tris.push(orient([Oa[i],Ob[i2],Ob[i]],rout)); }
       }
-      const Im=ci(y1,rMouth), Om=ci(y1,rMouth+tw), Ib0=ci(y0,rThroat), Ob0=ci(y0,rThroat+tw);
+      const Im=ci(y1,rMouth), Om=ci(y1,rMouth+twAt(1)), Ib0=ci(y0,rThroat), Ob0=ci(y0,rThroat+twAt(0));
       for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
         tris.push(orient([Im[i],Im[i2],Om[i2]],[0,1,0]));   tris.push(orient([Im[i],Om[i2],Om[i]],[0,1,0]));
         tris.push(orient([Ib0[i],Ob0[i2],Ob0[i]],[0,-1,0])); tris.push(orient([Ib0[i],Ib0[i2],Ob0[i2]],[0,-1,0])); }
@@ -12253,7 +12276,8 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return ({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба';
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+    + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком'}[p.threadTop] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';

@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v142';
+const APP_VERSION = 'v143';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5977,7 +5977,7 @@ function buildThread(p){
         tris.push(orient([B(0,i),B(y1,i2),B(y1,i)],rin)); } }
     const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
     const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rref=[Math.cos(mid),0,Math.sin(mid)];
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rref=[Math.cos(mid),0,Math.sin(mid)];
       tris.push(orient([V(i,0),outT(i),outT(i2)],[0,1,0]));         // flange top annulus (wavy → flangeR)
       tris.push(orient([V(i,0),outT(i2),V(i2,0)],[0,1,0]));
       tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
@@ -6032,7 +6032,7 @@ function buildThread(p){
     const FI=(y,i)=>{ const q=squircleRingPoint(th(i),iw,id,eH); return [q[0],y,q[1]]; };         // cavity footprint (inner)
     const neck=(i,j)=>{ const y=ySh+(yTop-ySh)*j/Ny, r=minorR+lead(yTop-y)*h*threadProfile(phase(i,y),flat), a=th(i);
       return [r*Math.cos(a), y, r*Math.sin(a)]; };
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rr=[Math.cos(mid),0,Math.sin(mid)];
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rr=[Math.cos(mid),0,Math.sin(mid)];
       tris.push(orient([[0,0,0],FO(0,i2),FO(0,i)],[0,-1,0]));                                     // bottom disc (fan)
       tris.push(orient([FO(0,i),FO(0,i2),FO(ySh,i2)],rr));                                        // outer body wall
       tris.push(orient([FO(0,i),FO(ySh,i2),FO(ySh,i)],rr));
@@ -6041,7 +6041,7 @@ function buildThread(p){
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=neck(i,j),B=neck(i2,j),C=neck(i2,j+1),Dd=neck(i,j+1);
       const ref=[A[0]+B[0],0,A[2]+B[2]];                                                          // neck thread
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
-    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=(th(i)+th(i+1))/2, rin=[-Math.cos(mid),0,-Math.sin(mid)];
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
       tris.push(orient([neck(i,Ny),neck(i2,Ny),ring(rBore,yTop,i2)],[0,1,0]));                   // neck top rim (up)
       tris.push(orient([neck(i,Ny),ring(rBore,yTop,i2),ring(rBore,yTop,i)],[0,1,0]));
       tris.push(orient([ring(rBore,ySh,i),ring(rBore,ySh,i2),ring(rBore,yTop,i2)],rin));          // bore wall (inward)
@@ -7518,7 +7518,15 @@ function buildHinge(p){
   return tris.map(T=>T.map(v=>[v[0], v[1]-cyMid, v[2]]));  // center on Y
 }
 // Shared print-in-place primitives (used by clip / cable-tie / clamp). All return fresh tri arrays.
-function boxSpanTris(x0,x1,y0,y1,z0,z1){ const t=plainBoxShellTris(x1-x0,y1-y0,z1-z0), cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
+// A box given by its two opposite corners. Either end of a pair may arrive first — a caller mirroring a
+// feature writes sgn*a … sgn*b and gets the pair reversed for one of the two signs, which is exactly what
+// the bridge test's near piers and the soap dish's rails did. A reversed pair used to reach
+// plainBoxShellTris as a NEGATIVE extent, and a box of negative extent is a MIRRORED box: closed, correctly
+// paired, reading watertight — and inside-out, every face of it. Normalising here fixes every caller at
+// once, which is the level this belongs at.
+function boxSpanTris(x0,x1,y0,y1,z0,z1){
+  if(x1<x0){ const s=x0; x0=x1; x1=s; } if(y1<y0){ const s=y0; y0=y1; y1=s; } if(z1<z0){ const s=z0; z0=z1; z1=s; }
+  const t=plainBoxShellTris(x1-x0,y1-y0,z1-z0), cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
   return t.map(T=>[[T[0][0]+cx,T[0][1]+cy,T[0][2]+cz],[T[1][0]+cx,T[1][1]+cy,T[1][2]+cz],[T[2][0]+cx,T[2][1]+cy,T[2][2]+cz]]); }
 // Closed annular-sector shell swept along X: outer + inner walls, two X-end sector faces, two radial caps.
 // pt(a,r) = [cy + r·cos a, cz + r·sin a] in (Y,Z). A full ring (a1−a0 = 2π) still closes via the caps.
@@ -7679,21 +7687,33 @@ function extrudeProfileY(P, boreFn, th, twist, scaleFn, growFn, layers){
     lP.push(P.map((q,i)=>{ const r=rot(q,twist*k/M), g=growFn(k/M, i);
       const f=s+g/(Math.hypot(r[0],r[1])||1); return [r[0]*f, r[1]*f]; })); }
   const yAt=k=>-th/2+th*k/M;
+  // Which way a side wall faces comes from the OUTLINE'S OWN EDGE and the direction the outline is
+  // traversed — not from the radius. A radial reference is right only where the outline runs across the
+  // radius, and a gear does the opposite twice per tooth: the flank climbs almost straight out from the
+  // root and the root drop falls almost straight back in. There the radial reference stands perpendicular
+  // to the face it is meant to be judging, the sign of the dot product is decided by rounding, and whole
+  // columns of the wall came out inside-out — on every spur, helical, bevel, spoked, straight-rim and
+  // globoid wheel this function builds. (manifoldCheck reads them all as watertight: it pairs edges
+  // undirected and never asks which way a face is turned. See test_winding.js.)
+  // For a ring traversed with signed area of sign s, the edge i→j faces outward along s·(dz, −dx). The
+  // mean of the two layers' edge vectors is used so a twisted loft is judged on the quad it actually built.
+  const wind=Q=>{ let A2=0; for(let i=0;i<Q.length;i++){ const j=(i+1)%Q.length; A2+=Q[i][0]*Q[j][1]-Q[j][0]*Q[i][1]; } return A2>=0?1:-1; };
+  const sO=wind(P), sI=wind(B);
+  const flipO=sO<0, flipI=sI<0;
+  const put=(a,b,c,flip)=>tris.push(flip ? [a,c,b] : [a,b,c]);
   for(let k=0;k<M;k++){ const y0=yAt(k),y1=yAt(k+1), Pa=lP[k],Pb=lP[k+1];
     for(let i=0;i<n;i++){ const j=(i+1)%n;
-      const refO=[Pa[i][0]+Pa[j][0],0,Pa[i][1]+Pa[j][1]];
-      tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pa[j][0],y0,Pa[j][1]],[Pb[j][0],y1,Pb[j][1]]],refO));
-      tris.push(orient([[Pa[i][0],y0,Pa[i][1]],[Pb[j][0],y1,Pb[j][1]],[Pb[i][0],y1,Pb[i][1]]],refO));
-      const refI=[-(B[i][0]+B[j][0]),0,-(B[i][1]+B[j][1])];
-      tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y0,B[j][1]],[B[j][0],y1,B[j][1]]],refI));
-      tris.push(orient([[B[i][0],y0,B[i][1]],[B[j][0],y1,B[j][1]],[B[i][0],y1,B[i][1]]],refI));
+      const A=[Pa[i][0],y0,Pa[i][1]], Bv=[Pa[j][0],y0,Pa[j][1]], C=[Pb[j][0],y1,Pb[j][1]], D=[Pb[i][0],y1,Pb[i][1]];
+      put(A, C, Bv, flipO); put(A, D, C, flipO);                 // outer wall, facing away from the ring
+      const a0=[B[i][0],y0,B[i][1]], b0=[B[j][0],y0,B[j][1]], b1=[B[j][0],y1,B[j][1]], a1=[B[i][0],y1,B[i][1]];
+      put(a0, b0, b1, flipI); put(a0, b1, a1, flipI);            // bore wall, facing INTO the void
     } }
   const yT=yAt(M),PT=lP[M], yB=yAt(0),PB=lP[0];
   for(let i=0;i<n;i++){ const j=(i+1)%n;
-    tris.push(orient([[B[i][0],yT,B[i][1]],[PT[i][0],yT,PT[i][1]],[PT[j][0],yT,PT[j][1]]],[0,1,0]));
-    tris.push(orient([[B[i][0],yT,B[i][1]],[PT[j][0],yT,PT[j][1]],[B[j][0],yT,B[j][1]]],[0,1,0]));
-    tris.push(orient([[B[i][0],yB,B[i][1]],[PB[j][0],yB,PB[j][1]],[PB[i][0],yB,PB[i][1]]],[0,-1,0]));
-    tris.push(orient([[B[i][0],yB,B[i][1]],[B[j][0],yB,B[j][1]],[PB[j][0],yB,PB[j][1]]],[0,-1,0]));
+    put([B[i][0],yT,B[i][1]], [PT[j][0],yT,PT[j][1]], [PT[i][0],yT,PT[i][1]], flipO);
+    put([B[i][0],yT,B[i][1]], [B[j][0],yT,B[j][1]], [PT[j][0],yT,PT[j][1]], flipO);
+    put([B[i][0],yB,B[i][1]], [PB[i][0],yB,PB[i][1]], [PB[j][0],yB,PB[j][1]], flipO);
+    put([B[i][0],yB,B[i][1]], [PB[j][0],yB,PB[j][1]], [B[j][0],yB,B[j][1]], flipO);
   }
   return tris;
 }

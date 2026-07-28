@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v144';
+const APP_VERSION = 'v145';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10661,8 +10661,13 @@ function meshComponents(tris){
 function hullXZ(tris){
   const pts=[];
   for(const T of tris) for(const v of T) pts.push([v[0], v[2]]);
+  return hullOfXZPoints(pts);
+}
+// The same hull over loose (x,z) points. Split out because the chamfer needs the outline of a HEIGHT
+// RANGE, which is not the outline of any set of whole triangles.
+function hullOfXZPoints(pts){
   if(pts.length<3) return [];
-  pts.sort((a,b)=> a[0]-b[0] || a[1]-b[1]);
+  pts = pts.slice().sort((a,b)=> a[0]-b[0] || a[1]-b[1]);
   const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
   const half=(arr)=>{ const h=[];
     for(const p of arr){ while(h.length>=2 && cr(h[h.length-2], h[h.length-1], p) <= 1e-9) h.pop(); h.push(p); }
@@ -10701,6 +10706,39 @@ function bevelPlanes(hull, yEnd, sigma, w, h){
   }
   return out;
 }
+// Split every triangle by the horizontal plane y = yc, so what lies below and what lies above share an
+// EXACT chain of vertices. The chamfer needs this: its band used to be picked as "triangles whose lowest
+// vertex is within h", which on a wall hook left band triangles reaching 3.5 mm up a 1.5 mm band while
+// their neighbours above started at 1.6 — clipping the band then put new vertices along edges the held
+// side never learned about, and the seam came out as T-junctions. 50 open edges on the hook, 894 on a
+// vase, and in both cases the whole shell was handed back sharp rather than shipped leaking.
+// Each cut point is computed ONCE per edge and looked up by that edge's own key, so the two triangles
+// sharing it get the same number to the last bit rather than two interpolations that nearly agree.
+function splitTrisAtY(tris, yc){
+  const out=[], cache=new Map();
+  const key=v=>Math.round(v[0]*1e6)+','+Math.round(v[1]*1e6)+','+Math.round(v[2]*1e6);
+  const cross=(a,b)=>{ const ka=key(a), kb=key(b), k=(ka<kb)?(ka+'|'+kb):(kb+'|'+ka);
+    let q=cache.get(k);
+    if(!q){ const [u,w]=(ka<kb)?[a,b]:[b,a], t=(yc-u[1])/(w[1]-u[1]);
+      q=[u[0]+(w[0]-u[0])*t, yc, u[2]+(w[2]-u[2])*t]; cache.set(k,q); }
+    return q; };
+  for(const T of tris){
+    const d=[T[0][1]-yc, T[1][1]-yc, T[2][1]-yc];
+    let pos=0, neg=0;
+    for(const x of d){ if(x>1e-9) pos++; else if(x<-1e-9) neg++; }
+    if(!pos || !neg){ out.push(T); continue; }
+    if(pos+neg===2){                                   // one vertex sits ON the plane: a single cut
+      let z=0; for(let i=0;i<3;i++) if(Math.abs(d[i])<=1e-9) z=i;
+      const Z=T[z], A=T[(z+1)%3], Bv=T[(z+2)%3], i0=cross(A,Bv);
+      out.push([Z,A,i0]); out.push([Z,i0,Bv]); continue;
+    }
+    let L=0; for(let i=0;i<3;i++) if((d[i]>1e-9) === (pos===1)) L=i;   // the lone vertex
+    const A=T[L], Bv=T[(L+1)%3], C=T[(L+2)%3];
+    const iAB=cross(A,Bv), iCA=cross(C,A);
+    out.push([A,iAB,iCA]); out.push([iAB,Bv,C]); out.push([iAB,C,iCA]);
+  }
+  return out;
+}
 function bevelledMesh(tris, p){
   const where = p.edgeBevelWhere || 'none';
   const w0 = Math.max(0, p.edgeBevel || 0);
@@ -10709,7 +10747,15 @@ function bevelledMesh(tris, p){
   const B = computeBBox(tris);
   const ang = Math.max(15, Math.min(80, p.edgeBevelAngle || 45)) * Math.PI/180;
   const spanY = B.maxY - B.minY, spanXZ = Math.min(B.maxX-B.minX, B.maxZ-B.minZ);
-  const sides = where === 'both' ? [-1, 1] : [where === 'top' ? 1 : -1];
+  let sides = where === 'both' ? [-1, 1] : [where === 'top' ? 1 : -1];
+  // A Gridfinity bin's feet ARE an interface — the standard profile is the whole point of them. A chamfer
+  // across the bottom files that mate off and the bin stops sitting in a baseplate, so the bottom is
+  // refused and says why. The top is nobody's interface and is cut as asked.
+  if(p.gfOn && sides.indexOf(-1) >= 0){
+    sides = sides.filter(d => d > 0);
+    noteEdgeBevel('фаска рёбер: низ Gridfinity-бина не срезается — ножки держат стандартный профиль');
+    if(!sides.length) return tris;
+  }
   // Never let the bevel eat the part: at most 40% of the smaller plan dimension across, and at most
   // 40% of the height tall (a quarter of it when both ends are bevelled, so they cannot meet).
   const hRoom = spanY * (sides.length > 1 ? 0.2 : 0.4);
@@ -10722,11 +10768,23 @@ function bevelledMesh(tris, p){
   // How deep into the part a triangle would have to reach before any plane could touch it. At t = h and
   // s = 0 a point sits EXACTLY on its plane (tan phi is w/h by construction), so anything strictly
   // deeper is strictly inside every one of them and can be set aside untouched.
+  // Since the shell is cut on the band boundary first, every triangle lies wholly inside a band or wholly
+  // outside one, and membership is read off its HIGHEST point rather than its lowest. Lowest was what the
+  // ragged version needed and it is wrong here: the upper halves the split itself produces have a vertex
+  // exactly ON the boundary, so by their lowest point they rejoin the band and drag their whole height in
+  // with them — which is how a 1.5 mm band still reached 3.5 mm up a wall hook after the split was added.
+  // The shell is cut a little ABOVE the chamfer's reach, not exactly at it. At t = h every bevel plane
+  // passes through its hull edge, so a split placed there puts a whole contour of vertices exactly ON the
+  // planes, where the clipper cannot decide which side they are and the weld comes apart — that split
+  // took the chamfer off all thirty shapes at once, not just the four it was meant to fix. A margin above
+  // leaves the seam strictly inside every plane, and nothing between h and hCut is cut anyway: past its
+  // hull edge a plane leans outward, away from the part.
+  const hCut = h + Math.max(0.2, h*0.15);
   const reachable = (T) => {
     for(const e of ends){
-      let tmin = Infinity;
-      for(const v of T){ const t = e.sg*(v[1]-e.yEnd); if(t < tmin) tmin = t; }
-      if(tmin <= h + 1e-6) return true;
+      let tmax = -Infinity;
+      for(const v of T){ const t = e.sg*(v[1]-e.yEnd); if(t > tmax) tmax = t; }
+      if(tmax <= hCut + 1e-6) return true;
     }
     return false;
   };
@@ -10767,11 +10825,20 @@ function bevelledMesh(tris, p){
   };
 
   const out = [];
-  let worstFill = 1;
-  for(const comp of meshComponents(tris)){
+  let worstFill = 1, anyCut = false;
+  const areaOf = ts => { let a=0;
+    for(const T of ts){ const e1=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]],
+                              e2=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+      a += Math.hypot(e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]); }
+    return a/2; };
+  for(const comp0 of meshComponents(tris)){
+    // Cut the shell on the band's own boundary FIRST, so band and held meet along one shared chain of
+    // vertices instead of an interlocking one. Only then split them.
+    let comp = comp0;
+    for(const e of ends) comp = splitTrisAtY(comp, e.yEnd + e.sg*hCut);   // t = sg·(y − yEnd)
     const held = [], band = [];
     for(const T of comp) (reachable(T) ? band : held).push(T);
-    if(!band.length){ out.push(comp); continue; }
+    if(!band.length){ out.push(comp0); continue; }
     // The hull is taken PER SHELL, not once over the whole model. Most concave outlines here are
     // concave only because SEVERAL shells add up to one — a wall plate plus its bar, a backplate plus
     // its hook, the two halves of a dovetail. Each shell on its own is very nearly convex, and cutting
@@ -10781,7 +10848,7 @@ function bevelledMesh(tris, p){
     // 99-101%. It also keeps the guarantee that no plane bites into geometry above the band, since each
     // hull covers the whole of its own shell.
     const hull = hullXZ(comp);
-    if(hull.length < 3){ out.push(comp); continue; }
+    if(hull.length < 3){ out.push(comp0); continue; }
     // The BAND against the BAND's own hull. Not the whole shell (a tube standing on its rim reads as
     // 19% concave when its outline is a perfect circle), and not the band against the SHELL's hull (a
     // vase's mouth is inset from its belly, which is "nothing to cut here", not "concave"). What the
@@ -10790,21 +10857,42 @@ function bevelledMesh(tris, p){
     const bandHull = hullXZ(band);
     const fill = bandHull.length >= 3 ? hullFill(band, bandHull) : 1;
     if(fill < worstFill) worstFill = fill;
-    const planes = [];
+    // The planes are tangent to the outline INSIDE THE BAND, taken separately for each end — not to the
+    // shell's widest section. On anything that flares as it rises the two are nowhere near each other: a
+    // vase's foot, a funnel's spout, a die resting on a face and a Gridfinity foot all sit well inside
+    // the shell's hull, so every tangent plane missed them and the chamfer did nothing at all. Silently,
+    // which was the worse half of it. Six shapes of thirty behaved that way.
+    // On a straight-walled part the band's outline IS the shell's, so nothing that already worked moves.
+    // Vertices are collected by HEIGHT rather than by whole triangles: one tall side facet reaches from
+    // the floor to the rim, and taking its whole footprint would drag the widest section back in.
     // sigma = +1 at the bottom (t grows upward), −1 at the top.
-    for(const dir of sides) planes.push(...bevelPlanes(hull, dir > 0 ? B.maxY : B.minY, dir > 0 ? -1 : 1, w, h));
-    if(!planes.length){ out.push(comp); continue; }
+    const planes = [];
+    for(const dir of sides){
+      const yEnd = dir > 0 ? B.maxY : B.minY, sg = dir > 0 ? -1 : 1, pts = [];
+      for(const T of comp) for(const v of T) if(sg*(v[1]-yEnd) <= hCut + 1e-6) pts.push([v[0], v[2]]);
+      const hb = hullOfXZPoints(pts);
+      planes.push(...bevelPlanes(hb.length >= 3 ? hb : hull, yEnd, sg, w, h));
+    }
+    if(!planes.length){ out.push(comp0); continue; }
     const cut = sliceMeshIntoFragments.cutByHalfspaces(band, planes);
+    const aB = areaOf(band);
+    if(Math.abs(areaOf(cut) - aB) > 1e-6 * Math.max(1, aB)) anyCut = true;
     const done = sliceMeshIntoFragments.weldFragment(held.concat(cut), 1.5e-4);
     // A shell whose section the capper could not close keeps its sharp edge rather than shipping a
     // leak. Two shells welded into one component by coincidence is the case this catches.
     if(done.length && sliceMeshIntoFragments.edgesPaired(done)) out.push(done);
-    else { out.push(comp);
+    else { out.push(comp0);
       noteEdgeBevel('фаска рёбер: одна из оболочек не срезалась герметично — оставлена острой'); }
   }
   // What is left after per-shell hulls: a SINGLE shell that is itself concave in plan (a cross, an L
   // cut from one piece). The hull-tangent planes cannot reach into its notches and no amount of
   // splitting helps — that needs a real polygon offset. Saying so is the part that can be done.
+  // Every plane missed. That is not a failure and not a fallback — it is a part whose lowest feature is
+  // not an edge at all: a J-hook and a French cleat both hang on a rounded bar end, which is already
+  // round and has nothing to take off. Worth saying, because a chamfer that silently does nothing reads
+  // exactly like one that is broken.
+  if(!anyCut && !edgeBevelNote)
+    noteEdgeBevel('фаска рёбер: срезать нечего — на этом торце у детали нет ребра (скруглённый или точечный торец)');
   if(worstFill < 0.88)
     noteEdgeBevel('фаска рёбер: оболочка вогнута в плане (' + Math.round(100*worstFill) +
                   '% выпуклой оболочки) — вогнутые участки остались острыми');

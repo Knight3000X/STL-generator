@@ -103,10 +103,13 @@ console.log('=== a round footprint is chamfered too, and costs only what it shou
         {from:plain.length, to:t.length});
     ratio.push(t.length/plain.length);
   }
-  // The spread is the real signal: quadratic growth would send the ratio climbing with N (it went
-  // 1.6× at four sides to 8× at thirty-two before). A constant multiple is what linear looks like.
+  // The SPREAD is the signal, not the multiple: quadratic growth sends the ratio climbing with N (it went
+  // 1.6x at four sides to 8x at thirty-two before the single-pass clip). A constant multiple is what
+  // linear looks like. The multiple itself rose from under 3 to 4 in v145, and for a stated reason: the
+  // shell is now split on the band boundary first, and a triangle that straddles it becomes three. That
+  // is what stopped the seam coming out as T-junctions, and it is a constant factor, not a trend.
   chk('и рост треугольников линейный, а не квадратичный',
-      Math.max(...ratio) < 3 && Math.max(...ratio)/Math.min(...ratio) < 1.2,
+      Math.max(...ratio) < 5 && Math.max(...ratio)/Math.min(...ratio) < 1.2,
       ratio.map(r=>+r.toFixed(2)));
 }
 for(const [nm,ov] of Object.entries({squircle:{squircle:60}, шестерня:{gearMode:'spur'},
@@ -205,3 +208,78 @@ console.log('=== the plane cut it is built on ===');
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;
+
+console.log('=== никакого молчания: либо фаска, либо объяснение ===');
+// The worst thing this feature did was nothing at all, without a word. Six shapes of thirty set a chamfer
+// and got back the same model with an empty note, which reads exactly like a broken build. Each of those
+// six had its own cause and three of them are now cut; what is claimed here is the invariant that
+// survives all of it — the chamfer either happens or says why not.
+function bevelOf(ov, where){
+  logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false, edgeBevelWhere:'none'}, ov);
+  const plain = buildTrisForShape('box', paramState.box), pb = computeBBox(plain);
+  Object.assign(paramState.box, {edgeBevelWhere:where||'bottom', edgeBevel:1.5, edgeBevelAngle:45});
+  const bev = buildTrisForShape('box', paramState.box), bb = computeBBox(bev);
+  const span=(t,y)=>{ let lo=1e9,hi=-1e9;
+    for(const T of t) for(const v of T) if(Math.abs(v[1]-y)<=0.05){ lo=Math.min(lo,v[0]); hi=Math.max(hi,v[0]); }
+    return hi>lo?hi-lo:0; };
+  return { plain, bev, note: edgeBevelNote,
+           cut: span(plain, pb.minY+0.02) - span(bev, bb.minY+0.02),
+           watertight: manifoldCheck(bev,4).watertight };
+}
+const SHAPES = {
+  'куб':{}, 'полый':{hollow:true,wallThickness:2.5}, 'скруглённый':{cornerRadius:8},
+  'банка':{threadMode:'jar'}, 'крышка':{threadMode:'cap'}, 'носик':{threadMode:'cap',threadTop:'spout'},
+  'гайка':{threadMode:'nut'}, 'болт':{threadMode:'bolt'}, 'лист':{sheetShape:'rect'},
+  'сотовая панель':{sheetShape:'rect',sheetPattern:'hex',sheetCut:'through'},
+  'ваза':{fnOn:true,fnMode:'vase'}, 'воронка':{fnOn:true}, 'дозатор':{fnOn:true,fnMode:'doser'},
+  'шестерня':{gearMode:'spur'}, 'колесо':{gearMode:'wormwheel'}, 'червяк':{gearMode:'worm'},
+  'L-кронштейн':{mntMode:'lbracket'}, 'подставка':{psOn:true}, 'крючок':{hookMount:'wall'},
+  'корпус':{pbPart:'tray'}, 'Gridfinity':{gfOn:true}, 'кость d20':{platonic:'d20'}, 'кость d6':{platonic:'d6'},
+  'призма':{polyN:6}, 'кейкап':{keycapMode:'single'}, 'петля':{pipMode:'hinge'}, 'клипса':{pipMode:'clip'},
+  'органайзер':{woOn:true}, 'планка':{hookMount:'cleat'}, 'темп-башня':{mntMode:'temptower'},
+};
+let cutN=0, saidN=0;
+for(const [nm,ov] of Object.entries(SHAPES)){
+  const r = bevelOf(ov);
+  chk(nm+': фаска не ломает деталь', r.watertight, {});
+  const did = r.cut > 1.0;
+  chk(nm+': либо срезано, либо сказано почему', did || !!r.note, {срез:+r.cut.toFixed(2), note:r.note});
+  if(did) cutN++; else saidN++;
+}
+// Pinned so a regression cannot quietly turn cutting back into explaining.
+chk('срезается заметно больше половины форм', cutN >= 26, {срезано:cutN, объяснено:saidN});
+
+console.log('=== то, что чинилось в v145 ===');
+// All four were cut by planes tangent to the WHOLE shell's hull. Anything that flares as it rises has its
+// bottom well inside that hull, every plane missed, and nothing happened. The planes are now tangent to
+// the outline of the BAND, per end.
+for(const [nm,ov] of Object.entries({ 'ваза':{fnOn:true,fnMode:'vase'}, 'воронка':{fnOn:true},
+                                      'кость d6':{platonic:'d6'}, 'дозатор':{fnOn:true,fnMode:'doser'} })){
+  const r = bevelOf(ov);
+  chk(nm+': низ действительно срезан', r.cut > 1.0, {срез:+r.cut.toFixed(2)});
+}
+{ // A Gridfinity bin's feet are an interface. The bottom is refused ON PURPOSE and says so; the top is not
+  // an interface and is cut as asked.
+  const bot = bevelOf({gfOn:true}, 'bottom'), top = bevelOf({gfOn:true}, 'top');
+  chk('низ Gridfinity-бина не срезается', bot.cut < 0.01, {срез:+bot.cut.toFixed(3)});
+  chk('и объясняет, почему', /Gridfinity/.test(bot.note||''), {note:bot.note});
+  chk('а верх — срезается', top.bev.length > top.plain.length, {from:top.plain.length, to:top.bev.length});
+}
+{ // A J-hook and a French cleat hang on a rounded bar end: there is no edge down there to take off, and
+  // that is a different sentence from "it broke".
+  for(const nm of ['крючок','планка']){
+    const r = bevelOf(nm==='крючок' ? {hookMount:'wall'} : {hookMount:'cleat'});
+    chk(nm+': сказано, что срезать нечего', /срезать нечего/.test(r.note||''), {note:r.note});
+  }
+}
+{ // The band boundary must be a clean cut, or the seam is T-junctions. Checked where it bit hardest.
+  for(const [nm,ov] of Object.entries({ 'крючок':{hookMount:'wall'}, 'ваза':{fnOn:true,fnMode:'vase'},
+                                        'корпус':{pbPart:'tray'} })){
+    const r = bevelOf(ov, 'both');
+    chk(nm+' (низ и верх): шов сомкнут', r.watertight, {});
+  }
+}
+
+console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
+if(fail) process.exitCode = 1;

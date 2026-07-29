@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v157';
+const APP_VERSION = 'v158';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3716,10 +3716,18 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'}]},
     {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Живой шарнир', key:'lhT', label:'Живой шарнир: толщина панели', min:0.8, max:12, step:0.1, default:2.4, unit:'мм'},
+    {group:'Живой шарнир', key:'lhWebT', label:'Живой шарнир: толщина перемычки (0 = два слоя)', min:0, max:3, step:0.05, default:0, unit:'мм'},
+    {group:'Живой шарнир', key:'lhWebW', label:'Живой шарнир: ширина перемычки (она снижает деформацию)', min:0.6, max:30, step:0.2, default:6, unit:'мм'},
+    {group:'Живой шарнир', key:'lhLayer', label:'Живой шарнир: высота слоя принтера', min:0.05, max:0.5, step:0.01, default:0.2, unit:'мм'},
+    {group:'Живой шарнир', key:'lhLen', label:'Живой шарнир: длина вдоль оси сгиба', min:5, max:300, step:1, default:60, unit:'мм'},
+    {group:'Живой шарнир', key:'lhA', label:'Живой шарнир: первая створка', min:3, max:200, step:1, default:25, unit:'мм'},
+    {group:'Живой шарнир', key:'lhB', label:'Живой шарнир: вторая створка', min:3, max:200, step:1, default:25, unit:'мм'},
+    {group:'Живой шарнир', key:'lhN', label:'Живой шарнир: число сгибов', min:1, max:12, step:1, default:1, unit:'', int:true},
     {group:'Цепь', key:'chainN', label:'Цепь: число звеньев', min:2, max:60, step:1, default:6, unit:'', int:true},
     {group:'Цепь', key:'chainLen', label:'Цепь: длина звена', min:6, max:120, step:0.5, default:18, unit:'мм'},
     {group:'Цепь', key:'chainW', label:'Цепь: ширина звена', min:3, max:80, step:0.5, default:9, unit:'мм'},
@@ -8024,7 +8032,53 @@ function buildChain(p){
   }
   return tris;
 }
+// Живой шарнир: a panel with a thin web across it that folds instead of pivoting. Nothing moves against
+// anything, so there is no clearance to get right — the whole design is one number, the web, and it is
+// governed by the LAYER HEIGHT rather than by any dimension of the part.
+//
+// Two things decide whether it survives. The web has to be a whole small number of layers: at two or three
+// it is a hinge, at one it tears on the first fold and at six it is a stiff plate with a groove in it. And
+// folding a web of flat length w and thickness t into a half turn puts its neutral axis on a radius w/π,
+// so the outer fibre stretches by ε = π·t/(2w) — a single scored line is a very high strain, and what
+// lowers it is a WIDER thin band, not a thinner one.
+//
+// The web is flush with the BOTTOM face, so the groove opens upward and the layers run along the fold.
+// A hinge printed the other way up delaminates rather than bends.
+function livingHingeSpec(p){
+  const T   = Math.max(0.8, p.lhT>0 ? p.lhT : 2.4);              // panel thickness
+  const lay = Math.max(0.05, Math.min(0.5, p.lhLayer>0 ? p.lhLayer : 0.2));
+  const tw  = Math.max(lay, Math.min(T-0.4, p.lhWebT>0 ? p.lhWebT : 2*lay));
+  const w   = Math.max(0.6, p.lhWebW>0 ? p.lhWebW : 6);          // flat length of the thin band
+  const len = Math.max(5, p.lhLen>0 ? p.lhLen : 60);             // along the fold axis
+  const a   = Math.max(3, p.lhA>0 ? p.lhA : 25), b = Math.max(3, p.lhB>0 ? p.lhB : 25);
+  const N   = Math.max(1, Math.min(12, Math.round(p.lhN>0 ? p.lhN : 1)));
+  const layers = tw/lay;
+  const strain = 100 * Math.PI*tw/(2*w);
+  return { T, lay, tw, w, len, a, b, N, layers, strain,
+           thin: layers < 1.5, stiff: layers > 4.5, over: strain > 15 };
+}
+function buildLivingHinge(p){
+  const s = livingHingeSpec(p), tris = [], ov = Math.min(0.6, s.w*0.25);
+  // Panel runs along Z, folds about X, thickness along Y. Plates and webs are separate boxes that overlap
+  // in VOLUME — the web lies inside the plates' thickness where they meet, so the union is one solid.
+  const slab = (z0, z1, ty) => { for(const T of boxSpanTris(-s.len/2, s.len/2, 0, ty, z0, z1)) tris.push(T); };
+  let z = 0;
+  // The overlap is added only on the sides that FACE a web. Adding it on the outer ends too made the
+  // panel 0.6 mm wider than the sum of its parts, which is the sort of quiet discrepancy that only shows
+  // up when someone measures the printed part against what they typed.
+  slab(z, z + s.a + ov, s.T);  z += s.a;
+  for(let k=0;k<s.N;k++){
+    slab(z - ov, z + s.w + ov, s.tw);  z += s.w;
+    slab(z - ov, z + s.b + (k === s.N-1 ? 0 : ov), s.T);  z += s.b;   // a plate after every web
+  }
+  let loY=1e9, hiY=-1e9, loZ=1e9, hiZ=-1e9;
+  for(const T of tris) for(const v of T){ if(v[1]<loY)loY=v[1]; if(v[1]>hiY)hiY=v[1];
+                                          if(v[2]<loZ)loZ=v[2]; if(v[2]>hiZ)hiZ=v[2]; }
+  const dy=-(loY+hiY)/2, dz=-(loZ+hiZ)/2;
+  return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]+dz]));
+}
 function buildHinge(p){
+  if (p.pipMode === 'living') return buildLivingHinge(p);
   if (p.pipMode === 'chain') return buildChain(p);
   if (p.pipMode === 'ball')  return buildBallJoint(p);
   if (p.pipMode === 'snap')  return buildSnap(p);
@@ -13453,6 +13507,13 @@ function collectPrintWarnings(p){
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
   // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  if ((p.pipMode || 'none') === 'living'){
+    const l = livingHingeSpec(p);
+    if (l.thin)  w.push('перемычка тоньше слоя — печатать нечем');
+    else if (l.stiff) w.push('перемычка ' + l.layers.toFixed(1) + ' слоя — это уже не шарнир, а плита с канавкой');
+    if (l.over) w.push('деформация при сгибе на 180° — ' + l.strain.toFixed(0) +
+                       ' %; расширьте перемычку, а не утоньшайте её');
+  }
   if ((p.pipMode || 'none') === 'chain'){
     const c = chainSpec(p);
     if (c.gap < 0.25) w.push('зазор цепи ' + c.gap.toFixed(2) + ' мм — звенья могут спечься');

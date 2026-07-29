@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v161';
+const APP_VERSION = 'v162';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3887,6 +3887,9 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntFitN', label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntFitStart', label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitStep', label:'Калибровка: шаг зазора', min:0.02, max:0.5, step:0.02, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeD', label:'Калибр: номинальный Ø', min:1.2, max:120, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeTol', label:'Калибр: допуск ±', min:0.02, max:2, step:0.01, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeH', label:'Калибр: высота пробок', min:4, max:80, step:1, default:12, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10463,9 +10466,53 @@ function buildDovetail(p){
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }
+/* ---- Калибр go/no-go -----------------------------------------------------------------------------
+   Four features on one plate, and which is which is not a matter of taste — it falls out of the direction
+   the limit is being tested from. A SHAFT is checked through rings: the GO bore is the shaft's UPPER limit
+   (a good shaft passes) and the NO-GO bore is its LOWER limit (a good shaft does not). A HOLE is checked
+   with plugs, and the two swap over: the GO plug is the hole's LOWER limit and the NO-GO plug its upper.
+   So the same ±tolerance produces bores at d+tol / d−tol and pins at d−tol / d+tol, crosswise.
+
+   The NO-GO of each pair is marked by a notch bitten out of the plate's back edge above it. Printed gauges
+   get picked up by whoever is nearest, and the two members of a pair differ by two tolerances — a fifth of
+   a millimetre at ±0.1, which no hand can tell apart. A notch on the edge can be FELT, which a printed dot
+   cannot, and it costs nothing: it is part of the outline the plate is already cut from.
+
+   The plate is the polygon extruder's second job: one notched rectangle outside, two bores inside. */
+function goNoGoSpec(p){
+  const d   = Math.max(1.2, p.mntGaugeD>0 ? p.mntGaugeD : 8);
+  const tol = Math.max(0.02, Math.min(d/3, p.mntGaugeTol>0 ? p.mntGaugeTol : 0.1));
+  const t   = Math.max(1.6, p.mntT>0 ? p.mntT : 4);
+  const H   = Math.max(4, p.mntGaugeH>0 ? p.mntGaugeH : 12);
+  const pitch = Math.max(14, d + 2*tol + 9);
+  return {d, tol, t, H, pitch, W: 4*pitch, D: pitch, mark: 1.1,
+          boreGo: d + tol, boreNo: d - tol,     // rings, for checking a SHAFT
+          pinGo:  d - tol, pinNo:  d + tol,     // plugs, for checking a HOLE
+          xAt: k => (k - 1.5)*pitch,
+          tiny: d - tol < 1.0, coarse: tol < 0.05};
+}
+function buildGoNoGo(p){
+  const s = goNoGoSpec(p), rc = Math.min(4, s.D/4);
+  const outer = [], arc = (cx, cz, r, a0, a1, k) => {
+    for(let i=0;i<=k;i++){ const a=a0+(a1-a0)*i/k; outer.push([cx+r*Math.cos(a), cz+r*Math.sin(a)]); } };
+  arc(s.W/2-rc, s.D/2-rc, rc, 0, Math.PI/2, 8);        // corner, then LEFT along the back edge, biting a
+  for(const k of [3, 1])                               // notch over each NO-GO column on the way past
+    arc(s.xAt(k), s.D/2, s.mark, 0, -Math.PI, 12);
+  arc(-s.W/2+rc, s.D/2-rc, rc, Math.PI/2, Math.PI, 8);
+  arc(-s.W/2+rc, -s.D/2+rc, rc, Math.PI, 3*Math.PI/2, 8);
+  arc( s.W/2-rc, -s.D/2+rc, rc, 3*Math.PI/2, 2*Math.PI, 8);
+  const holes = [circleXZ(s.boreGo/2, 48, s.xAt(0), 0), circleXZ(s.boreNo/2, 48, s.xAt(1), 0)];
+  const tris = extrudePolyYTris([outer].concat(holes.map(h=>h.slice().reverse())), 0, s.t);
+  // Plugs stand ON the plate and reach 0.8 mm down into it — a pin sitting on its face would share a plane
+  // with it, and two solids meeting on a shared plane are not a union.
+  for(const kd of [[2, s.pinGo], [3, s.pinNo]])
+    for(const T of discYTris(s.xAt(kd[0]), 0, kd[1]/2, s.t-0.8, s.t+s.H, Math.max(32, Math.round(kd[1]*8)))) tris.push(T);
+  return tris.map(T=>T.map(v=>[v[0], v[1]-(s.t+s.H)/2, v[2]]));
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
+  if(p.mntMode==='gauge') return buildGoNoGo(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13620,7 +13667,7 @@ function activeShapeLabel() {
             : (p.fnMode==='vase') ? ((p.vaseFloor===false ? 'абажур' : 'ваза') + ' (H' + Math.round(p.vaseH||120) + ')')
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go'})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -13890,6 +13937,13 @@ function collectPrintWarnings(p){
   // The Maltese pair's three hard limits are all on radii and none of them is visible in the preview:
   // the locking disc has to fit BETWEEN reaching the cross and clearing its slots, the cross's lobe has
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
+  // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
+  // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'gauge'){
+    const g = goNoGoSpec(p);
+    if (g.coarse) w.push('допуск ±' + g.tol.toFixed(2) + ' мм — тоньше того, что держит FDM; калибр покажет свою печать, а не деталь');
+    if (g.tiny) w.push('проходная пробка Ø' + g.pinGo.toFixed(2) + ' мм — сломается');
+  }
   if (p.gearMode === 'geneva'){
     const g = genevaSpec(p);
     if (g.tight) w.push('при ' + g.n + ' пазах и межосевом ' + g.c.toFixed(0) +

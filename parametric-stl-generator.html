@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v160';
+const APP_VERSION = 'v161';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3786,7 +3786,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'},{v:'geneva',t:'мальтийский механизм (крест + кривошип)'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'},{v:'geneva',t:'мальтийский механизм (крест + кривошип)'},{v:'roots',t:'роторы Roots (воздуходувка)'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3855,6 +3855,14 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'genevaBase', label:'Мальтийский: толщина плиты кривошипа', min:1.5, max:30, step:0.5, default:3, unit:'мм'},
     {group:'Шестерня', key:'genevaBore', label:'Мальтийский: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
     {group:'Шестерня', key:'genevaGap', label:'Мальтийский: зазор посадки', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шестерня', key:'rootsPart', label:'Roots: деталь', type:'select', default:'rotor',
+      options:[{v:'rotor',t:'ротор (нужны два одинаковых)'},{v:'housing',t:'корпус (восьмёрка)'}]},
+    {group:'Шестерня', key:'rootsLobes', label:'Roots: число лопастей', min:2, max:5, step:1, default:2, unit:'', int:true},
+    {group:'Шестерня', key:'rootsCenter', label:'Roots: межосевое расстояние', min:10, max:200, step:1, default:40, unit:'мм'},
+    {group:'Шестерня', key:'rootsThick', label:'Roots: высота ротора', min:2, max:120, step:1, default:12, unit:'мм'},
+    {group:'Шестерня', key:'rootsBore', label:'Roots: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
+    {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
@@ -4338,6 +4346,13 @@ function assemblyMate(p){
   // Maltese pair, shown in the REST pose: pin parked on the far side, locking disc seated in the cross.
   // Neither part needs turning — both models are built already in that pose, which is the whole reason
   // the cross's outline is generated a half slot round from the obvious place.
+  // Roots: the mate is the SAME part again, half a lobe round when N is even. The profile is symmetric
+  // about its own tip axis, so which way that half lobe is turned makes no difference to the shape.
+  if (gr === 'roots' && (p.rootsPart || 'rotor') !== 'housing'){
+    const s = rootsSpec(p);
+    return { name:'Второй ротор', over:{}, ry: s.phase*180/Math.PI,
+      seat:(A,B,S)=>({px:S.px + s.c, py:S.py, pz:S.pz}) };
+  }
   if (gr === 'geneva'){
     const s = genevaSpec(p), drv = p.genevaRole === 'driver';
     return { name: drv ? 'Мальтийский крест' : 'Кривошип с пальцем', over:{genevaRole: drv ? 'cross' : 'driver'},
@@ -9531,6 +9546,81 @@ function buildGeneva(p){
   for(const T of discYTris(-s.a, 0, s.pinR, s.tB-0.6, s.tB+s.tC+s.gap+0.6, 48)) tris.push(T);
   return tris;
 }
+// ---- Роторы Roots (воздуходувка) ---------------------------------------------------------------------
+// Two identical N-lobed rotors on parallel shafts, turning at the same speed in OPPOSITE directions, each
+// sealing against the other and against a figure-of-eight bore. The pair is conjugate with ITSELF, which
+// is a different problem from "tool cuts blank" — there is no master member to envelope from. The classic
+// answer is cycloidal and it is exact: with pitch radius r = c/2 and a generating circle ρ = r/2N, the
+// lobe is one epicycloid arch (tip, out to r + 2ρ) followed by one hypocycloid arch (root, in to r − 2ρ),
+// each spanning π/N of pitch-circle arc, so the two together fill the lobe pitch 2π/N exactly. Both meet
+// the pitch circle radially, so the joins are tangent-continuous and the outline has no corners to offset
+// around. That the pair then rolls without interference is not asserted here — it is swept in the test.
+function rootsSpec(p){
+  const N    = Math.max(2, Math.min(5, Math.round(p.rootsLobes>0 ? p.rootsLobes : 2)));
+  const c    = Math.max(10, p.rootsCenter>0 ? p.rootsCenter : 40);
+  const gap  = Math.max(0.1, Math.min(1.2, p.rootsGap>0 ? p.rootsGap : 0.35));
+  const L    = Math.max(2, p.rootsThick>0 ? p.rootsThick : 12);
+  const rB   = Math.max(0.8, (p.rootsBore>0 ? p.rootsBore : 5)/2);
+  const wall = Math.max(1.2, p.rootsWall>0 ? p.rootsWall : 3);
+  // Both rotors are shrunk by HALF the clearance along their own normals, so the pair ends up with a full
+  // clearance wherever it seals — and the housing bore is set off the shrunken tip, not the nominal one,
+  // or the rotor ends up with one and a half clearances to the case and seals against nothing.
+  const r = c/2, rho = r/(2*N), Rt = r + 2*rho, Rr = r - 2*rho, Rh = Rt - gap/2 + gap;
+  // Half a lobe of phase when N is even, none when it is odd — the offset that puts a ROOT of the second
+  // rotor where the first one's tip arrives. It falls out of "π, reduced by the lobe pitch", not guesswork.
+  const phase = ((Math.PI - Math.PI/N) % (2*Math.PI/N) + 2*Math.PI/N) % (2*Math.PI/N);
+  return {N, c, gap, L, rB, wall, r, rho, Rt, Rr, Rh, phase,
+          tip: Rt - gap/2, root: Rr - gap/2,   // the offset runs INTO the material everywhere, and at a
+          // root that means a smaller radius: the tip of the mating rotor sits there, and the two surfaces
+          // have to move APART, which for the root is inwards.
+          thin: Rr - gap/2 < rB + 1.0,
+          disp: 0};                       // filled in by the builder, which has the actual outline
+}
+// One rotor outline, tip on the +X axis, already shrunk by half the clearance so the PAIR ends up with a
+// full clearance between them wherever they seal.
+function rootsProfile(s, K, inset){
+  const {N, r, rho} = s, P = [], k1 = (r+rho)/rho, k2 = (r-rho)/rho, span = Math.PI/N, M = K || 40;
+  const put = (x, z, a) => P.push([x*Math.cos(a) - z*Math.sin(a), x*Math.sin(a) + z*Math.cos(a)]);
+  for(let k=0;k<N;k++){
+    const base = 2*Math.PI*k/N;
+    for(let i=0;i<M;i++){ const t = span*i/M;                                  // epicycloid — the tip
+      put((r+rho)*Math.cos(t) - rho*Math.cos(k1*t), (r+rho)*Math.sin(t) - rho*Math.sin(k1*t), base - span/2); }
+    for(let i=0;i<M;i++){ const t = span*i/M;                                  // hypocycloid — the root
+      put((r-rho)*Math.cos(t) + rho*Math.cos(k2*t), (r-rho)*Math.sin(t) - rho*Math.sin(k2*t), base + span/2); }
+  }
+  return inset === 0 ? P : insetLoopXZ(P, inset === undefined ? s.gap/2 : inset);
+}
+// Move a closed outline inwards along its own normals. The normal at a vertex is the mean of its two
+// edge normals, so a tangent-continuous curve stays tangent-continuous.
+function insetLoopXZ(P, d){
+  const n = P.length, out = [];
+  const ccw = loopArea2(P) >= 0 ? 1 : -1;
+  for(let i=0;i<n;i++){
+    const a = P[(i+n-1)%n], b = P[i], c = P[(i+1)%n];
+    let nx = (b[1]-a[1]) + (c[1]-b[1]), nz = -((b[0]-a[0]) + (c[0]-b[0]));
+    const L = Math.hypot(nx, nz) || 1;
+    out.push([b[0] - ccw*d*nx/L, b[1] - ccw*d*nz/L]);
+  }
+  return out;
+}
+// The figure-of-eight: the union of two circles of radius R, centres c apart, as one closed outline.
+// Non-convex, and as a HOLE it is the first thing the app has cut that no radius function could describe.
+function figure8XZ(R, c, seg){
+  const al = Math.acos(Math.max(-1, Math.min(1, (c/2)/R))), P = [], S = seg || 96;
+  for(let i=0;i<=S;i++){ const t = al + (2*Math.PI - 2*al)*i/S; P.push([R*Math.cos(t), R*Math.sin(t)]); }
+  for(let i=1;i<S;i++){ const t = -(Math.PI-al) + 2*(Math.PI-al)*i/S; P.push([c + R*Math.cos(t), R*Math.sin(t)]); }
+  return P;
+}
+function buildRoots(p){
+  const s = rootsSpec(p), bore = circleXZ(s.rB, 64);
+  if(p.rootsPart === 'housing'){
+    const dx = -s.c/2;                                  // the block prints centred on the pair
+    const inner = figure8XZ(s.Rh, s.c).map(q=>[q[0]+dx, q[1]]);
+    const outer = figure8XZ(s.Rh + s.wall, s.c).map(q=>[q[0]+dx, q[1]]);
+    return extrudePolyYTris([outer, inner.slice().reverse()], 0, s.L);
+  }
+  return extrudePolyYTris([rootsProfile(s), bore], 0, s.L);
+}
 function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
@@ -9539,6 +9629,7 @@ function buildGear(p){
   if(mode==='planetary') return buildPlanetary(p);
   if(mode==='cycloidal') return buildCycloidal(p);
   if(mode==='geneva') return buildGeneva(p);
+  if(mode==='roots') return buildRoots(p);
   if(mode==='follower') return buildFollower(p);
   if(mode==='ujoint') return buildUJoint(p);
   if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
@@ -13530,8 +13621,8 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
-    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');

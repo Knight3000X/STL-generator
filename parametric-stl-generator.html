@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v155';
+const APP_VERSION = 'v156';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3716,10 +3716,18 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'}]},
     {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballD', label:'Шарнир: Ø шара', min:6, max:80, step:0.5, default:16, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballGap', label:'Шарнир: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballWall', label:'Шарнир: толщина чашки', min:1.2, max:12, step:0.1, default:2.4, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballMouth', label:'Шарнир: угол устья (больше — уже устье, туже держит)', min:100, max:160, step:1, default:125, unit:'°'},
+    {group:'Шаровой шарнир', key:'ballStemD', label:'Шарнир: Ø ножки шара', min:1.5, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballStem', label:'Шарнир: длина ножки', min:4, max:200, step:1, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballBaseR', label:'Шарнир: радиус основания (0 = по чашке)', min:0, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballBaseT', label:'Шарнир: толщина основания', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
     {group:'Защёлка-консоль', key:'snapUndercut', label:'Защёлка: зацеп (прогиб) y', min:0.2, max:12, step:0.1, default:1.2, unit:'мм'},
     {group:'Защёлка-консоль', key:'snapLeadAngle', label:'Защёлка: угол захода α₁', min:10, max:60, step:1, default:30, unit:'°'},
     {group:'Защёлка-консоль', key:'snapRetAngle', label:'Защёлка: угол удержания α₂ (90 = неразъёмная)', min:30, max:90, step:1, default:45, unit:'°'},
@@ -7907,7 +7915,61 @@ function buildSnap(p){
   let lo=1e9, hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));
 }
+// Шаровой шарнир, ПЕЧАТНЫЙ В СБОРЕ. The ball is not snapped into the socket afterwards — it is printed
+// already inside it, with a uniform gap, and captive because the socket's mouth is narrower than the ball.
+// Nothing has to flex, nothing has to be assembled, and there are no slits to weaken the cup.
+//
+// Both halves are bodies of revolution, which is the whole reason this is cheap: `solidLatheYTris` for the
+// ball and its stem, `latheShellYTris` for the cup. They are two closed shells that never touch and never
+// share a vertex, so the mesh is watertight by construction and the slicer prints them as two bodies.
+//
+// The geometry is stated in polar angle φ from the BOTTOM pole: a point on the cavity is (Ri·sinφ, −Ri·cosφ)
+// in (r, y). The cup runs from φ₀ (a hole at the bottom, to let the ball's first layers bridge to something
+// and to drain support) up to the mouth at φm. Captivity is one inequality — Ri·sin φm < R — and it is what
+// makes the joint hold; the swing is what is left of the mouth once the stem is through it.
+function ballJointSpec(p){
+  const R    = Math.max(3, (p.ballD>0 ? p.ballD : 16)/2);
+  const gap  = Math.max(0.15, Math.min(1.2, fitTuned(p, p.ballGap>0 ? p.ballGap : 0.35)));
+  const Ri   = R + gap;
+  const wall = Math.max(1.2, p.ballWall>0 ? p.ballWall : 2.4);
+  const ds   = Math.max(1.5, Math.min(R*1.4, p.ballStemD>0 ? p.ballStemD : R*0.8));
+  const phiM = Math.max(100, Math.min(160, p.ballMouth>0 ? p.ballMouth : 125)) * Math.PI/180;
+  const phi0 = 25*Math.PI/180;
+  const rMouth = Ri*Math.sin(phiM);
+  // Swing: the stem tilts until it touches the mouth rim. Measured from the cup's axis, on one side.
+  const swing = Math.max(0, (Math.PI - phiM) - Math.asin(Math.min(1, ds/2/Ri))) * 180/Math.PI;
+  return { R, gap, Ri, wall, ds, phiM, phi0, rMouth, swing, captive: rMouth < R - 0.05,
+           stem: Math.max(4, p.ballStem>0 ? p.ballStem : R*1.6),
+           baseR: Math.max((Ri+wall)*0.75, p.ballBaseR>0 ? p.ballBaseR : (Ri+wall)),
+           baseT: Math.max(1.5, p.ballBaseT>0 ? p.ballBaseT : 3) };
+}
+function buildBallJoint(p){
+  const s = ballJointSpec(p), tris = [], seg = Math.max(48, Math.round(s.Ri*5));
+  const NS = 48;
+  // --- the cup: a spherical shell from φ₀ to φm, plus a flat outside so it is not a bubble on a stalk
+  const inner = [], outer = [];
+  for(let i=0;i<=NS;i++){ const f = s.phi0 + (s.phiM - s.phi0)*i/NS;
+    inner.push([Math.max(0.05, s.Ri*Math.sin(f)), -s.Ri*Math.cos(f)]);
+    outer.push([s.Ri*Math.sin(f) + s.wall,        -s.Ri*Math.cos(f) - (f < Math.PI/2 ? s.wall*Math.cos(f) : 0)]);
+  }
+  for(const T of latheShellYTris(outer, inner, seg)) tris.push(T);
+  // Base under the cup, interpenetrating it — a separate closed solid, as everything here is.
+  const yLow = -s.Ri*Math.cos(s.phi0) - s.wall*Math.cos(s.phi0);
+  for(const T of solidLatheYTris([[s.baseR, yLow - s.baseT], [s.baseR, yLow + 0.6],
+                                  [Math.max(0.3, s.Ri*Math.sin(s.phi0)*0.9), yLow + 0.6]], seg)) tris.push(T);
+  // --- the ball and its stem, one solid of revolution. The stem meets the ball where the sphere is still
+  // wider than the stem, so the join is a fillet rather than a cliff, and it leaves through the mouth.
+  const prof = [];
+  const fStem = Math.asin(Math.min(0.98, s.ds/2/s.R));
+  for(let i=0;i<=NS;i++){ const f = (Math.PI - fStem)*i/NS;
+    prof.push([Math.max(0.05, s.R*Math.sin(f)), -s.R*Math.cos(f)]); }
+  const yJoin = -s.R*Math.cos(Math.PI - fStem);
+  prof.push([s.ds/2, yJoin], [s.ds/2, yJoin + s.stem]);
+  for(const T of solidLatheYTris(prof, seg)) tris.push(T);
+  return tris;
+}
 function buildHinge(p){
+  if (p.pipMode === 'ball')  return buildBallJoint(p);
   if (p.pipMode === 'snap')  return buildSnap(p);
   if (p.pipMode === 'clip')  return buildClip(p);
   if (p.pipMode === 'tie')   return buildCableTie(p);
@@ -13334,6 +13396,14 @@ function collectPrintWarnings(p){
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
   // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  if ((p.pipMode || 'none') === 'ball'){
+    const b = ballJointSpec(p);
+    // Two failures, and neither shows in the preview: a gap the printer bridges welds the joint solid, and
+    // a mouth wider than the ball lets it fall straight out.
+    if (b.gap < 0.25) w.push('зазор шарнира ' + b.gap.toFixed(2) + ' мм — шар может спечься с чашкой');
+    if (!b.captive) w.push('устье шире шара — шар выпадет; увеличьте угол устья');
+    if (b.swing < 5) w.push('качание всего ' + b.swing.toFixed(0) + '° — ножка упирается в устье');
+  }
   if ((p.pipMode || 'none') === 'snap'){
     const sp = snapSpec(p);
     if (sp.over) w.push('защёлка: деформация ' + sp.eps.toFixed(1) + ' % при допустимых ' +

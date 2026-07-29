@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v167';
+const APP_VERSION = 'v168';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3912,6 +3912,14 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntCupGap', label:'Подстаканник: воздушный зазор', min:1, max:15, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCupWall', label:'Подстаканник: стенка', min:0.8, max:6, step:0.2, default:1.6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCupBase', label:'Подстаканник: дно (0 = без дна)', min:0, max:20, step:0.5, default:2.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAW', label:'Переходник: низ, ширина', min:6, max:400, step:1, default:100, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAD', label:'Переходник: низ, глубина', min:6, max:400, step:1, default:100, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAR', label:'Переходник: низ, скругление (половина стороны = круг)', min:0, max:200, step:1, default:50, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBW', label:'Переходник: верх, ширина', min:6, max:400, step:1, default:120, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBD', label:'Переходник: верх, глубина', min:6, max:400, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBR', label:'Переходник: верх, скругление', min:0, max:200, step:1, default:5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrH', label:'Переходник: высота', min:5, max:400, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrWall', label:'Переходник: стенка', min:0.8, max:10, step:0.2, default:2, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10751,6 +10759,94 @@ function buildCupHolder(p){
   if(s.bt > 0) for(const T of discYTris(0, 0, s.Ro - bite, 0, s.bt, s.seg)) tris.push(T);
   return tris.map(T=>T.map(v=>[v[0], v[1] - s.H/2, v[2]]));
 }
+// ---- Лофт между РАЗНЫМИ контурами -------------------------------------------------------------------
+// Everything else in the app sweeps ONE outline: extrudeProfileY carries a single ring up an axis, the
+// lathes revolve a single silhouette. A loft has two different outlines and has to decide which point of
+// one belongs to which point of the other, and that decision is the whole problem — the geometry either
+// side of it is trivial.
+//
+// Two rules settle it. Correspond by ARC LENGTH, not by angle: a circle sampled evenly in angle and a
+// rectangle sampled evenly in angle put four times as many points into the rectangle's corners as into its
+// flats, and the ruled surface between them creases. Then rotate one loop's indexing to whichever offset
+// travels least, or the two ends are joined with a twist nobody asked for — and a twist is not visible in
+// a wireframe of a symmetric pair, only in the print.
+function resampleLoopXZ(P, N){
+  const n = P.length, seg = [], cum = [0];
+  for(let i=0;i<n;i++){ const q = P[(i+1)%n];
+    const d = Math.hypot(q[0]-P[i][0], q[1]-P[i][1]); seg.push(d); cum.push(cum[i]+d); }
+  const L = cum[n], out = [];
+  if(L < 1e-9) return P.slice(0, N);
+  let j = 0;
+  for(let k=0;k<N;k++){ const s = L*k/N;
+    while(j < n-1 && cum[j+1] < s) j++;
+    const t = seg[j] > 1e-12 ? (s - cum[j])/seg[j] : 0, a = P[j], b = P[(j+1)%n];
+    out.push([a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]); }
+  return out;
+}
+function alignLoopXZ(A, B){
+  const N = A.length, step = Math.max(1, Math.round(N/32));
+  let best = 0, bd = Infinity;
+  for(let k=0;k<N;k++){ let d = 0;
+    for(let i=0;i<N;i+=step){ const q = B[(i+k)%N];
+      d += (A[i][0]-q[0])*(A[i][0]-q[0]) + (A[i][1]-q[1])*(A[i][1]-q[1]); }
+    if(d < bd){ bd = d; best = k; } }
+  return B.slice(best).concat(B.slice(0, best));
+}
+// A lofted SHELL: outer loops Ao→Bo and inner loops Ai→Bi, closed by an annulus at each end. All four
+// arrive already in correspondence (index i of one answers index i of the others), which is why the inner
+// loops are made by insetting the RESAMPLED outer ones rather than resampled on their own.
+function loftShellYTris(Ao, Bo, Ai, Bi, y0, y1, M){
+  const N = Ao.length, out = [];
+  const lerp = (P, Q, t) => P.map((p,i)=>[p[0] + (Q[i][0]-p[0])*t, p[1] + (Q[i][1]-p[1])*t]);
+  const lay = t => ({o: lerp(Ao, Bo, t), i: lerp(Ai, Bi, t)});
+  const yAt = k => y0 + (y1-y0)*k/M;
+  let prev = lay(0);
+  for(let k=1;k<=M;k++){
+    const cur = lay(k/M), ya = yAt(k-1), yb = yAt(k);
+    for(let i=0;i<N;i++){ const j = (i+1)%N;
+      const rO = [prev.o[j][1]-prev.o[i][1], 0, -(prev.o[j][0]-prev.o[i][0])];
+      out.push(orient([[prev.o[i][0],ya,prev.o[i][1]], [prev.o[j][0],ya,prev.o[j][1]], [cur.o[j][0],yb,cur.o[j][1]]], rO));
+      out.push(orient([[prev.o[i][0],ya,prev.o[i][1]], [cur.o[j][0],yb,cur.o[j][1]], [cur.o[i][0],yb,cur.o[i][1]]], rO));
+      const rI = [-(prev.i[j][1]-prev.i[i][1]), 0, prev.i[j][0]-prev.i[i][0]];
+      out.push(orient([[prev.i[i][0],ya,prev.i[i][1]], [prev.i[j][0],ya,prev.i[j][1]], [cur.i[j][0],yb,cur.i[j][1]]], rI));
+      out.push(orient([[prev.i[i][0],ya,prev.i[i][1]], [cur.i[j][0],yb,cur.i[j][1]], [cur.i[i][0],yb,cur.i[i][1]]], rI)); }
+    prev = cur; }
+  for(const e of [[0,[0,-1,0],y0],[1,[0,1,0],y1]]){ const L = lay(e[0]), y = e[2];
+    for(let i=0;i<N;i++){ const j = (i+1)%N;
+      out.push(orient([[L.o[i][0],y,L.o[i][1]], [L.i[i][0],y,L.i[i][1]], [L.i[j][0],y,L.i[j][1]]], e[1]));
+      out.push(orient([[L.o[i][0],y,L.o[i][1]], [L.i[j][0],y,L.i[j][1]], [L.o[j][0],y,L.o[j][1]]], e[1])); } }
+  return out;
+}
+/* ---- Переходник (вентиляция): круг ↔ прямоугольник --------------------------------------------------
+   Each end is one rounded rectangle — width, depth and corner radius — which covers every shape this is
+   ever asked for without a mode select: a circle is a square whose corner radius is half its side, an oval
+   is a rectangle whose radius is half its short side, and a duct is whatever is in between. */
+function transitionSpec(p){
+  const aw = Math.max(6, p.mntTrAW>0 ? p.mntTrAW : 100), ad = Math.max(6, p.mntTrAD>0 ? p.mntTrAD : 100);
+  const bw = Math.max(6, p.mntTrBW>0 ? p.mntTrBW : 120), bd = Math.max(6, p.mntTrBD>0 ? p.mntTrBD : 60);
+  const ar = Math.max(0, Math.min(Math.min(aw,ad)/2, p.mntTrAR != null ? p.mntTrAR : 50));
+  const br = Math.max(0, Math.min(Math.min(bw,bd)/2, p.mntTrBR != null ? p.mntTrBR : 5));
+  const H  = Math.max(5, p.mntTrH>0 ? p.mntTrH : 60);
+  const w  = Math.max(0.8, p.mntTrWall>0 ? p.mntTrWall : 2);
+  // The steepest the wall leans anywhere, measured off the two outlines rather than off the bounding
+  // boxes: a circle→rectangle of the same box still leans, and it leans most where the corner has to
+  // travel outwards to meet a flat.
+  const N = 128, ring = (ap, aq, rc) => { const P = [];
+    for(let i=0;i<N;i++){ const a = 2*Math.PI*i/N, r = roundedRectDist(ap, aq, rc, a);
+      P.push([r*Math.cos(a), r*Math.sin(a)]); } return P; };
+  const A = resampleLoopXZ(ring(aw/2, ad/2, ar), N);
+  const B = alignLoopXZ(A, resampleLoopXZ(ring(bw/2, bd/2, br), N));
+  let travel = 0;
+  for(let i=0;i<N;i++) travel = Math.max(travel, Math.hypot(B[i][0]-A[i][0], B[i][1]-A[i][1]));
+  const lean = Math.atan2(travel, H)*180/Math.PI;
+  return {aw, ad, ar, bw, bd, br, H, w, N, A, B, travel, lean,
+          steep: lean > 50, thin: w < 1.0};
+}
+function buildTransition(p){
+  const s = transitionSpec(p);
+  const Ai = insetLoopXZ(s.A, s.w), Bi = insetLoopXZ(s.B, s.w);
+  return loftShellYTris(s.A, s.B, Ai, Bi, -s.H/2, s.H/2, Math.max(8, Math.round(s.H/3)));
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
@@ -10760,6 +10856,7 @@ function buildMount(p){
   if(p.mntMode==='cablecomb') return buildCableComb(p);
   if(p.mntMode==='edgeclip') return buildEdgeClip(p);
   if(p.mntMode==='cupholder') return buildCupHolder(p);
+  if(p.mntMode==='transition') return buildTransition(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13919,7 +14016,9 @@ function activeShapeLabel() {
     pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы (' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
     edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })(),
-    cupholder:(function(){ const g=cupHolderSpec(p); return 'подстаканник двустенный (Ø' + (+g.D.toFixed(0)) + ')'; })()})[p.mntMode] || 'крепёж';
+    cupholder:(function(){ const g=cupHolderSpec(p); return 'подстаканник двустенный (Ø' + (+g.D.toFixed(0)) + ')'; })(),
+    transition:(function(){ const g=transitionSpec(p);
+      return 'переходник ' + (+g.aw.toFixed(0)) + '×' + (+g.ad.toFixed(0)) + ' → ' + (+g.bw.toFixed(0)) + '×' + (+g.bd.toFixed(0)); })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -14191,6 +14290,11 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'transition'){
+    const g = transitionSpec(p);
+    if (g.steep) w.push('стенка отклоняется на ' + g.lean.toFixed(0) + '° от вертикали — печатать придётся с поддержками или выше');
+    if (g.thin) w.push('стенка ' + g.w.toFixed(1) + ' мм — тоньше одного прохода сопла');
+  }
   if (p.mntMode === 'cupholder'){
     const g = cupHolderSpec(p);
     if (g.longBridge) w.push('зазор ' + g.gap.toFixed(1) + ' мм — обод придётся мостить над пустотой');

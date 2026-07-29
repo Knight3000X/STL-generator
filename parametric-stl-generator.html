@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v159';
+const APP_VERSION = 'v160';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3786,7 +3786,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'},{v:'geneva',t:'мальтийский механизм (крест + кривошип)'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3846,6 +3846,15 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearPulleyOD', label:'Шкив: наружный Ø', min:8, max:200, step:1, default:30, unit:'мм'},
     {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
+    {group:'Шестерня', key:'genevaRole', label:'Мальтийский: деталь', type:'select', default:'cross',
+      options:[{v:'cross',t:'крест (ведомый)'},{v:'driver',t:'кривошип (ведущий, с пальцем и запирающим диском)'}]},
+    {group:'Шестерня', key:'genevaSlots', label:'Мальтийский: число пазов', min:3, max:12, step:1, default:4, unit:'', int:true},
+    {group:'Шестерня', key:'genevaCenter', label:'Мальтийский: межосевое расстояние', min:12, max:200, step:1, default:40, unit:'мм'},
+    {group:'Шестерня', key:'genevaPinD', label:'Мальтийский: Ø пальца', min:1.5, max:20, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaThick', label:'Мальтийский: толщина креста', min:1.5, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaBase', label:'Мальтийский: толщина плиты кривошипа', min:1.5, max:30, step:0.5, default:3, unit:'мм'},
+    {group:'Шестерня', key:'genevaBore', label:'Мальтийский: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaGap', label:'Мальтийский: зазор посадки', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
@@ -4325,6 +4334,14 @@ function assemblyMate(p){
       // without it 20:20, 12:24 and 11:22 are already zero and the offset would break them.
       ry: (mp.gearTeeth % 2 === 1) ? 180/mp.gearTeeth : 0,
       seat:(A,B,S)=>({ px:S.px - bevelApexOffset(mp, other), py:S.py + bevelApexOffset(p, p.gearBevelRole), pz:S.pz }) };
+  }
+  // Maltese pair, shown in the REST pose: pin parked on the far side, locking disc seated in the cross.
+  // Neither part needs turning — both models are built already in that pose, which is the whole reason
+  // the cross's outline is generated a half slot round from the obvious place.
+  if (gr === 'geneva'){
+    const s = genevaSpec(p), drv = p.genevaRole === 'driver';
+    return { name: drv ? 'Мальтийский крест' : 'Кривошип с пальцем', over:{genevaRole: drv ? 'cross' : 'driver'},
+      seat:(A,B,S)=>({px:S.px + (drv ? s.c : -s.c), py:S.py + (drv ? s.tB+s.gap : -s.tB-s.gap), pz:S.pz}) };
   }
   if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:-90,
     seat:(A,B,S)=>({px:S.px - wormCentreDist(p), py:S.py, pz:S.pz}) };
@@ -8478,9 +8495,17 @@ function extrudePolyYTris(loops, y0, y1){
   for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
     out.push(orient([[A[0],y1,A[1]],[B[0],y1,B[1]],[C[0],y1,C[1]]], [0,1,0]));
     out.push(orient([[A[0],y0,A[1]],[B[0],y0,B[1]],[C[0],y0,C[1]]], [0,-1,0])); }
-  for(const P of L){ const s = loopArea2(P)>=0 ? 1 : -1;
+  // Which way a wall faces, ONCE the loops are normalised: (dz, −dx) for every loop, outer and hole
+  // alike. The tempting version carries the loop's own winding sign, and it is wrong on holes — for an
+  // outer loop the material is INSIDE and the face turns away from it, for a hole the material is
+  // OUTSIDE and the face turns towards the loop's middle, and normalising the windings has already
+  // accounted for that once. Signed twice, every bore comes out inside-out: watertight, correctly
+  // paired edge for edge, and invisible to manifoldCheck AND to a depth probe, because the depth
+  // counter over such a bore runs 1, 2, 1, 0 and never goes negative. It shows up only in WHERE the
+  // material is: a ray across the part reports one run of solid straight through the hole.
+  for(const P of L){
     for(let i=0;i<P.length;i++){ const j=(i+1)%P.length, u=P[i], v=P[j];
-      const ref=[s*(v[1]-u[1]), 0, -s*(v[0]-u[0])];
+      const ref=[v[1]-u[1], 0, -(v[0]-u[0])];
       if(Math.abs(ref[0])<1e-12 && Math.abs(ref[2])<1e-12) continue;
       out.push(orient([[u[0],y0,u[1]],[v[0],y0,v[1]],[v[0],y1,v[1]]], ref));
       out.push(orient([[u[0],y0,u[1]],[v[0],y1,v[1]],[u[0],y1,u[1]]], ref)); } }
@@ -9385,6 +9410,127 @@ function buildPlanetary(p){
   place(extrudeProfileY(circ, ang=>2*Rpr - ringR(ang) + back, th, 0), 0, 0, 0);
   return tris;
 }
+// ---- Мальтийский механизм (Geneva) -------------------------------------------------------------------
+// Closed form, unlike the cycloidal and bevel pairs: with n slots and centre distance c the crank radius
+// is a = c·sin(π/n) and the cross radius R = c·cos(π/n). Those two are not free — a is what makes the pin
+// arrive ALONG the slot instead of across it (no jerk at pick-up), and R is then fixed by the same right
+// triangle, which is why the pin meets the rim exactly at the slot's mouth. Slot bottom sits at c − a.
+//
+// What is NOT in closed form is the driver: the locking disc has to be cut away wherever the cross sweeps
+// past it, and that cut is an envelope, found the same way the worm wheel's rim and the cycloidal disc
+// were — by sweeping the mating part and taking the minimum. It comes out far wider than the engagement
+// window itself (171° of notch for 90° of engagement at n = 4), because the driver's own frame turns while
+// the cross swings through it. See genevaDriverProfile.
+function genevaSpec(p){
+  const n    = Math.max(3, Math.min(12, Math.round(p.genevaSlots>0 ? p.genevaSlots : 4)));
+  const c    = Math.max(12, p.genevaCenter>0 ? p.genevaCenter : 40);
+  const gap  = Math.max(0.1, Math.min(1.2, p.genevaGap>0 ? p.genevaGap : 0.35));
+  const pinR = Math.max(0.8, (p.genevaPinD>0 ? p.genevaPinD : 5)/2);
+  const tC   = Math.max(1.5, p.genevaThick>0 ? p.genevaThick : 5);
+  const tB   = Math.max(1.5, p.genevaBase>0  ? p.genevaBase  : 3);
+  const rB   = Math.max(0.8, (p.genevaBore>0 ? p.genevaBore : 5)/2);
+  const a    = c*Math.sin(Math.PI/n), R = c*Math.cos(Math.PI/n);
+  const w    = pinR + gap, rin = c - a;
+  const psiE = Math.PI/2 - Math.PI/n;                 // half the engagement window, measured on the DRIVER
+  const lockLo = c - R + 0.4;                         // the disc must at least reach the cross to block it
+  const lockHi = a - w - 2*gap - 0.3;                 // ...and its seat in the cross must miss the slots:
+  // the closest approach of a slot to the neighbouring seat's centre is exactly a, so the seat radius has
+  // to stay under a less the slot's own half width. Both bounds are on the SAME radius, and for n ≥ 3 the
+  // window is never empty on paper — only once the pin and the clearances are big enough to eat it.
+  const rL   = lockHi > lockLo ? lockLo + 0.6*(lockHi-lockLo) : Math.max(0.6, (lockLo+lockHi)/2);
+  return {n, c, gap, pinR, tC, tB, rB, a, R, w, rin, psiE, rL, q: rL+gap, lockLo, lockHi,
+          rBase: a + pinR + 1.5, step: 360/n,
+          tight: lockHi <= lockLo + 0.2,              // no room for a locking disc at all
+          hub:   c - R - gap < rB + 0.8,              // the cross would run into the driver's own hub
+          slotBore: rin < rB + 1.2};                  // the slot bottom would open into the cross's bore
+}
+const circleXZ = (r, seg, cx, cz) => { const P=[];
+  for(let i=0;i<seg;i++){ const a=2*Math.PI*i/seg; P.push([(cx||0)+r*Math.cos(a), (cz||0)+r*Math.sin(a)]); }
+  return P; };
+// The cross, as ONE closed outline: rim arc → locking seat → rim arc → slot → … Slots sit at π+(2k+1)π/n
+// and seats at π+2πk/n, so the model as built is already in its rest pose with a seat facing the driver,
+// which is what lets the assembly preview place the pair with no rotation on either part.
+function genevaCrossOutline(s, dens){
+  const {n,c,R,w,rin,q}=s, P=[], TAU=2*Math.PI, D=dens||90;
+  const bs = Math.asin(Math.min(0.99, w/R));                                  // slot mouth, half angle
+  const dl = Math.acos(Math.max(-1, Math.min(1, (R*R + c*c - q*q)/(2*R*c)))); // seat mouth, half angle
+  const arc=(a0,a1,r,cx,cz,k)=>{ for(let i=1;i<=k;i++){ const t=a0+(a1-a0)*i/k; P.push([cx+r*Math.cos(t), cz+r*Math.sin(t)]); } };
+  for(let k=0;k<n;k++){
+    const th = Math.PI + (2*k+1)*Math.PI/n, u=[Math.cos(th),Math.sin(th)], v=[-Math.sin(th),Math.cos(th)];
+    const tR = Math.sqrt(Math.max(0, R*R - w*w)), pt=(t,sv)=>[t*u[0]+sv*v[0], t*u[1]+sv*v[1]];
+    P.push(pt(tR,-w), pt(rin,-w));                                            // down the leading wall
+    for(let i=1;i<12;i++){ const ps=-Math.PI/2 + Math.PI*i/12;                // round the bottom on w, so
+      P.push([rin*u[0] + w*(Math.sin(ps)*v[0] - Math.cos(ps)*u[0]),           // the pin bottoms out with
+              rin*u[1] + w*(Math.sin(ps)*v[1] - Math.cos(ps)*u[1])]); }       // an even gap all round
+    P.push(pt(rin,+w), pt(tR,+w));                                            // back up the trailing wall
+    const ph = th + Math.PI/n, Cr=[c*Math.cos(ph), c*Math.sin(ph)];
+    arc(th+bs, ph-dl, R, 0, 0, Math.max(2, Math.round((ph-dl-th-bs)*D)));
+    const Pm=[R*Math.cos(ph-dl), R*Math.sin(ph-dl)], Pp=[R*Math.cos(ph+dl), R*Math.sin(ph+dl)];
+    const A0=Math.atan2(Pm[1]-Cr[1], Pm[0]-Cr[0]);
+    let d=Math.atan2(Pp[1]-Cr[1], Pp[0]-Cr[0]) - A0;
+    while(d<=-Math.PI) d+=TAU; while(d>Math.PI) d-=TAU;
+    if(Math.hypot(Cr[0]+q*Math.cos(A0+d/2), Cr[1]+q*Math.sin(A0+d/2)) > c) d = d>0 ? d-TAU : d+TAU;
+    arc(A0, A0+d, q, Cr[0], Cr[1], 22);                                       // the locking seat, concave
+    arc(ph+dl, th+TAU/n-bs, R, 0, 0, Math.max(2, Math.round((TAU/n-dl-bs-Math.PI/n)*D)));
+  }
+  return P;
+}
+// The engaged cross's angle as a function of the driver's: the slot simply points at the pin.
+const genevaGamma = (s, psi) => Math.atan2(s.a*Math.sin(psi), s.a*Math.cos(psi) - s.c);
+// Nearest hit of a ray (origin O, direction angle A) on a closed 2D outline.
+function rayHitXZ(P, O, A){
+  const dx=Math.cos(A), dz=Math.sin(A); let best=Infinity;
+  for(let i=0,N=P.length;i<N;i++){ const p=P[i], q=P[(i+1)%N], ex=q[0]-p[0], ez=q[1]-p[1];
+    const den = dx*ez - dz*ex; if(Math.abs(den)<1e-12) continue;
+    const t = ((p[0]-O[0])*ez - (p[1]-O[1])*ex)/den;
+    if(t<=1e-9 || t>=best) continue;
+    const u = ((p[0]-O[0])*dz - (p[1]-O[1])*dx)/den;
+    if(u>=0 && u<=1) best=t; }
+  return best;
+}
+// The locking disc, as a radius per angle. rL everywhere the cross never reaches; the swept minimum,
+// less the clearance, everywhere it does. Sampled profiles have to be ERODED by one bin afterwards —
+// a polygon drawn through the sample points bulges between them, and that bulge is what a sweep test
+// later reads as interference in a part whose envelope was computed correctly.
+// The model is turned half a revolution at the end so that, as built, the notch faces AWAY from the
+// cross: that is the rest pose, the one worth showing and the one the seat in the cross was cut for.
+const GENEVA_M = 360;
+function genevaDriverProfile(s){
+  const X = genevaCrossOutline(s, 90), env = new Array(GENEVA_M).fill(Infinity), K = 120;
+  const reach = (s.rL*s.rL + s.c*s.c - s.R*s.R)/(2*s.rL*s.c);
+  const half  = Math.abs(reach) < 1 ? Math.acos(reach) + 0.06 : Math.PI;   // where the cross can reach rL
+  for(let j=0;j<=K;j++){
+    // Our outline is built already turned into its rest pose, so the sweep has to be measured from
+    // there — genevaGamma is written for a cross whose first slot lies on the local zero.
+    const psi = -s.psiE + 2*s.psiE*j/K, g = genevaGamma(s, psi) - (Math.PI - Math.PI/s.n);
+    const O = [Math.cos(-g)*(-s.c), Math.sin(-g)*(-s.c)];                  // driver's axis, in cross axes
+    const i0 = Math.floor((-psi - half)/(2*Math.PI)*GENEVA_M), i1 = Math.ceil((-psi + half)/(2*Math.PI)*GENEVA_M);
+    for(let i=i0;i<=i1;i++){ const k=((i%GENEVA_M)+GENEVA_M)%GENEVA_M;
+      const d = rayHitXZ(X, O, 2*Math.PI*k/GENEVA_M + psi - g);
+      if(d - s.gap < env[k]) env[k] = Math.max(0, d - s.gap); } }
+  const floor = s.rB + 0.8, out = new Array(GENEVA_M);
+  for(let i=0;i<GENEVA_M;i++){
+    const e = Math.min(env[(i+GENEVA_M-1)%GENEVA_M], env[i], env[(i+1)%GENEVA_M]);
+    out[(i + GENEVA_M/2) % GENEVA_M] = Math.max(floor, Math.min(s.rL, e)); }
+  return out;
+}
+function buildGeneva(p){
+  const s = genevaSpec(p);
+  const bore = circleXZ(s.rB, 64);
+  if(p.genevaRole !== 'driver') return extrudePolyYTris([genevaCrossOutline(s), bore], 0, s.tC);
+  const prof = genevaDriverProfile(s), lock = [];
+  for(let i=0;i<GENEVA_M;i++){ const a=2*Math.PI*i/GENEVA_M; lock.push([prof[i]*Math.cos(a), prof[i]*Math.sin(a)]); }
+  const tris = [];
+  // Three closed shells that overlap in VOLUME: the crank plate carries both, and the boss reaches 0.6 mm
+  // down into it rather than sitting on its face — two solids meeting on a shared plane are not a union.
+  for(const T of extrudePolyYTris([circleXZ(s.rBase, 160), bore], 0, s.tB)) tris.push(T);
+  // The boss stands one clearance PROUD of the cross: the pair is seated with a gap under the cross so
+  // it can turn over the crank plate, and a boss cut to the cross's own thickness would then stop short
+  // of its top face and lock on only part of the lobe.
+  for(const T of extrudePolyYTris([lock, bore], s.tB-0.6, s.tB+s.tC+s.gap)) tris.push(T);
+  for(const T of discYTris(-s.a, 0, s.pinR, s.tB-0.6, s.tB+s.tC+s.gap+0.6, 48)) tris.push(T);
+  return tris;
+}
 function buildGear(p){
   const mode=p.gearMode, m=Math.max(0.3,p.gearModule||2), th=Math.max(1,p.gearThick||6);
   const Z=Math.max(6,Math.round(p.gearTeeth||20)), alpha=Math.max(14,Math.min(30,p.gearPA||20));
@@ -9392,6 +9538,7 @@ function buildGear(p){
   if(mode==='worm') return buildWorm(p);
   if(mode==='planetary') return buildPlanetary(p);
   if(mode==='cycloidal') return buildCycloidal(p);
+  if(mode==='geneva') return buildGeneva(p);
   if(mode==='follower') return buildFollower(p);
   if(mode==='ujoint') return buildUJoint(p);
   if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
@@ -13383,8 +13530,8 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
-    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
@@ -13649,6 +13796,17 @@ function collectPrintWarnings(p){
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
   // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  // The Maltese pair's three hard limits are all on radii and none of them is visible in the preview:
+  // the locking disc has to fit BETWEEN reaching the cross and clearing its slots, the cross's lobe has
+  // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
+  if (p.gearMode === 'geneva'){
+    const g = genevaSpec(p);
+    if (g.tight) w.push('при ' + g.n + ' пазах и межосевом ' + g.c.toFixed(0) +
+                        ' мм запирающему диску не остаётся места — увеличьте межосевое или уменьшите палец');
+    if (g.hub) w.push('крест задевает ступицу кривошипа — увеличьте межосевое или уменьшите Ø вала');
+    if (g.slotBore) w.push('дно паза выходит на отверстие креста — уменьшите Ø вала');
+    if (g.tC < 1.5 + 0.5) w.push('крест тоньше 2 мм — паз будет вести');
+  }
   if ((p.pipMode || 'none') === 'telescope'){
     const t = telescopeSpec(p);
     if (t.gap < 0.25) w.push('зазор телескопа ' + t.gap.toFixed(2) + ' мм — секции могут спечься');

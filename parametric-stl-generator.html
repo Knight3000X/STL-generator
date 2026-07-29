@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v154';
+const APP_VERSION = 'v155';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3716,7 +3716,17 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'}]},
+    {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapUndercut', label:'Защёлка: зацеп (прогиб) y', min:0.2, max:12, step:0.1, default:1.2, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapLeadAngle', label:'Защёлка: угол захода α₁', min:10, max:60, step:1, default:30, unit:'°'},
+    {group:'Защёлка-консоль', key:'snapRetAngle', label:'Защёлка: угол удержания α₂ (90 = неразъёмная)', min:30, max:90, step:1, default:45, unit:'°'},
+    {group:'Защёлка-консоль', key:'snapBaseT', label:'Защёлка: толщина основания', min:2, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapTaper', label:'Защёлка: сужать консоль к концу (даёт 1.64× прогиба)', type:'bool', default:true},
+    {group:'Защёлка-консоль', key:'snapMat', label:'Защёлка: материал (модуль и допустимая деформация)', type:'select', default:'pla',
+      options:[{v:'pla',t:'PLA (2600 МПа, 2.5 %)'},{v:'petg',t:'PETG (2100 МПа, 4 %)'},{v:'abs',t:'ABS (2200 МПа, 5 %)'},{v:'nylon',t:'нейлон (1700 МПа, 8 %)'}]},
     {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafW', label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
@@ -7842,7 +7852,63 @@ function buildClamshell(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));
 }
+// Cantilever snap-fit, SIZED rather than drawn. Every other latch in this app is dimensioned by eye; this
+// one starts from what the beam is allowed to do and reports what it will take to work it.
+//
+// The beam is a cantilever deflected by the undercut `y` at its tip. For a constant section the classic
+// result is ε = 1.5·y·t/L² — strain at the root, which is where a snap breaks. A beam TAPERED to half its
+// thickness at the tip spreads the strain along its length instead of piling it at the root, and takes
+// 1.64× the deflection for the same strain; that factor is the standard one and is applied as a divisor.
+// Deflection force P = w·t³·E·y/(4L³), and the force to push it home adds the lead-in ramp and friction:
+// W = P·(µ + tanα)/(1 − µ·tanα) with µ ≈ 0.3 for plastic on plastic.
+//
+// The numbers are published rather than buried: the strain against the material's allowable is the whole
+// design question, and a beam over it does not fail in the preview — it fails once, on the bench.
+const SNAP_MATERIALS = {                       // E (МПа), allowable strain (%), name
+  pla:  {E:2600, eps:2.5, t:'PLA'},   petg: {E:2100, eps:4.0, t:'PETG'},
+  abs:  {E:2200, eps:5.0, t:'ABS'},   nylon:{E:1700, eps:8.0, t:'нейлон'},
+};
+function snapSpec(p){
+  const L = Math.max(4, p.snapLen>0 ? p.snapLen : 20);
+  const t = Math.max(0.6, p.snapT>0 ? p.snapT : 2);
+  const w = Math.max(2, p.snapW>0 ? p.snapW : 8);
+  const y = Math.max(0.2, p.snapUndercut>0 ? p.snapUndercut : 1.2);
+  const taper = !!p.snapTaper;
+  const m = SNAP_MATERIALS[p.snapMat] || SNAP_MATERIALS.pla;
+  const a1 = Math.max(10, Math.min(60, p.snapLeadAngle>0 ? p.snapLeadAngle : 30));
+  const a2 = Math.max(30, Math.min(90, p.snapRetAngle>0 ? p.snapRetAngle : 45));
+  const eps = 100 * 1.5*y*t/(L*L) / (taper ? 1.64 : 1);           // % strain at the root
+  const P   = w*t*t*t*m.E*y/(4*L*L*L) / (taper ? 1.64 : 1);       // N, deflection force
+  const rad = d => d*Math.PI/180, mu = 0.3;
+  const push = P*(mu + Math.tan(rad(a1)))/(1 - mu*Math.tan(rad(a1)));
+  const pull = a2 >= 89 ? Infinity : P*(mu + Math.tan(rad(a2)))/Math.max(0.05, 1 - mu*Math.tan(rad(a2)));
+  return { L, t, w, y, taper, a1, a2, eps, P, push, pull, mat:m, over: eps > m.eps };
+}
+function buildSnap(p){
+  const s = snapSpec(p), tris = [];
+  const baseT = Math.max(2, p.snapBaseT>0 ? p.snapBaseT : 3);
+  const baseL = Math.max(6, s.L*0.35);
+  const tTip  = s.taper ? s.t/2 : s.t;
+  // Base pad on the bed, arm rising along +Y, hook projecting along +Z — the direction it deflects.
+  for(const T of boxSpanTris(-s.w/2, s.w/2, 0, baseT, -baseL, s.t)) tris.push(T);
+  // The arm as a prism along X, so the taper is just a four-point outline in (y,z).
+  for(const T of convexPrismXTris([[baseT-0.6, 0], [baseT-0.6, s.t], [baseT+s.L, tTip], [baseT+s.L, 0]],
+                                  -s.w/2, s.w/2)) tris.push(T);
+  // The hook: the classic triangle. The LEAD-IN face at α₁ is what you push against going together, the
+  // RETENTION face at α₂ is what holds it once home — α₂ = 90° means it does not come apart at all.
+  // Its base sits 0.4 mm INSIDE the arm and stops short of the arm's end face, so the two prisms overlap
+  // in volume instead of meeting on a shared plane.
+  const tan = d => Math.tan(d*Math.PI/180);
+  const yH = baseT + s.L - 0.3, yC = yH - s.y/tan(s.a1);        // yC = the crest
+  for(const T of convexPrismXTris([[yC - s.y/tan(s.a2), tTip - 0.4],   // foot of the retention face
+                                   [yH,                 tTip - 0.4],   // foot of the lead-in ramp
+                                   [yC,                 tTip + s.y]],  // crest
+                                  -s.w/2, s.w/2)) tris.push(T);
+  let lo=1e9, hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));
+}
 function buildHinge(p){
+  if (p.pipMode === 'snap')  return buildSnap(p);
   if (p.pipMode === 'clip')  return buildClip(p);
   if (p.pipMode === 'tie')   return buildCableTie(p);
   if (p.pipMode === 'clamp') return buildClamp(p);
@@ -13266,6 +13332,14 @@ function collectPrintWarnings(p){
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
   // An auger's flight is the thinnest thing the thread engine draws, and it is drawn standing up off the
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
+  // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
+  // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  if ((p.pipMode || 'none') === 'snap'){
+    const sp = snapSpec(p);
+    if (sp.over) w.push('защёлка: деформация ' + sp.eps.toFixed(1) + ' % при допустимых ' +
+                        sp.mat.eps + ' % для ' + sp.mat.t + ' — консоль сломается');
+    if (sp.t < 0.8) w.push('консоль защёлки ' + sp.t.toFixed(1) + ' мм — тоньше 0.8 мм');
+  }
   { const a = augerSpec(p);
     // Both ends of the blade, because they are different numbers: the root is what was asked for, and the
     // tip is what the taper and the row cap left of it. A long screw thins its own flight.

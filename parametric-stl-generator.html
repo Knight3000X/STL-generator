@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v158';
+const APP_VERSION = 'v159';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3716,10 +3716,17 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'},{v:'telescope',t:'телескопическая труба (печать в сборе)'}]},
     {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Телескоп', key:'telN', label:'Телескоп: число секций', min:2, max:8, step:1, default:3, unit:'', int:true},
+    {group:'Телескоп', key:'telD', label:'Телескоп: наружный Ø самой широкой секции', min:8, max:200, step:0.5, default:26, unit:'мм'},
+    {group:'Телескоп', key:'telLen', label:'Телескоп: длина секции', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Телескоп', key:'telWall', label:'Телескоп: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
+    {group:'Телескоп', key:'telGap', label:'Телескоп: печатный зазор', min:0.15, max:1, step:0.05, default:0.35, unit:'мм'},
+    {group:'Телескоп', key:'telStopD', label:'Телескоп: глубина упорного кольца (0 = авто от зазора)', min:0, max:6, step:0.1, default:0, unit:'мм'},
+    {group:'Телескоп', key:'telStopH', label:'Телескоп: высота упорного кольца', min:1, max:20, step:0.5, default:2.5, unit:'мм'},
     {group:'Живой шарнир', key:'lhT', label:'Живой шарнир: толщина панели', min:0.8, max:12, step:0.1, default:2.4, unit:'мм'},
     {group:'Живой шарнир', key:'lhWebT', label:'Живой шарнир: толщина перемычки (0 = два слоя)', min:0, max:3, step:0.05, default:0, unit:'мм'},
     {group:'Живой шарнир', key:'lhWebW', label:'Живой шарнир: ширина перемычки (она снижает деформацию)', min:0.6, max:30, step:0.2, default:6, unit:'мм'},
@@ -8077,7 +8084,49 @@ function buildLivingHinge(p){
   const dy=-(loY+hiY)/2, dz=-(loZ+hiZ)/2;
   return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]+dz]));
 }
+// Телескопическая труба, печатная в сборе: N tubes nested inside one another, all the same height, so it
+// comes off the bed collapsed and pulls out. Each section carries two rings — an outward one at its BOTTOM
+// and an inward one at its TOP — and a section stops when its bottom ring reaches the ring above it.
+//
+// The whole design is one chain of inequalities on the radii, and it is worth writing down because none of
+// it is guessable. Section i+1 must
+//   • pass THROUGH section i's inward top ring:      r₍i₊₁₎ + w  <  rᵢ − f − gap
+//   • yet CATCH on it when pulled out:               r₍i₊₁₎ + w + f  >  rᵢ − f + gap
+//   • and still fit inside section i's plain bore:   r₍i₊₁₎ + w + f  <  rᵢ − gap
+// Those have a solution only when f > 2·gap: a ring shallower than the clearance on both sides cannot both
+// clear on the way past and catch on the way back. That is why the ring depth is floored on the gap and
+// not on anything to do with the tube's size.
+function telescopeSpec(p){
+  const N    = Math.max(2, Math.min(8, Math.round(p.telN>0 ? p.telN : 3)));
+  const w    = Math.max(0.8, p.telWall>0 ? p.telWall : 1.6);
+  const gap  = Math.max(0.15, Math.min(1.0, fitTuned(p, p.telGap>0 ? p.telGap : 0.35)));
+  const f    = Math.max(2*gap + 0.4, p.telStopD>0 ? p.telStopD : 1.2);   // ring depth, floored on the gap
+  const hf   = Math.max(1.0, p.telStopH>0 ? p.telStopH : 2.5);           // ring height
+  const L    = Math.max(4*hf, p.telLen>0 ? p.telLen : 40);
+  const step = w + f + gap + 0.1;                                        // radius drop per section
+  const want = (p.telD>0 ? p.telD : 26)/2;
+  const rOut = Math.max(step*N + 2, want);                               // outer radius of the widest
+  const r0   = rOut - w;                                                 // its plain wall's inner radius
+  const rs   = []; for(let i=0;i<N;i++) rs.push(r0 - i*step);
+  return { N, w, gap, f, hf, L, step, rOut, rs, travel: L - 2*hf,
+           extended: L + (N-1)*(L - 2*hf), bore: 2*rs[N-1],
+           grew: rOut > want + 1e-9, want: 2*want };
+}
+function buildTelescope(p){
+  const s = telescopeSpec(p), tris = [];
+  for(let i=0;i<s.N;i++){
+    const r = s.rs[i], seg = Math.max(32, Math.round((r+s.w)*4));
+    for(const T of tubeYTris(0, 0, r+s.w, r, 0, s.L, seg)) tris.push(T);                     // plain wall
+    // Rings only where there is something to work against. The OUTERMOST section has nothing outside it
+    // to catch on, so an outward ring there is dead weight that also pushes the part past its nominal Ø;
+    // the INNERMOST has nothing inside it to stop, so an inward ring there only narrows the bore.
+    if(i > 0)     for(const T of tubeYTris(0, 0, r+s.w+s.f, r+s.w-0.3, 0, s.hf, seg)) tris.push(T);
+    if(i < s.N-1) for(const T of tubeYTris(0, 0, r+0.3, r-s.f, s.L-s.hf, s.L, seg)) tris.push(T);
+  }
+  return tris.map(T=>T.map(v=>[v[0], v[1]-s.L/2, v[2]]));
+}
 function buildHinge(p){
+  if (p.pipMode === 'telescope') return buildTelescope(p);
   if (p.pipMode === 'living') return buildLivingHinge(p);
   if (p.pipMode === 'chain') return buildChain(p);
   if (p.pipMode === 'ball')  return buildBallJoint(p);
@@ -13507,6 +13556,15 @@ function collectPrintWarnings(p){
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
   // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  if ((p.pipMode || 'none') === 'telescope'){
+    const t = telescopeSpec(p);
+    if (t.gap < 0.25) w.push('зазор телескопа ' + t.gap.toFixed(2) + ' мм — секции могут спечься');
+    // N sections need N·step of radius. Rather than let the innermost collapse to nothing, the outer Ø is
+    // raised to fit — but silently growing a part someone dimensioned is worse than saying so.
+    if (t.grew) w.push('Ø ' + t.want.toFixed(0) + ' мм мал для ' + t.N + ' секций — увеличен до ' +
+                       (2*t.rOut).toFixed(0) + ' мм');
+    if (t.w < 1.0) w.push('стенка секции ' + t.w.toFixed(1) + ' мм — тоньше 1 мм');
+  }
   if ((p.pipMode || 'none') === 'living'){
     const l = livingHingeSpec(p);
     if (l.thin)  w.push('перемычка тоньше слоя — печатать нечем');

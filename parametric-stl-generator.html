@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v146';
+const APP_VERSION = 'v147';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3712,6 +3712,8 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipGap', label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewD', label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewN', label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipLatchN', label:'Футляр: число защёлок (0 = без)', min:0, max:6, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipLatchW', label:'Футляр: ширина защёлки', min:7, max:60, step:1, default:14, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipBoxH', label:'Коробка: высота бортика лотка', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipWall', label:'Коробка: толщина стенки бортика', min:1.2, max:6, step:0.2, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipClipD', label:'Клипса: Ø кабеля / трубы', min:3, max:80, step:0.5, default:12, unit:'мм'},
@@ -7473,6 +7475,68 @@ function buildClamshell(p){
       add(convexPrismXTris([[tY1,zAi],[tY1-dropA,zAo],[tY0-dropA,zAo],[tY0,zAi]], x0, x1)); }
     else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin
       add(convexPrismXTris([[tY1,zBi],[tY1-dropB,zBo],[tY0-dropB,zBo],[tY0,zBi]], x0, x1)); }
+  }
+  // ---- Toolbox latches on the front edge (защёлки) ------------------------------------------------
+  // A clamshell with nothing holding it shut is a box that falls open, so this is the piece that makes it
+  // a case. The pattern is the toolbox one and the same one the cube's snap lid already uses: a CATCH that
+  // stands proud of the body's front wall, and a WINDOW in a tongue hanging off the lid that the catch
+  // clicks into. A window rather than a bare hook because it locks in both directions and because a closed
+  // frame is far stiffer than a cantilever of the same thickness — it is the part that gets pulled on.
+  //
+  // Everything here is drawn in the frame of the CLOSED case, which is the only frame a latch can be read
+  // in, and the lid's half is then put on the print bed by the very motion the hinge performs:
+  // (y, z) → (2·rimY − y, −z). The body's half needs no mapping — it does not move.
+  //
+  // Why the tongue stands off its own wall by the fit clearance: folded, the lid's front wall lands EXACTLY
+  // on the body's, so a tongue flush with it would be inside the body. It has to pass outside, and the
+  // shoulder that carries it out there overhangs the wall — hence the 45° gusset, the same trick the hinge
+  // tongues above use.
+  const nLatch = Math.max(0, Math.min(6, Math.round(p.pipLatchN!=null ? p.pipLatchN : 2)));
+  const zFace = -zOut;                                    // outer face of the front wall, both halves
+  if(nLatch > 0 && L > 24 && (rimY - floorT) > 6){
+    const pitch = L/nLatch;
+    const lw   = Math.max(7, Math.min(p.pipLatchW>0 ? p.pipLatchW : 14, pitch - 5));  // frame width along X
+    const tt   = Math.max(1.2, bw*0.9);                   // tongue thickness
+    const kp   = Math.max(0.6, Math.min(1.5, bw*0.55));   // how far the catch stands proud
+    const pw   = Math.max(1.8, lw*0.2);                   // side posts of the frame
+    const bb   = Math.max(1.8, bw);                       // bottom bar, the part the catch pulls against
+    const reach= Math.min(rimY - floorT - 1.2, bb + 4*kp + 3);   // how far the tongue hangs below the rim
+    const root = Math.max(2.5, bw*1.6);                   // shoulder height, on the lid's own wall
+    const tab  = Math.max(1.2, tt*0.9);                   // thumb tab on the free end
+    const zTo  = zFace - gap - tt, zTi = zFace - gap;      // tongue: outer / inner face
+    const yBar = rimY - reach;                            // bottom bar sits here
+    const fold = T => T.map(v => [v[0], 2*rimY - v[1], -v[2]]);
+    const lid  = T => { for(const t of T) tris.push(fold(t)); };
+    // Every piece of the frame overlaps its neighbour in VOLUME and shares no PLANE with it — the frame is
+    // three boxes stacked around the same corner, and letting any two of them end on one plane put four
+    // triangles on the same edge. The 0.25-0.35 mm insets below are exactly that and nothing more.
+    const in_ = 0.35;
+    for(let i=0;i<nLatch;i++){
+      const xc = -L/2 + (i+0.5)*pitch, x0 = xc-lw/2, x1 = xc+lw/2;
+      const xa = x0+in_, xb = x1-in_;
+      // --- lid: two posts. The opening between them IS the window, and it runs from the bar up to the
+      //     shoulder, so nothing has to bridge across the top of it.
+      lid(boxSpanTris(x0, x0+pw, yBar, rimY+root, zTo, zTi));
+      lid(boxSpanTris(x1-pw, x1, yBar, rimY+root, zTo, zTi));
+      // --- lid: the bar the catch pulls against, thickened into a thumb tab, with the 45° that keeps the
+      //     tab printable — on the far side of the bar, because the fold turns "below" into "above".
+      lid(convexPrismXTris([[yBar-0.25, zTi-0.25], [yBar-0.25, zTo-tab], [yBar+bb, zTo-tab],
+                            [yBar+bb+tab, zTo], [yBar+bb+tab, zTi-0.25]], xa, xb));
+      // --- lid: the shoulder that carries the tongue out past the lid's own wall, and the 45° gusset
+      //     under it — without which it starts in mid-air, the wall having ended.
+      // Strictly ABOVE the parting line: below it the wall belongs to the BODY, and a shoulder reaching
+      // down there would hit it on closing — it bites into the lid's own wall in z, never in y.
+      lid(boxSpanTris(xa, xb, rimY+gap, rimY+root+0.35, zTo+0.25, zFace+0.6));
+      lid(convexPrismXTris([[rimY+root+0.1, zFace+0.4], [rimY+root+0.1, zTo+0.25],
+                            [rimY+root+0.1+gap+tt+0.4, zFace+0.4]], xa, xb));
+      // --- body: the catch. Flat underside for the bar to pull against, 45° top so the closing tongue
+      //     rides over it and clicks in.
+      // Above the bar's FULL height — the 45° that keeps the tab printable carries it `tab` higher than the
+      // bar proper, and measuring from the bar alone sat the catch straight on that ramp.
+      const yB = yBar + bb + tab + 0.5, bl = Math.max(4, lw - 2*pw - 1.6);
+      add(convexPrismXTris([[yB, zFace+0.6], [yB, zFace-kp], [yB+kp*1.4, zFace-kp],
+                            [yB+kp*2.6, zFace+0.6]], xc-bl/2, xc+bl/2));
+    }
   }
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0], v[1]+dy, v[2]]));

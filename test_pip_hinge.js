@@ -95,5 +95,116 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('pipMode none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+console.log('=== защёлки футляра ===');
+// A clamshell with nothing holding it shut is a box that falls open, so the latch is the piece that makes
+// it a case. The pattern is the toolbox one: a CATCH standing proud of the body's front wall, and a WINDOW
+// in a tongue hanging off the lid that the catch clicks into.
+//
+// Two things have to be true at once and they pull in opposite directions. FLAT on the bed the two halves
+// must not touch anywhere, or the slicer fuses them into one solid and nothing ever opens. FOLDED the
+// latch must actually engage — and the lid's front wall lands EXACTLY on the body's, so anything the lid
+// hangs down there has to pass outside it. Both are measured below on the real mesh.
+function halves(ov){
+  const p = Object.assign({}, defaultBoxParams(), {width:40,height:40,depth:40,
+    pipMode:'box', pipLen:60, pipLeafW:22, pipLeafT:6, pipKnuckles:5, pipPinD:0, pipGap:0.35,
+    threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
+    scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
+  logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  Object.assign(paramState.box, p);
+  const t = buildTrisForShape('box', paramState.box);
+  // The hinge lives around z = 0; the latch is at the far edge, so the sign of z separates the two bodies
+  // cleanly out there without having to unpick the knuckles.
+  const gap = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
+  const zIn = Math.max(0.8, p.pipPinD>0?p.pipPinD/2:1.0) + Math.max(1.0, gap+0.9) + 1.0;
+  const far = T => T.every(v => Math.abs(v[2]) > zIn+2);
+  const body = t.filter(T => far(T) && T[0][2] < 0), lid = t.filter(T => far(T) && T[0][2] > 0);
+  const B = computeBBox(body), rimY = B.maxY;             // top of the body's front wall IS the parting line
+  return { t, p, gap, body, lid, rimY, wallInner: B.maxZ, wallOuter: B.maxZ - Math.max(1.2, p.pipWall||2),
+           // folding is what the hinge does: (y, z) → (2·rimY − y, −z)
+           folded: lid.map(T => T.map(v => [v[0], 2*rimY - v[1], -v[2]])) };
+}
+function triOverlap(A,B){                                  // Möller, same test the assembly file uses
+  const sub=(u,v)=>[u[0]-v[0],u[1]-v[1],u[2]-v[2]], dot=(u,v)=>u[0]*v[0]+u[1]*v[1]+u[2]*v[2];
+  const cr=(u,v)=>[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]], EPS=1e-9;
+  const N1=cr(sub(A[1],A[0]),sub(A[2],A[0])), d1=-dot(N1,A[0]), dB=B.map(q=>dot(N1,q)+d1);
+  if((dB[0]>EPS&&dB[1]>EPS&&dB[2]>EPS)||(dB[0]<-EPS&&dB[1]<-EPS&&dB[2]<-EPS)) return false;
+  const N2=cr(sub(B[1],B[0]),sub(B[2],B[0])), d2=-dot(N2,B[0]), dA=A.map(q=>dot(N2,q)+d2);
+  if((dA[0]>EPS&&dA[1]>EPS&&dA[2]>EPS)||(dA[0]<-EPS&&dA[1]<-EPS&&dA[2]<-EPS)) return false;
+  const D=cr(N1,N2), aD=D.map(Math.abs);
+  if(Math.max(...aD) < 1e-12) return false;                // coplanar = touching, not passing through
+  const idx=aD.indexOf(Math.max(...aD));
+  const iv=(T,d)=>{ const q=T.map(v=>v[idx]), out=[];
+    for(let i=0;i<3;i++){ const j=(i+1)%3;
+      if(d[i]*d[j]<0){ const t=d[i]/(d[i]-d[j]); out.push(q[i]+(q[j]-q[i])*t); }
+      if(Math.abs(d[i])<=EPS) out.push(q[i]); }
+    return out.length<2?null:[Math.min(...out),Math.max(...out)]; };
+  const i1=iv(A,dA), i2=iv(B,dB);
+  return !!(i1&&i2) && (Math.min(i1[1],i2[1]) - Math.max(i1[0],i2[0])) > 1e-6;
+}
+const nCross=(X,Y)=>{ let n=0; for(const a of X) for(const b of Y) if(triOverlap(a,b)) n++; return n; };
+
+for(const n of [0,1,2,3,4,6])
+  for(const bh of [8,14,22]){
+    const t = halves({pipLatchN:n, pipBoxH:bh}).t, mc = manifoldCheck(t,4);
+    chk('защёлок '+n+' при высоте '+bh+': замкнуто', mc.watertight && vol(t)>0,
+        {open:mc.openEdges, bad:mc.badEdges});
+  }
+for(const ov of [{pipLatchN:2,pipLen:120},{pipLatchN:2,pipLen:30},{pipLatchN:6,pipLen:150},
+                 {pipLatchN:2,pipWall:1.2},{pipLatchN:2,pipWall:4},{pipLatchN:2,pipGap:0.15},
+                 {pipLatchN:2,pipGap:0.8},{pipLatchN:2,pipLatchW:40},{pipLatchN:2,pipLatchW:7},
+                 {pipLatchN:3,pipPin:'removable'},{pipLatchN:2,pipScrewD:3}]){
+  const t = halves(ov).t;
+  chk('защёлки + '+JSON.stringify(ov)+': замкнуто', manifoldCheck(t,4).watertight, {});
+}
+{ // The count is a count: N latches put N catches on the body, spread along its length.
+  for(const n of [1,2,3,4]){
+    const H = halves({pipLatchN:n});
+    const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
+    const xs = [...new Set(catches.map(T => Math.round((T[0][0]+T[1][0]+T[2][0])/3)))].sort((a,b)=>a-b);
+    const groups = xs.reduce((g,x)=>{ if(!g.length || x-g[g.length-1] > 3) g.push(x); else g[g.length-1]=x; return g; },[]);
+    chk('N='+n+': на корпусе ровно '+n+' зацепов', groups.length === n, {found:groups.length});
+  }
+  const none = halves({pipLatchN:0});
+  chk('N=0: зацепов нет вовсе', none.body.every(T => T.every(v => v[2] >= none.wallOuter - 0.05)), {});
+}
+{ // PLOSKO: the two halves must not touch at all, or they print as one lump.
+  for(const n of [1,2,4]){
+    const H = halves({pipLatchN:n});
+    chk('N='+n+': плоско половины нигде не соприкасаются', nCross(H.body, H.lid) === 0, {});
+  }
+}
+{ // FOLDED: the catch has to sit INSIDE the window, touching neither the bar below it nor the posts beside
+  // it — that is the difference between a latch and a lid that will not close. The only contact allowed is
+  // the two front walls meeting along the parting line, which is what "closed" means.
+  for(const n of [1,2,3]){
+    const H = halves({pipLatchN:n});
+    const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
+    const frame   = H.folded.filter(T => T.every(v => v[2] < H.wallOuter - 0.05));
+    chk('N='+n+': сложено — зацеп не задевает рамку язычка', nCross(catches, frame) === 0,
+        {crossings: nCross(catches, frame)});
+  }
+}
+{ const H = halves({pipLatchN:2});
+  const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
+  const CB = computeBBox(catches);
+  // How far the catch stands proud of the wall, and how far it reaches past the tongue's inner face —
+  // the second number IS the snap: it is how much the tongue must flex to let go.
+  const proud = H.wallOuter - CB.minZ, engage = (H.wallOuter - H.gap) - CB.minZ;
+  chk('зацеп выступает за стенку', proud > 0.5 && proud < 2.0, {proud:+proud.toFixed(2)});
+  chk('и заходит за язычок — есть чему держать', engage > 0.3 && engage < proud,
+      {engage:+engage.toFixed(2), proud:+proud.toFixed(2)});
+  // the tongue itself clears the body's wall by the fit clearance, no more and no less
+  const frame = H.folded.filter(T => T.every(v => v[2] < H.wallOuter - 0.05));
+  chk('язычок обходит стенку корпуса с посадочным зазором',
+      Math.abs((H.wallOuter - computeBBox(frame).maxZ) - H.gap) < 0.02,
+      {clr:+(H.wallOuter - computeBBox(frame).maxZ).toFixed(3), gap:H.gap});
+}
+{ // A case too small to carry one is left alone rather than given a latch that does not fit.
+  const tiny = halves({pipLatchN:4, pipLen:20});
+  chk('на слишком коротком футляре защёлки не строятся', manifoldCheck(tiny.t,4).watertight, {});
+  const shallow = halves({pipLatchN:2, pipBoxH:3});
+  chk('и на слишком мелком — тоже', manifoldCheck(shallow.t,4).watertight, {});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

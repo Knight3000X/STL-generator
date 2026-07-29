@@ -83,7 +83,11 @@ for(const lo of [0.35, 0.7, 1.25]) for(const hi of [1, 2, 3.5]){
   const t = mk({mntPitchMin:lo, mntPitchMax:hi}), mc = manifoldCheck(t,4);
   chk(lo+'…'+hi+': замкнут', mc.watertight && vol(t)>0, {open:mc.openEdges, bad:mc.badEdges});
   chk(lo+'…'+hi+': обмотка', minDepth(t,1,0.13,0.29)===0 && minDepth(t,2,0.13,0.29)===0);
-  chk(lo+'…'+hi+': одна оболочка — гребёнка держится на хребте', meshComponents(t).length === 1, meshComponents(t).length);
+  // The comb itself is one piece; the raised digits of each pitch are separate shells sunk into the spine.
+  const sp = pitchGaugeSpec(paramState.box);
+  let bars = 0; for(const v of sp.list) bars += seg7BarsXZ(fmtNum(v), 0, 0, sp.digit).length;
+  chk(lo+'…'+hi+': хребет с лепестками и штрихи цифр', meshComponents(t).length === 1 + bars,
+      meshComponents(t).length + ' vs ' + (1+bars));
 }
 
 console.log('=== шаг зубьев, снятый с меша ===');
@@ -142,6 +146,30 @@ for(const lo of [0.5, 1]){
   chk(lo+'…2.5: между лепестками просвет', runs.length > s.n, runs.length + ' vs ' + s.n);
   const spine = solidRuns(t, 0, 0, s.hs/2 + dz);
   chk(lo+'…2.5: хребет сплошной', spine.length === 1, spine.length);
+}
+
+console.log('=== шаг подписан на лепестке ===');
+for(const lo of [0.35, 0.7]) for(const hi of [1.5, 3.5]){
+  const t = mk({mntPitchMin:lo, mntPitchMax:hi});
+  const s = pitchGaugeSpec(paramState.box), dz = (s.bl - s.hs)/2;
+  let stamped = 0, fits = 0;
+  for(let k=0;k<s.n;k++){
+    const txt = fmtNum(s.list[k]);
+    const bars = seg7BarsXZ(txt, s.xAt(k) - seg7Width(txt, s.digit)/2, s.hs/2 + s.digit/2, s.digit);
+    let found = 0;
+    for(const b of bars){
+      // Off-centre: the middle of a box face sits on the diagonal between its two triangles, and a ray
+      // through a shared edge is counted twice and reads as no crossing at all.
+      const runs = solidRuns(t, 1, b[2] + (b[3]-b[2])*0.29 + dz, b[0] + (b[1]-b[0])*0.37);
+      if(runs.length === 1 && runs[0][1] > s.t/2 + 0.5 && runs[0][0] < -s.t/2 + 1e-6) found++; }
+    if(found === bars.length) stamped++;
+    // the label belongs on the SPINE, clear of the blade below it, and inside its own column
+    if(seg7Width(txt, s.digit) + 3 <= s.bw && s.hs/2 + s.digit/2 <= s.hs && s.hs/2 - s.digit/2 >= 0) fits++;
+  }
+  chk(lo+'…'+hi+': каждый шаг подписан', stamped === s.n, stamped+'/'+s.n);
+  chk(lo+'…'+hi+': подписи умещаются на хребте', fits === s.n, fits+'/'+s.n);
+  chk(lo+'…'+hi+': лепесток расширен под подпись',
+      s.bw >= Math.max(...s.list.map(v=>seg7Width(fmtNum(v), s.digit))) + 4 - 1e-9, s.bw);
 }
 
 console.log('=== имя и предупреждения ===');

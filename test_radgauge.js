@@ -62,7 +62,12 @@ for(const n of [2, 6, 14]) for(const r0 of [0.5, 1, 3]) for(const dr of [0.25, 1
   const t = mk({mntRadN:n, mntRadStart:r0, mntRadStep:dr}), mc = manifoldCheck(t,4);
   chk(n+'×, r0='+r0+', шаг '+dr+': замкнут', mc.watertight && vol(t)>0, {open:mc.openEdges, bad:mc.badEdges});
   chk(n+'×, r0='+r0+', шаг '+dr+': обмотка', minDepth(t,1,0.31,0.17)===0 && minDepth(t,2,0.31,0.17)===0);
-  chk(n+'×, r0='+r0+', шаг '+dr+': одна оболочка', meshComponents(t).length === 1, meshComponents(t).length);
+  // The plate plus one shell per raised bar of every label: bars overlap the plate in VOLUME (0.4 mm of
+  // each sinks into it) but share no vertices with it, so they count separately and must all be there.
+  const sp = radGaugeSpec(paramState.box);
+  let bars = 0; for(const r of sp.rs) bars += seg7BarsXZ(fmtNum(r), 0, 0, sp.digit).length;
+  chk(n+'×, r0='+r0+', шаг '+dr+': плита и все штрихи цифр', meshComponents(t).length === 1 + bars,
+      meshComponents(t).length + ' vs ' + (1+bars));
 }
 
 console.log('=== обе гребёнки, по одному лучу на колонку ===');
@@ -97,6 +102,36 @@ for(const n of [4, 9]) for(const r0 of [0.8, 2.5]) for(const dr of [0.2, 1]){
   chk(n+'×: шаг выдержан', s.rs.every((r,i)=>Math.abs(r - (r0+dr*i)) < 1e-12), s.rs);
   chk(n+'×: соседние выступы не сходятся', s.pitch >= 2*s.rMax + 4, {pitch:s.pitch, rMax:s.rMax});
   chk(n+'×: вырез не прорезает пластину насквозь', s.D/2 - s.rMax >= 5.9, s.D/2 - s.rMax);
+}
+
+console.log('=== цифры на детали ===');
+// A gauge you have to count along is half a gauge. The numbers are raised bars, not cut pockets — the
+// engine has no boolean — and each bar sinks 0.4 mm into the plate, so nothing is left standing loose.
+for(const n of [3, 6, 10]) for(const r0 of [0.5, 1]) for(const dr of [0.25, 1]){
+  const t = mk({mntRadN:n, mntRadStart:r0, mntRadStep:dr});
+  const s = radGaugeSpec(paramState.box);
+  const yTop = s.t/2;
+  let stamped = 0, inside = 0, sunk = 0;
+  for(let k=0;k<n;k++){
+    const txt = fmtNum(s.rs[k]), bars = seg7BarsXZ(txt, s.xAt(k) - seg7Width(txt, s.digit)/2, s.digit/2, s.digit);
+    // every bar of every label must actually be in the mesh, sitting proud of the plate...
+    let found = 0;
+    for(const b of bars){
+      // Off-centre on purpose: the exact centre of a box's face lies ON the diagonal that splits it into
+      // two triangles, and a ray through a shared edge is counted by both, which reads as no crossing.
+      const runs = solidRuns(t, 1, b[2] + (b[3]-b[2])*0.29, b[0] + (b[1]-b[0])*0.37);
+      if(runs.length === 1 && runs[0][1] > yTop + 0.5) found++;
+      if(runs.length === 1 && runs[0][0] < -yTop + 1e-6) sunk++;    // ...and joined to the plate, not floating
+    }
+    if(found === bars.length) stamped++;
+    // ...and it has to fit inside its own column and clear of the notch
+    const halfW = seg7Width(txt, s.digit)/2;
+    if(halfW + 0.5 <= s.pitch/2 && s.digit/2 + 0.5 < s.D/2 - s.rs[k]) inside++;
+  }
+  chk(n+'×, r0='+r0+', шаг '+dr+': каждая цифра проштампована', stamped === n, stamped+'/'+n);
+  chk(n+'×, r0='+r0+', шаг '+dr+': цифры вписаны в колонку и не лезут в вырез', inside === n, inside+'/'+n);
+  chk(n+'×, r0='+r0+', шаг '+dr+': шаг колонки учитывает ширину подписи',
+      s.pitch >= Math.max(...s.rs.map(r=>seg7Width(fmtNum(r), s.digit))) + 3 - 1e-9, s.pitch);
 }
 
 console.log('=== имя несёт диапазон ===');

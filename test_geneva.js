@@ -270,6 +270,17 @@ console.log('=== предупреждения ===');
       !w2.some(x=>/запирающ|ступиц|дно паза/i.test(x)), w2);
   const w3 = collectPrintWarnings(setp({genevaSlots:3, genevaCenter:40, genevaBore:9}));
   chk('большой вал — дно паза выходит на отверстие', w3.some(x=>/дно паза/.test(x)), w3);
+  // The bore is not merely complained about, it is CUT BACK: an outline that crosses itself is not a
+  // shape, and the slot's rounded bottom reaches rin − w, half a slot width further in than its centre.
+  for(const cfg of [[3,40,9],[3,30,5],[4,40,5],[12,60,5],[6,25,6]]){
+    const g = genevaSpec(setp({genevaSlots:cfg[0], genevaCenter:cfg[1], genevaBore:cfg[2]}));
+    chk(cfg.join('/')+': расточка не доходит до дна паза', g.rB < g.rin - g.w,
+        {rB:+g.rB.toFixed(2), floor:+(g.rin-g.w).toFixed(2)});
+    chk(cfg.join('/')+': урезание объявлено', !(g.rB < g.rBwant - 1e-9) ||
+        collectPrintWarnings(paramState.box).some(x=>/урезан/.test(x))); }
+  // Three slots pull the slot bottom in to c(1−sin60°), so a small centre distance leaves nothing at all.
+  const w4 = collectPrintWarnings(setp({genevaSlots:3, genevaCenter:30, genevaBore:5}));
+  chk('места под вал нет вовсе — сказано', w4.some(x=>/не остаётся места вовсе/.test(x)), w4);
 }
 
 console.log('=== имя детали ===');

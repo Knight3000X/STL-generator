@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v148';
+const APP_VERSION = 'v149';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3666,7 +3666,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3674,6 +3674,8 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadClear', label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadLead', label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadDepth', label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadJournal', label:'Ходовой винт: вылет цапфы с каждой стороны', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadJournalD', label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
@@ -4167,7 +4169,9 @@ function assemblyMate(p){
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadHeadHeight(p) + seatGap(p) - B.minY, pz:S.pz}) };
   if (th === 'nut') return { name:'Болт', over:{threadMode:'bolt'}, back:-1,
     seat:(A,B,S)=>({px:S.px, py:A.minY - threadHeadHeight(p) - seatGap(p) - B.minY, pz:S.pz}) };
-  if (th === 'stud' || th === 'gland') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
+  // A lead screw drives the plain nut — same profile, same clearance, so they screw together by
+  // construction. Its own body starts at y = 0 like the stud's, so it seats the same way.
+  if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
   if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
     seat:(A,B,S)=>({px:S.px + m*Z, py:S.py, pz:S.pz}) };
@@ -5999,6 +6003,26 @@ function buildThread(p){
       if(bored){ tris.push(orient([B(0,i),outB(i2),outB(i)],[0,-1,0]));   // flange bottom annulus (bore → flangeR)
                  tris.push(orient([B(0,i),B(0,i2),outB(i2)],[0,-1,0])); }
       else tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }      // flange bottom disc
+  } else if (mode === 'leadscrew'){
+    // Lead screw (ходовой винт): a plain trapezoidal-threaded rod with a smooth journal out each end for
+    // the bearings. Nothing here is new machinery — it is the same male thread the stud and bolt carry,
+    // with neither a flange nor a head, which is exactly what was missing: every male thread in the app
+    // came attached to something. A COARSE pitch and a wide flat are what make it a motion thread rather
+    // than a fastener; ACME is 29° included, so a flat of about 0.2 of the pitch is the shape to ask for.
+    // It drives the existing nut — same profile, same clearance, so they screw together by construction.
+    const jour = Math.max(0, p.threadJournal!=null ? p.threadJournal : D*0.4);
+    const rJ   = Math.max(0.8, Math.min(minorR-0.4, (p.threadJournalD>0 ? p.threadJournalD : minorR*1.4)/2));
+    const Ny   = Math.max(8, Math.round(len/P*spp));
+    const V=(i,j)=>{ const y=len*j/Ny, r=minorR+h*threadProfile(phase(i,y),flat), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
+      const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+      tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const ct=[0,len,0], cb=[0,0,0];                      // end fans close the screw body
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+      tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
+      tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+    if(jour > 0.2) for(const T of discYTris(0,0, rJ, -jour, len+jour, Math.max(24, Math.round(rJ*8)))) tris.push(T);
   } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
@@ -12553,7 +12577,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком'}[p.threadTop] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

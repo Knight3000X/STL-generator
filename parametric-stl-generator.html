@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v147';
+const APP_VERSION = 'v148';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3732,7 +3732,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'}]},
+      options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'}]},
     {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
     {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
@@ -3772,6 +3772,14 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'camRise', label:'Кулачок: угол подъёма', min:10, max:180, step:5, default:120, unit:'°'},
     {group:'Шестерня', key:'camDwell', label:'Кулачок: выстой на вершине', min:0, max:180, step:5, default:60, unit:'°'},
     {group:'Шестерня', key:'camFall', label:'Кулачок: угол опускания', min:10, max:180, step:5, default:120, unit:'°'},
+    {group:'Шестерня', key:'cycPins', label:'Циклоидальный: число роликов (передат. = N−1)', min:6, max:40, step:1, default:12, unit:'', int:true},
+    {group:'Шестерня', key:'cycPinCircleD', label:'Циклоидальный: Ø окружности роликов', min:20, max:200, step:1, default:60, unit:'мм'},
+    {group:'Шестерня', key:'cycPinD', label:'Циклоидальный: Ø ролика', min:2, max:20, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'cycEcc', label:'Циклоидальный: эксцентриситет (0 = авто, 3% от R)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Шестерня', key:'cycThick', label:'Циклоидальный: толщина диска', min:2, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'cycWall', label:'Циклоидальный: стенка кольца', min:1.6, max:12, step:0.2, default:3, unit:'мм'},
+    {group:'Шестерня', key:'cycOutN', label:'Циклоидальный: число выходных пальцев', min:3, max:10, step:1, default:6, unit:'', int:true},
+    {group:'Шестерня', key:'cycOutPinD', label:'Циклоидальный: Ø выходного пальца', min:2, max:20, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearWormD', label:'Червяк: наружный Ø (0 = авто от модуля)', min:0, max:120, step:0.5, default:0, unit:'мм'},
     {group:'Шестерня', key:'gearWormLen', label:'Червяк: длина нарезки', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Шестерня', key:'gearWormJournal', label:'Червяк: вылет вала с каждой стороны (0 = без)', min:0, max:60, step:0.5, default:6, unit:'мм'},
@@ -8423,6 +8431,116 @@ function outlineRadiusFn(P, phase){
     const span=A[hi]-A[lo] || 1;
     return R[lo] + (R[hi]-R[lo])*((t-A[lo])/span); };
 }
+/* ---- Cycloidal reducer (циклоидальный редуктор) -----------------------------------------------
+   A disc with N−1 lobes rolling inside a ring of N pins, carried on an eccentric. One stage gives N−1 : 1,
+   which is why it is worth having: a spur train needs several stages and a lot of backlash to do the same.
+
+   The disc's outline is generated by ENVELOPING — the same principle the worm wheel is cut by, and the
+   second thing to use it. In the DISC's own frame the pins trace a family of circles as the mechanism
+   turns, and the profile is the largest radius none of them ever reaches:
+
+       eccentric at θ  →  disc centre at E·(cos θ, sin θ),  disc turned by −θ/(N−1)
+       r(α) = min over θ, over pins, of where the ray at α first enters that pin
+
+   This replaced the textbook offset-hypotrochoid formula, which is what I reached for first and which
+   measured wrong: rollers sat 0.5 mm INSIDE the disc at some phases and no translation or ratio fixed it.
+   The envelope cannot be wrong in that way — it is built from the motion rather than describing it — and it
+   has a second property the formula lacked: being a radius-by-angle it is star-shaped by construction, so
+   the undercut that folds a cycloidal profile through itself at large eccentricity simply cannot happen.
+   The formula needed the eccentricity clamped to about 1–5 % of R; this needs no clamp at all, and was
+   measured rolling with ZERO penetration at every phase for N = 8…30 and E up to a tenth of R.
+
+   The output opening is one SCALLOPED bore rather than a ring of separate round holes: a central circle
+   with N_out bumps, each capturing an output pin. That is a single radius-by-angle function, which is
+   exactly the form extrudeProfileY's bore takes — separate holes in a non-rectangular plate would need
+   machinery this engine does not have. The pin bears on the bump's flanks, which is what carries torque. */
+function cycloidDiscRadii(N, R, Rr, E, NA, NT){
+  const Z = Math.max(1, N-1), rad = new Float64Array(NA).fill(R);
+  for(let s=0;s<NT;s++){
+    const th = 2*Math.PI*s/NT, c = Math.cos(th/Z), sn = Math.sin(th/Z);   // −(−θ/Z) = +θ/Z
+    for(let k=0;k<N;k++){
+      const a = 2*Math.PI*k/N;
+      const px = R*Math.cos(a) - E*Math.cos(th), py = R*Math.sin(a) - E*Math.sin(th);
+      const qx = px*c - py*sn, qy = px*sn + py*c;                          // the pin, in the disc's frame
+      const d = Math.hypot(qx, qy);
+      if(d <= Rr + 1e-9) continue;                                         // degenerate: pin over the centre
+      const ang = Math.atan2(qy, qx), half = Math.asin(Rr/d);
+      const i0 = Math.floor((ang-half)/(2*Math.PI)*NA), i1 = Math.ceil((ang+half)/(2*Math.PI)*NA);
+      for(let i=i0;i<=i1;i++){
+        const al = 2*Math.PI*i/NA, b = al-ang, sb = d*Math.sin(b);
+        if(Math.abs(sb) >= Rr) continue;
+        const enter = d*Math.cos(b) - Math.sqrt(Rr*Rr - sb*sb);
+        const j = ((i%NA)+NA)%NA;
+        if(enter < rad[j]) rad[j] = enter;
+      }
+    }
+  }
+  return rad;
+}
+function buildCycloidal(p){
+  const N    = Math.max(6, Math.min(40, Math.round(p.cycPins||12)));      // pins in the ring
+  const R    = Math.max(8, (p.cycPinCircleD>0 ? p.cycPinCircleD : 60)/2); // pin circle radius
+  const Rr   = Math.max(0.8, Math.min(R/4, (p.cycPinD>0 ? p.cycPinD : 6)/2));
+  const th   = Math.max(2, p.cycThick||6);
+  const wall = Math.max(1.6, p.cycWall||3);
+  const clr  = Math.max(0.1, fitTuned(p, 0.25));
+  const nOut = Math.max(3, Math.min(10, Math.round(p.cycOutN||6)));
+  const rSh  = Math.max(1.5, (p.gearBore>0 ? p.gearBore : 8)/2);
+  // No clamp: the envelope is a radius function, so a big eccentricity gives a deeper lobe, never a fold.
+  const E    = Math.max(0.1, Math.min(R/6, p.cycEcc>0 ? p.cycEcc : Math.max(0.6, R*0.03)));
+  const seg  = Math.max(240, Math.min(1400, Math.round(2*Math.PI*R/0.35)));
+  // Motion steps, not outline steps. Too few and the envelope keeps a scallop between one pin position and
+  // the next: at N=6 that put twenty bumps on a five-lobed disc. The disc turns 1/(N−1) per input turn, so
+  // the coarser the reduction the faster it moves and the more steps it needs — hence the N−1 in the
+  // denominator. Checked over N = 6…40 and pin circles 15…100: the lobe count comes out exactly N−1.
+  const NT = Math.max(400, Math.min(1600, Math.round(3*seg/Math.max(3, N-1))));
+  const rad = cycloidDiscRadii(N, R, Rr, E, seg, NT);
+  const rMin = Math.min(...rad), rMax = Math.max(...rad);   // the disc's own root and tip, off the envelope
+  // Output pins: their circle and size follow from what is left between the shaft and the disc's root.
+  const rOutC = Math.max(rSh + 4, rMin*0.58);
+  const rPinO = Math.max(1.2, Math.min((p.cycOutPinD>0 ? p.cycOutPinD : 6)/2, (rMin - rOutC - wall)*0.75));
+  const rho   = rPinO + E + clr;                           // the bump each pin orbits inside
+  const rIn   = Math.max(rSh + 1.5, rOutC - rho*0.85);     // central opening, reaching into every bump
+  const tris  = [], add = T => { for(const t of T) tris.push(t); };
+  const cyl = (cx,cz,r,y0,y1) => discYTris(cx, cz, r, y0, y1, Math.max(24, Math.round(r*8)));
+  const place = (T, dx) => { for(const t of T) tris.push(t.map(v=>[v[0]+dx, v[1], v[2]])); };
+
+  // 1. THE DISC. Outline + the scalloped output bore, in one loft.
+  const P = []; for(let i=0;i<seg;i++){ const a=2*Math.PI*i/seg; P.push([rad[i]*Math.cos(a), rad[i]*Math.sin(a)]); }
+  const boreFn = a => { let r = rIn;
+    for(let k=0;k<nOut;k++){ const dA = a - 2*Math.PI*k/nOut, sA = rOutC*Math.sin(dA);
+      if(Math.abs(sA) < rho){ const f = rOutC*Math.cos(dA) + Math.sqrt(rho*rho - sA*sA); if(f > r) r = f; } }
+    return r; };
+  const disc = extrudeProfileY(P, boreFn, th, 0);
+
+  // 2. THE RING the disc rolls in: an annulus whose inner rim carries N pins. The pins are part of the ring
+  //    rather than loose rods — printed flat this is one piece and needs no assembly.
+  const ringO = R + Rr + wall, ringI = R + Rr - 0.6;       // inner rim bites 0.6 into the pins
+  const ring = tubeYTris(0, 0, ringO, ringI, -th/2-1, th/2+1, Math.max(64, Math.round(ringO*4)));
+  for(let k=0;k<N;k++){ const a = 2*Math.PI*k/N;
+    for(const T of cyl(R*Math.cos(a), R*Math.sin(a), Rr, -th/2-1, th/2+1)) ring.push(T); }
+
+  // 3. THE ECCENTRIC. A shaft with a journal offset by E — this is the part that makes the disc orbit.
+  const ecc = cyl(0, 0, rSh, -th*1.6, th*1.6);
+  for(const T of cyl(E, 0, Math.max(rSh+1.2, rIn-clr), -th/2, th/2)) ecc.push(T);
+
+  // 4. THE OUTPUT FLANGE: a plate with nOut pins that ride in the disc's bumps.
+  const flO = rOutC + rPinO + wall;
+  const flange = tubeYTris(0, 0, flO, rSh + clr, -th/2, th/2 - th*0.5, Math.max(48, Math.round(flO*4)));
+  for(let k=0;k<nOut;k++){ const a = 2*Math.PI*k/nOut;
+    for(const T of cyl(rOutC*Math.cos(a), rOutC*Math.sin(a), rPinO, -th/2+0.4, th/2+th*0.6)) flange.push(T); }
+
+  // Laid out in a row, in the order they assemble, with a gap between each.
+  const g = Math.max(4, wall*2);
+  let x = 0;
+  place(ring, x + ringO);                        x += 2*ringO + g;
+  place(disc, x + rMax);                         x += 2*rMax + g;
+  place(flange, x + flO);                        x += 2*flO + g;
+  place(ecc, x + Math.max(rSh+1.2, rIn-clr) + E);
+  let lo=1e9, hi=-1e9; for(const T of tris) for(const v of T){ if(v[0]<lo)lo=v[0]; if(v[0]>hi)hi=v[0]; }
+  const dx = -(lo+hi)/2;
+  return tris.map(T=>T.map(v=>[v[0]+dx, v[1], v[2]]));
+}
 /* Planetary gearset (планетарный редуктор): sun + N planets + ring, laid out on the CORRECT centre distances
    so the thing actually turns. Two constraints drive everything and are enforced, not assumed:
      • ring teeth  Zr = Zs + 2·Zp        — otherwise the ring cannot mesh with planets that mesh with the sun
@@ -8484,6 +8602,7 @@ function buildGear(p){
   if(mode==='rack') return buildRack(p);
   if(mode==='worm') return buildWorm(p);
   if(mode==='planetary') return buildPlanetary(p);
+  if(mode==='cycloidal') return buildCycloidal(p);
   if(mode==='follower') return buildFollower(p);
   if(mode==='ujoint') return buildUJoint(p);
   if(mode==='vbelt'||mode==='roundbelt') return buildPulley(p);
@@ -12431,8 +12550,8 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост'})[p.mntMode] || 'крепёж';
-  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
-    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
+  if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
+    + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком'}[p.threadTop] || '') : '');

@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v156';
+const APP_VERSION = 'v157';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3716,10 +3716,16 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'}]},
     {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Цепь', key:'chainN', label:'Цепь: число звеньев', min:2, max:60, step:1, default:6, unit:'', int:true},
+    {group:'Цепь', key:'chainLen', label:'Цепь: длина звена', min:6, max:120, step:0.5, default:18, unit:'мм'},
+    {group:'Цепь', key:'chainW', label:'Цепь: ширина звена', min:3, max:80, step:0.5, default:9, unit:'мм'},
+    {group:'Цепь', key:'chainT', label:'Цепь: толщина прутка в плоскости звена', min:0.8, max:12, step:0.1, default:2.2, unit:'мм'},
+    {group:'Цепь', key:'chainH', label:'Цепь: толщина прутка поперёк (0 = как в плоскости)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Цепь', key:'chainGap', label:'Цепь: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.4, unit:'мм'},
     {group:'Шаровой шарнир', key:'ballD', label:'Шарнир: Ø шара', min:6, max:80, step:0.5, default:16, unit:'мм'},
     {group:'Шаровой шарнир', key:'ballGap', label:'Шарнир: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Шаровой шарнир', key:'ballWall', label:'Шарнир: толщина чашки', min:1.2, max:12, step:0.1, default:2.4, unit:'мм'},
@@ -7968,7 +7974,58 @@ function buildBallJoint(p){
   for(const T of solidLatheYTris(prof, seg)) tris.push(T);
   return tris;
 }
+// Цепь, печатная в сборе. A link is a flat ring — a stadium outline with a stadium hole — and a stadium is
+// CONVEX, so both are radius-by-angle and `extrudeProfileY` builds the whole link in one call. Consecutive
+// links are turned 90° and set a pitch apart so each one is threaded through its neighbour's hole; nothing
+// touches, so the slicer prints N separate bodies that come off the bed already a chain.
+//
+// The pitch is the only number that matters. Too long and the links merely sit end to end; too short and
+// they interfere and print as one lump. It is set from the HOLE, not from the link: a neighbour's end bar
+// has to sit inside that hole with the print gap to spare on both sides.
+function chainSpec(p){
+  const t   = Math.max(0.8, p.chainT>0 ? p.chainT : 2.2);        // bar cross-section, in the link's plane
+  const h   = Math.max(0.8, p.chainH>0 ? p.chainH : t);          // and out of it
+  const gap = Math.max(0.15, Math.min(1.2, fitTuned(p, p.chainGap>0 ? p.chainGap : 0.4)));
+  // The width has a FLOOR, and it is not cosmetic. The neighbour's bar comes through this link's hole
+  // turned 90°, so what has to clear across the hole is that bar's OUT-OF-PLANE thickness h. Leave the
+  // hole narrower than h and the two links do not interlock, they intersect — 1068 crossings on the first
+  // attempt, at t = 4, because the floor only counted the bar's in-plane thickness.
+  const W   = Math.max(2*t + h + 2*gap + 1.2, p.chainW>0 ? p.chainW : 9);   // link width (outer)
+  const L   = Math.max(W + 2*t + 2, p.chainLen>0 ? p.chainLen : 18);
+  const N   = Math.max(2, Math.min(60, Math.round(p.chainN>0 ? p.chainN : 6)));
+  const Li = L - 2*t, Wi = W - 2*t;                              // the hole
+  // The hole's corner radius, and it is the number that makes the chain work. A STADIUM hole (corner
+  // radius = half its width) is the obvious shape and it is wrong: it narrows toward its ends, so where
+  // the neighbour's ring is still passing through, the opening has already closed down onto it. Rounding
+  // the hole no more than this keeps its full width Wi over the whole of its length, and the neighbour's
+  // bar — h thick, plus clearance either side — always clears.
+  const rc = Math.max(0.3, Math.min(Wi/2 - h/2 - gap, Wi*0.45, Li*0.45));
+  // The pitch has an upper bound and it comes from ALONG the chain, not across it: the neighbour's end
+  // bar is t long, and the whole of it has to sit inside this link's hole, which reaches to Li/2 = L/2 − t.
+  //   pitch − L/2 + t ≤ L/2 − t − gap   →   pitch ≤ L − 2t − gap
+  // A pitch past that puts the bar into this link's END bar instead of through the hole. It cost 640
+  // crossings at t = 4 and 112 at h = 1: the first formula here read L − t − h − 2·gap, which is the same
+  // number only while t = h — so the default passed and every asymmetric bar intersected.
+  const pitch = L - 2*t - 2*gap;
+  return { t, h, W, L, gap, N, Li, Wi, rc, pitch, span: (N-1)*pitch + L };
+}
+function buildChain(p){
+  const s = chainSpec(p), tris = [];
+  const NA = Math.max(64, Math.round((s.L + s.W)*3));
+  const ring = [];
+  for(let i=0;i<NA;i++){ const a = 2*Math.PI*i/NA, r = roundedRectDist(s.L/2, s.W/2, s.W/2, a);
+    ring.push([r*Math.cos(a), r*Math.sin(a)]); }
+  const one = extrudeProfileY(ring, a => roundedRectDist(s.Li/2, s.Wi/2, s.rc, a), s.h, 0);
+  // extrudeProfileY lays the outline in X-Z and extrudes along Y, so a link comes out lying flat with its
+  // long axis along X. Odd links are stood on edge — a quarter turn about X — and each is slid one pitch on.
+  for(let k=0;k<s.N;k++){
+    const dx = k*s.pitch - ((s.N-1)*s.pitch)/2, turn = (k % 2) === 1;
+    for(const T of one) tris.push(T.map(v => turn ? [v[0]+dx, -v[2], v[1]] : [v[0]+dx, v[1], v[2]]));
+  }
+  return tris;
+}
 function buildHinge(p){
+  if (p.pipMode === 'chain') return buildChain(p);
   if (p.pipMode === 'ball')  return buildBallJoint(p);
   if (p.pipMode === 'snap')  return buildSnap(p);
   if (p.pipMode === 'clip')  return buildClip(p);
@@ -13396,6 +13453,12 @@ function collectPrintWarnings(p){
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
   // bench, the first time it is pushed home — so the number is put in front of whoever is choosing it.
+  if ((p.pipMode || 'none') === 'chain'){
+    const c = chainSpec(p);
+    if (c.gap < 0.25) w.push('зазор цепи ' + c.gap.toFixed(2) + ' мм — звенья могут спечься');
+    if (c.pitch <= c.W) w.push('шаг звена меньше его ширины — звенья пересекутся, а не сцепятся');
+    if (Math.min(c.t, c.h) < 1.0) w.push('пруток звена ' + Math.min(c.t,c.h).toFixed(1) + ' мм — тоньше 1 мм');
+  }
   if ((p.pipMode || 'none') === 'ball'){
     const b = ballJointSpec(p);
     // Two failures, and neither shows in the preview: a gap the printer bridges welds the joint solid, and

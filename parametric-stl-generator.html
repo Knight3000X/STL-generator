@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v165';
+const APP_VERSION = 'v166';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3900,6 +3900,13 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntCabGrip', label:'Гребёнка кабелей: горловина (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.75, unit:''},
     {group:'Крепёж / монтаж', key:'mntCabH', label:'Гребёнка кабелей: толщина планки', min:3, max:60, step:1, default:12, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCabScrew', label:'Гребёнка кабелей: Ø отверстий под саморез (0 = без)', min:0, max:12, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipT', label:'Держатель: толщина кромки (панель / дефлектор)', min:0.6, max:80, step:0.5, default:20, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipW', label:'Держатель: стенка', min:1.2, max:12, step:0.2, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipBack', label:'Держатель: задняя лапа', min:6, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipFront', label:'Держатель: передняя лапа', min:4, max:120, step:1, default:20, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipTray', label:'Держатель: глубина полки', min:4, max:80, step:1, default:16, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipLip', label:'Держатель: бортик полки', min:2, max:40, step:1, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipWide', label:'Держатель: ширина', min:8, max:200, step:2, default:40, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10652,6 +10659,57 @@ function buildCableComb(p){
     loops.push(circleXZ(s.sc/2, 32, sg*s.xScrew, 0).slice().reverse());
   return extrudePolyYTris(loops, 0, s.H).map(T=>T.map(v=>[v[0], v[1]-s.H/2, v[2]]));
 }
+// A polyline given THICKNESS: offset to both sides by half the wall and closed into one loop. Corners are
+// mitred rather than simply averaged — the average of two segment normals is short by cos(half angle), so
+// at a right angle the ribbon would neck down to 0.71 of its own wall exactly where it is bent and weakest.
+// The miter is capped, because a fold approaching 180° sends the correction to infinity.
+function ribbonXZ(path, w){
+  const n = path.length, h = w/2, segN = [];
+  for(let i=0;i+1<n;i++){ const dx=path[i+1][0]-path[i][0], dz=path[i+1][1]-path[i][1], L=Math.hypot(dx,dz)||1;
+    segN.push([dz/L, -dx/L]); }
+  const off = sgn => path.map((p,i)=>{
+    const a = segN[Math.max(0, i-1)], b = segN[Math.min(segN.length-1, i)];
+    let mx = a[0]+b[0], mz = a[1]+b[1]; const m = Math.hypot(mx,mz)||1; mx/=m; mz/=m;
+    const k = Math.max(0.4, mx*b[0] + mz*b[1]);
+    return [p[0] + sgn*h*mx/k, p[1] + sgn*h*mz/k]; });
+  return off(1).concat(off(-1).reverse());
+}
+/* ---- Держатель на кромку (монитор / дефлектор) ------------------------------------------------------
+   One constant cross-section: a hook that goes over an edge and a tray that comes back forward. Printed
+   flat — the section is the footprint and the extrusion is the holder's width — so every wall stands
+   vertical and the tray, the lip and the inside of the hook all print without a gram of support.
+
+   The back leg leans IN by a bite, so the jaw is narrower at its mouth than the panel it goes on and the
+   clip has to spread to seat. A jaw cut to exactly the panel thickness holds by friction it does not have.
+   The same section fits a monitor bezel and a car vent blade — only the numbers differ, which is why there
+   is no mode select: the part is one shape with two sets of parameters. */
+function edgeClipSpec(p){
+  const T  = Math.max(0.6, p.mntClipT>0 ? p.mntClipT : 20);
+  const w  = Math.max(1.2, p.mntClipW>0 ? p.mntClipW : 3);
+  const bk = Math.max(6, p.mntClipBack>0 ? p.mntClipBack : 25);
+  const fr = Math.max(4, Math.min(bk - w - 2, p.mntClipFront>0 ? p.mntClipFront : 20));
+  const td = Math.max(4, p.mntClipTray>0 ? p.mntClipTray : 16);
+  const lh = Math.max(2, p.mntClipLip>0 ? p.mntClipLip : 8);
+  const wd = Math.max(8, p.mntClipWide>0 ? p.mntClipWide : 40);
+  const bite = Math.min(2, T*0.15);
+  return {T, w, bk, fr, td, lh, wd, bite, zTray: bk - fr,
+          weak: w < 1.6, shallow: td < 8, nothing: T < 1.2};
+}
+function buildEdgeClip(p){
+  const s = edgeClipSpec(p), h = s.w/2;
+  // The path runs down the MIDDLE of the wall, so a leg drawn on x = 0 puts material either side of it and
+  // the jaw comes out one wall narrower than asked. Both legs are therefore drawn half a wall OUTSIDE the
+  // faces that do the gripping, and the same for the tray: what the parameters name is the CLEAR opening.
+  const xb = -h, xf = s.T + h, xl = s.T + s.w + s.td + h;
+  const path = [[xb + s.bite, 0], [xb, s.bk*0.55], [xb, s.bk], [xf, s.bk], [xf, s.zTray],
+                [xl, s.zTray], [xl, s.zTray + s.lh]];
+  const tris = extrudePolyYTris([ribbonXZ(path, s.w)], -s.wd/2, s.wd/2);
+  let x0=1e9, x1=-1e9, z0=1e9, z1=-1e9;
+  for(const T2 of tris) for(const v of T2){ if(v[0]<x0)x0=v[0]; if(v[0]>x1)x1=v[0];
+                                           if(v[2]<z0)z0=v[2]; if(v[2]>z1)z1=v[2]; }
+  const dx=(x0+x1)/2, dz=(z0+z1)/2;
+  return tris.map(T2=>T2.map(v=>[v[0]-dx, v[1], v[2]-dz]));
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
@@ -10659,6 +10717,7 @@ function buildMount(p){
   if(p.mntMode==='radgauge') return buildRadGauge(p);
   if(p.mntMode==='pitchgauge') return buildPitchGauge(p);
   if(p.mntMode==='cablecomb') return buildCableComb(p);
+  if(p.mntMode==='edgeclip') return buildEdgeClip(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13816,7 +13875,8 @@ function activeShapeLabel() {
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
     radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
     pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы (' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.)'; })(),
-    cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })()})[p.mntMode] || 'крепёж';
+    cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
+    edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -14088,6 +14148,12 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'edgeclip'){
+    const g = edgeClipSpec(p);
+    if (g.nothing) w.push('кромка ' + g.T.toFixed(1) + ' мм — зажимать нечего');
+    if (g.weak) w.push('стенка ' + g.w.toFixed(1) + ' мм — прищепка разожмётся и не вернётся');
+    if (g.shallow) w.push('полка ' + g.td.toFixed(0) + ' мм — телефон на ней не удержится');
+  }
   if (p.mntMode === 'cablecomb'){
     const g = cableCombSpec(p);
     if (g.loose) w.push('горловина ' + (g.grip*100).toFixed(0) + '% от Ø кабеля — держать не будет');

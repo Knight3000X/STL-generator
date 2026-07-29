@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v153';
+const APP_VERSION = 'v154';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3666,7 +3666,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3678,6 +3678,9 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadJournalD', label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadAugerBlade', label:'Шнек: толщина витка (0 = авто от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBarbN', label:'Ёлочка: число зубцов (0 = авто от длины)', min:0, max:12, step:1, default:0, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadBarbEnd', label:'Ёлочка: что с другой стороны', type:'select', default:'barb',
+      options:[{v:'barb',t:'вторая ёлочка (соединитель шлангов)'},{v:'flange',t:'фланец (упор)'},{v:'thread',t:'наружная резьба (штуцер)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWireD', label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHandleW', label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
@@ -6167,6 +6170,49 @@ function buildThread(p){
       tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
       tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
     if(jour > 0.2 && rJ > 0.8) for(const T of discYTris(0,0, rJ, -jour, len+jour, Math.max(24, Math.round(rJ*8)))) tris.push(T);
+  } else if (mode === 'barb'){
+    // Ёлочка на шланг. A body of revolution, so `latheYTris` builds it whole: an outer silhouette plus a
+    // coaxial bore. `threadD` is the HOSE's inner Ø — the crests stand a little proud of it, which is the
+    // interference that holds the hose on; the roots sit under it so the hose can be pushed over them.
+    // Each barb ramps up toward the body and then steps straight back, so it slides on and catches coming
+    // off. The far end is a choice: another tail (a joiner), a flange, or a male thread.
+    const rHose = D/2, rCrest = rHose + Math.max(0.25, rHose*0.06), rRoot = rHose - Math.max(0.4, rHose*0.14);
+    const rB = Math.max(0.8, Math.min(rRoot-0.8, p.threadBore>0 ? p.threadBore/2 : rRoot*0.62));
+    const nB = Math.max(1, Math.min(12, Math.round(p.threadBarbN>0 ? p.threadBarbN : len/Math.max(3, D*0.45))));
+    const bl = len/nB;
+    const end = p.threadBarbEnd || 'barb';
+    const flThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
+    const flR   = Math.max(rCrest+1.5, p.threadFlangeR>0 ? p.threadFlangeR : rCrest+3);
+    // One tail, written as a silhouette from the tip inward. `y0` is where it starts, `sg` which way it runs.
+    const tail = (y0, sg) => { const s=[[rRoot*0.72, y0]];
+      for(let i=0;i<nB;i++){ const b=y0+sg*i*bl;
+        s.push([rRoot, b+sg*bl*0.12], [rCrest, b+sg*bl*0.82], [rRoot, b+sg*bl*0.82]); }
+      s.push([rRoot, y0+sg*len]); return s; };
+    let prof;
+    if(end === 'barb'){                                  // hose joiner: a tail each way off a middle collar
+      const mid = Math.max(3, D*0.5), yA = len, yB2 = len + mid;
+      prof = tail(0, 1).concat([[rCrest+0.6, yA], [rCrest+0.6, yB2]], tail(yB2 + len, -1).reverse());
+    } else {                                             // flange, and the thread stands on the flange
+      prof = tail(0, 1).concat([[flR, len], [flR, len+flThk]]);
+    }
+    for(const T of latheYTris(prof, rB, Math.max(48, Math.round(rCrest*5)))) tris.push(T);
+    if(end === 'thread'){
+      // The male thread as its own closed shell, buried 0.8 mm in the flange — the gland's construction.
+      const y0=len+flThk-0.8, y1=y0+Math.max(P*2, len*0.5), Ny=Math.max(8, Math.round((y1-y0)/P*spp));
+      const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, a=th(i), r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat);
+        return [r*Math.cos(a), y, r*Math.sin(a)]; };
+      const Bo=(y,i)=>{ const a=th(i); return [rB*Math.cos(a), y, rB*Math.sin(a)]; };
+      for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
+        const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+        tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
+        tris.push(orient([V(i,Ny),Bo(y1,i),Bo(y1,i2)],[0,1,0]));
+        tris.push(orient([V(i,Ny),Bo(y1,i2),V(i2,Ny)],[0,1,0]));
+        tris.push(orient([Bo(y0,i),Bo(y0,i2),Bo(y1,i2)],rin));
+        tris.push(orient([Bo(y0,i),Bo(y1,i2),Bo(y1,i)],rin));
+        tris.push(orient([V(i,0),Bo(y0,i2),Bo(y0,i)],[0,-1,0]));
+        tris.push(orient([V(i,0),V(i2,0),Bo(y0,i2)],[0,-1,0])); }
+    }
   } else if (mode === 'corkscrew'){
     // Штопор. Every other helix in the app is a heightfield r(θ,y) on a cylinder, and a corkscrew is the
     // one that cannot be: it is HOLLOW. A ray down its axis meets nothing at all, and a radial ray meets
@@ -12959,7 +13005,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

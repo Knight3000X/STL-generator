@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v151';
+const APP_VERSION = 'v152';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3666,7 +3666,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3676,6 +3676,8 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadDepth', label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadJournal', label:'Ходовой винт: вылет цапфы с каждой стороны', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadJournalD', label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadAugerBlade', label:'Шнек: толщина витка (0 = авто от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
@@ -4169,6 +4171,27 @@ function threadTopMode(p){
   if (typeof p.threadTopMode === 'string') return p.threadTopMode;
   return (p.threadFunnelD > 0) ? 'funnel' : 'none';               // and from before the select existed
 }
+// An auger's flight, exactly as buildThread draws it. Published because two of these numbers are not
+// what was typed in and both the print check and the tests need the real ones:
+//   • `rows` — the axial sampling. It comes off the BLADE, not the pitch. A flight is a narrow pulse, and
+//     sampling it at the fastener's 26 rows per pitch steps clean over a 1.2 mm blade on a 20 mm pitch:
+//     the screw comes out a plain rod, closed and wrong.
+//   • `ramp` — the taper on each side of the blade. Asked for as a slight one (0.15 of the thickness),
+//     but never finer than the sampling can carry, so the edge is never finer than the mesh. On a long
+//     screw the row cap forces it wider, and then `tip` — what the blade measures at its outer edge —
+//     is what actually gets printed, which is why it is reported rather than assumed.
+function augerSpec(p){
+  if ((p.threadMode||'none') !== 'auger') return null;
+  const D=Math.max(4, p.threadD||30), P=Math.max(0.5, p.threadPitch||3), majorR=D/2;
+  const len=Math.max(P, p.threadLen||16);
+  const rSh=Math.max(0.8, Math.min(majorR-0.8, (p.threadAugerShaft>0 ? p.threadAugerShaft : D*0.35)/2));
+  const tw=Math.max(0.4, Math.min(P*0.7, p.threadAugerBlade>0 ? p.threadAugerBlade : Math.max(1.2, P*0.15)));
+  const target=Math.min(tw*0.15, 0.4);
+  const rows=Math.max(24, Math.min(600, Math.round(2*len/target)));
+  const dy=len/rows;
+  const ramp=Math.min(Math.max(target, 1.5*dy), (tw-0.2)/2);
+  return { rows, dy, ramp, blade:tw, tip:tw-2*ramp, shaftD:2*rSh, flightH:majorR-rSh, len, pitch:P };
+}
 // The spigot a neck adapter grows on its top, exactly as buildThread computes it — published so the
 // assembly pair and the tests can size the mating cap without re-deriving the cap's internals.
 // Returns null when this is not a neck adapter, or when the cap is too small to carry one.
@@ -4222,6 +4245,16 @@ function assemblyMate(p){
     seat:(A,B,S)=>({px:S.px, py:A.minY - threadHeadHeight(p) - seatGap(p) - B.minY, pz:S.pz}) };
   // A lead screw drives the plain nut — same profile, same clearance, so they screw together by
   // construction. Its own body starts at y = 0 like the stud's, so it seats the same way.
+  // An auger's counterpart is the BARREL it turns inside, and a barrel is not a parametric model of this
+  // app — it is a length of tube. Handed over as a frozen mesh, the same way the pipe a collar clips to
+  // is, and drawn one fit clearance clear of the flight so the two do not share a faceted surface.
+  if (th === 'auger') return { name:'Ствол шнека (образец)',
+    frozen: (pp)=>{
+      const clr = Math.max(0.1, fitTuned(pp, 0.35));
+      const rB = Math.max(2, (pp.threadD||30)/2) + clr, wall = Math.max(1.5, rB*0.12);
+      const L = Math.max(Math.max(0.5, pp.threadPitch||3), pp.threadLen||16) + 2;
+      return tubeYTris(0, 0, rB+wall, rB, -L/2, L/2, Math.max(48, Math.round(rB*4))); },
+    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
   if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
@@ -6005,6 +6038,24 @@ function threadProfile(t, flat){
   if (t < 1 - f)     return 1 - (t - (0.5 + f)) / ramp;  // falling flank
   return 0;                                              // root flat (wraps to t=0)
 }
+// The profile of an AUGER's flight, as a function of the axial phase in turns — the one thing that makes
+// a conveyor screw different from a fastener. A fastener's thread fills its pitch: threadProfile ramps up
+// over a quarter turn, sits on the crest, ramps down. A flight is a thin ribbon standing far off a thick
+// shaft, so what is wanted is a narrow PULSE instead — full height across the blade, back to the shaft
+// everywhere else — with a short ramp each side so the blade is thicker at its root than at its tip. That
+// is both how a real flight is made and what lets it print: a perfectly square pulse would put the blade's
+// two faces on planes the sampling cannot resolve without an absurd row count.
+//   duty     — the blade's thickness as a fraction of the pitch
+//   rampDuty — the ramp on each side, likewise in turns
+function augerProfile(t, duty, rampDuty){
+  t -= Math.floor(t);                                    // → [0,1)
+  const half = Math.max(0.01, Math.min(0.49, duty/2));
+  const rp   = Math.max(1e-6, Math.min(rampDuty, half*0.9));
+  const d    = Math.abs(t - 0.5);                        // the flight is centred on t = 0.5
+  if (d >= half)      return 0;                          // shaft
+  if (d <= half - rp) return 1;                          // full flight height
+  return (half - d) / rp;                                // ramp: thicker at the root than at the tip
+}
 // Global print-fit trim: ONE slider that nudges every mating clearance at once. Printers vary far more than
 // designs do, so calibrating this once beats hand-editing five separate numbers on every model. Applied where
 // each clearance is read; each site still clamps to its own valid range afterwards.
@@ -6093,6 +6144,27 @@ function buildThread(p){
       tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
       tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
     if(jour > 0.2) for(const T of discYTris(0,0, rJ, -jour, len+jour, Math.max(24, Math.round(rJ*8)))) tris.push(T);
+  } else if (mode === 'auger'){
+    // Шнек / архимедов винт: a thick shaft carrying a thin helical flight, for moving powder or granules
+    // along a tube. It is the SAME heightfield r(θ,y) every thread in the app is written as; the only
+    // thing that changes is the profile (see augerProfile above), so there is no new machinery here.
+    // `threadD` is the flight's outer Ø — that is what the barrel has to clear — and the shaft is its own
+    // parameter under it. Journals out each end are the lead screw's, unchanged.
+    const A    = augerSpec(p);
+    const rSh  = A.shaftD/2, hF = A.flightH, Ny = A.rows;
+    const duty = A.blade/P, rampDuty = A.ramp/P;
+    const jour = Math.max(0, p.threadJournal!=null ? p.threadJournal : 0);
+    const rJ   = Math.max(0.8, Math.min(rSh-0.4, (p.threadJournalD>0 ? p.threadJournalD : rSh*1.2)/2));
+    const V=(i,j)=>{ const y=len*j/Ny, r=rSh+hF*augerProfile(phase(i,y), duty, rampDuty), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
+      const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+      tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+    const ct=[0,len,0], cb=[0,0,0];                      // end fans close the screw body
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+      tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
+      tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+    if(jour > 0.2 && rJ > 0.8) for(const T of discYTris(0,0, rJ, -jour, len+jour, Math.max(24, Math.round(rJ*8)))) tris.push(T);
   } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
@@ -12806,7 +12878,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
@@ -13065,6 +13137,13 @@ function collectPrintWarnings(p){
   if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
+  // An auger's flight is the thinnest thing the thread engine draws, and it is drawn standing up off the
+  // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
+  { const a = augerSpec(p);
+    // Both ends of the blade, because they are different numbers: the root is what was asked for, and the
+    // tip is what the taper and the row cap left of it. A long screw thins its own flight.
+    if (a && a.blade < 0.8) w.push('виток шнека ' + a.blade.toFixed(1) + ' мм — тоньше 0.8 мм');
+    else if (a && a.tip < 0.6) w.push('кромка витка ' + a.tip.toFixed(1) + ' мм — шнек слишком длинный для такого витка'); }
   // A neck adapter needs a ceiling to open its channel in. When the lower thread's root leaves none, the
   // cap comes out BLIND — correct geometry, and nothing on screen says why the spigot is missing.
   if ((p.threadMode || 'none') === 'cap' && threadTopMode(p) === 'neck'){

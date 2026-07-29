@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v152';
+const APP_VERSION = 'v153';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3666,7 +3666,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
@@ -3678,6 +3678,8 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadJournalD', label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadAugerBlade', label:'Шнек: толщина витка (0 = авто от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadWireD', label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHandleW', label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
@@ -6165,6 +6167,44 @@ function buildThread(p){
       tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
       tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
     if(jour > 0.2 && rJ > 0.8) for(const T of discYTris(0,0, rJ, -jour, len+jour, Math.max(24, Math.round(rJ*8)))) tris.push(T);
+  } else if (mode === 'corkscrew'){
+    // Штопор. Every other helix in the app is a heightfield r(θ,y) on a cylinder, and a corkscrew is the
+    // one that cannot be: it is HOLLOW. A ray down its axis meets nothing at all, and a radial ray meets
+    // the wire in a band that starts well off the axis — two radii per direction, which r(θ,y) has no way
+    // to say. So this is a swept bar instead, and it is the app's first path that leaves a plane.
+    //
+    // The whole part is ONE path: point → spiral → the turn onto the axis → shank. Sweeping it in a
+    // single pass means there are no joints to make watertight, which is the usual cost of a shape like
+    // this. The handle is the one separate piece, a bar crossing the shank, interpenetrating as always.
+    const rw = Math.max(0.35, Math.min(P*0.45, p.threadWireD>0 ? p.threadWireD/2 : P*0.18));
+    const Rh = Math.max(rw+0.4, D/2 - rw);               // centreline radius, so the crest reaches D/2
+    const per = 48, M = Math.max(24, Math.round(len/P*per));
+    const seg = Math.max(10, Math.min(24, Math.round(rw*8)));
+    const path = [];
+    for(let i=0;i<=M;i++){ const t=len*i/M, a=hand*2*Math.PI*t/P;
+      path.push([Rh*Math.cos(a), t, Rh*Math.sin(a)]); }
+    const helixEnd = path.length - 1;
+    // The turn onto the axis. Both the radius and the angle ease OUT — their rates vanish together at the
+    // end — so the path arrives travelling straight up and the shank continues it without a kink. A kink
+    // here is not cosmetic: a swept tube folds through itself on the inside of a sharp corner.
+    const K = 28, rise = P*0.8, aEnd = hand*2*Math.PI*len/P;
+    for(let k=1;k<=K;k++){ const u=k/K, ease=1-(1-u)*(1-u), s=u*u*(3-2*u);
+      const a = aEnd + hand*Math.PI*ease;
+      path.push([Rh*(1-s)*Math.cos(a), len + rise*u, Rh*(1-s)*Math.sin(a)]); }
+    const shank = Math.max(6, p.threadJournal>0 ? p.threadJournal : len*0.35);
+    for(let k=1;k<=10;k++) path.push([0, len + rise + shank*k/10, 0]);
+    // The point: the wire thins over the first two thirds of a turn. Clamped well clear of zero — a ring
+    // of radius 0 is a degenerate fan, and 0.22 mm is already finer than anything that prints.
+    const tipN = Math.max(2, Math.round(per*0.66));
+    for(const T of sweepTube3D(path, i => i>=tipN ? rw : Math.max(0.22, rw*(0.12 + 0.88*i/tipN)), seg))
+      tris.push(T);
+    const hw = (p.threadHandleW!=null ? p.threadHandleW : 0);
+    if(hw > 2){                                          // T-handle: a bar across the top of the shank
+      const rB = Math.max(rw*1.3, Math.min(hw*0.12, D*0.25)), yB = len + rise + shank - rB - 0.2;
+      const nB = Math.max(16, Math.round(rB*6)), circ=[];
+      for(let k=0;k<nB;k++){ const a=2*Math.PI*k/nB; circ.push([yB + rB*Math.cos(a), rB*Math.sin(a)]); }
+      for(const T of convexPrismXTris(circ, -hw/2, hw/2)) tris.push(T);
+    }
   } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
@@ -9151,6 +9191,47 @@ function sweepTubePlanar(path, r, seg){
   for(let k=0;k<seg;k++){ const k1=(k+1)%seg;
     out.push(orient([path[0],R[0][k1],R[0][k]],[-t0[0],-t0[1],-t0[2]]));
     out.push(orient([path[N-1],R[N-1][k],R[N-1][k1]],[tN[0],tN[1],tN[2]])); }
+  return out;
+}
+// Sweep a circular cross-section along an ARBITRARY 3D path. `sweepTubePlanar` above cannot do this, and
+// the reason is worth stating: it builds every ring from the fixed X axis, which is perpendicular to the
+// path only while the path stays in the Y-Z plane. A helix leaves that plane, and there the fixed axis is
+// no longer perpendicular — the section comes out sheared, and where the tangent turns parallel to X it
+// collapses altogether.
+//
+// The frame here is PARALLEL-TRANSPORTED instead: start with any normal, then at each node re-project the
+// previous one onto the plane perpendicular to the new tangent. That introduces no twist the path does
+// not itself have, and unlike a fixed-up frame it has no orientation at which it flips.
+//
+// `rAt(i)` is the radius at node i, so the bar can taper along its length — a corkscrew needs a point on
+// the end. It never reaches zero in practice (the caller clamps it), so the end fans stay non-degenerate.
+function sweepTube3D(path, rAt, seg){
+  const out=[], N=path.length; if(N<2) return out;
+  const sub3=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+  const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const nrm3=v=>{ const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
+  const T=[];
+  for(let i=0;i<N;i++) T.push(nrm3(i===0 ? sub3(path[1],path[0])
+                                : i===N-1 ? sub3(path[N-1],path[N-2]) : sub3(path[i+1],path[i-1])));
+  // Seed normal: whichever axis is LEAST aligned with the first tangent, so the cross product is stable.
+  let n = nrm3(cross(T[0], Math.abs(T[0][0])>0.9 ? [0,1,0] : [1,0,0]));
+  const Ns=[n];
+  for(let i=1;i<N;i++){ const t=T[i], d=dot3(n,t);
+    let m=[n[0]-t[0]*d, n[1]-t[1]*d, n[2]-t[2]*d];
+    if(Math.hypot(m[0],m[1],m[2]) < 1e-9) m = cross(t, Math.abs(t[0])>0.9 ? [0,1,0] : [1,0,0]);
+    n = nrm3(m); Ns.push(n); }
+  const R=[];
+  for(let i=0;i<N;i++){ const t=T[i], u=Ns[i], v=cross(t,u), r=rAt(i), ring=[];
+    for(let k=0;k<seg;k++){ const a=2*Math.PI*k/seg, c=Math.cos(a), s=Math.sin(a);
+      ring.push([path[i][0]+r*(c*u[0]+s*v[0]), path[i][1]+r*(c*u[1]+s*v[1]), path[i][2]+r*(c*u[2]+s*v[2])]); }
+    R.push(ring); }
+  for(let i=0;i<N-1;i++){ const A=R[i], B=R[i+1];
+    for(let k=0;k<seg;k++){ const k1=(k+1)%seg;
+      const ref=[(A[k][0]+A[k1][0])/2-path[i][0], (A[k][1]+A[k1][1])/2-path[i][1], (A[k][2]+A[k1][2])/2-path[i][2]];
+      out.push(orient([A[k],A[k1],B[k1]],ref)); out.push(orient([A[k],B[k1],B[k]],ref)); } }
+  for(let k=0;k<seg;k++){ const k1=(k+1)%seg;
+    out.push(orient([path[0],R[0][k1],R[0][k]],[-T[0][0],-T[0][1],-T[0][2]]));
+    out.push(orient([path[N-1],R[N-1][k],R[N-1][k1]],T[N-1])); }
   return out;
 }
 // Where the pipe collar's bore ended up after buildHook recentred its output — see the note there.
@@ -12878,7 +12959,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

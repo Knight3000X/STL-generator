@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v163';
+const APP_VERSION = 'v164';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3893,6 +3893,8 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntRadN', label:'Шаблон радиусов: число ступеней', min:2, max:14, step:1, default:6, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntRadStart', label:'Шаблон радиусов: первый радиус', min:0.4, max:20, step:0.1, default:1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntRadStep', label:'Шаблон радиусов: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPitchMin', label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPitchMax', label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10549,11 +10551,63 @@ function buildRadGauge(p){
     arc(s.xAt(k), -s.D/2, s.rs[k], Math.PI, 2*Math.PI, seg(s.rs[k]));
   return extrudePolyYTris([P], -s.t/2, s.t/2);
 }
+/* ---- Шаблон шага резьбы ---------------------------------------------------------------------------
+   A spine with N blades hanging off it, each blade's front edge cut to one STANDARD pitch. The sizes are
+   not stepped by an arithmetic increment the way the radius gauge's are, because thread pitches are not:
+   0.7, 0.75, 0.8, 1.0, 1.25 — the useful ones are a published list, and a gauge carrying 0.9 mm would be
+   a gauge with a blade that never matches anything. So the range is given in millimetres and whatever
+   standard pitches fall inside it become the blades.
+
+   The tooth is the ISO profile rather than a plain 60° zigzag: crest flat P/8, root flat P/4, 60° flanks
+   between them, which puts the depth at 0.5413·P — the H1 out of the standard, arrived at by construction
+   rather than copied. A blade whose teeth are the right pitch but the wrong depth still rocks in the
+   thread instead of seating, and rocking is exactly what the tool is read by. */
+const ISO_PITCHES = [0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.75, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5];
+function pitchGaugeSpec(p){
+  const lo = Math.max(0.3, p.mntPitchMin>0 ? p.mntPitchMin : 0.7);
+  const hi = Math.max(lo, p.mntPitchMax>0 ? p.mntPitchMax : 2);
+  const inRange = ISO_PITCHES.filter(v => v >= lo-1e-9 && v <= hi+1e-9);
+  // An empty range is a real possibility (0.85…0.95 contains no standard pitch at all) and silently
+  // producing nothing would be the worst answer, so the nearest standard pitch stands in and is warned about.
+  const list = inRange.length ? inRange
+    : [ISO_PITCHES.reduce((a,b)=>Math.abs(b-lo) < Math.abs(a-lo) ? b : a)];
+  const t  = Math.max(1.2, p.mntT>0 ? p.mntT : 4);
+  const pMax = list[list.length-1];
+  const bw = Math.max(12, 6*pMax), bl = 0.5413*pMax + 7, gap = 2.5;
+  const colW = bw + gap, hs = 8, W = list.length*colW + gap;
+  return {list, n:list.length, t, bw, bl, gap, colW, hs, W, empty: !inRange.length,
+          xAt: k => -W/2 + gap + colW*k + bw/2,
+          td:  P => 0.5413*P,
+          nTeeth: P => Math.max(3, Math.floor(bw/P)),
+          fine: 0.5413*list[0] < 0.32};
+}
+function buildPitchGauge(p){
+  const s = pitchGaugeSpec(p), P = [];
+  P.push([-s.W/2, 0]);
+  for(let k=0;k<s.n;k++){
+    const pk = s.list[k], td = s.td(pk), nT = s.nTeeth(pk), run = nT*pk;
+    const x0 = s.xAt(k) - s.bw/2, x1 = s.xAt(k) + s.bw/2;
+    const zR = -s.bl + td, zC = -s.bl;                    // root line and crest line of this blade
+    P.push([x0, 0], [x0, zR]);                            // down the blade's left side
+    let x = s.xAt(k) - run/2;
+    P.push([x, zR]);                                      // flat lead-in to the first tooth
+    for(let i=0;i<nT;i++){                                // ISO tooth: P/4 root, flank, P/8 crest, flank
+      P.push([x + pk/4, zR], [x + pk/4 + 0.3125*pk, zC],
+             [x + pk/4 + 0.3125*pk + pk/8, zC], [x + pk, zR]);
+      x += pk; }
+    P.push([x1, zR], [x1, 0]);                            // flat run-out, then up the right side
+  }
+  P.push([s.W/2, 0], [s.W/2, s.hs], [-s.W/2, s.hs]);      // right end, spine back, left end closes it
+  const tris = extrudePolyYTris([P], -s.t/2, s.t/2);
+  const dz = (s.bl - s.hs)/2;
+  return tris.map(T=>T.map(v=>[v[0], v[1], v[2]+dz]));
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
   if(p.mntMode==='gauge') return buildGoNoGo(p);
   if(p.mntMode==='radgauge') return buildRadGauge(p);
+  if(p.mntMode==='pitchgauge') return buildPitchGauge(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13709,7 +13763,8 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
-    radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })()})[p.mntMode] || 'крепёж';
+    radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
+    pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы (' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.)'; })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -13981,6 +14036,11 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'pitchgauge'){
+    const g = pitchGaugeSpec(p);
+    if (g.empty) w.push('в заданном промежутке нет ни одного стандартного шага — взят ближайший, ' + g.list[0] + ' мм');
+    if (g.fine) w.push('зуб шага ' + g.list[0] + ' мм глубиной ' + (0.5413*g.list[0]).toFixed(2) + ' мм — на грани того, что печатается');
+  }
   if (p.mntMode === 'radgauge'){
     const g = radGaugeSpec(p);
     if (g.fine) w.push('первый радиус ' + g.r0 + ' мм — мельче того, что сопло очертит');

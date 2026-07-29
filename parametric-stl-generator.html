@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v162';
+const APP_VERSION = 'v163';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3890,6 +3890,9 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntGaugeD', label:'Калибр: номинальный Ø', min:1.2, max:120, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntGaugeTol', label:'Калибр: допуск ±', min:0.02, max:2, step:0.01, default:0.1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntGaugeH', label:'Калибр: высота пробок', min:4, max:80, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRadN', label:'Шаблон радиусов: число ступеней', min:2, max:14, step:1, default:6, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntRadStart', label:'Шаблон радиусов: первый радиус', min:0.4, max:20, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRadStep', label:'Шаблон радиусов: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10509,10 +10512,48 @@ function buildGoNoGo(p){
     for(const T of discYTris(s.xAt(kd[0]), 0, kd[1]/2, s.t-0.8, s.t+s.H, Math.max(32, Math.round(kd[1]*8)))) tris.push(T);
   return tris.map(T=>T.map(v=>[v[0], v[1]-(s.t+s.H)/2, v[2]]));
 }
+/* ---- Шаблон радиусов ------------------------------------------------------------------------------
+   One plate, two combs. The BACK edge is bitten into with concave half-circles, which measure an OUTSIDE
+   radius (a fillet on a corner); the FRONT edge carries convex half-circles standing proud, which measure
+   an INSIDE one (a radius in a pocket). Same radius at the same column, so one column is one size read
+   both ways, and a single ray straight down the column runs from the tab's crown to the notch's floor —
+   which is why the test can read BOTH radii of a column off one measurement.
+
+   No numbers on it. A printed plate cannot carry legible digits at this size without a second colour, so
+   the sizes simply step from the first by a fixed amount, and the range goes in the model's own name where
+   it is visible before the file is even saved. */
+function radGaugeSpec(p){
+  const n  = Math.max(2, Math.min(14, Math.round(p.mntRadN>0 ? p.mntRadN : 6)));
+  const r0 = Math.max(0.4, p.mntRadStart>0 ? p.mntRadStart : 1);
+  const dr = Math.max(0.1, p.mntRadStep>0 ? p.mntRadStep : 1);
+  const t  = Math.max(1.2, p.mntT>0 ? p.mntT : 4);
+  const rs = []; for(let k=0;k<n;k++) rs.push(r0 + dr*k);
+  const rMax = rs[n-1], pitch = Math.max(2*rMax + 4, 10), D = 2*rMax + 12;
+  return {n, r0, dr, t, rs, rMax, pitch, D, W: n*pitch,
+          xAt: k => (k - (n-1)/2)*pitch,
+          fine: r0 < 0.6, thin: t < 1.2 + 1e-9};
+}
+function buildRadGauge(p){
+  const s = radGaugeSpec(p), P = [];
+  const arc = (cx, cz, r, a0, a1, k) => {
+    for(let i=0;i<=k;i++){ const a=a0+(a1-a0)*i/k; P.push([cx+r*Math.cos(a), cz+r*Math.sin(a)]); } };
+  // An EVEN number of segments per half-circle, always: it puts a vertex exactly on the apex, which is the
+  // one point of the arc whose distance from the edge IS the radius being advertised. An odd count leaves
+  // the deepest point of the printed part on a chord, a sliver shy of the size stamped in the model's name.
+  const seg = r => Math.max(12, 2*Math.round(r*4));
+  P.push([s.W/2, -s.D/2], [s.W/2, s.D/2]);                       // up the right edge
+  for(let k=s.n-1;k>=0;k--)                                      // back edge, right→left: concave notches
+    arc(s.xAt(k), s.D/2, s.rs[k], 0, -Math.PI, seg(s.rs[k]));
+  P.push([-s.W/2, s.D/2], [-s.W/2, -s.D/2]);                     // down the left edge
+  for(let k=0;k<s.n;k++)                                         // front edge, left→right: convex tabs
+    arc(s.xAt(k), -s.D/2, s.rs[k], Math.PI, 2*Math.PI, seg(s.rs[k]));
+  return extrudePolyYTris([P], -s.t/2, s.t/2);
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
   if(p.mntMode==='gauge') return buildGoNoGo(p);
+  if(p.mntMode==='radgauge') return buildRadGauge(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13667,7 +13708,8 @@ function activeShapeLabel() {
             : (p.fnMode==='vase') ? ((p.vaseFloor===false ? 'абажур' : 'ваза') + ' (H' + Math.round(p.vaseH||120) + ')')
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
-  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go'})[p.mntMode] || 'крепёж';
+  if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
+    radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -13939,6 +13981,11 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'radgauge'){
+    const g = radGaugeSpec(p);
+    if (g.fine) w.push('первый радиус ' + g.r0 + ' мм — мельче того, что сопло очертит');
+    if (g.thin) w.push('пластина 1.2 мм — гребёнка будет гнуться');
+  }
   if (p.mntMode === 'gauge'){
     const g = goNoGoSpec(p);
     if (g.coarse) w.push('допуск ±' + g.tol.toFixed(2) + ' мм — тоньше того, что держит FDM; калибр покажет свою печать, а не деталь');

@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v166';
+const APP_VERSION = 'v167';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3864,7 +3864,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3907,6 +3907,11 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntClipTray', label:'Держатель: глубина полки', min:4, max:80, step:1, default:16, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntClipLip', label:'Держатель: бортик полки', min:2, max:40, step:1, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntClipWide', label:'Держатель: ширина', min:8, max:200, step:2, default:40, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupD', label:'Подстаканник: Ø стакана', min:20, max:200, step:1, default:70, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupH', label:'Подстаканник: высота', min:15, max:250, step:1, default:80, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupGap', label:'Подстаканник: воздушный зазор', min:1, max:15, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupWall', label:'Подстаканник: стенка', min:0.8, max:6, step:0.2, default:1.6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupBase', label:'Подстаканник: дно (0 = без дна)', min:0, max:20, step:0.5, default:2.5, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
     {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
@@ -10710,6 +10715,42 @@ function buildEdgeClip(p){
   const dx=(x0+x1)/2, dz=(z0+z1)/2;
   return tris.map(T2=>T2.map(v=>[v[0]-dx, v[1], v[2]-dz]));
 }
+/* ---- Двустенный подстаканник ------------------------------------------------------------------------
+   Two coaxial walls with an air gap between them, tied together by a rim annulus at the top and a floor at
+   the bottom. No new machinery: four closed shells that overlap in VOLUME — outer wall, inner wall, rim,
+   floor — and the insulating cavity is simply the region none of them reaches. Nothing is drawn to bound
+   the cavity, which is the point: a void described by what surrounds it cannot disagree with its surround.
+
+   The one thing the printer has to do is bridge the rim across the gap, so the gap is what gets warned
+   about. With no floor the cavity is open underneath and there is nothing to bridge at all — that is a
+   real variant, not a degenerate one, and «0 = без дна» has to mean it (see v165: a `>0` fallback swallows
+   an explicit zero and quietly gives the floor back). */
+function cupHolderSpec(p){
+  const D    = Math.max(20, p.mntCupD>0 ? p.mntCupD : 70);
+  const H    = Math.max(15, p.mntCupH>0 ? p.mntCupH : 80);
+  const gap  = Math.max(1, p.mntCupGap>0 ? p.mntCupGap : 4);
+  const w    = Math.max(0.8, p.mntCupWall>0 ? p.mntCupWall : 1.6);
+  const bt   = Math.max(0, p.mntCupBase != null ? p.mntCupBase : 2.5);
+  const clr  = 0.5, rimT = Math.max(w, Math.min(w*1.8, H/6));
+  const Ri   = D/2 + clr, Ro = Ri + 2*w + gap;
+  return {D, H, gap, w, bt, clr, rimT, Ri, Ro, seg: Math.max(64, Math.round(Ro*2)),
+          shells: bt > 0 ? 4 : 3,
+          longBridge: gap > 6, thinWall: w < 1.0, noFloor: bt === 0,
+          squat: H < bt + rimT + 4};
+}
+function buildCupHolder(p){
+  const s = cupHolderSpec(p), tris = [];
+  for(const T of tubeYTris(0, 0, s.Ro, s.Ro - s.w, 0, s.H, s.seg)) tris.push(T);
+  for(const T of tubeYTris(0, 0, s.Ri + s.w, s.Ri, 0, s.H, s.seg)) tris.push(T);
+  // The rim and the floor stop 0.4 mm SHORT of the walls' own radii. Reaching exactly to them would put
+  // two shells on the same vertex ring — every seg divides the same circle at the same angles — and an
+  // edge shared by four triangles is not watertight however plausible the shape looks. Short of it, they
+  // interpenetrate instead, which is what the union wanted in the first place.
+  const bite = 0.4;
+  for(const T of tubeYTris(0, 0, s.Ro - bite, s.Ri + bite, s.H - s.rimT, s.H, s.seg)) tris.push(T);
+  if(s.bt > 0) for(const T of discYTris(0, 0, s.Ro - bite, 0, s.bt, s.seg)) tris.push(T);
+  return tris.map(T=>T.map(v=>[v[0], v[1] - s.H/2, v[2]]));
+}
 function buildMount(p){
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
@@ -10718,6 +10759,7 @@ function buildMount(p){
   if(p.mntMode==='pitchgauge') return buildPitchGauge(p);
   if(p.mntMode==='cablecomb') return buildCableComb(p);
   if(p.mntMode==='edgeclip') return buildEdgeClip(p);
+  if(p.mntMode==='cupholder') return buildCupHolder(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
   if(p.mntMode==='temptower') return buildCalTower(p);
   if(p.mntMode==='bridgetest') return buildBridgeTest(p);
@@ -13876,7 +13918,8 @@ function activeShapeLabel() {
     radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
     pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы (' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
-    edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })()})[p.mntMode] || 'крепёж';
+    edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })(),
+    cupholder:(function(){ const g=cupHolderSpec(p); return 'подстаканник двустенный (Ø' + (+g.D.toFixed(0)) + ')'; })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
@@ -14148,6 +14191,12 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  if (p.mntMode === 'cupholder'){
+    const g = cupHolderSpec(p);
+    if (g.longBridge) w.push('зазор ' + g.gap.toFixed(1) + ' мм — обод придётся мостить над пустотой');
+    if (g.thinWall) w.push('стенка ' + g.w.toFixed(1) + ' мм — тоньше одного прохода сопла');
+    if (g.squat) w.push('высота ' + g.H.toFixed(0) + ' мм — дно и обод сойдутся, воздушной прослойки не выйдет');
+  }
   if (p.mntMode === 'edgeclip'){
     const g = edgeClipSpec(p);
     if (g.nothing) w.push('кромка ' + g.T.toFixed(1) + ' мм — зажимать нечего');

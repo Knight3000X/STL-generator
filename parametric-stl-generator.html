@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v150';
+const APP_VERSION = 'v151';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3681,12 +3681,18 @@ const SHAPE_PARAMS = {
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: что сверху — воронка или носик', type:'select', default:'none',
-      options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'}]},
+    // NB: this select used to be spelled `threadTop` as well — the same key as the slider above it, so the
+    // two rows overwrote each other and picking a funnel cancelled the top thickness (and vice versa).
+    // It has its own key now; a preset that still carries a STRING in threadTop is read below for compat.
+    {group:'Резьба (крышка / штуцер)', key:'threadTopMode', label:'Крышка: что сверху — воронка, носик или горловина', type:'select', default:'none',
+      options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'},{v:'neck',t:'переходник горловин (наружная резьба сверху)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSpoutD', label:'Носик: Ø кончика (наружный)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSpoutH', label:'Носик: длина', min:5, max:200, step:1, default:35, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckD', label:'Переходник: Ø верхней резьбы (0 = 0.7 от нижней)', min:0, max:200, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckPitch', label:'Переходник: шаг верхней резьбы (0 = как у нижней)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckH', label:'Переходник: длина верхней резьбы', min:3, max:100, step:0.5, default:12, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSeal', label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
@@ -4151,6 +4157,40 @@ function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.thr
 function seatGap(p){ return Math.max(0.3, p.threadClear != null ? p.threadClear : 0.4); }
 // Engagement of a screwed pair: the thread length, less that stand-off.
 function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p)); }
+// What stands on a cap's top. The key moved from `threadTop` (which is also the top's THICKNESS — one
+// key, two rows, each overwriting the other) to `threadTopMode`, so the reading of old presets lives in
+// one place: a string in threadTop is the old select, and before the select there was only a funnel Ø.
+// The order matters. A preset is always merged OVER defaultBoxParams(), so `threadTopMode` is present
+// whatever the preset says — reading it first would make every pre-split preset a blind cap. A STRING in
+// threadTop can only come from the old select (the current field there is a thickness in mm), so it is
+// the one unambiguous signal and it goes first.
+function threadTopMode(p){
+  if (typeof p.threadTop === 'string') return p.threadTop;        // pre-split preset: the old select
+  if (typeof p.threadTopMode === 'string') return p.threadTopMode;
+  return (p.threadFunnelD > 0) ? 'funnel' : 'none';               // and from before the select existed
+}
+// The spigot a neck adapter grows on its top, exactly as buildThread computes it — published so the
+// assembly pair and the tests can size the mating cap without re-deriving the cap's internals.
+// Returns null when this is not a neck adapter, or when the cap is too small to carry one.
+function threadNeckSpec(p){
+  if ((p.threadMode||'none') !== 'cap' || threadTopMode(p) !== 'neck') return null;
+  const D=Math.max(4, p.threadD||30), P=Math.max(0.5, p.threadPitch||3), majorR=D/2;
+  const h=(p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
+  const minorR=Math.max(0.5, majorR-h);
+  if (minorR-0.8 < 1.0) return null;                    // no ceiling left to open a throat in
+  const P2=Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
+  const majorR2=Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
+  const minorR2=Math.max(0.5, majorR2 - Math.min(majorR2*0.6, P2*0.55));
+  const wall=Math.max(1.2, p.threadWall>0 ? p.threadWall : 2.5);
+  const rNB=Math.max(0.8, Math.min(minorR-0.8, minorR2 - Math.max(0.8, Math.min(wall, majorR2*0.35))));
+  if (!(rNB < minorR2-0.4)) return null;                // the spigot would have no wall
+  // `base` is how far the spigot's helix origin sits above the part's own minY — the cap's full height.
+  // The pair needs it: the phase snap measures from where each helix STARTS, and this one does not start
+  // at the bottom of the part the way every other thread in the app does.
+  const top=Math.max(1.0, (typeof p.threadTop==='number' && p.threadTop>0) ? p.threadTop : 2.5);
+  return { D:2*majorR2, pitch:P2, bore:2*rNB, wall:minorR2-rNB, base:Math.max(P, p.threadLen||16) + top,
+           len:Math.max(P2*2, Math.min(200, p.threadNeckH>0 ? p.threadNeckH : 12)) };
+}
 // The mate for a set of parameters, or null when the part has no counterpart in this list.
 // `seat(A, B, p)` places B — A and B are the two ROTATED bounding boxes, A already carrying the active
 // model's own position, so the answer is an absolute px/py/pz for the newcomer.
@@ -4164,6 +4204,14 @@ function assemblyMate(p){
   // so its bounding box is NOT centred on its axis, and using the box put the pair 0.08 mm out.
   // Axial datums do come off the boxes — that is where each part's own mating face ended up.
   // `back` = which way along Y separates the pair; the phase snap only ever moves that way.
+  // A neck adapter's interesting mate is the cap of its UPPER thread, not the jar under it: the point of
+  // the part is that the two threads differ, and only the upper cap shows that they do. It comes down over
+  // the spigot, so the datum is the spigot's mouth (the whole part's maxY) less the engagement.
+  const nsp = threadNeckSpec(p);
+  if (nsp) return { name:'Крышка горловины', back:+1, pitch:nsp.pitch, datum:A => A.minY + nsp.base,
+    over:{threadMode:'cap', threadD:nsp.D, threadPitch:nsp.pitch, threadLen:nsp.len,
+          threadTopMode:'none', threadTop:2.5, threadFunnelD:0},
+    seat:(A,B,S)=>({px:S.px, py:A.maxY - Math.max(1, nsp.len - seatGap(p)) - B.minY, pz:S.pz}) };
   if (th === 'cap') return { name:'Банка', over:{threadMode:'jar'}, back:-1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadEngagement(p) - B.maxY, pz:S.pz}) };
   if (th === 'jar') return { name:'Крышка', over:{threadMode:'cap'}, back:+1,
@@ -4264,9 +4312,12 @@ function assemblyPlacement(p, self){
   // the lead: the profile repeats every pitch even on a multi-start thread.) Snap outward to the next
   // whole pitch — never inward, which would turn a stand-off into an interference. Left out, an M12
   // pair sat 82° out of phase and drove the bolt 0.44 mm into the nut, one whole fit clearance.
+  // Two of those assumptions do not hold for the neck adapter — its upper thread has its OWN pitch, and
+  // its helix starts at the top of the cap rather than at the bottom of the part — so a pair may name
+  // both: `pitch` for which pitch repeats, `datum` for where the active part's helix actually begins.
   if (spec.back){
-    const P = Math.max(0.1, p.threadPitch || 3);
-    const delta = (Bb.minY + off.py) - A.minY;
+    const P = Math.max(0.1, spec.pitch || p.threadPitch || 3);
+    const delta = (Bb.minY + off.py) - (spec.datum ? spec.datum(A) : A.minY);
     const r = ((delta % P) + P) % P;
     off.py += spec.back > 0 ? (P - r) % P : -r;
   }
@@ -6110,23 +6161,9 @@ function buildThread(p){
       tris.push(orient([[0,floor,0],FI(floor,i),FI(floor,i2)],[0,1,0])); }                        // floor top (fan)
   } else {  // 'cap' — internal thread inside a knurled cup
     const wall = Math.max(1.2, p.threadWall>0?p.threadWall:2.5);
-    const top  = Math.max(1.0, p.threadTop>0 ?p.threadTop :2.5);
+    const top  = Math.max(1.0, (typeof p.threadTop==='number' && p.threadTop>0) ? p.threadTop : 2.5);
     const femMajorR = majorR + clr;                      // female root  (outermost of bore)
-    const outR0 = femMajorR + wall;                      // base outer radius (before flutes)
-    const boreDepth = len, capH = boreDepth + top, Ny = Math.max(8, Math.round(boreDepth/P*spp));
-    const nFlute = Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24));
-    const gripD  = nFlute>0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0;
-    const rOut = i => outR0 - gripD*0.5*(1 - Math.cos(nFlute*th(i)));   // scalloped vertical flutes (θ-only)
-    // Female bore = the male surface offset OUTWARD by the clearance (same profile, pitch, starts, phase),
-    // so the male ridge nests in the female groove with a uniform `clr` gap → they screw together.
-    const Vb=(i,j)=>{ const y=boreDepth*j/Ny, L=lead(y),   // lead-in fades to the widest bore at the mouth (y=0)
-      r=minorR + clr + h*(1 + L*(threadProfile(phase(i,y),flat) - 1)), a=th(i);
-      return [r*Math.cos(a), y, r*Math.sin(a)]; };
-    const Vo=(i,y)=>{ const r=rOut(i), a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
-    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);
-      const ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];           // bore normal points inward
-      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
-    // Something other than a solid top. Both options are the SAME cone — the cap's top is bored to a
+    // Something other than a solid top. FUNNEL and SPOUT are the same cone — the cap's top is bored to a
     // throat and a separate closed shell stands on it, lower rim buried 0.8 mm inside, interpenetrating
     // and never sharing a face — and they differ only in which way that cone tapers:
     //   • ВОРОНКА  — opens outward to a wide mouth. Screw it on and pour through it.
@@ -6134,10 +6171,15 @@ function buildThread(p){
     //                and it comes out in a stream you can aim.
     // The spout's wall TAPERS with it. A constant wall is right for a funnel and wrong for a spout: hold
     // the wall at 2.5 mm and a 3 mm tip has no passage left at all, it is a solid point.
-    const topMode = (p.threadTop!=null) ? p.threadTop         // older presets carried only the funnel's Ø
-                  : ((p.threadFunnelD>0) ? 'funnel' : 'none');
+    //   • ГОРЛОВИНА — a MALE-threaded spigot of its own diameter and pitch, bored straight through: the
+    //                neck adapter. Screw the cap onto one bottle, screw the other bottle's cap onto the
+    //                spigot. Unlike the two cones this one is NOT a separate shell — the cap's throat
+    //                simply keeps going as the spigot's bore, so the whole adapter is one surface and
+    //                there is no thin interpenetration band to trust.
+    const topMode = threadTopMode(p);
     const rThroat0 = Math.max(1.5, Math.min(minorR-1.0, minorR*0.62));
     let funnel=false, rMouth=0, funH=0, twTop=wall;
+    let neck=false, majorR2=0, minorR2=0, h2=0, P2=P, rNB=0, neckH=0;
     if(topMode==='funnel'){
       const funD = Math.max(0, p.threadFunnelD>0 ? p.threadFunnelD : 60);
       if(funD > 2*(minorR*0.35)){                             // narrower than the throat is a hole, not a funnel
@@ -6149,8 +6191,37 @@ function buildThread(p){
       rMouth=Math.max(0.5, rTipOut-twTop);
       funnel = rMouth < rThroat0-0.2;                         // a tip no narrower than the throat is not a spout
       funH=Math.max(6, Math.min(200, p.threadSpoutH>0 ? p.threadSpoutH : 35));
+    } else if(topMode==='neck'){
+      P2 = Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
+      majorR2 = Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
+      h2 = Math.min(majorR2*0.6, P2*0.55);
+      minorR2 = Math.max(0.5, majorR2 - h2);
+      const twN = Math.max(0.8, Math.min(wall, majorR2*0.35));
+      // The spigot's bore is also the cap's throat, so it must leave a ceiling to stand on: never wider
+      // than the cap's own root less 0.8 mm, whatever the spigot's wall would have liked.
+      rNB = Math.max(0.8, Math.min(minorR-0.8, minorR2-twN));
+      neck = (minorR-0.8) >= 1.0 && rNB < minorR2-0.4;
+      funnel = neck;                                          // the top is open either way
+      neckH = Math.max(P2*2, Math.min(200, p.threadNeckH>0 ? p.threadNeckH : 12));
     }
-    const rThroat = funnel ? rThroat0 : 0;
+    const rThroat = neck ? rNB : (funnel ? rThroat0 : 0);
+    const nFlute = Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24));
+    const gripD  = nFlute>0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0;
+    // A spigot wider than the cap widens the CAP, so its root always lands on solid top rather than
+    // overhanging thin air. The flutes cut INTO the outer radius, so they are counted here too —
+    // otherwise a deep knurl on a wide spigot lets the thread crest out past the cap's own wall.
+    const outR0 = Math.max(femMajorR + wall, neck ? majorR2+1.5+gripD : 0);   // base outer radius (before flutes)
+    const boreDepth = len, capH = boreDepth + top, Ny = Math.max(8, Math.round(boreDepth/P*spp));
+    const rOut = i => outR0 - gripD*0.5*(1 - Math.cos(nFlute*th(i)));   // scalloped vertical flutes (θ-only)
+    // Female bore = the male surface offset OUTWARD by the clearance (same profile, pitch, starts, phase),
+    // so the male ridge nests in the female groove with a uniform `clr` gap → they screw together.
+    const Vb=(i,j)=>{ const y=boreDepth*j/Ny, L=lead(y),   // lead-in fades to the widest bore at the mouth (y=0)
+      r=minorR + clr + h*(1 + L*(threadProfile(phase(i,y),flat) - 1)), a=th(i);
+      return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    const Vo=(i,y)=>{ const r=rOut(i), a=th(i); return [r*Math.cos(a), y, r*Math.sin(a)]; };
+    for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=Vb(i,j),B=Vb(i2,j),C=Vb(i2,j+1),Dd=Vb(i,j+1);
+      const ref=[-(A[0]+B[0]),0,-(A[2]+B[2])];           // bore normal points inward
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     const Rt=(y,r)=>{ const out=[]; for(let i=0;i<Nth;i++){ const a=th(i); out.push([r*Math.cos(a), y, r*Math.sin(a)]); } return out; };
     const cc=[0,boreDepth,0];                            // bore ceiling (underside of top slab)
     if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); } }
@@ -6163,6 +6234,27 @@ function buildThread(p){
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     const tc=[0,capH,0];                                 // top disc
     if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([tc,Vo(i,capH),Vo(i2,capH)],[0,1,0])); } }
+    else if(neck){
+      // The throat does not stop at the top face — it keeps going as the spigot's bore, so the cap and its
+      // neck are ONE closed surface: bore (ceiling → spigot mouth), the cap's top annulus from the spigot's
+      // root out to the flutes, the male thread, and the mouth annulus that closes it.
+      const y1 = capH + neckH, Nn = Math.max(8, Math.round(neckH/P2*spp));
+      const ph2 = (i,y) => (y-capH)/P2 - hand*S*(i%Nth)/Nth;
+      const M=(i,j)=>{ const y=capH+(y1-capH)*j/Nn, a=th(i),
+        r=minorR2 + lead(y1-y)*h2*threadProfile(ph2(i,y),flat);      // lead-in fades at the mouth (entry end)
+        return [r*Math.cos(a), y, r*Math.sin(a)]; };
+      const Bn=(y,i)=>{ const a=th(i); return [rNB*Math.cos(a), y, rNB*Math.sin(a)]; };
+      for(let j=0;j<Nn;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=M(i,j),Bv=M(i2,j),C=M(i2,j+1),Dd=M(i,j+1);
+        const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+        tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
+        tris.push(orient([Bn(boreDepth,i),Bn(boreDepth,i2),Bn(y1,i2)],rin));   // bore, straight through
+        tris.push(orient([Bn(boreDepth,i),Bn(y1,i2),Bn(y1,i)],rin));
+        tris.push(orient([M(i,0),Vo(i,capH),Vo(i2,capH)],[0,1,0]));            // cap top: spigot root → outer
+        tris.push(orient([M(i,0),Vo(i2,capH),M(i2,0)],[0,1,0]));
+        tris.push(orient([M(i,Nn),Bn(y1,i),Bn(y1,i2)],[0,1,0]));               // spigot mouth annulus
+        tris.push(orient([M(i,Nn),Bn(y1,i2),M(i2,Nn)],[0,1,0])); }
+    }
     else {
       const rlo=Rt(boreDepth, rThroat), rhi=Rt(capH, rThroat);
       for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
@@ -12715,7 +12807,7 @@ function activeShapeLabel() {
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
-    + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком'}[p.threadTop] || '') : '');
+    + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';
   if (p.keycapMode && p.keycapMode !== 'none') return ({single:'кейкап',shell:'кейкап (внешний, AMS)',core:'кейкап (вставка, AMS)'})[p.keycapMode] || 'кейкап';
@@ -12973,6 +13065,13 @@ function collectPrintWarnings(p){
   if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
+  // A neck adapter needs a ceiling to open its channel in. When the lower thread's root leaves none, the
+  // cap comes out BLIND — correct geometry, and nothing on screen says why the spigot is missing.
+  if ((p.threadMode || 'none') === 'cap' && threadTopMode(p) === 'neck'){
+    const ns = threadNeckSpec(p);
+    if (!ns) w.push('переходник: под такой резьбой не остаётся потолка, чтобы открыть в нём канал — крышка вышла глухой');
+    else if (ns.wall < 0.8) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше 0.8 мм');
+  }
   // Set by the last bevelledMesh call — it is the only thing here that cannot be read off the
   // parameters, because whether a chamfer is possible depends on the finished mesh's outline.
   if (typeof edgeBevelNote === 'string' && edgeBevelNote) w.push(edgeBevelNote);

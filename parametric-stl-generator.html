@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v149';
+const APP_VERSION = 'v150';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3747,6 +3747,9 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'gearHubH', label:'Шестерня: высота ступицы', min:0, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Шестерня', key:'gearSpokes', label:'Шестерня: число спиц (0 = сплошной диск, ≥3 = облегчение)', min:0, max:12, step:1, default:0, unit:'', int:true},
     {group:'Шестерня', key:'gearSpokeW', label:'Шестерня: ширина спицы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearBevelRole', label:'Коническая: роль в паре', type:'select', default:'simple',
+      options:[{v:'simple',t:'простая (одиночная, конусный сбег)'},{v:'pinion',t:'сопряжённая пара: шестерня'},{v:'wheel',t:'сопряжённая пара: колесо'}]},
+    {group:'Шестерня', key:'gearBevelMate', label:'Коническая пара: число зубьев ОТВЕТНОЙ', min:6, max:120, step:1, default:20, unit:'', int:true},
     {group:'Шестерня', key:'gearBevel', label:'Коническая: угол конуса', min:15, max:75, step:1, default:45, unit:'°'},
     {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
     {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
@@ -4182,6 +4185,22 @@ function assemblyMate(p){
   // distance = the two pitch radii, taken from the builder rather than from a bounding box. Which SIDE and
   // which way up are not free: an enveloped wheel is chiral, cut for one presentation of the worm, and only
   // one of the four rx/side combinations reproduces it — the other three read as hundreds of crossings.
+  // Conjugate bevel pair: axes at 90°, ONE shared apex. Placement is by that apex, not by a bounding box —
+  // the two members are different sizes and their boxes say nothing about where the cones meet. Rotating the
+  // mate −90° about Z sends its axis from Y to X and carries its apex to (apex, 0, 0), so the shift that
+  // brings the two apexes together is the pair of offsets below.
+  if (gr === 'bevel' && (p.gearBevelRole === 'pinion' || p.gearBevelRole === 'wheel')){
+    const other = p.gearBevelRole === 'pinion' ? 'wheel' : 'pinion';
+    const mp = Object.assign(deepCopyParams(p), {gearBevelRole:other,
+      gearTeeth:Math.max(6,Math.round(p.gearBevelMate||20)), gearBevelMate:Math.max(6,Math.round(p.gearTeeth||20))});
+    return { name: other==='wheel' ? 'Коническое колесо' : 'Коническая шестерня',
+      over:{gearBevelRole:other, gearTeeth:mp.gearTeeth, gearBevelMate:mp.gearBevelMate}, rz:-90,
+      // Half a tooth of phase when the MATE's count is odd — otherwise tooth meets tooth instead of gap.
+      // Measured, not assumed: with it, 15:15, 13:13 and 9:27 go from 800-odd crossings to zero, and
+      // without it 20:20, 12:24 and 11:22 are already zero and the offset would break them.
+      ry: (mp.gearTeeth % 2 === 1) ? 180/mp.gearTeeth : 0,
+      seat:(A,B,S)=>({ px:S.px - bevelApexOffset(mp, other), py:S.py + bevelApexOffset(p, p.gearBevelRole), pz:S.pz }) };
+  }
   if (gr === 'worm') return { name:'Червячное колесо', over:{gearMode:'wormwheel'}, rx:-90,
     seat:(A,B,S)=>({px:S.px - wormCentreDist(p), py:S.py, pz:S.pz}) };
   // Enclosure tray + lid. The tray's geometry runs y = 0 (floor underside) to y = H (wall top), so its
@@ -8455,6 +8474,121 @@ function outlineRadiusFn(P, phase){
     const span=A[hi]-A[lo] || 1;
     return R[lo] + (R[hi]-R[lo])*((t-A[lo])/span); };
 }
+/* ---- Conjugate bevel pair (коническая пара, сопряжённая) ---------------------------------------
+   A bevel gear is a cone over a SPHERICAL outline: every point of it is ρ·u(θ,δ) for ρ along the cone, so
+   "radius by angle" becomes "polar angle by azimuth", δ(θ). Truncate it by two planes instead of two
+   spheres and the body is that one outline scaled linearly with height — which is extrudeProfileY with a
+   scaleFn, the construction already in the file. So only the PROFILE had to be found, not new machinery.
+
+   Found the same way the worm wheel and the cycloidal disc were: the PINION gets a defined tooth — a
+   trapezoid on its cone, the conical answer to the worm's trapezoidal thread — and the WHEEL is enveloped
+   from it. Conjugate by construction, which is the only property that makes a pair a pair.
+
+   Shaft angle is 90°, so the pitch angles are γ = atan(Z/Z_mate) and they sum to a right angle. Both
+   members share one apex and one outer cone distance A0 = m·Z/(2 sin γ).
+
+   The cutter's tip is carried 0.25·m past the pinion's own tip so the wheel's root gets clearance; the
+   wheel's tip is the blank, since nothing cuts it. In the axial plane the two angles sum to 90°, so a
+   wheel tip at γ_w + m/A0 sits at γ_p − m/A0 from the pinion's axis, clear of the pinion's root at
+   γ_p − 1.25·m/A0 by exactly that same 0.25·m. */
+function bevelPitchAngle(Z, Zmate){ return Math.atan2(Math.max(1,Z), Math.max(1,Zmate)); }
+function bevelConeDist(m, Z, Zmate){ return m*Math.max(1,Z)/(2*Math.sin(bevelPitchAngle(Z,Zmate))); }
+// Is (azimuth, polar angle) inside the pinion's solid? Below its root cone everything is; above its tip
+// nothing is; between, it depends on whether the azimuth falls in a tooth, whose half-width narrows with
+// the pressure angle as you climb.
+function bevelPinionInside(Zp, gp, A0, m, alphaDeg, tipExtra){
+  const aAng=(1+(tipExtra||0))*m/A0, dAng=1.25*m/A0, al=Math.max(10,Math.min(35,alphaDeg))*Math.PI/180;
+  const pitch=2*Math.PI/Zp;
+  return (th, d) => {
+    if(d <= gp-dAng) return true;
+    if(d >  gp+aAng) return false;
+    const ha=(Math.PI*m/4)/A0 - (d-gp)*Math.tan(al);
+    if(ha <= 0) return false;
+    const dth=ha/Math.max(1e-9, Math.sin(d));
+    let q = th - Math.round(th/pitch)*pitch;
+    if(q >  Math.PI) q -= 2*Math.PI;
+    if(q < -Math.PI) q += 2*Math.PI;
+    return Math.abs(q) <= dth;
+  };
+}
+// The wheel's outline, enveloped from the pinion over the coupled rotation. One wheel pitch is computed and
+// copied Zw times — the pair is Zp-fold and Zw-fold symmetric, so a pitch is the whole story.
+function bevelWheelDeltas(Zp, Zw, m, alphaDeg, NTH, steps){
+  const gp=bevelPitchAngle(Zp,Zw), gw=Math.PI/2-gp, A0=bevelConeDist(m,Zp,Zw);
+  const inside=bevelPinionInside(Zp, gp, A0, m, alphaDeg, 0.25);
+  const dTip=gw+m/A0, dLo=Math.max(2e-3, gw-1.8*1.25*m/A0);
+  const d=new Float64Array(NTH).fill(dTip), per=Math.max(1, Math.round(NTH/Zw)), span=4*Math.PI/Zp;
+  const rot=(v,ax,ang)=>{ const c=Math.cos(ang), sn=Math.sin(ang);
+    const dp=ax[0]*v[0]+ax[1]*v[1]+ax[2]*v[2];
+    const cr=[ax[1]*v[2]-ax[2]*v[1], ax[2]*v[0]-ax[0]*v[2], ax[0]*v[1]-ax[1]*v[0]];
+    return [v[0]*c+cr[0]*sn+ax[0]*dp*(1-c), v[1]*c+cr[1]*sn+ax[1]*dp*(1-c), v[2]*c+cr[2]*sn+ax[2]*dp*(1-c)]; };
+  const ax1=[0,1,0], ax2=[1,0,0];                        // pinion on Y, wheel on X, apex at the origin
+  const dth=2*Math.PI/NTH;
+  for(let i=0;i<per;i++){
+    // The LOWEST envelope over the node's own cell, not the value at the node. The surface is handed to the
+    // loft as chords, and a chord across a concave stretch bulges out past the true envelope and back into
+    // the mate — the same thing that left twenty crossings on the worm pair until it was measured per cell.
+    let best=dTip;
+    for(const off of [-0.5, 0, 0.5]){
+    const th=2*Math.PI*i/NTH + off*dth;
+    for(let s=0;s<=steps;s++){
+      const f1=-span/2+span*s/steps, f2=-f1*Zp/Zw;
+      const at=dd=>{ const u=[Math.cos(dd), Math.sin(dd)*Math.cos(th), Math.sin(dd)*Math.sin(th)];
+        const v=rot(rot(u,ax2,f2), ax1, -f1);
+        return inside(Math.atan2(v[2],v[0]), Math.acos(Math.max(-1,Math.min(1,v[1])))); };
+      if(!at(best)) continue;
+      if(at(dLo)){ best=dLo; break; }
+      let lo=dLo, hi=best;
+      for(let b=0;b<20;b++){ const mid=(lo+hi)/2; if(at(mid)) hi=mid; else lo=mid; }
+      if(hi<best) best=hi;
+    }
+    }
+    for(let t=i;t<NTH;t+=per) d[t]=best;
+  }
+  return d;
+}
+// Where the shared apex lands after the builder recentres its part. Computed from the parameters rather
+// than read back, because the assembly builds both members in turn and a single variable would only ever
+// hold the last one's.
+function bevelApexOffset(p, role){
+  const m=Math.max(0.3,p.gearModule||2), Z=Math.max(6,Math.round(p.gearTeeth||20));
+  const Zm=Math.max(6,Math.round(p.gearBevelMate||Z));
+  const g=bevelPitchAngle(Z,Zm), A0=bevelConeDist(m,Z,Zm);
+  const b=Math.max(m, Math.min(A0*0.4, p.gearThick||A0/3));
+  const y2=A0*Math.cos(g), y1=Math.max(y2*0.15,(A0-b)*Math.cos(g));
+  return -(y1+y2)/2;
+}
+let bevelApexDatum = null;      // where the shared apex ended up after the builder recentred its part
+function buildBevelPair(p, role){
+  const m  = Math.max(0.3, p.gearModule||2);
+  const Z  = Math.max(6, Math.round(p.gearTeeth||20));
+  const Zm = Math.max(6, Math.round(p.gearBevelMate||Z));
+  const al = Math.max(14, Math.min(30, p.gearPA||20));
+  const g  = bevelPitchAngle(Z, Zm), A0 = bevelConeDist(m, Z, Zm);
+  const b  = Math.max(m, Math.min(A0*0.4, p.gearThick||A0/3));      // face width along the cone
+  const NTH = Math.max(360, Math.min(2400, Z*36));
+  let d;
+  if(role === 'wheel') d = bevelWheelDeltas(Zm, Z, m, al, NTH, 200);
+  else { const ins = bevelPinionInside(Z, g, A0, m, al, 0);         // the pinion's own solid, tip at +m
+    d = new Float64Array(NTH);
+    const dTip=g+m/A0, dLo=Math.max(2e-3, g-1.25*m/A0);
+    for(let i=0;i<NTH;i++){ const th=2*Math.PI*i/NTH;
+      let lo=dLo, hi=dTip;
+      if(!ins(th,hi)){ for(let k=0;k<22;k++){ const mid=(lo+hi)/2; if(ins(th,mid)) lo=mid; else hi=mid; } d[i]=lo; }
+      else d[i]=dTip; } }
+  // Truncated by PLANES, so at height y the outline is y·tan δ(θ) — one shape, scaled with height.
+  const y2 = A0*Math.cos(g), y1 = Math.max(y2*0.15, (A0-b)*Math.cos(g));
+  const P = []; for(let i=0;i<NTH;i++){ const a=2*Math.PI*i/NTH, r=y2*Math.tan(d[i]);
+    P.push([r*Math.cos(a), r*Math.sin(a)]); }
+  const rf = y2*Math.tan(Math.max(0.02, g - 1.25*m/A0));
+  const rB = Math.max(0.6, Math.min(p.gearBore>0 ? p.gearBore/2 : rf*0.3, rf*0.55));
+  const keyW = Math.max(0, Math.min(p.gearKeyW||0, rB*1.4)), keyD = Math.max(0, Math.min(p.gearKeyD||0, rf-rB-0.6));
+  const th = y2 - y1;
+  const tris = extrudeProfileY(P, a=>boreRadiusAt(a, rB, keyW, keyD), th, 0, u => (y1 + th*u)/y2);
+  // extrudeProfileY centres on y = 0, so the apex — at y = 0 in cone coordinates — lands here:
+  bevelApexDatum = { y: -(y1 + y2)/2 };
+  return tris;
+}
 /* ---- Cycloidal reducer (циклоидальный редуктор) -----------------------------------------------
    A disc with N−1 lobes rolling inside a ring of N pins, carried on an eccentric. One stage gives N−1 : 1,
    which is why it is worth having: a spur train needs several stages and a lot of backlash to do the same.
@@ -8677,6 +8811,9 @@ function buildGear(p){
   const spokes=Math.max(0,Math.round(p.gearSpokes||0));
   let tris;
   if(envRim){ tris=extrudeProfileY(envRim.P, boreFn, th, 0, undefined, envRim.grow, envRim.M); }
+  else if(mode==='bevel' && (p.gearBevelRole==='pinion' || p.gearBevelRole==='wheel')){
+    tris = buildBevelPair(p, p.gearBevelRole);                // conjugate pair member — see buildBevelPair
+  }
   else if(mode==='bevel'){                                    // conical (bevel) gear: teeth taper toward the apex
     const bevA=Math.max(15,Math.min(75,p.gearBevel||45))*Math.PI/180;
     const sTop=Math.max(0.2, 1 - th*Math.tan(bevA)/rp);       // outline scale at the front face

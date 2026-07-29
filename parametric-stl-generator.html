@@ -8393,6 +8393,99 @@ function extrudeProfileY(P, boreFn, th, twist, scaleFn, growFn, layers){
   }
   return tris;
 }
+// ---- A general prism along Y over an ARBITRARY 2D outline -------------------------------------------
+// Everything above this line needs one radius per angle: extrudeProfileY, latheYTris, the whole gear and
+// vase family. That is a real limit, not a stylistic one — a shape with a parallel-sided through-slot
+// gives a ray from the centre TWO intervals of material, and no r(θ) can say that. The Maltese cross is
+// the first shape in the app that has one, so it needs a triangulator instead of a radius function.
+//
+// Points are [x, z]; the prism runs y0 → y1. loops[0] is the outer boundary, the rest are holes; either
+// winding is accepted (both are normalised here), and holes must lie inside the outer loop and not touch
+// each other. Caps are ear-clipped; walls are one quad per edge of each ORIGINAL loop, so the cap's
+// boundary and the wall's rim are the same vertices by construction.
+function loopArea2(P){ let s=0; for(let i=0,n=P.length;i<n;i++){ const j=(i+1)%n; s+=P[i][0]*P[j][1]-P[j][0]*P[i][1]; } return s; }
+function ptInTriXZ(a,b,c,p){
+  const d1=(p[0]-b[0])*(a[1]-b[1])-(a[0]-b[0])*(p[1]-b[1]);
+  const d2=(p[0]-c[0])*(b[1]-c[1])-(b[0]-c[0])*(p[1]-c[1]);
+  const d3=(p[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(p[1]-a[1]);
+  return !(((d1<0)||(d2<0)||(d3<0)) && ((d1>0)||(d2>0)||(d3>0)));
+}
+function segCrossXZ(a,b,c,d){                      // proper crossing only; shared endpoints do not count
+  const sd=(p,q,r)=>Math.sign((q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]));
+  const same=(p,q)=>Math.abs(p[0]-q[0])<1e-9 && Math.abs(p[1]-q[1])<1e-9;
+  if(same(a,c)||same(a,d)||same(b,c)||same(b,d)) return false;
+  return sd(a,b,c)!==sd(a,b,d) && sd(c,d,a)!==sd(c,d,b);
+}
+function ptInLoopXZ(P, p){ let inside=false;
+  for(let i=0,n=P.length,j=n-1;i<n;j=i++){
+    if((P[i][1]>p[1])!==(P[j][1]>p[1]) &&
+       p[0] < (P[j][0]-P[i][0])*(p[1]-P[i][1])/(P[j][1]-P[i][1])+P[i][0]) inside=!inside; }
+  return inside;
+}
+// Splice each hole into the outer ring with a two-way bridge, yielding ONE simple loop. The bridge is
+// found by brute force — nearest ring vertex that both sees the hole vertex and whose midpoint lies in
+// the material — rather than by the usual ray cast. At these vertex counts it costs nothing, and it is
+// the version whose failure mode is "no bridge found" instead of "a bridge through the void".
+function bridgeHolesXZ(outer, holes){
+  let ring = outer.slice();
+  for(const hole of holes){
+    let hi=0; for(let i=1;i<hole.length;i++) if(hole[i][0]>hole[hi][0]) hi=i;
+    const H = hole[hi];
+    const order = ring.map((v,i)=>[i, (v[0]-H[0])*(v[0]-H[0])+(v[1]-H[1])*(v[1]-H[1])]).sort((a,b)=>a[1]-b[1]);
+    let ri = -1;
+    for(const [k] of order){ const V=ring[k];
+      let ok = ptInLoopXZ(ring, [(H[0]+V[0])/2, (H[1]+V[1])/2]) && !ptInLoopXZ(hole, [(H[0]+V[0])/2, (H[1]+V[1])/2]);
+      if(ok) for(const L of [ring, hole]){ for(let i=0;i<L.length && ok;i++) if(segCrossXZ(H, V, L[i], L[(i+1)%L.length])) ok=false; if(!ok) break; }
+      if(ok){ ri=k; break; } }
+    if(ri<0) ri = order[0][0];                     // no visible vertex: take the nearest and carry on
+    ring = ring.slice(0, ri+1)
+      .concat(hole.slice(hi), hole.slice(0, hi+1))
+      .concat(ring.slice(ri));
+  }
+  return ring;
+}
+function earClipXZ(P){
+  const n=P.length, out=[]; if(n<3) return out;
+  const idx=[]; for(let i=0;i<n;i++) idx.push(i);
+  if(loopArea2(P)<0) idx.reverse();                // work CCW, so an ear is a LEFT turn
+  let guard = 4*n*n + 64;
+  while(idx.length>3 && guard-- > 0){
+    let cut=-1;
+    for(let k=0;k<idx.length;k++){
+      const m=idx.length, i0=idx[(k+m-1)%m], i1=idx[k], i2=idx[(k+1)%m];
+      const a=P[i0], b=P[i1], c=P[i2];
+      if((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]) <= 1e-12) continue;   // reflex or collinear
+      let ok=true;
+      for(const j of idx){ if(j===i0||j===i1||j===i2) continue;
+        if(ptInTriXZ(a,b,c,P[j])){ ok=false; break; } }
+      if(ok){ out.push([i0,i1,i2]); cut=k; break; }
+    }
+    if(cut<0){ out.push([idx[0], idx[1], idx[2]]); idx.splice(1,1); }          // give up on this corner
+    else idx.splice(cut,1);
+  }
+  if(idx.length===3) out.push([idx[0], idx[1], idx[2]]);
+  return out;
+}
+function extrudePolyYTris(loops, y0, y1){
+  const clean = loops.map(P=>{ const q=[];
+    for(const v of P){ const l=q[q.length-1]; if(!l || Math.abs(l[0]-v[0])>1e-9 || Math.abs(l[1]-v[1])>1e-9) q.push(v); }
+    while(q.length>1 && Math.abs(q[0][0]-q[q.length-1][0])<1e-9 && Math.abs(q[0][1]-q[q.length-1][1])<1e-9) q.pop();
+    return q; }).filter(P=>P.length>=3);
+  if(!clean.length) return [];
+  const L = clean.map((P,i)=>{ const wantCCW = (i===0); const isCCW = loopArea2(P)>=0;
+    return wantCCW===isCCW ? P : P.slice().reverse(); });
+  const flat = bridgeHolesXZ(L[0], L.slice(1)), out=[];
+  for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
+    out.push(orient([[A[0],y1,A[1]],[B[0],y1,B[1]],[C[0],y1,C[1]]], [0,1,0]));
+    out.push(orient([[A[0],y0,A[1]],[B[0],y0,B[1]],[C[0],y0,C[1]]], [0,-1,0])); }
+  for(const P of L){ const s = loopArea2(P)>=0 ? 1 : -1;
+    for(let i=0;i<P.length;i++){ const j=(i+1)%P.length, u=P[i], v=P[j];
+      const ref=[s*(v[1]-u[1]), 0, -s*(v[0]-u[0])];
+      if(Math.abs(ref[0])<1e-12 && Math.abs(ref[2])<1e-12) continue;
+      out.push(orient([[u[0],y0,u[1]],[v[0],y0,v[1]],[v[0],y1,v[1]]], ref));
+      out.push(orient([[u[0],y0,u[1]],[v[0],y1,v[1]],[u[0],y1,u[1]]], ref)); } }
+  return out;
+}
 // Convex 2D polygon (points as [y,z]) extruded along X — fan caps at both ends + one quad per edge.
 function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
   const cy=poly.reduce((s,q)=>s+q[0],0)/n, cz=poly.reduce((s,q)=>s+q[1],0)/n;

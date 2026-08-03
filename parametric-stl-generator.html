@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v169';
+const APP_VERSION = 'v170';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4840,15 +4840,23 @@ function dominantMode(p){
   if (p.platonic && p.platonic !== 'none') return 'die';
   return 'box';
 }
+// The print-in-place family: one base shape, six parameter groups. Named ONCE, because the alternative is
+// naming them in four separate tables — sectionRelevant's switch, its per-mode tail, GROUP_KIND and
+// GROUP_TAB — and a group missing from all four falls through every one of them silently. That is exactly
+// what happened to the last five: they reached the final `return true` and so appeared under the CUBE,
+// while the hinge, whose family they belong to, showed only the sixth. Add a group here and nowhere else.
+const PIP_GROUPS = ['Петля (печать в сборе)', 'Телескоп', 'Живой шарнир', 'Цепь',
+                    'Шаровой шарнир', 'Защёлка-консоль'];
+const PIP_GROUP_SET = new Set(PIP_GROUPS);
 // Is a section (param group or panel-fold, keyed by its data-group / data-fold name) relevant right now?
 function sectionRelevant(key, mode, hollow){
+  if (PIP_GROUP_SET.has(key)) return mode==='hinge';
   switch(key){
     case 'Параметры': return true;                               // transparent wrapper — its cats decide for themselves
     case '__base': return true;                                  // base-shape picker is always available
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
     case 'Резьба (крышка / штуцер)': return mode==='thread';
-    case 'Петля (печать в сборе)': return mode==='hinge';
     case 'Шестерня': return mode==='gear';
     case 'Крепёж / монтаж': return mode==='mount';
     case 'Крючок': return mode==='hook';
@@ -4876,7 +4884,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='hook')      return key==='Крючок';
   if (mode==='mount')     return key==='Крепёж / монтаж';
   if (mode==='gear')      return key==='Шестерня';
-  if (mode==='hinge')     return key==='Петля (печать в сборе)';
+  if (mode==='hinge')     return PIP_GROUP_SET.has(key);
   if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
   if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
   if (mode==='keycap')    return key==='Размеры' || key==='Кейкап';
@@ -4896,10 +4904,11 @@ function sectionRelevant(key, mode, hollow){
    «Многогранник» is reachable from the plain cube too, so it is not a foreign group. */
 const GROUP_KIND = {
   'Кейкап':'keycap', 'Лист / панель':'sheet', 'Резьба (крышка / штуцер)':'thread',
-  'Петля (печать в сборе)':'hinge', 'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
+  'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel',
 };
+for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
 const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
@@ -13081,6 +13090,7 @@ const GROUP_TAB = {
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
   'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Логотипы (рельеф на гранях)':'finish',
 };
+for (const g of PIP_GROUPS) GROUP_TAB[g] = 'form';   // the print-in-place family lives under «Форма»
 function buildAllParamUI() {
   for (const shapeKey in SHAPE_PARAMS) {
     const container = document.getElementById('params-'+shapeKey);

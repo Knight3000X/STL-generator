@@ -462,6 +462,13 @@
     margin-top:8px;
     line-height:1.4;
   }
+  .export-note p{ margin:0 0 6px; }
+  /* Model help sits above the accordion, next to the choice it explains, so it reads a little louder than
+     the per-group notes buried inside it. */
+  #model-help{ margin:-2px 0 12px; }
+  #model-help .export-note{ font-size:11px; }
+  ul.help-mats{ margin:2px 0 0; padding-left:16px; }
+  ul.help-mats li{ margin-bottom:4px; }
 
   /* ---------- logo / relief cards ---------- */
   #btn-add-model, #btn-add-lid, #btn-add-mate{
@@ -874,6 +881,8 @@
       <div class="basepick-row" id="submodel-row"></div>
     </div>
 
+    <details class="note-fold" id="model-help" data-tab="form"></details>
+
     <details class="panel-fold param-wrap" open data-tab="form cavity export" data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
@@ -1029,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v174';
+const APP_VERSION = 'v175';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4997,6 +5006,65 @@ function paramSearchHits(q, p){
   }
   return out;
 }
+// Всплывающая подсказка у строки параметра.
+//
+// Search reaches every parameter of every base shape, so it routinely puts in front of you a control you
+// have never seen, under a label that assumes you already know the part. The tooltip answers the three
+// questions that follow: where does this live, what does it take, and which sub-models is it even for.
+// Composed from what is already declared — the group, the `w:` marks, the range — plus an optional `hint:`
+// for the ones no amount of derivation can explain.
+function paramTooltip(param){
+  const out = [param.label || param.key];
+  const g = param.group || 'Параметры', mk = FAMILY_MODE[g], kind = GROUP_KIND[g];
+  out.push('Раздел: ' + g + (kind && KIND_LABEL[kind] ? ' (' + KIND_LABEL[kind] + ')' : ''));
+  // Which sub-models it belongs to, by their tile names — the names actually on screen, not the codes.
+  if (mk && param.key !== mk && param.w && param.w !== '*'){
+    const tiles = subModelTiles(kind);
+    const names = param.w.map(v => { const t = tiles.find(t => t.v === v); return t ? t.label : v; });
+    out.push(names.length > 4 ? 'Относится к ' + names.length + ' разновидностям'
+                              : 'Относится к: ' + names.join(', '));
+  }
+  if (param.only) for (const k in param.only){
+    const r = SHAPE_PARAMS.box.find(x => x.key === k);
+    const nm = r ? (r.options || []).filter(o => param.only[k].indexOf(o.v) >= 0).map(o => o.t) : param.only[k];
+    out.push('Появляется при «' + (r ? r.label : k) + '»: ' + (nm.length ? nm.join(', ') : param.only[k].join(', ')));
+  }
+  if (param.needs) for (const k in param.needs){
+    const r = SHAPE_PARAMS.box.find(x => x.key === k);
+    out.push('Появляется, когда «' + (r ? r.label : k) + '» больше ' + param.needs[k]);
+  }
+  if (param.type === 'bool') out.push('Переключатель, по умолчанию ' + (param.default ? 'включён' : 'выключен'));
+  else if (param.type === 'select'){
+    const d = (param.options || []).find(o => o.v === param.default);
+    out.push('Вариантов: ' + (param.options || []).length + (d ? ', по умолчанию «' + d.t + '»' : ''));
+  } else if (param.min !== undefined)
+    out.push('От ' + param.min + ' до ' + param.max + (param.unit ? ' ' + param.unit : '') +
+             ', по умолчанию ' + param.default);
+  if (param.hint) out.push(param.hint);
+  return out.join('\n');
+}
+// Search hit in a family group that belongs to a sub-model other than the one selected. The panel already
+// says «это параметры другой детали» when the whole GROUP is from another base shape; this is the same
+// answer one level down, where it is needed more often — the group is right, the разновидность is not.
+function searchSubModelHint(groupName, hitKeys, p){
+  const mk = FAMILY_MODE[groupName]; if (!mk) return null;
+  const cur = String((p || {})[mk]);
+  const rows = SHAPE_PARAMS.box.filter(r => r.group === groupName && hitKeys.indexOf(r.key) >= 0);
+  if (!rows.length || rows.some(r => paramRowRelevant(r, p))) return null;   // something already applies
+  for (const r of rows){
+    if (!r.w || r.w === '*' || r.w.indexOf(cur) >= 0) continue;
+    const t = subModelTiles(GROUP_KIND[groupName]).find(t => t.v === r.w[0]);
+    if (!t) continue;
+    // A row can be behind a second condition as well — «свой размер» under a typoразмер picker. Switching
+    // the sub-model alone would leave it hidden and the offer would be a lie, so the named option comes
+    // with it. A `needs:` threshold does NOT: that is a number with a meaning («0 = без»), and picking one
+    // for the user changes the part. The row's own tooltip says what to turn on.
+    const extra = {};
+    if (r.only) for (const k in r.only) extra[k] = r.only[k][0];
+    return {key: mk, value: t.v, label: t.label, extra, blocked: !!r.needs};
+  }
+  return null;
+}
 let activeTab = 'form';
 try { activeTab = localStorage.getItem('stl-tab') || 'form'; } catch(e) {}
 // Combine tab + mode-relevance: a section shows only when it lives on the active tab AND is relevant to the
@@ -5056,6 +5124,7 @@ function updateSectionVisibility(){
   });
   updateBaseShapePicker();
   updateSubModelPicker();
+  updateModelHelp();
 }
 // Base-shape picker: highlight the active kind, and switch kinds by driving the real mode selects (so it goes
 // through the normal change pipeline). Clears the other activators — dominantMode precedence settles the rest.
@@ -5134,6 +5203,140 @@ function familySplitVisible(groupName, p){
     if (rowShare(r) === 'shared') shared++; else own++;
   }
   return own > 0 && shared > 0;
+}
+/* ---------------------------------------------------------------------------------------------------
+   Справка по выбранной модели: что это, как класть на стол и чем печатать.
+
+   The panel could always tell you what a PARAMETER does. It could never tell you what the PART is, which
+   is the question you actually have when you land on «переходник круг↔прямоугольник» — and it could never
+   tell you what to print it out of, which is the difference between a hinge that survives and a hinge that
+   snaps on the second fold. Both live here, keyed by base shape and sub-model, and both are shown in the
+   fold right under the tile row, where the choice was just made.
+
+   Materials are named, not described inline: one table says what PLA is and what to reach for instead,
+   and every model points at it. Otherwise «PETG, можно PLA» drifts into thirty slightly different
+   sentences and the one you happen to read is the one that is out of date. */
+const PRINT_MATERIALS = {
+  pla:    {n:'PLA',            d:'самый простой в печати и самый точный по размеру; жёсткий, но хрупкий на удар и садится уже при 55–60 °C — в закрытой машине летом деталь ведёт.', sub:['plaplus','petg']},
+  plaplus:{n:'PLA+ / Tough PLA',d:'тот же PLA с добавками на ударную вязкость: печатается так же, ломается заметно неохотнее. Теплостойкость прежняя.', sub:['pla','petg']},
+  petg:   {n:'PETG',           d:'держит ~75 °C, не боится влаги и ультрафиолета, вязкий на удар. Взамен — тянет паутину и хуже держит мелкий рельеф; зазоры под подвижные части закладывайте на 0,05–0,1 мм больше, чем для PLA.', sub:['pla','abs']},
+  abs:    {n:'ABS / ASA',      d:'~95 °C и настоящая ударная вязкость; ABS склеивается и шпаклюется ацетоном, ASA не желтеет на солнце и идёт на улицу. Нужна закрытая камера — иначе отрыв углов от стола.', sub:['petg','pc']},
+  tpu:    {n:'TPU (гибкий)',   d:'резина: 95A — упругий и ещё печатается на боуден-подаче, 85A — мягкий, но только с директ-экструдером. Не ломается вовсе, стоек к истиранию.', sub:['tpe']},
+  tpe:    {n:'TPE / TPC',      d:'мягче и эластичнее TPU, печатается медленнее и капризнее. Брать, когда 85A всё ещё жёстко.', sub:['tpu']},
+  nylon:  {n:'PA (нейлон)',    d:'скользкий и очень вязкий — лучший материал для зубьев и осей: трётся сам о себя без задиров. Гигроскопичен, перед печатью сушить, иначе пузыри и рыхлый шов.', sub:['pacf','petg']},
+  pacf:   {n:'PA-CF (нейлон с углем)', d:'нейлон, который не ведёт: углеволокно снимает усадку и добавляет жёсткости. Абразивен — только закалённое сопло.', sub:['nylon','pc']},
+  pc:     {n:'PC (поликарбонат)', d:'самый прочный из доступных: ~110 °C и вязкость, которой нет ни у чего выше. Сильно коробится, нужна камера и сухой пруток.', sub:['abs','pacf']},
+  cf:     {n:'PLA-CF / PETG-CF', d:'наполненные углем версии обычных пластиков: жёстче, стабильнее по размеру, матовая поверхность. Абразивны — закалённое сопло обязательно; на подвижных парах хуже, чем чистый пластик.', sub:['pla','petg']},
+};
+// what — что это и зачем; how — как класть и чего ждать при печати; mat — первый в списке рекомендуемый.
+const MODEL_HELP = {
+  box:      {what:'Прямоугольная коробка или призма: сплошная, полая (контейнер) или с неглубоким карманом (лоток). Отсюда же растут Gridfinity, перегородки, крышка на защёлках и рельеф на любой грани.', how:'Дном на стол — так и задумано. Полость печатается без поддержек, если верх открыт.', mat:['pla','petg']},
+  die:      {what:'Игральная кость или правильный многогранник, D4–D100, с утопленными или выпуклыми числами.', how:'Гранью на стол. Для честной кости важна равномерность заполнения — печатать со 100 % или с одинаковой стенкой.', mat:['pla','petg']},
+  sheet:    {what:'Плоский лист или панель: прямоугольник, круг, N-угольник или контур из SVG. Основа для табличек, накладок, грип-падов и панелей приборов.', how:'Плашмя. Первый слой решает всё: тонкий лист поведёт, если стол не выровнен.', mat:['petg','pla']},
+  keycap:   {what:'Колпачок клавиши под крестовину Cherry MX: цельный, оболочка или сердечник под двухцветную печать.', how:'Юбкой вниз, куполом вверх — иначе поддержки внутри крестовины. Сопло 0,4 мм и слой 0,12 мм: тоньше не нужно, толще смажет крест.', mat:['abs','pla']},
+  hook:     {what:'Крючок на стену или на трубу: с защёлкой под любой Ø и полукруглым концом, чтобы не резать ремень.', how:'Спинкой на стол, крючок вверх — слои тогда лежат поперёк отрыва, а не вдоль.', mat:['petg','abs']},
+  wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
+  pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
+  stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель.', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой.', mat:['petg','pla']},
+  funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режим дозатора.', how:'Носиком вверх — конус тогда сам себе поддержка. Печатать вазовым режимом можно, если стенка равна одному проходу.', mat:['petg','pla']},
+  baseplate:{what:'База Gridfinity: сетка гнёзд под стандартные корзины 42 × 42 мм.', how:'Плашмя, гнёздами вверх. Скос гнезда печатается навесом и поддержек не требует.', mat:['pla','petg']},
+  logo3d:   {what:'Логотип, текст или QR отдельной моделью — не рельефом на детали, а самостоятельным телом с подложкой.', how:'Подложкой на стол. Мелкий рельеф выходит чище соплом 0,25 мм.', mat:['pla','petg']},
+
+  'thread:cap':      {what:'Крышка с внутренней резьбой и насечкой. Сверху может быть глухой потолок, воронка, носик-аппликатор или горловина под следующую крышку.', how:'Потолком на стол, резьбой вверх: витки тогда идут навесом под 30–45° и печатаются без поддержек.', mat:['petg','pla']},
+  'thread:jar':      {what:'Банка или бутыль: полый корпус любой формы в плане (круг, эллипс, squircle, прямоугольник) с круглым резьбовым горлом. Крышка к ней подходит по построению.', how:'Дном на стол. Стенку брать не меньше трёх проходов сопла, иначе банка мнётся в руке.', mat:['petg','pla']},
+  'thread:stud':     {what:'Штуцер или горловина: наружная резьба на фланце — приклеить, привинтить или вварить в чужую деталь.', how:'Фланцем на стол, резьбой вверх.', mat:['petg','abs']},
+  'thread:leadscrew':{what:'Ходовой винт трапецеидального профиля с цапфами под подшипники. Свинчивается с гайкой из этого же списка.', how:'Стоя, вертикально: слои поперёк резьбы дают ровный виток. Длинный винт лучше печатать с юбкой — он тонкий и его качает.', mat:['nylon','petg']},
+  'thread:auger':    {what:'Шнек, он же архимедов винт: вал с непрерывной лентой для подачи сыпучего.', how:'Стоя. Лента у корня тоньше всего, что рисует движок, — проверьте предупреждения перед печатью.', mat:['petg','pla']},
+  'thread:corkscrew':{what:'Штопор: спираль круглого сечения с рукоятью.', how:'Стоя, спиралью вверх. Печатать медленно: спираль опирается сама на себя очень небольшой площадкой.', mat:['petg','nylon']},
+  'thread:barb':     {what:'Ёлочка на шланг: ступенчатые конусы, которые держат шланг без хомута.', how:'Стоя, ёлочкой вверх — обратные конусы тогда навесные и обходятся без поддержек.', mat:['petg','tpu']},
+  'thread:bolt':     {what:'Болт с шестигранной головкой и метрической резьбой.', how:'Головкой на стол. Печатный болт держит момент, но не любит рывок — затягивать пальцами.', mat:['petg','abs']},
+  'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
+  'thread:wingnut':  {what:'Барашковая гайка: та же резьба плюс два крыла под пальцы.', how:'Плашмя. Крылья тонкие в основании — увеличьте их толщину, если гайку будут дёргать часто.', mat:['petg','abs']},
+  'thread:gland':    {what:'Кабельный ввод (сальник): корпус с резьбой и внутренним отверстием под кабель.', how:'Фланцем на стол.', mat:['petg','tpu']},
+  'thread:anchor':   {what:'Дюбель под гипсокартон: резьба крупного шага с фланцем и конусным носом.', how:'Фланцем на стол, носом вверх. Материал должен быть жёстким — TPU сомнётся, а не врежется.', mat:['petg','abs']},
+
+  'hinge:flat':     {what:'Плоская двухлистовая петля, печатается в сборе и складывается сразу со стола. Штифт можно сделать несъёмным или заменить прутком (годится кусок филамента 1,75 мм).', how:'Обоими листами на стол, петля раскрыта. Зазор 0,3–0,35 мм: меньше — спечётся, больше — люфт.', mat:['petg','nylon']},
+  'hinge:box':      {what:'Контейнер-футляр: две оболочки на общей петле плюс защёлки. Печатается раскрытым и закрывается со стола.', how:'Раскрытым, дном обеих половин на стол.', mat:['petg','pla']},
+  'hinge:clip':     {what:'Клипса-защёлка под кабель или трубу: обхватывает и держит горловиной уже своего диаметра.', how:'Плашмя, устьем вбок. Именно упругость решает — жёсткий материал разожмётся один раз и треснет.', mat:['petg','tpu']},
+  'hinge:tie':      {what:'Кабельная стяжка: ремешок с зубьями и головка с храповиком, печатается целиком.', how:'Плашмя. Ремешок толщиной 1,2–1,6 мм — тоньше рвётся, толще не гнётся.', mat:['tpu','petg']},
+  'hinge:clamp':    {what:'Разъёмный хомут: две половины, стягиваемые болтами.', how:'Каждую половину плоскостью разъёма на стол.', mat:['petg','abs']},
+  'hinge:snap':     {what:'Защёлка-консоль, посчитанная по прогибу: движок считает деформацию у корня и усилие защёлкивания и говорит, выдержит ли выбранный материал.', how:'Консолью вдоль стола: слои тогда работают на изгиб, а не расслаиваются. Печать «на попа» ломает защёлку на первом же нажатии.', mat:['petg','nylon']},
+  'hinge:ball':     {what:'Шаровой шарнир, печатается в сборе: шар уже внутри чашки, разбирать и защёлкивать ничего не надо.', how:'Основанием на стол. Устье чашки печатается навесом, поэтому зазор важнее обычного — начните с 0,3 мм.', mat:['petg','nylon']},
+  'hinge:chain':    {what:'Цепь из звеньев, печатается в сборе целиком.', how:'Плашмя, все звенья в один слой. Первый слой прижимает звенья к столу — снимайте аккуратно, потом расшевелите.', mat:['petg','nylon']},
+  'hinge:living':   {what:'Живой шарнир: тонкая перемычка, которая гнётся вместо петли. Складывается тысячи раз, если материал правильный.', how:'Перемычка обязана лежать ПОПЕРЁК слоёв — то есть плашмя на столе. По слоям она отслоится на первом сгибе.', mat:['petg','tpu']},
+  'hinge:telescope':{what:'Телескопическая труба: несколько секций одна в другой, печатается в сборе, выдвигается со стола.', how:'Стоя. Зазор 0,3–0,4 мм на сторону; секции лучше не разъединять до полного остывания.', mat:['petg','pla']},
+
+  'gear:spur':      {what:'Прямозубая шестерня с эвольвентным профилем: модуль, число зубьев, угол зацепления, ступица, шпонка и спицы.', how:'Плашмя. Зуб держит нагрузку слоями поперёк — так и надо.', mat:['nylon','petg']},
+  'gear:helical':   {what:'Косозубая: тот же профиль, закрученный по толщине. Тише прямозубой и передаёт плавнее, зато даёт осевую силу.', how:'Плашмя. Угол наклона печатается сам собой — это просто поворот сечения.', mat:['nylon','petg']},
+  'gear:bevel':     {what:'Коническая пара: передача под 90°. Можно построить одну шестерню или сопряжённую пару, у которой сходятся вершины конусов.', how:'Большим торцом на стол. Зубья идут навесом — берите слой потоньше, поддержки не нужны.', mat:['nylon','pacf']},
+  'gear:rack':      {what:'Зубчатая рейка под ту же шестерню: линейное движение из вращения.', how:'Зубьями вверх, спинкой на стол.', mat:['petg','nylon']},
+  'gear:gt2':       {what:'Шкив GT2 под зубчатый ремень 6 или 9 мм — стандарт 3D-принтеров.', how:'Плашмя. Шаг 2 мм требует точности: проверьте калибровку потока, иначе ремень будет щёлкать.', mat:['pacf','petg']},
+  'gear:vbelt':     {what:'Шкив под клиновой ремень: канавка с трапецеидальным профилем.', how:'Плашмя, канавкой вверх.', mat:['petg','nylon']},
+  'gear:roundbelt': {what:'Шкив под круглый ремень или шнур: полукруглая канавка.', how:'Плашмя, канавкой вверх. Шнур опирается на дно канавки, поэтому её поверхность стоит сгладить — иначе привод шумит.', mat:['petg','nylon']},
+  'gear:worm':      {what:'Червяк: винт, который вращает червячное колесо. Пара самотормозящаяся — колесо червяк не провернёт.', how:'Стоя, вертикально: виток тогда ровный по всей длине.', mat:['nylon','pacf']},
+  'gear:wormwheel': {what:'Червячное колесо к этому червяку. Обод может быть прямым или глобоидным — тогда колесо обнимает червяк и в зацеплении несколько зубьев сразу.', how:'Плашмя. Глобоидный обод вогнутый и печатается навесом — слой 0,12 мм.', mat:['nylon','pacf']},
+  'gear:planetary': {what:'Планетарный редуктор: солнце, сателлиты и корона в одном наборе, передаточное считается движком.', how:'Все детали плашмя. Зазор между зубьями — единственное, что решает, закрутится ли собранное.', mat:['nylon','petg']},
+  'gear:cycloidal': {what:'Циклоидальный редуктор: диск с циклоидным профилем катается по кольцу роликов. Большое передаточное в один каскад и почти без люфта.', how:'Все детали плашмя. Эксцентриситет мелкий — печатайте медленно, иначе диск заклинит.', mat:['nylon','pacf']},
+  'gear:cam':       {what:'Кулачок с заданным законом подъёма: подъём, выстой, спуск — в градусах.', how:'Плашмя. Профиль должен быть гладким: увеличьте детализацию, если на превью видны грани.', mat:['nylon','petg']},
+  'gear:follower':  {what:'Толкатель к этому кулачку: шток с пятой или роликом.', how:'Стоя или лёжа — как удобнее; лёжа прочнее на изгиб.', mat:['nylon','petg']},
+  'gear:ujoint':    {what:'Карданный шарнир, печатается в сборе: крестовина уже в вилках.', how:'Валами вдоль стола. Зазор 0,3 мм; после печати расшевелить, не дожимая.', mat:['nylon','petg']},
+  'gear:ratchet':   {what:'Храповик: колесо с несимметричным зубом плюс собачка — вращение только в одну сторону.', how:'Плашмя. Собачку печатать отдельно и вдоль — она работает на изгиб.', mat:['petg','nylon']},
+  'gear:geneva':    {what:'Мальтийский механизм: непрерывное вращение кривошипа превращается в шаговое вращение креста. Классика киноперемотки и делительных столов.', how:'Обе детали плашмя. Паз креста узкий — проверьте предупреждения о зазоре пальца.', mat:['nylon','petg']},
+  'gear:roots':     {what:'Роторы Roots: два лопастных ротора в корпусе, воздуходувка или расходомер. Роторы синхронизированы по построению.', how:'Роторы стоя, корпус плашмя. Зазор между роторами — то же самое, что КПД: меньше 0,3 мм не берите.', mat:['petg','nylon']},
+
+  'mount:lbracket':  {what:'L-кронштейн (уголок) с рёбрами и отверстиями под винт с потайной головкой.', how:'Одной полкой на стол, вторая идёт навесом — ребро её и держит.', mat:['petg','abs']},
+  'mount:vesa':      {what:'Переходная плита VESA 75/100/200 с центральным отверстием под кабели.', how:'Плашмя. Толщина 4 мм — минимум под монитор, под телевизор берите 6.', mat:['petg','abs']},
+  'mount:boss':      {what:'Стойки под heat-set втулки или саморез на общей плите.', how:'Плитой на стол, стойками вверх. Под втулку отверстие делать по её наружному Ø минус 0,2 мм.', mat:['petg','abs']},
+  'mount:tool':      {what:'Полка-держатель инструмента: ряд гнёзд в полке на настенной плите. Если гнёзда не влезают в заданную ширину, полка расширяется сама и говорит об этом.', how:'Спинкой на стол. Полка идёт навесом — при большом вылете добавьте фаску под ней.', mat:['petg','pla']},
+  'mount:pipe':      {what:'Хомут-кронштейн трубы: настенная плита, вынос и полное кольцо вокруг трубы.', how:'Плитой на стол, кольцом вверх. Верх кольца печатается мостом — если труба крупная, добавьте поддержку внутрь.', mat:['petg','abs']},
+  'mount:foot':      {what:'Ножка или накладка на мебель: площадка со скруглением и посадочным штырём.', how:'Площадкой на стол. Верхний слой — то, что будет касаться пола, поэтому гладить его стоит.', mat:['tpu','petg']},
+  'mount:fittest':   {what:'Калибровка зазора: набор штырьков и отверстий с шагом, чтобы подобрать посадку именно вашего принтера. Один раз напечатать — и все подвижные модели садятся с первого раза.', how:'Плашмя, без изменения настроек — иначе измеряете не то.', mat:['pla','petg']},
+  'mount:battery':   {what:'Батарейный холдер под AA/AAA/C/D/18650/21700 или свой размер: ложе с пружинными язычками.', how:'Ложем вверх. Контактные язычки под пластину печатать не нужно — они металлические.', mat:['petg','abs']},
+  'mount:temptower': {what:'Температурная башня: несколько секций, чтобы сменой температуры по высоте найти лучшую для конкретного пластика.', how:'Как есть. Смену температуры задаёт слайсер — вставьте команду на границах секций.', mat:['pla','petg']},
+  'mount:bridgetest':{what:'Тест мостов и нависаний: пролёты разной длины и козырьки под разными углами.', how:'Как есть, без поддержек — в этом весь смысл.', mat:['pla','petg']},
+  'mount:retract':   {what:'Тест ретракта: две башни, между которыми сопло ходит вхолостую. Паутина между ними и есть результат.', how:'Как есть, обе башни за один проход.', mat:['petg','pla']},
+  'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
+  'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
+  'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
+  'mount:pitchgauge':{what:'Шаблон шага резьбы: гребёнки со стандартными метрическими шагами, каждая с подписью.', how:'Плашмя. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
+  'mount:cablecomb': {what:'Гребёнка кабелей: ряд гнёзд с горловиной уже диаметра кабеля — провод защёлкивается и не выпадает.', how:'Спинкой на стол, гнёздами вверх. Горловина работает на разжим, поэтому жёсткий PLA колется.', mat:['petg','tpu']},
+  'mount:edgeclip':  {what:'Держатель на кромку: прищепка на рамку монитора или дефлектор с полкой под телефон.', how:'Плашмя, сечением вверх. Стенка тоньше 1,6 мм разожмётся и не вернётся.', mat:['petg','tpu']},
+  'mount:cupholder': {what:'Двустенный подстаканник: воздушная прослойка между стенками держит температуру.', how:'Дном на стол. Между стенками мостить нечего — обод печатается по кольцу.', mat:['petg','pla']},
+  'mount:transition':{what:'Переходник круг↔прямоугольник (лофт): сечение плавно перетекает из одного в другое. Вентиляция, вытяжка, воронки под чужие патрубки.', how:'Большим сечением на стол. Если стенка отклоняется от вертикали больше 45°, движок предупредит — тогда либо поддержки, либо сделать переходник выше.', mat:['petg','abs']},
+};
+// The help for the model as it is set right now: base shape, and its sub-model if it has one. Pure, so the
+// tests read it directly. Falls back to the shape's own entry rather than to nothing — a sub-model without
+// its own text is still a part of something, and the census in test_help.js is what keeps that from
+// becoming the normal case.
+function modelHelp(p){
+  const mode = dominantMode(p || {}), mk = subModelKey(mode);
+  const sub = mk ? String((p || {})[mk]) : null;
+  const key = (sub && sub !== 'none' && MODEL_HELP[mode + ':' + sub]) ? mode + ':' + sub : mode;
+  const h = MODEL_HELP[key]; if (!h) return null;
+  const t = sub && mk ? subModelTiles(mode).find(t => t.v === sub) : null;
+  const seen = new Set(), mats = [];
+  for (const m of (h.mat || [])){
+    const M = PRINT_MATERIALS[m]; if (!M || seen.has(m)) continue; seen.add(m);
+    mats.push({key:m, name:M.n, desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && PRINT_MATERIALS[s].n).filter(Boolean)});
+  }
+  return {key, title: t ? (KIND_LABEL[mode] + ' — ' + t.label) : (KIND_LABEL[mode] || mode),
+          what:h.what, how:h.how, mats};
+}
+function updateModelHelp(){
+  const box = document.getElementById('model-help'); if (!box || !paramState || !paramState.box) return;
+  const h = modelHelp(paramState.box);
+  if (!h){ box.style.display = 'none'; return; }
+  if (box.dataset.key === h.key) return;                 // same model — nothing moved, do not rebuild
+  box.dataset.key = h.key; box.style.display = '';
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const mats = h.mats.map(m => '<li><b>' + esc(m.name) + '</b> — ' + esc(m.desc) +
+      (m.sub.length ? ' <i>Взамен: ' + m.sub.map(esc).join(', ') + '.</i>' : '') + '</li>').join('');
+  box.innerHTML =
+    '<summary>ⓘ справка — ' + esc(h.title) + '</summary>' +
+    '<div class="export-note"><p>' + esc(h.what) + '</p>' +
+    (h.how ? '<p><b>Как печатать.</b> ' + esc(h.how) + '</p>' : '') +
+    (mats.length ? '<p><b>Чем печатать</b> (первый — рекомендуемый):</p><ul class="help-mats">' + mats + '</ul>' : '') +
+    '</div>';
 }
 function updateSubModelPicker(){
   const wrap = document.getElementById('submodel'), rowEl = document.getElementById('submodel-row');
@@ -5219,11 +5422,14 @@ function applyParamSearch(q){
   const matched = new Set(paramSearchHits(q, p).map(h => h.key));
   // filter rows inside each group
   document.querySelectorAll('#panel details.param-cat').forEach(cat => {
-    let hits = 0;
+    let hits = 0; const hitKeys = [];
     cat.querySelectorAll('.param-row, .toggle-row').forEach(row => {
       const el = row.querySelector('[data-key]');
       const hit = !!el && matched.has(el.dataset.key);
-      row.style.display = hit ? '' : 'none'; if (hit) hits++;
+      // A hidden row that MATCHED is shown: search is how you reach a control the current sub-model does
+      // not have, and hiding it here would make the search claim there is no such setting.
+      row.classList.remove('row-off');
+      row.style.display = hit ? '' : 'none'; if (hit){ hits++; hitKeys.push(el.dataset.key); }
     });
     cat.style.display = hits ? '' : 'none';
     if (!hits) return;
@@ -5231,6 +5437,28 @@ function applyParamSearch(q){
     const gname = cat.dataset.group || '';
     const kind = GROUP_KIND[gname] || null;
     const foreign = !!kind && !sectionRelevant(gname, mode, hollow);
+    // The group is right but the разновидность is not: offer the switch that makes the hit live, the same
+    // way the base-shape note does one level up. Only when the base shape itself is already right.
+    const subHint = foreign ? null : searchSubModelHint(gname, hitKeys, p);
+    let sn = cat.querySelector('.sub-shape-note');
+    if (subHint){
+      if (!sn){ sn = document.createElement('div'); sn.className = 'off-shape-note sub-shape-note';
+        sn.appendChild(document.createElement('span')); sn.appendChild(document.createElement('button'));
+        sn.lastChild.type = 'button';
+        cat.insertBefore(sn, cat.querySelector('.param-cat-body')); }
+      sn.firstChild.textContent = 'Это параметры другой разновидности — «' + subHint.label + '».';
+      sn.lastChild.textContent = 'Переключиться';
+      sn.lastChild.onclick = () => {
+        for (const k in (subHint.extra || {})){
+          const el = document.querySelector('select[data-key="'+k+'"], input[data-key="'+k+'"]');
+          if (el){ if (el.type === 'checkbox') el.checked = !!subHint.extra[k]; else el.value = subHint.extra[k];
+                   el.dispatchEvent(new Event('input', {bubbles:true})); }
+          else if (paramState.box) paramState.box[k] = subHint.extra[k];
+        }
+        setSubModel(subHint.value);
+        const box = document.getElementById('tab-search'); applyParamSearch(box ? box.value : ''); };
+      sn.style.display = '';
+    } else if (sn) sn.style.display = 'none';
     cat.classList.toggle('off-shape', foreign);
     let note = cat.querySelector('.off-shape-note');
     if (foreign) {
@@ -13367,7 +13595,9 @@ function buildAllParamUI() {
                               if (onlyVal) el.dataset.only = onlyVal;
                               if (needsVal) el.dataset.needs = needsVal;
                               if (wKey){ el.dataset.share = share; el.classList.add('share-'+share); }
-                              if (param.key === wKey) el.dataset.hoist = wKey; };
+                              if (param.key === wKey) el.dataset.hoist = wKey;
+                              el.title = tip; };
+      const tip = paramTooltip(param);
       if (param.type === 'bool') {
         const row = document.createElement('label');
         row.className = 'toggle-row';

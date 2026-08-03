@@ -263,6 +263,19 @@
   .base-btn:hover{ color:var(--ink); }
   .base-btn.active{ color:#fff; background:var(--accent,#4a90d9); border-color:var(--accent,#4a90d9); }
 
+  /* Sub-model picker: the four big families (крепёж, шестерня, резьба, печать в сборе) are twenty-odd
+     different parts each, and which one you are making decided everything else on the panel from inside a
+     collapsed group. Hoisted next to the base shape, where the choice belongs, and laid out as tiles so the
+     whole range is readable at a glance instead of one line at a time through a dropdown. */
+  #submodel{ margin:-4px 0 10px; }
+  #submodel .basepick-row{ gap:3px; }
+  .sub-btn{ flex:1 1 30%; padding:7px 5px; font-size:11px; font-weight:600; cursor:pointer; border-radius:6px;
+    border:1px solid var(--paper-line); background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink-soft);
+    text-align:center; line-height:1.25;
+    transition:background 0.12s,color 0.12s,border-color 0.12s; }
+  .sub-btn:hover{ color:var(--ink); }
+  .sub-btn.active{ color:#fff; background:var(--accent,#4a90d9); border-color:var(--accent,#4a90d9); }
+
   .param-row{
     display:flex;
     align-items:center;
@@ -851,6 +864,11 @@
       </div>
     </div>
 
+    <div id="submodel" data-tab="form" data-relkey="__sub">
+      <div class="basepick-label" id="submodel-label">Разновидность</div>
+      <div class="basepick-row" id="submodel-row"></div>
+    </div>
+
     <details class="panel-fold param-wrap" open data-tab="form cavity export" data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
@@ -1006,7 +1024,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v172';
+const APP_VERSION = 'v173';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4896,6 +4914,7 @@ function sectionRelevant(key, mode, hollow){
   switch(key){
     case 'Параметры': return true;                               // transparent wrapper — its cats decide for themselves
     case '__base': return true;                                  // base-shape picker is always available
+    case '__sub':  return !!subModelKey(mode);                   // ...the sub-model row only where there is one
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
     case 'Резьба (крышка / штуцер)': return mode==='thread';
@@ -4995,6 +5014,15 @@ function updateSectionVisibility(){
       const i = c.indexOf('>'); return (+p[c.slice(0,i)]) > (+c.slice(i+1)); });
     el.classList.toggle('row-off', !on);
   });
+  // The sub-model selector now lives in the tile row at the top of the panel, so its own row inside the
+  // group would be the same control twice. Hidden rather than removed: setBaseShape and setSubModel both
+  // drive the real <select>, which is what keeps the choice on the one code path everything else uses.
+  // (Search runs before any of this and returns early, so the row is still findable by name.)
+  const hoisted = subModelKey(mode);
+  document.querySelectorAll('#panel select[data-key]').forEach(sel => {
+    const row = sel.closest('.param-row') || sel.parentElement;
+    if (row && row !== sel) row.classList.toggle('row-off', sel.dataset.key === hoisted);
+  });
   // A group all of whose rows just went away is a heading over nothing. Folded here rather than in
   // sectionRelevant, so the rule stays one rule: a group is shown if it has something to show.
   const emptyGroup = new Set();
@@ -5017,6 +5045,7 @@ function updateSectionVisibility(){
     b.classList.toggle('empty', perTab[b.dataset.tab] === 0);
   });
   updateBaseShapePicker();
+  updateSubModelPicker();
 }
 // Base-shape picker: highlight the active kind, and switch kinds by driving the real mode selects (so it goes
 // through the normal change pipeline). Clears the other activators — dominantMode precedence settles the rest.
@@ -5024,6 +5053,66 @@ function updateBaseShapePicker(){
   if (!paramState || !paramState.box) return;
   const mode = dominantMode(paramState.box);
   document.querySelectorAll('.base-btn').forEach(b => b.classList.toggle('active', b.dataset.base === mode));
+}
+// Which parameter chooses the sub-model of a base shape, if that shape is one of the families. Derived
+// from the two tables that already exist — FAMILY_MODE says which groups are families and by what key,
+// GROUP_KIND says which base shape a group belongs to — rather than written down a third time.
+function subModelKey(mode){
+  for (const g in FAMILY_MODE){
+    const mk = FAMILY_MODE[g];
+    if (GROUP_KIND[g] !== mode) continue;
+    const row = SHAPE_PARAMS.box.find(r => r.key === mk);
+    if (row && row.group === g) return mk;             // the HUB group — the one carrying the selector
+  }
+  return null;
+}
+// Tiles for that selector: the option's own text, minus the parenthetical, which goes to the tooltip, and
+// minus a leading prefix that only repeats the heading above the row («петля: плоская двухлистовая» under
+// a heading that already says «разновидность — петля»). A prefix that groups options instead of repeating
+// the heading — «калибровка:» over three calibration prints — is left alone; it earns its width.
+// «нет» is dropped: leaving the family is what the base-shape row above is for.
+function subModelTiles(mode){
+  const mk = subModelKey(mode); if (!mk) return [];
+  const row = SHAPE_PARAMS.box.find(r => r.key === mk);
+  const head = (KIND_LABEL[mode] || '').toLowerCase();
+  return row.options.filter(o => o.v !== 'none').map(o => {
+    let s = o.t.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    if (head && s.toLowerCase().indexOf(head + ':') === 0) s = s.slice(head.length + 1).trim();
+    return { v: o.v, title: o.t, label: s || o.t };
+  });
+}
+function updateSubModelPicker(){
+  const wrap = document.getElementById('submodel'), rowEl = document.getElementById('submodel-row');
+  if (!wrap || !rowEl || !paramState || !paramState.box) return;
+  const mode = dominantMode(paramState.box), mk = subModelKey(mode), tiles = subModelTiles(mode);
+  wrap.dataset.relkey = '__sub';
+  wrap.dataset.sub = mk || '';
+  if (!mk){ rowEl.innerHTML = ''; return; }
+  // Rebuilt only when the family changes — a click must not pull the button out from under the finger.
+  if (rowEl.dataset.built !== mk){
+    rowEl.innerHTML = '';
+    for (const t of tiles){
+      const b = document.createElement('button');
+      b.className = 'sub-btn'; b.dataset.sub = t.v; b.textContent = t.label; b.title = t.title;
+      b.addEventListener('click', () => setSubModel(t.v));
+      rowEl.appendChild(b);
+    }
+    rowEl.dataset.built = mk;
+    const lab = document.getElementById('submodel-label');
+    if (lab) lab.textContent = 'Разновидность — ' + (KIND_LABEL[mode] || mode).toLowerCase();
+  }
+  const cur = String(paramState.box[mk]);
+  rowEl.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.dataset.sub === cur));
+}
+// Drive the real <select> so the choice goes through the normal change pipeline — the same reason
+// setBaseShape does it that way, and the reason the select stays in the DOM after being hidden.
+function setSubModel(v){
+  const mode = dominantMode(paramState.box), mk = subModelKey(mode); if (!mk) return;
+  const el = document.querySelector('select[data-key="'+mk+'"]');
+  if (el){ el.value = v; el.dispatchEvent(new Event('input', {bubbles:true})); }
+  else { paramState.box[mk] = v; }
+  updateSubModelPicker(); updateSectionVisibility();
+  if (typeof updateShapeName === 'function') updateShapeName();
 }
 function setBaseShape(kind){
   // Activators are a mix of <select> and checkbox (<input type=checkbox>) — matching only selects meant the

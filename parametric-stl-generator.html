@@ -425,6 +425,9 @@
   #stale-badge:hover{ background:var(--redline-dark); }
   /* Long how-it-works paragraphs fold away behind a small "ⓘ справка" toggle so the panel stays
      compact; the text is still one tap away. */
+  /* A parameter row that belongs to another sub-model of the same family is not dimmed or disabled — it
+     is not drawn. Twenty sub-models in one accordion is unreadable however politely they are greyed. */
+  .row-off{ display:none !important; }
   .note-fold{ margin:4px 0 8px; }
   .note-fold > summary{
     list-style:none; cursor:pointer;
@@ -1003,7 +1006,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v171';
+const APP_VERSION = 'v172';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3667,286 +3670,286 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadD', label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadPitch', label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadStarts', label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
-    {group:'Резьба (крышка / штуцер)', key:'threadLen', label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadClear', label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadLead', label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadDepth', label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadJournal', label:'Ходовой винт: вылет цапфы с каждой стороны', min:0, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadJournalD', label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadAugerBlade', label:'Шнек: толщина витка (0 = авто от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBarbN', label:'Ёлочка: число зубцов (0 = авто от длины)', min:0, max:12, step:1, default:0, unit:'', int:true},
-    {group:'Резьба (крышка / штуцер)', key:'threadBarbEnd', label:'Ёлочка: что с другой стороны', type:'select', default:'barb',
+    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland','anchor'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','anchor'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','gland','anchor'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadClear', w:['cap','nut','wingnut'], label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadLead', w:['cap','jar','stud','bolt','gland','anchor'], label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadDepth', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadJournal', w:['leadscrew','auger','corkscrew'], label:'Ходовой винт: вылет цапфы с каждой стороны', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadJournalD', w:['leadscrew','auger'], needs:{threadJournal:0}, label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', w:['auger'], label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadAugerBlade', w:['auger'], label:'Шнек: толщина витка (0 = авто от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBarbN', w:['barb'], label:'Ёлочка: число зубцов (0 = авто от длины)', min:0, max:12, step:1, default:0, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadBarbEnd', w:['barb'], label:'Ёлочка: что с другой стороны', type:'select', default:'barb',
       options:[{v:'barb',t:'вторая ёлочка (соединитель шлангов)'},{v:'flange',t:'фланец (упор)'},{v:'thread',t:'наружная резьба (штуцер)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadWireD', label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadHandleW', label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlat', label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
-    {group:'Резьба (крышка / штуцер)', key:'threadHand', label:'Резьба: направление', type:'select', default:'right',
+    {group:'Резьба (крышка / штуцер)', key:'threadWireD', w:['corkscrew'], label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHandleW', w:['corkscrew'], label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlat', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadHand', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadWall', label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTop', label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadWall', w:['cap','jar'], label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadTop', w:['cap'], label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
     // NB: this select used to be spelled `threadTop` as well — the same key as the slider above it, so the
     // two rows overwrote each other and picking a funnel cancelled the top thickness (and vice versa).
     // It has its own key now; a preset that still carries a STRING in threadTop is read below for compat.
-    {group:'Резьба (крышка / штуцер)', key:'threadTopMode', label:'Крышка: что сверху — воронка, носик или горловина', type:'select', default:'none',
+    {group:'Резьба (крышка / штуцер)', key:'threadTopMode', w:['cap'], label:'Крышка: что сверху — воронка, носик или горловина', type:'select', default:'none',
       options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'},{v:'neck',t:'переходник горловин (наружная резьба сверху)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadSpoutD', label:'Носик: Ø кончика (наружный)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadSpoutH', label:'Носик: длина', min:5, max:200, step:1, default:35, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadNeckD', label:'Переходник: Ø верхней резьбы (0 = 0.7 от нижней)', min:0, max:200, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadNeckPitch', label:'Переходник: шаг верхней резьбы (0 = как у нижней)', min:0, max:8, step:0.1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadNeckH', label:'Переходник: длина верхней резьбы', min:3, max:100, step:0.5, default:12, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadSeal', label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadGrip', label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
-    {group:'Резьба (крышка / штуцер)', key:'threadGripD', label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlange', label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBodyShape', label:'Банка: форма корпуса', type:'select', default:'round',
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', w:['cap'], only:{threadTopMode:['funnel']}, label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', w:['cap'], only:{threadTopMode:['funnel']}, label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSpoutD', w:['cap'], only:{threadTopMode:['spout']}, label:'Носик: Ø кончика (наружный)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSpoutH', w:['cap'], only:{threadTopMode:['spout']}, label:'Носик: длина', min:5, max:200, step:1, default:35, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckD', w:['cap'], only:{threadTopMode:['neck']}, label:'Переходник: Ø верхней резьбы (0 = 0.7 от нижней)', min:0, max:200, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckPitch', w:['cap'], only:{threadTopMode:['neck']}, label:'Переходник: шаг верхней резьбы (0 = как у нижней)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadNeckH', w:['cap'], only:{threadTopMode:['neck']}, label:'Переходник: длина верхней резьбы', min:3, max:100, step:0.5, default:12, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadSeal', w:['cap'], label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadGrip', w:['cap'], label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadGripD', w:['cap'], label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlange', w:['stud','gland','anchor'], label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', w:['stud','gland','anchor'], label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyShape', w:['jar'], label:'Банка: форма корпуса', type:'select', default:'round',
       options:[{v:'round',t:'круг / эллипс'},{v:'squircle',t:'squircle'},{v:'roundrect',t:'скруглённый прямоугольник'},{v:'rect',t:'прямоугольник'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadBodyD', label:'Банка: корпус — размер по Z (0 = авто, шире горла)', min:0, max:200, step:1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBodyW', label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBodyH', label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFloor', label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBore', label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTip', label:'Дюбель: сужение к носку (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.7, unit:''},
-    {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadHeadH', label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyD', w:['jar'], label:'Банка: корпус — размер по Z (0 = авто, шире горла)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyW', w:['jar'], label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBodyH', w:['jar'], label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFloor', w:['jar'], label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland','anchor'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadTip', w:['anchor'], label:'Дюбель: сужение к носку (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.7, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadH', w:['bolt','nut','wingnut'], label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'},{v:'telescope',t:'телескопическая труба (печать в сборе)'}]},
-    {group:'Петля (печать в сборе)', key:'snapLen', label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'snapT', label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'snapW', label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
-    {group:'Телескоп', key:'telN', label:'Телескоп: число секций', min:2, max:8, step:1, default:3, unit:'', int:true},
-    {group:'Телескоп', key:'telD', label:'Телескоп: наружный Ø самой широкой секции', min:8, max:200, step:0.5, default:26, unit:'мм'},
-    {group:'Телескоп', key:'telLen', label:'Телескоп: длина секции', min:10, max:300, step:1, default:40, unit:'мм'},
-    {group:'Телескоп', key:'telWall', label:'Телескоп: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
-    {group:'Телескоп', key:'telGap', label:'Телескоп: печатный зазор', min:0.15, max:1, step:0.05, default:0.35, unit:'мм'},
-    {group:'Телескоп', key:'telStopD', label:'Телескоп: глубина упорного кольца (0 = авто от зазора)', min:0, max:6, step:0.1, default:0, unit:'мм'},
-    {group:'Телескоп', key:'telStopH', label:'Телескоп: высота упорного кольца', min:1, max:20, step:0.5, default:2.5, unit:'мм'},
-    {group:'Живой шарнир', key:'lhT', label:'Живой шарнир: толщина панели', min:0.8, max:12, step:0.1, default:2.4, unit:'мм'},
-    {group:'Живой шарнир', key:'lhWebT', label:'Живой шарнир: толщина перемычки (0 = два слоя)', min:0, max:3, step:0.05, default:0, unit:'мм'},
-    {group:'Живой шарнир', key:'lhWebW', label:'Живой шарнир: ширина перемычки (она снижает деформацию)', min:0.6, max:30, step:0.2, default:6, unit:'мм'},
-    {group:'Живой шарнир', key:'lhLayer', label:'Живой шарнир: высота слоя принтера', min:0.05, max:0.5, step:0.01, default:0.2, unit:'мм'},
-    {group:'Живой шарнир', key:'lhLen', label:'Живой шарнир: длина вдоль оси сгиба', min:5, max:300, step:1, default:60, unit:'мм'},
-    {group:'Живой шарнир', key:'lhA', label:'Живой шарнир: первая створка', min:3, max:200, step:1, default:25, unit:'мм'},
-    {group:'Живой шарнир', key:'lhB', label:'Живой шарнир: вторая створка', min:3, max:200, step:1, default:25, unit:'мм'},
-    {group:'Живой шарнир', key:'lhN', label:'Живой шарнир: число сгибов', min:1, max:12, step:1, default:1, unit:'', int:true},
-    {group:'Цепь', key:'chainN', label:'Цепь: число звеньев', min:2, max:60, step:1, default:6, unit:'', int:true},
-    {group:'Цепь', key:'chainLen', label:'Цепь: длина звена', min:6, max:120, step:0.5, default:18, unit:'мм'},
-    {group:'Цепь', key:'chainW', label:'Цепь: ширина звена', min:3, max:80, step:0.5, default:9, unit:'мм'},
-    {group:'Цепь', key:'chainT', label:'Цепь: толщина прутка в плоскости звена', min:0.8, max:12, step:0.1, default:2.2, unit:'мм'},
-    {group:'Цепь', key:'chainH', label:'Цепь: толщина прутка поперёк (0 = как в плоскости)', min:0, max:12, step:0.1, default:0, unit:'мм'},
-    {group:'Цепь', key:'chainGap', label:'Цепь: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.4, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballD', label:'Шарнир: Ø шара', min:6, max:80, step:0.5, default:16, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballGap', label:'Шарнир: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.35, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballWall', label:'Шарнир: толщина чашки', min:1.2, max:12, step:0.1, default:2.4, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballMouth', label:'Шарнир: угол устья (больше — уже устье, туже держит)', min:100, max:160, step:1, default:125, unit:'°'},
-    {group:'Шаровой шарнир', key:'ballStemD', label:'Шарнир: Ø ножки шара', min:1.5, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballStem', label:'Шарнир: длина ножки', min:4, max:200, step:1, default:0, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballBaseR', label:'Шарнир: радиус основания (0 = по чашке)', min:0, max:100, step:0.5, default:0, unit:'мм'},
-    {group:'Шаровой шарнир', key:'ballBaseT', label:'Шарнир: толщина основания', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Защёлка-консоль', key:'snapUndercut', label:'Защёлка: зацеп (прогиб) y', min:0.2, max:12, step:0.1, default:1.2, unit:'мм'},
-    {group:'Защёлка-консоль', key:'snapLeadAngle', label:'Защёлка: угол захода α₁', min:10, max:60, step:1, default:30, unit:'°'},
-    {group:'Защёлка-консоль', key:'snapRetAngle', label:'Защёлка: угол удержания α₂ (90 = неразъёмная)', min:30, max:90, step:1, default:45, unit:'°'},
-    {group:'Защёлка-консоль', key:'snapBaseT', label:'Защёлка: толщина основания', min:2, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Защёлка-консоль', key:'snapTaper', label:'Защёлка: сужать консоль к концу (даёт 1.64× прогиба)', type:'bool', default:true},
-    {group:'Защёлка-консоль', key:'snapMat', label:'Защёлка: материал (модуль и допустимая деформация)', type:'select', default:'pla',
+    {group:'Петля (печать в сборе)', key:'snapLen', w:['snap'], label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'snapT', w:['snap'], label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'snapW', w:['snap'], label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Телескоп', key:'telN', w:['telescope'], label:'Телескоп: число секций', min:2, max:8, step:1, default:3, unit:'', int:true},
+    {group:'Телескоп', key:'telD', w:['telescope'], label:'Телескоп: наружный Ø самой широкой секции', min:8, max:200, step:0.5, default:26, unit:'мм'},
+    {group:'Телескоп', key:'telLen', w:['telescope'], label:'Телескоп: длина секции', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Телескоп', key:'telWall', w:['telescope'], label:'Телескоп: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
+    {group:'Телескоп', key:'telGap', w:['telescope'], label:'Телескоп: печатный зазор', min:0.15, max:1, step:0.05, default:0.35, unit:'мм'},
+    {group:'Телескоп', key:'telStopD', w:['telescope'], label:'Телескоп: глубина упорного кольца (0 = авто от зазора)', min:0, max:6, step:0.1, default:0, unit:'мм'},
+    {group:'Телескоп', key:'telStopH', w:['telescope'], label:'Телескоп: высота упорного кольца', min:1, max:20, step:0.5, default:2.5, unit:'мм'},
+    {group:'Живой шарнир', key:'lhT', w:['living'], label:'Живой шарнир: толщина панели', min:0.8, max:12, step:0.1, default:2.4, unit:'мм'},
+    {group:'Живой шарнир', key:'lhWebT', w:['living'], label:'Живой шарнир: толщина перемычки (0 = два слоя)', min:0, max:3, step:0.05, default:0, unit:'мм'},
+    {group:'Живой шарнир', key:'lhWebW', w:['living'], label:'Живой шарнир: ширина перемычки (она снижает деформацию)', min:0.6, max:30, step:0.2, default:6, unit:'мм'},
+    {group:'Живой шарнир', key:'lhLayer', w:['living'], label:'Живой шарнир: высота слоя принтера', min:0.05, max:0.5, step:0.01, default:0.2, unit:'мм'},
+    {group:'Живой шарнир', key:'lhLen', w:['living'], label:'Живой шарнир: длина вдоль оси сгиба', min:5, max:300, step:1, default:60, unit:'мм'},
+    {group:'Живой шарнир', key:'lhA', w:['living'], label:'Живой шарнир: первая створка', min:3, max:200, step:1, default:25, unit:'мм'},
+    {group:'Живой шарнир', key:'lhB', w:['living'], label:'Живой шарнир: вторая створка', min:3, max:200, step:1, default:25, unit:'мм'},
+    {group:'Живой шарнир', key:'lhN', w:['living'], label:'Живой шарнир: число сгибов', min:1, max:12, step:1, default:1, unit:'', int:true},
+    {group:'Цепь', key:'chainN', w:['chain'], label:'Цепь: число звеньев', min:2, max:60, step:1, default:6, unit:'', int:true},
+    {group:'Цепь', key:'chainLen', w:['chain'], label:'Цепь: длина звена', min:6, max:120, step:0.5, default:18, unit:'мм'},
+    {group:'Цепь', key:'chainW', w:['chain'], label:'Цепь: ширина звена', min:3, max:80, step:0.5, default:9, unit:'мм'},
+    {group:'Цепь', key:'chainT', w:['chain'], label:'Цепь: толщина прутка в плоскости звена', min:0.8, max:12, step:0.1, default:2.2, unit:'мм'},
+    {group:'Цепь', key:'chainH', w:['chain'], label:'Цепь: толщина прутка поперёк (0 = как в плоскости)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Цепь', key:'chainGap', w:['chain'], label:'Цепь: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.4, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballD', w:['ball'], label:'Шарнир: Ø шара', min:6, max:80, step:0.5, default:16, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballGap', w:['ball'], label:'Шарнир: печатный зазор', min:0.15, max:1.2, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballWall', w:['ball'], label:'Шарнир: толщина чашки', min:1.2, max:12, step:0.1, default:2.4, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballMouth', w:['ball'], label:'Шарнир: угол устья (больше — уже устье, туже держит)', min:100, max:160, step:1, default:125, unit:'°'},
+    {group:'Шаровой шарнир', key:'ballStemD', w:['ball'], label:'Шарнир: Ø ножки шара', min:1.5, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballStem', w:['ball'], label:'Шарнир: длина ножки', min:4, max:200, step:1, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballBaseR', w:['ball'], label:'Шарнир: радиус основания (0 = по чашке)', min:0, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Шаровой шарнир', key:'ballBaseT', w:['ball'], label:'Шарнир: толщина основания', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapUndercut', w:['snap'], label:'Защёлка: зацеп (прогиб) y', min:0.2, max:12, step:0.1, default:1.2, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapLeadAngle', w:['snap'], label:'Защёлка: угол захода α₁', min:10, max:60, step:1, default:30, unit:'°'},
+    {group:'Защёлка-консоль', key:'snapRetAngle', w:['snap'], label:'Защёлка: угол удержания α₂ (90 = неразъёмная)', min:30, max:90, step:1, default:45, unit:'°'},
+    {group:'Защёлка-консоль', key:'snapBaseT', w:['snap'], label:'Защёлка: толщина основания', min:2, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Защёлка-консоль', key:'snapTaper', w:['snap'], label:'Защёлка: сужать консоль к концу (даёт 1.64× прогиба)', type:'bool', default:true},
+    {group:'Защёлка-консоль', key:'snapMat', w:['snap'], label:'Защёлка: материал (модуль и допустимая деформация)', type:'select', default:'pla',
       options:[{v:'pla',t:'PLA (2600 МПа, 2.5 %)'},{v:'petg',t:'PETG (2100 МПа, 4 %)'},{v:'abs',t:'ABS (2200 МПа, 5 %)'},{v:'nylon',t:'нейлон (1700 МПа, 8 %)'}]},
-    {group:'Петля (печать в сборе)', key:'pipLen', label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipLeafW', label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipLeafT', label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipKnuckles', label:'Петля: число узлов (нечётное)', min:3, max:21, step:2, default:5, unit:'', int:true},
-    {group:'Петля (печать в сборе)', key:'pipPinD', label:'Петля: Ø штифта (0 = авто)', min:0, max:10, step:0.5, default:0, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipPin', label:'Петля: штифт', type:'select', default:'inplace',
+    {group:'Петля (печать в сборе)', key:'pipLen', w:['flat','box'], label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipLeafW', w:['flat','box'], label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipLeafT', w:['flat','box'], label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipKnuckles', w:['flat','box'], label:'Петля: число узлов (нечётное)', min:3, max:21, step:2, default:5, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipPinD', w:['flat','box'], label:'Петля: Ø штифта (0 = авто)', min:0, max:10, step:0.5, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipPin', w:['flat','box'], label:'Петля: штифт', type:'select', default:'inplace',
       options:[{v:'inplace',t:'печать в сборе (штифт вплавлен)'},{v:'removable',t:'разборная (штифт вставляется)'}]},
-    {group:'Петля (печать в сборе)', key:'pipGap', label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipScrewD', label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipScrewN', label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
-    {group:'Петля (печать в сборе)', key:'pipLatchN', label:'Футляр: число защёлок (0 = без)', min:0, max:6, step:1, default:2, unit:'', int:true},
-    {group:'Петля (печать в сборе)', key:'pipLatchW', label:'Футляр: ширина защёлки', min:7, max:60, step:1, default:14, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipBoxH', label:'Коробка: высота бортика лотка', min:2, max:60, step:1, default:12, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipWall', label:'Коробка: толщина стенки бортика', min:1.2, max:6, step:0.2, default:2, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipClipD', label:'Клипса: Ø кабеля / трубы', min:3, max:80, step:0.5, default:12, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipClipW', label:'Клипса: ширина', min:4, max:60, step:1, default:12, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipClipWall', label:'Клипса: толщина стенки', min:1.2, max:8, step:0.2, default:2.5, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'pipClipMouth', label:'Клипса: раскрытие горловины (% Ø, <100 = защёлк.)', min:30, max:98, step:1, default:75, unit:'%'},
-    {group:'Петля (печать в сборе)', key:'pipClipBaseT', label:'Клипса: толщина основания', min:1.5, max:12, step:0.5, default:3, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'tieLen', label:'Стяжка: длина ремешка', min:20, max:400, step:5, default:120, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'tieW', label:'Стяжка: ширина ремешка', min:2.5, max:16, step:0.5, default:5, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'tieT', label:'Стяжка: толщина ремешка', min:0.8, max:4, step:0.1, default:1.6, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'tieToothP', label:'Стяжка: шаг зубьев храповика', min:1.2, max:5, step:0.1, default:2.4, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'tieToothH', label:'Стяжка: высота зубьев', min:0.3, max:2, step:0.1, default:0.8, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'clampD', label:'Хомут: Ø трубы', min:5, max:120, step:1, default:20, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'clampW', label:'Хомут: ширина', min:5, max:60, step:1, default:16, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'clampWall', label:'Хомут: толщина стенки', min:1.5, max:10, step:0.5, default:3, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'clampBoltD', label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
-    {group:'Петля (печать в сборе)', key:'clampGap', label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipGap', w:['flat','box'], label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipScrewD', w:['flat','clip'], label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipScrewN', w:['flat'], needs:{pipScrewD:0.5}, label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipLatchN', w:['box'], label:'Футляр: число защёлок (0 = без)', min:0, max:6, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipLatchW', w:['box'], label:'Футляр: ширина защёлки', min:7, max:60, step:1, default:14, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipBoxH', w:['box'], label:'Коробка: высота бортика лотка', min:2, max:60, step:1, default:12, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipWall', w:['box'], label:'Коробка: толщина стенки бортика', min:1.2, max:6, step:0.2, default:2, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipClipD', w:['clip'], label:'Клипса: Ø кабеля / трубы', min:3, max:80, step:0.5, default:12, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipClipW', w:['clip'], label:'Клипса: ширина', min:4, max:60, step:1, default:12, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipClipWall', w:['clip'], label:'Клипса: толщина стенки', min:1.2, max:8, step:0.2, default:2.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipClipMouth', w:['clip'], label:'Клипса: раскрытие горловины (% Ø, <100 = защёлк.)', min:30, max:98, step:1, default:75, unit:'%'},
+    {group:'Петля (печать в сборе)', key:'pipClipBaseT', w:['clip'], label:'Клипса: толщина основания', min:1.5, max:12, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieLen', w:['tie'], label:'Стяжка: длина ремешка', min:20, max:400, step:5, default:120, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieW', w:['tie'], label:'Стяжка: ширина ремешка', min:2.5, max:16, step:0.5, default:5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieT', w:['tie'], label:'Стяжка: толщина ремешка', min:0.8, max:4, step:0.1, default:1.6, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieToothP', w:['tie'], label:'Стяжка: шаг зубьев храповика', min:1.2, max:5, step:0.1, default:2.4, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'tieToothH', w:['tie'], label:'Стяжка: высота зубьев', min:0.3, max:2, step:0.1, default:0.8, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampD', w:['clamp'], label:'Хомут: Ø трубы', min:5, max:120, step:1, default:20, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampW', w:['clamp'], label:'Хомут: ширина', min:5, max:60, step:1, default:16, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampWall', w:['clamp'], label:'Хомут: толщина стенки', min:1.5, max:10, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampBoltD', w:['clamp'], label:'Хомут: Ø болтовых отверстий', min:2, max:10, step:0.5, default:3.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'clampGap', w:['clamp'], label:'Хомут: зазор стяжки (между половинами)', min:0.3, max:5, step:0.1, default:1.2, unit:'мм'},
     {group:'Шестерня', key:'gearMode', label:'Шестерня (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'spur',t:'прямозубая (involute)'},{v:'helical',t:'косозубая (helical)'},{v:'bevel',t:'коническая (bevel)'},{v:'rack',t:'зубчатая рейка'},{v:'gt2',t:'шкив GT2 (под ремень)'},{v:'vbelt',t:'шкив клиновой (V-ремень)'},{v:'roundbelt',t:'шкив круглый (круглый ремень)'},{v:'worm',t:'червяк (для червячной передачи)'},{v:'cam',t:'кулачок (гармонический профиль)'},{v:'follower',t:'толкатель (к кулачку)'},{v:'wormwheel',t:'червячное колесо (под червяк)'},{v:'planetary',t:'планетарный редуктор (солнце + сателлиты + корона)'},{v:'cycloidal',t:'циклоидальный редуктор (диск + ролики)'},{v:'ujoint',t:'карданчик (печать в сборе)'},{v:'ratchet',t:'храповик'},{v:'geneva',t:'мальтийский механизм (крест + кривошип)'},{v:'roots',t:'роторы Roots (воздуходувка)'}]},
-    {group:'Шестерня', key:'gearModule', label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
-    {group:'Шестерня', key:'gearTeeth', label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
-    {group:'Шестерня', key:'gearPA', label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
-    {group:'Шестерня', key:'gearThick', label:'Шестерня: толщина', min:1, max:60, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'gearBore', label:'Шестерня: Ø отверстия под вал (0 = авто)', min:0, max:100, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'gearHelix', label:'Косозубая: угол наклона зуба', min:0, max:45, step:1, default:15, unit:'°'},
-    {group:'Шестерня', key:'gearKeyW', label:'Шестерня: ширина шпоночного паза (0 = без)', min:0, max:12, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'gearKeyD', label:'Шестерня: глубина шпоночного паза', min:0, max:6, step:0.5, default:2, unit:'мм'},
-    {group:'Шестерня', key:'gearHub', label:'Шестерня: Ø ступицы (0 = без)', min:0, max:80, step:1, default:0, unit:'мм'},
-    {group:'Шестерня', key:'gearHubH', label:'Шестерня: высота ступицы', min:0, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'gearSpokes', label:'Шестерня: число спиц (0 = сплошной диск, ≥3 = облегчение)', min:0, max:12, step:1, default:0, unit:'', int:true},
-    {group:'Шестерня', key:'gearSpokeW', label:'Шестерня: ширина спицы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'gearBevelRole', label:'Коническая: роль в паре', type:'select', default:'simple',
+    {group:'Шестерня', key:'gearModule', w:['spur','helical','bevel','rack','worm','wormwheel','planetary','ratchet'], label:'Шестерня: модуль (мм/зуб); GT2 — шаг 2 мм', min:0.3, max:10, step:0.1, default:2, unit:'мм'},
+    {group:'Шестерня', key:'gearTeeth', w:['spur','helical','bevel','gt2','wormwheel','planetary','ratchet'], label:'Шестерня: число зубьев', min:6, max:200, step:1, default:20, unit:'', int:true},
+    {group:'Шестерня', key:'gearPA', w:['spur','helical','bevel','rack','planetary'], label:'Шестерня/рейка: угол зацепления', min:14, max:30, step:0.5, default:20, unit:'°'},
+    {group:'Шестерня', key:'gearThick', w:['spur','helical','bevel','gt2','vbelt','roundbelt','cam','wormwheel','planetary','ratchet'], label:'Шестерня: толщина', min:1, max:60, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearBore', w:['spur','helical','bevel','gt2','vbelt','roundbelt','worm','cam','wormwheel','planetary','cycloidal','ratchet'], label:'Шестерня: Ø отверстия под вал (0 = авто)', min:0, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearHelix', w:['helical'], label:'Косозубая: угол наклона зуба', min:0, max:45, step:1, default:15, unit:'°'},
+    {group:'Шестерня', key:'gearKeyW', w:['spur','helical','bevel','gt2','vbelt','roundbelt','cam','wormwheel','ratchet'], label:'Шестерня: ширина шпоночного паза (0 = без)', min:0, max:12, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearKeyD', w:['spur','helical','bevel','gt2','vbelt','roundbelt','cam','wormwheel','ratchet'], needs:{gearKeyW:0}, label:'Шестерня: глубина шпоночного паза', min:0, max:6, step:0.5, default:2, unit:'мм'},
+    {group:'Шестерня', key:'gearHub', w:['spur','helical','bevel','gt2','cam','wormwheel','ratchet'], label:'Шестерня: Ø ступицы (0 = без)', min:0, max:80, step:1, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearHubH', w:['spur','helical','bevel','gt2','cam','wormwheel','ratchet'], needs:{gearHub:0}, label:'Шестерня: высота ступицы', min:0, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearSpokes', w:['spur','helical'], label:'Шестерня: число спиц (0 = сплошной диск, ≥3 = облегчение)', min:0, max:12, step:1, default:0, unit:'', int:true},
+    {group:'Шестерня', key:'gearSpokeW', w:['spur','helical'], needs:{gearSpokes:2}, label:'Шестерня: ширина спицы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearBevelRole', w:['bevel'], label:'Коническая: роль в паре', type:'select', default:'simple',
       options:[{v:'simple',t:'простая (одиночная, конусный сбег)'},{v:'pinion',t:'сопряжённая пара: шестерня'},{v:'wheel',t:'сопряжённая пара: колесо'}]},
-    {group:'Шестерня', key:'gearBevelMate', label:'Коническая пара: число зубьев ОТВЕТНОЙ', min:6, max:120, step:1, default:20, unit:'', int:true},
-    {group:'Шестерня', key:'gearBevel', label:'Коническая: угол конуса', min:15, max:75, step:1, default:45, unit:'°'},
-    {group:'Шестерня', key:'rackLen', label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
-    {group:'Шестерня', key:'rackW', label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
-    {group:'Шестерня', key:'rackH', label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'planetTeeth', label:'Планетарный: зубьев на сателлите', min:6, max:60, step:1, default:16, unit:'', int:true},
-    {group:'Шестерня', key:'planetN', label:'Планетарный: число сателлитов', min:2, max:6, step:1, default:3, unit:'', int:true},
-    {group:'Шестерня', key:'gearPlanClear', label:'Планетарный: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
-    {group:'Шестерня', key:'folTip', label:'Толкатель: контактный конец', type:'select', default:'flat',
+    {group:'Шестерня', key:'gearBevelMate', w:['bevel'], only:{gearBevelRole:['pinion','wheel']}, label:'Коническая пара: число зубьев ОТВЕТНОЙ', min:6, max:120, step:1, default:20, unit:'', int:true},
+    {group:'Шестерня', key:'gearBevel', w:['bevel'], label:'Коническая: угол конуса', min:15, max:75, step:1, default:45, unit:'°'},
+    {group:'Шестерня', key:'rackLen', w:['rack'], label:'Рейка: длина', min:10, max:400, step:5, default:90, unit:'мм'},
+    {group:'Шестерня', key:'rackW', w:['rack'], label:'Рейка: ширина', min:2, max:60, step:1, default:12, unit:'мм'},
+    {group:'Шестерня', key:'rackH', w:['rack'], label:'Рейка: высота основания (под зубьями)', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'planetTeeth', w:['planetary'], label:'Планетарный: зубьев на сателлите', min:6, max:60, step:1, default:16, unit:'', int:true},
+    {group:'Шестерня', key:'planetN', w:['planetary'], label:'Планетарный: число сателлитов', min:2, max:6, step:1, default:3, unit:'', int:true},
+    {group:'Шестерня', key:'gearPlanClear', w:['planetary'], label:'Планетарный: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+    {group:'Шестерня', key:'folTip', w:['follower'], label:'Толкатель: контактный конец', type:'select', default:'flat',
       options:[{v:'flat',t:'плоский (терпит любой подъём)'},{v:'round',t:'скруглённый (точно ведёт профиль)'}]},
-    {group:'Шестерня', key:'folRodD', label:'Толкатель: Ø штока', min:2, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'folLen', label:'Толкатель: длина штока', min:5, max:200, step:1, default:30, unit:'мм'},
-    {group:'Шестерня', key:'folPadD', label:'Толкатель: Ø плоской пяты (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'folPadT', label:'Толкатель: толщина пяты', min:1, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Шестерня', key:'gearWheelRim', label:'Червячное колесо: венец', type:'select', default:'envelope',
+    {group:'Шестерня', key:'folRodD', w:['follower'], label:'Толкатель: Ø штока', min:2, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'folLen', w:['follower'], label:'Толкатель: длина штока', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Шестерня', key:'folPadD', w:['follower'], label:'Толкатель: Ø плоской пяты (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'folPadT', w:['follower'], label:'Толкатель: толщина пяты', min:1, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Шестерня', key:'gearWheelRim', w:['wormwheel'], label:'Червячное колесо: венец', type:'select', default:'envelope',
       options:[{v:'envelope',t:'нарезан огибанием червяка (сопряжённый)'},{v:'straight',t:'прямой (цилиндрический)'},{v:'throated',t:'обнимающий червяк (глобоидный)'}]},
-    {group:'Шестерня', key:'ujShaftD', label:'Карданчик: Ø вала', min:4, max:60, step:0.5, default:10, unit:'мм'},
-    {group:'Шестерня', key:'ujShaftLen', label:'Карданчик: вылет вала с каждой стороны', min:4, max:150, step:1, default:18, unit:'мм'},
-    {group:'Шестерня', key:'ujBoreD', label:'Карданчик: Ø отверстия в валу (0 = сплошной)', min:0, max:40, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'ujPinD', label:'Карданчик: Ø шипа крестовины', min:1.5, max:20, step:0.5, default:4, unit:'мм'},
-    {group:'Шестерня', key:'ujWall', label:'Карданчик: толщина стенки проушины', min:1.2, max:10, step:0.1, default:2.5, unit:'мм'},
-    {group:'Шестерня', key:'ujAngle', label:'Карданчик: расчётный угол излома (задаёт глубину вилки)', min:5, max:45, step:1, default:25, unit:'°'},
-    {group:'Шестерня', key:'ujClear', label:'Карданчик: зазор в шарнире', min:0.1, max:0.9, step:0.05, default:0.35, unit:'мм'},
-    {group:'Шестерня', key:'camBase', label:'Кулачок: Ø базовой окружности', min:6, max:200, step:1, default:24, unit:'мм'},
-    {group:'Шестерня', key:'camLift', label:'Кулачок: подъём толкателя', min:0.5, max:80, step:0.5, default:8, unit:'мм'},
-    {group:'Шестерня', key:'camRise', label:'Кулачок: угол подъёма', min:10, max:180, step:5, default:120, unit:'°'},
-    {group:'Шестерня', key:'camDwell', label:'Кулачок: выстой на вершине', min:0, max:180, step:5, default:60, unit:'°'},
-    {group:'Шестерня', key:'camFall', label:'Кулачок: угол опускания', min:10, max:180, step:5, default:120, unit:'°'},
-    {group:'Шестерня', key:'cycPins', label:'Циклоидальный: число роликов (передат. = N−1)', min:6, max:40, step:1, default:12, unit:'', int:true},
-    {group:'Шестерня', key:'cycPinCircleD', label:'Циклоидальный: Ø окружности роликов', min:20, max:200, step:1, default:60, unit:'мм'},
-    {group:'Шестерня', key:'cycPinD', label:'Циклоидальный: Ø ролика', min:2, max:20, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'cycEcc', label:'Циклоидальный: эксцентриситет (0 = авто, 3% от R)', min:0, max:12, step:0.1, default:0, unit:'мм'},
-    {group:'Шестерня', key:'cycThick', label:'Циклоидальный: толщина диска', min:2, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'cycWall', label:'Циклоидальный: стенка кольца', min:1.6, max:12, step:0.2, default:3, unit:'мм'},
-    {group:'Шестерня', key:'cycOutN', label:'Циклоидальный: число выходных пальцев', min:3, max:10, step:1, default:6, unit:'', int:true},
-    {group:'Шестерня', key:'cycOutPinD', label:'Циклоидальный: Ø выходного пальца', min:2, max:20, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'gearWormD', label:'Червяк: наружный Ø (0 = авто от модуля)', min:0, max:120, step:0.5, default:0, unit:'мм'},
-    {group:'Шестерня', key:'gearWormLen', label:'Червяк: длина нарезки', min:5, max:200, step:1, default:30, unit:'мм'},
-    {group:'Шестерня', key:'gearWormJournal', label:'Червяк: вылет вала с каждой стороны (0 = без)', min:0, max:60, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'gearStarts', label:'Червяк: число заходов', min:1, max:4, step:1, default:1, unit:'', int:true},
-    {group:'Шестерня', key:'gearHand', label:'Червяк: направление винта', type:'select', default:'right',
+    {group:'Шестерня', key:'ujShaftD', w:['ujoint'], label:'Карданчик: Ø вала', min:4, max:60, step:0.5, default:10, unit:'мм'},
+    {group:'Шестерня', key:'ujShaftLen', w:['ujoint'], label:'Карданчик: вылет вала с каждой стороны', min:4, max:150, step:1, default:18, unit:'мм'},
+    {group:'Шестерня', key:'ujBoreD', w:['ujoint'], label:'Карданчик: Ø отверстия в валу (0 = сплошной)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'ujPinD', w:['ujoint'], label:'Карданчик: Ø шипа крестовины', min:1.5, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Шестерня', key:'ujWall', w:['ujoint'], label:'Карданчик: толщина стенки проушины', min:1.2, max:10, step:0.1, default:2.5, unit:'мм'},
+    {group:'Шестерня', key:'ujAngle', w:['ujoint'], label:'Карданчик: расчётный угол излома (задаёт глубину вилки)', min:5, max:45, step:1, default:25, unit:'°'},
+    {group:'Шестерня', key:'ujClear', w:['ujoint'], label:'Карданчик: зазор в шарнире', min:0.1, max:0.9, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шестерня', key:'camBase', w:['cam'], label:'Кулачок: Ø базовой окружности', min:6, max:200, step:1, default:24, unit:'мм'},
+    {group:'Шестерня', key:'camLift', w:['cam'], label:'Кулачок: подъём толкателя', min:0.5, max:80, step:0.5, default:8, unit:'мм'},
+    {group:'Шестерня', key:'camRise', w:['cam'], label:'Кулачок: угол подъёма', min:10, max:180, step:5, default:120, unit:'°'},
+    {group:'Шестерня', key:'camDwell', w:['cam'], label:'Кулачок: выстой на вершине', min:0, max:180, step:5, default:60, unit:'°'},
+    {group:'Шестерня', key:'camFall', w:['cam'], label:'Кулачок: угол опускания', min:10, max:180, step:5, default:120, unit:'°'},
+    {group:'Шестерня', key:'cycPins', w:['cycloidal'], label:'Циклоидальный: число роликов (передат. = N−1)', min:6, max:40, step:1, default:12, unit:'', int:true},
+    {group:'Шестерня', key:'cycPinCircleD', w:['cycloidal'], label:'Циклоидальный: Ø окружности роликов', min:20, max:200, step:1, default:60, unit:'мм'},
+    {group:'Шестерня', key:'cycPinD', w:['cycloidal'], label:'Циклоидальный: Ø ролика', min:2, max:20, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'cycEcc', w:['cycloidal'], label:'Циклоидальный: эксцентриситет (0 = авто, 3% от R)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Шестерня', key:'cycThick', w:['cycloidal'], label:'Циклоидальный: толщина диска', min:2, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'cycWall', w:['cycloidal'], label:'Циклоидальный: стенка кольца', min:1.6, max:12, step:0.2, default:3, unit:'мм'},
+    {group:'Шестерня', key:'cycOutN', w:['cycloidal'], label:'Циклоидальный: число выходных пальцев', min:3, max:10, step:1, default:6, unit:'', int:true},
+    {group:'Шестерня', key:'cycOutPinD', w:['cycloidal'], label:'Циклоидальный: Ø выходного пальца', min:2, max:20, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearWormD', w:['worm','wormwheel'], label:'Червяк: наружный Ø (0 = авто от модуля)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Шестерня', key:'gearWormLen', w:['worm','wormwheel'], label:'Червяк: длина нарезки', min:5, max:200, step:1, default:30, unit:'мм'},
+    {group:'Шестерня', key:'gearWormJournal', w:['worm'], label:'Червяк: вылет вала с каждой стороны (0 = без)', min:0, max:60, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearStarts', w:['worm','wormwheel'], label:'Червяк: число заходов', min:1, max:4, step:1, default:1, unit:'', int:true},
+    {group:'Шестерня', key:'gearHand', w:['worm','wormwheel'], label:'Червяк: направление винта', type:'select', default:'right',
       options:[{v:'right',t:'правое'},{v:'left',t:'левое'}]},
-    {group:'Шестерня', key:'gearPulleyOD', label:'Шкив: наружный Ø', min:8, max:200, step:1, default:30, unit:'мм'},
-    {group:'Шестерня', key:'gearBeltW', label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Шестерня', key:'gearGroove', label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
-    {group:'Шестерня', key:'genevaRole', label:'Мальтийский: деталь', type:'select', default:'cross',
+    {group:'Шестерня', key:'gearPulleyOD', w:['vbelt','roundbelt'], label:'Шкив: наружный Ø', min:8, max:200, step:1, default:30, unit:'мм'},
+    {group:'Шестерня', key:'gearBeltW', w:['vbelt','roundbelt'], label:'Шкив: ширина ручья (Ø круглого ремня)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Шестерня', key:'gearGroove', w:['vbelt'], label:'Шкив клиновой: глубина ручья', min:1, max:30, step:0.5, default:4, unit:'мм'},
+    {group:'Шестерня', key:'genevaRole', w:['geneva'], label:'Мальтийский: деталь', type:'select', default:'cross',
       options:[{v:'cross',t:'крест (ведомый)'},{v:'driver',t:'кривошип (ведущий, с пальцем и запирающим диском)'}]},
-    {group:'Шестерня', key:'genevaSlots', label:'Мальтийский: число пазов', min:3, max:12, step:1, default:4, unit:'', int:true},
-    {group:'Шестерня', key:'genevaCenter', label:'Мальтийский: межосевое расстояние', min:12, max:200, step:1, default:40, unit:'мм'},
-    {group:'Шестерня', key:'genevaPinD', label:'Мальтийский: Ø пальца', min:1.5, max:20, step:0.5, default:5, unit:'мм'},
-    {group:'Шестерня', key:'genevaThick', label:'Мальтийский: толщина креста', min:1.5, max:30, step:0.5, default:5, unit:'мм'},
-    {group:'Шестерня', key:'genevaBase', label:'Мальтийский: толщина плиты кривошипа', min:1.5, max:30, step:0.5, default:3, unit:'мм'},
-    {group:'Шестерня', key:'genevaBore', label:'Мальтийский: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
-    {group:'Шестерня', key:'genevaGap', label:'Мальтийский: зазор посадки', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
-    {group:'Шестерня', key:'rootsPart', label:'Roots: деталь', type:'select', default:'rotor',
+    {group:'Шестерня', key:'genevaSlots', w:['geneva'], label:'Мальтийский: число пазов', min:3, max:12, step:1, default:4, unit:'', int:true},
+    {group:'Шестерня', key:'genevaCenter', w:['geneva'], label:'Мальтийский: межосевое расстояние', min:12, max:200, step:1, default:40, unit:'мм'},
+    {group:'Шестерня', key:'genevaPinD', w:['geneva'], label:'Мальтийский: Ø пальца', min:1.5, max:20, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaThick', w:['geneva'], label:'Мальтийский: толщина креста', min:1.5, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaBase', w:['geneva'], only:{genevaRole:['driver']}, label:'Мальтийский: толщина плиты кривошипа', min:1.5, max:30, step:0.5, default:3, unit:'мм'},
+    {group:'Шестерня', key:'genevaBore', w:['geneva'], label:'Мальтийский: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'genevaGap', w:['geneva'], label:'Мальтийский: зазор посадки', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шестерня', key:'rootsPart', w:['roots'], label:'Roots: деталь', type:'select', default:'rotor',
       options:[{v:'rotor',t:'ротор (нужны два одинаковых)'},{v:'housing',t:'корпус (восьмёрка)'}]},
-    {group:'Шестерня', key:'rootsLobes', label:'Roots: число лопастей', min:2, max:5, step:1, default:2, unit:'', int:true},
-    {group:'Шестерня', key:'rootsCenter', label:'Roots: межосевое расстояние', min:10, max:200, step:1, default:40, unit:'мм'},
-    {group:'Шестерня', key:'rootsThick', label:'Roots: высота ротора', min:2, max:120, step:1, default:12, unit:'мм'},
-    {group:'Шестерня', key:'rootsBore', label:'Roots: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
-    {group:'Шестерня', key:'rootsWall', label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
-    {group:'Шестерня', key:'rootsGap', label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
+    {group:'Шестерня', key:'rootsLobes', w:['roots'], label:'Roots: число лопастей', min:2, max:5, step:1, default:2, unit:'', int:true},
+    {group:'Шестерня', key:'rootsCenter', w:['roots'], label:'Roots: межосевое расстояние', min:10, max:200, step:1, default:40, unit:'мм'},
+    {group:'Шестерня', key:'rootsThick', w:['roots'], label:'Roots: высота ротора', min:2, max:120, step:1, default:12, unit:'мм'},
+    {group:'Шестерня', key:'rootsBore', w:['roots'], label:'Roots: Ø отверстия под вал', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
+    {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
-    {group:'Крепёж / монтаж', key:'mntDtLen', label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntDtW', label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntDtH', label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntDtAngle', label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
-    {group:'Крепёж / монтаж', key:'mntDtClear', label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'battType', label:'Холдер: типоразмер элемента', type:'select', default:'aa',
+    {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntDtAngle', w:['dovetail'], label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
+    {group:'Крепёж / монтаж', key:'mntDtClear', w:['dovetail'], label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battType', w:['battery'], label:'Холдер: типоразмер элемента', type:'select', default:'aa',
       options:[{v:'aaa',t:'AAA (Ø10.5 × 44.5)'},{v:'aa',t:'AA (Ø14.5 × 50.5)'},{v:'c',t:'C (Ø26.2 × 50)'},{v:'d',t:'D (Ø34.2 × 61.5)'},{v:'18650',t:'18650 (Ø18.6 × 65.2)'},{v:'21700',t:'21700 (Ø21.2 × 70.2)'},{v:'custom',t:'свой размер'}]},
-    {group:'Крепёж / монтаж', key:'battN', label:'Холдер: число элементов', min:1, max:8, step:1, default:2, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'battD', label:'Холдер: Ø элемента (свой размер)', min:4, max:60, step:0.1, default:14.5, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'battLen', label:'Холдер: длина элемента (свой размер)', min:8, max:140, step:0.5, default:50.5, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'battWall', label:'Холдер: толщина стенки', min:1.2, max:8, step:0.2, default:2.4, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'battSpring', label:'Холдер: запас длины под пружинный контакт', min:0, max:12, step:0.5, default:3, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'battMouth', label:'Холдер: раскрытие горловины (% Ø, <100 = защёлк.)', min:50, max:98, step:1, default:88, unit:'%'},
-    {group:'Крепёж / монтаж', key:'battClear', label:'Холдер: зазор посадки элемента', min:0, max:1, step:0.05, default:0.35, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCalN', label:'Калибровка: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntCalH', label:'Калибровка: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntBrSpan', label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntRetGap', label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFitD', label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFitN', label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntFitStart', label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFitStep', label:'Калибровка: шаг зазора', min:0.02, max:0.5, step:0.02, default:0.1, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntGaugeD', label:'Калибр: номинальный Ø', min:1.2, max:120, step:0.5, default:8, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntGaugeTol', label:'Калибр: допуск ±', min:0.02, max:2, step:0.01, default:0.1, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntGaugeH', label:'Калибр: высота пробок', min:4, max:80, step:1, default:12, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntRadN', label:'Шаблон радиусов: число ступеней', min:2, max:14, step:1, default:6, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntRadStart', label:'Шаблон радиусов: первый радиус', min:0.4, max:20, step:0.1, default:1, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntRadStep', label:'Шаблон радиусов: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPitchMin', label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPitchMax', label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCabD', label:'Гребёнка кабелей: Ø кабеля', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCabN', label:'Гребёнка кабелей: число гнёзд', min:1, max:24, step:1, default:5, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntCabGrip', label:'Гребёнка кабелей: горловина (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.75, unit:''},
-    {group:'Крепёж / монтаж', key:'mntCabH', label:'Гребёнка кабелей: толщина планки', min:3, max:60, step:1, default:12, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCabScrew', label:'Гребёнка кабелей: Ø отверстий под саморез (0 = без)', min:0, max:12, step:0.5, default:4, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipT', label:'Держатель: толщина кромки (панель / дефлектор)', min:0.6, max:80, step:0.5, default:20, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipW', label:'Держатель: стенка', min:1.2, max:12, step:0.2, default:3, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipBack', label:'Держатель: задняя лапа', min:6, max:120, step:1, default:25, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipFront', label:'Держатель: передняя лапа', min:4, max:120, step:1, default:20, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipTray', label:'Держатель: глубина полки', min:4, max:80, step:1, default:16, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipLip', label:'Держатель: бортик полки', min:2, max:40, step:1, default:8, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntClipWide', label:'Держатель: ширина', min:8, max:200, step:2, default:40, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCupD', label:'Подстаканник: Ø стакана', min:20, max:200, step:1, default:70, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCupH', label:'Подстаканник: высота', min:15, max:250, step:1, default:80, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCupGap', label:'Подстаканник: воздушный зазор', min:1, max:15, step:0.5, default:4, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCupWall', label:'Подстаканник: стенка', min:0.8, max:6, step:0.2, default:1.6, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCupBase', label:'Подстаканник: дно (0 = без дна)', min:0, max:20, step:0.5, default:2.5, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrAW', label:'Переходник: низ, ширина', min:6, max:400, step:1, default:100, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrAD', label:'Переходник: низ, глубина', min:6, max:400, step:1, default:100, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrAR', label:'Переходник: низ, скругление (половина стороны = круг)', min:0, max:200, step:1, default:50, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrBW', label:'Переходник: верх, ширина', min:6, max:400, step:1, default:120, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrBD', label:'Переходник: верх, глубина', min:6, max:400, step:1, default:60, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrBR', label:'Переходник: верх, скругление', min:0, max:200, step:1, default:5, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrH', label:'Переходник: высота', min:5, max:400, step:1, default:60, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntTrWall', label:'Переходник: стенка', min:0.8, max:10, step:0.2, default:2, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFootShape', label:'Ножка: форма ножки мебели', type:'select', default:'square',
+    {group:'Крепёж / монтаж', key:'battN', w:['battery'], label:'Холдер: число элементов', min:1, max:8, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'battD', w:['battery'], only:{battType:['custom']}, label:'Холдер: Ø элемента (свой размер)', min:4, max:60, step:0.1, default:14.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battLen', w:['battery'], only:{battType:['custom']}, label:'Холдер: длина элемента (свой размер)', min:8, max:140, step:0.5, default:50.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battWall', w:['battery'], label:'Холдер: толщина стенки', min:1.2, max:8, step:0.2, default:2.4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battSpring', w:['battery'], label:'Холдер: запас длины под пружинный контакт', min:0, max:12, step:0.5, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'battMouth', w:['battery'], label:'Холдер: раскрытие горловины (% Ø, <100 = защёлк.)', min:50, max:98, step:1, default:88, unit:'%'},
+    {group:'Крепёж / монтаж', key:'battClear', w:['battery'], label:'Холдер: зазор посадки элемента', min:0, max:1, step:0.05, default:0.35, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCalN', w:['temptower','bridgetest'], label:'Калибровка: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntCalH', w:['temptower','bridgetest','retract'], label:'Калибровка: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBrSpan', w:['bridgetest'], label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRetGap', w:['retract'], label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFitD', w:['fittest'], label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFitN', w:['fittest'], label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntFitStart', w:['fittest'], label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFitStep', w:['fittest'], label:'Калибровка: шаг зазора', min:0.02, max:0.5, step:0.02, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeD', w:['gauge'], label:'Калибр: номинальный Ø', min:1.2, max:120, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeTol', w:['gauge'], label:'Калибр: допуск ±', min:0.02, max:2, step:0.01, default:0.1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeH', w:['gauge'], label:'Калибр: высота пробок', min:4, max:80, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRadN', w:['radgauge'], label:'Шаблон радиусов: число ступеней', min:2, max:14, step:1, default:6, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntRadStart', w:['radgauge'], label:'Шаблон радиусов: первый радиус', min:0.4, max:20, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntRadStep', w:['radgauge'], label:'Шаблон радиусов: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPitchMin', w:['pitchgauge'], label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPitchMax', w:['pitchgauge'], label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCabD', w:['cablecomb'], label:'Гребёнка кабелей: Ø кабеля', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCabN', w:['cablecomb'], label:'Гребёнка кабелей: число гнёзд', min:1, max:24, step:1, default:5, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntCabGrip', w:['cablecomb'], label:'Гребёнка кабелей: горловина (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.75, unit:''},
+    {group:'Крепёж / монтаж', key:'mntCabH', w:['cablecomb'], label:'Гребёнка кабелей: толщина планки', min:3, max:60, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCabScrew', w:['cablecomb'], label:'Гребёнка кабелей: Ø отверстий под саморез (0 = без)', min:0, max:12, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipT', w:['edgeclip'], label:'Держатель: толщина кромки (панель / дефлектор)', min:0.6, max:80, step:0.5, default:20, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipW', w:['edgeclip'], label:'Держатель: стенка', min:1.2, max:12, step:0.2, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipBack', w:['edgeclip'], label:'Держатель: задняя лапа', min:6, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipFront', w:['edgeclip'], label:'Держатель: передняя лапа', min:4, max:120, step:1, default:20, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipTray', w:['edgeclip'], label:'Держатель: глубина полки', min:4, max:80, step:1, default:16, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipLip', w:['edgeclip'], label:'Держатель: бортик полки', min:2, max:40, step:1, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntClipWide', w:['edgeclip'], label:'Держатель: ширина', min:8, max:200, step:2, default:40, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupD', w:['cupholder'], label:'Подстаканник: Ø стакана', min:20, max:200, step:1, default:70, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupH', w:['cupholder'], label:'Подстаканник: высота', min:15, max:250, step:1, default:80, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupGap', w:['cupholder'], label:'Подстаканник: воздушный зазор', min:1, max:15, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupWall', w:['cupholder'], label:'Подстаканник: стенка', min:0.8, max:6, step:0.2, default:1.6, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCupBase', w:['cupholder'], label:'Подстаканник: дно (0 = без дна)', min:0, max:20, step:0.5, default:2.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAW', w:['transition'], label:'Переходник: низ, ширина', min:6, max:400, step:1, default:100, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAD', w:['transition'], label:'Переходник: низ, глубина', min:6, max:400, step:1, default:100, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrAR', w:['transition'], label:'Переходник: низ, скругление (половина стороны = круг)', min:0, max:200, step:1, default:50, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBW', w:['transition'], label:'Переходник: верх, ширина', min:6, max:400, step:1, default:120, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBD', w:['transition'], label:'Переходник: верх, глубина', min:6, max:400, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrBR', w:['transition'], label:'Переходник: верх, скругление', min:0, max:200, step:1, default:5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrH', w:['transition'], label:'Переходник: высота', min:5, max:400, step:1, default:60, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntTrWall', w:['transition'], label:'Переходник: стенка', min:0.8, max:10, step:0.2, default:2, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootShape', w:['foot'], label:'Ножка: форма ножки мебели', type:'select', default:'square',
       options:[{v:'square',t:'квадратная'},{v:'round',t:'круглая'}]},
-    {group:'Крепёж / монтаж', key:'mntFootLeg', label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFootH', label:'Ножка: глубина посадки', min:4, max:100, step:1, default:22, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFootPad', label:'Ножка: толщина подошвы', min:1.2, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntFootClear', label:'Ножка: зазор посадки на ножку', min:0, max:1.5, step:0.05, default:0.3, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntW', label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntT', label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntLegA', label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntLegB', label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntScrewD', label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntGusset', label:'L-кронштейн: рёбра жёсткости', type:'select', default:'yes',
+    {group:'Крепёж / монтаж', key:'mntFootLeg', w:['foot'], label:'Ножка: размер ножки (сторона / Ø)', min:6, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootH', w:['foot'], label:'Ножка: глубина посадки', min:4, max:100, step:1, default:22, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootPad', w:['foot'], label:'Ножка: толщина подошвы', min:1.2, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntFootClear', w:['foot'], label:'Ножка: зазор посадки на ножку', min:0, max:1.5, step:0.05, default:0.3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntW', w:['temptower','bridgetest','retract','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pitchgauge','bridgetest','retract','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntLegA', w:['boss','tool','pipe','lbracket'], label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntLegB', w:['tool','lbracket'], label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntScrewD', w:['battery','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGusset', w:['lbracket'], label:'L-кронштейн: рёбра жёсткости', type:'select', default:'yes',
       options:[{v:'yes',t:'да'},{v:'no',t:'нет'}]},
-    {group:'Крепёж / монтаж', key:'mntGussetLen', label:'L-кронштейн: длина ребра (0 = авто)', min:0, max:150, step:1, default:0, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntGussetW', label:'L-кронштейн: толщина ребра (0 = авто)', min:0, max:30, step:0.5, default:0, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntHoleN', label:'L-кронштейн: отверстий на полку', min:1, max:4, step:1, default:1, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntVesa', label:'VESA: шаг отверстий', type:'select', default:'100',
+    {group:'Крепёж / монтаж', key:'mntGussetLen', w:['lbracket'], label:'L-кронштейн: длина ребра (0 = авто)', min:0, max:150, step:1, default:0, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGussetW', w:['lbracket'], label:'L-кронштейн: толщина ребра (0 = авто)', min:0, max:30, step:0.5, default:0, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntHoleN', w:['lbracket'], label:'L-кронштейн: отверстий на полку', min:1, max:4, step:1, default:1, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntVesa', w:['vesa'], label:'VESA: шаг отверстий', type:'select', default:'100',
       options:[{v:'75',t:'75 × 75 мм'},{v:'100',t:'100 × 100 мм'},{v:'200',t:'200 × 200 мм'}]},
-    {group:'Крепёж / монтаж', key:'mntCenterD', label:'VESA: центральное отверстие (0 = без)', min:0, max:120, step:1, default:0, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntBossNX', label:'Стойки: число по X', min:1, max:10, step:1, default:2, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntBossNZ', label:'Стойки: число по Z', min:1, max:10, step:1, default:2, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntBossD', label:'Стойки: Ø стойки', min:4, max:30, step:0.5, default:8, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntBossH', label:'Стойки: высота', min:3, max:60, step:0.5, default:7, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntToolN', label:'Держатель: число гнёзд', min:1, max:20, step:1, default:4, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntToolD', label:'Держатель: Ø гнезда под инструмент', min:3, max:60, step:1, default:16, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPipeD', label:'Хомут: Ø трубы', min:5, max:120, step:1, default:25, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPipeWall', label:'Хомут: толщина кольца', min:2, max:12, step:0.5, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCenterD', w:['vesa'], label:'VESA: центральное отверстие (0 = без)', min:0, max:120, step:1, default:0, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBossNX', w:['boss'], label:'Стойки: число по X', min:1, max:10, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntBossNZ', w:['boss'], label:'Стойки: число по Z', min:1, max:10, step:1, default:2, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntBossD', w:['boss'], label:'Стойки: Ø стойки', min:4, max:30, step:0.5, default:8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntBossH', w:['boss'], label:'Стойки: высота', min:3, max:60, step:0.5, default:7, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntToolN', w:['tool'], label:'Держатель: число гнёзд', min:1, max:20, step:1, default:4, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntToolD', w:['tool'], label:'Держатель: Ø гнезда под инструмент', min:3, max:60, step:1, default:16, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPipeD', w:['pipe'], label:'Хомут: Ø трубы', min:5, max:120, step:1, default:25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPipeWall', w:['pipe'], label:'Хомут: толщина кольца', min:2, max:12, step:0.5, default:3, unit:'мм'},
     {group:'Крючок', key:'hookMount', label:'Крючок (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'wall',t:'на стену (винтовая пластина)'},{v:'pipe',t:'на трубу (защёлка, любой Ø)'}]},
     {group:'Крючок', key:'hookStyle', label:'Крючок: что держим', type:'select', default:'bar',
@@ -4845,6 +4848,45 @@ function dominantMode(p){
 // GROUP_TAB — and a group missing from all four falls through every one of them silently. That is exactly
 // what happened to the last five: they reached the final `return true` and so appeared under the CUBE,
 // while the hinge, whose family they belong to, showed only the sixth. Add a group here and nowhere else.
+// A FAMILY group is one base shape holding many sub-models behind a single select — «Крепёж» carries
+// twenty of them in seventy-nine rows. Group-level visibility cannot help there: choosing a cable comb
+// still shows the VESA adapter's and the battery holder's parameters, because they live in the same
+// accordion. So every row of a family group declares WHICH sub-models it belongs to (`w:[...]`, or `'*'`
+// for the ones every sub-model shares), and rows that do not apply are not drawn at all.
+//
+// Runtime is lenient — an unmarked row still shows, because a missing mark must never hide a working
+// control. The census in test_paramrows.js is what makes it strict: an unmarked row fails the battery.
+const FAMILY_MODE = {
+  'Крепёж / монтаж': 'mntMode',
+  'Шестерня': 'gearMode',
+  'Резьба (крышка / штуцер)': 'threadMode',
+  // The print-in-place family already splits into groups of its own, so its rows are marked the same way
+  // and the groups that end up empty fold themselves away — no second table saying which group is whose.
+  'Петля (печать в сборе)': 'pipMode',
+  'Телескоп': 'pipMode',
+  'Живой шарнир': 'pipMode',
+  'Цепь': 'pipMode',
+  'Шаровой шарнир': 'pipMode',
+  'Защёлка-консоль': 'pipMode',
+};
+// Does one parameter row apply, given the parameters as they stand? Pure, so the census can ask it
+// directly instead of reading the DOM.
+function paramRowRelevant(param, p){
+  p = p || {};
+  // `only` and `needs` are the second level: a row that belongs to a sub-model but is still dead unless
+  // some OTHER parameter is set a particular way — a custom cell diameter under a typoразмер picker whose
+  // every other option supplies the number itself, or the depth of a keyway whose width is still 0.
+  // `only` matches a list of values, `needs` demands a number above a threshold (the «0 = без» family).
+  // Both are read here so one predicate covers every level.
+  if (param.only) for (const k in param.only)
+    if (param.only[k].indexOf(String(p[k])) < 0) return false;
+  if (param.needs) for (const k in param.needs)
+    if (!((+p[k]) > param.needs[k])) return false;
+  const modeKey = FAMILY_MODE[param.group];
+  if (!modeKey || param.key === modeKey) return true;   // not a family, or the selector itself
+  if (!param.w || param.w === '*') return true;          // shared, or not yet marked (the census scolds)
+  return param.w.indexOf(String(p[modeKey])) >= 0;
+}
 const PIP_GROUPS = ['Петля (печать в сборе)', 'Телескоп', 'Живой шарнир', 'Цепь',
                     'Шаровой шарнир', 'Защёлка-консоль'];
 const PIP_GROUP_SET = new Set(PIP_GROUPS);
@@ -4940,11 +4982,32 @@ function updateSectionVisibility(){
   const srch = document.getElementById('tab-search');
   if (srch && srch.value.trim()) return;
   const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow;
+  // Rows of a family group hide themselves by the sub-model they belong to. Done BEFORE the group pass,
+  // because a group with nothing left to show is then folded away on that basis alone — which is what
+  // lets the print-in-place sub-models (телескоп, цепь, шарнир…) keep a group each without a second
+  // table saying which group belongs to which sub-model. The rows already say it.
+  document.querySelectorAll('#panel [data-wkey], #panel [data-only], #panel [data-needs]').forEach(el => {
+    const w = el.dataset.wkey ? (el.dataset.w || '*') : '*';
+    let on = (w === '*' || w.split('|').indexOf(String(p[el.dataset.wkey])) >= 0);
+    if (on && el.dataset.only) on = el.dataset.only.split(';').every(c => {
+      const i = c.indexOf('='); return c.slice(i+1).split('|').indexOf(String(p[c.slice(0,i)])) >= 0; });
+    if (on && el.dataset.needs) on = el.dataset.needs.split(';').every(c => {
+      const i = c.indexOf('>'); return (+p[c.slice(0,i)]) > (+c.slice(i+1)); });
+    el.classList.toggle('row-off', !on);
+  });
+  // A group all of whose rows just went away is a heading over nothing. Folded here rather than in
+  // sectionRelevant, so the rule stays one rule: a group is shown if it has something to show.
+  const emptyGroup = new Set();
+  document.querySelectorAll('#panel details.param-cat[data-group]').forEach(det => {
+    const rows = det.querySelectorAll('.param-cat-body > *');
+    if (rows.length && Array.prototype.every.call(rows, r => r.classList.contains('row-off')))
+      emptyGroup.add(det.dataset.group);
+  });
   const perTab = {form:0, cavity:0, finish:0, export:0};
   document.querySelectorAll('#panel [data-tab]:not(.tab-btn)').forEach(el => {
     const tabs = (el.dataset.tab||'').split(/\s+/);
     const key = el.dataset.group || el.dataset.fold || el.dataset.relkey || '';
-    const rel = key ? sectionRelevant(key, mode, hollow) : true;
+    const rel = (key ? sectionRelevant(key, mode, hollow) : true) && !emptyGroup.has(key);
     const onTab = tabs.includes(activeTab);
     el.style.display = (onTab && rel) ? '' : 'none';
     if (rel) tabs.forEach(t => { if (t in perTab) perTab[t]++; });
@@ -9864,7 +9927,10 @@ function buildLBracket(p){
 }
 function buildVesa(p){
   const spacing = ({['75']:75,['100']:100,['200']:200})[p.mntVesa] || 100;
-  const t=Math.max(2.5,p.mntT||4), plate=spacing+Math.max(16,p.mntW>spacing?0:16), sd=Math.max(2,p.mntScrewD||5);
+  // The plate has to clear the bolt circle by a margin, and beyond that the user's width wins. The old
+  // expression `spacing + Math.max(16, mntW>spacing?0:16)` was max(16, 16 or 0) — 16 either way, so the
+  // width control did nothing at any value.
+  const t=Math.max(2.5,p.mntT||4), plate=Math.max(spacing+16, p.mntW||0), sd=Math.max(2,p.mntScrewD||5);
   const r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), h=spacing/2, holes=[];
   for(const sx of [-1,1]) for(const sz of [-1,1]) holes.push({axis:1,cp:sx*h,cq:sz*h,r,head:'sink',headR:hR,headDepth:hD,headSide:1});
   const cd=Math.max(0,p.mntCenterD||0); if(cd>1) holes.push({axis:1,cp:0,cq:0,ap:cd/2,aq:cd/2,rc:cd/2});
@@ -9884,13 +9950,37 @@ function buildBoss(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
-function buildTool(p){
-  const W=Math.max(20,p.mntW||90), t=Math.max(2,p.mntT||4);
+/* Tool rack (полка-держатель): a shelf pierced by a row of round slots, on a back plate that screws to the
+   wall. What the slot row can actually be is decided here rather than inside the builder, because
+   `buildBoxWithHoles` DROPS a hole whose grid block touches a kept one — silently, to stay watertight. The
+   old code spaced the slots over a span that ignored their own diameter, so from three slots up they
+   overlapped and all but two were dropped: the control said 6 and the part had 2.
+
+   The slots are what the rack is FOR, so the count wins and the width gives way: «Крепёж: ширина» is a
+   floor, and the rack grows to whatever the asked-for slots need at a pitch of one slot plus a 3 mm web.
+   (The alternative — clamping the count to the width — reads worse in practice, because that one width is
+   shared by eight sub-models and its default of 40 mm is a temperature tower's, not a tool rack's: asking
+   for four Ø16 slots would silently give one.) The widening is reported. */
+function toolRackSpec(p){
+  const t=Math.max(2,p.mntT||4);
   const shelfD=Math.max(15,p.mntLegA||35), backH=Math.max(15,p.mntLegB||42);
+  const tr=Math.max(1.5,(p.mntToolD||16)/2);
+  const r=Math.min(tr, shelfD/2-1.5);                    // a slot cannot be wider than the shelf is deep
+  const n=Math.max(1,Math.round(p.mntToolN||4));
+  const m=r+3, pitch=2*r+3;                              // 3 mm of shelf outside, 3 mm of web between
+  const wAsked=Math.max(20,p.mntW||90);
+  const wNeed=2*m + (n-1)*pitch;
+  const W=Math.max(wAsked, wNeed), span=W-2*m;
+  const cps=[]; for(let k=0;k<n;k++) cps.push(n===1 ? 0 : -span/2 + span*k/(n-1));
+  return {W, wAsked, wNeed, t, shelfD, backH, tr, r, m, span, pitch, n, cps,
+          widened: W > wAsked + 1e-9, thin: r < tr - 1e-9};
+}
+function buildTool(p){
+  const s=toolRackSpec(p);
+  const W=s.W, t=s.t, shelfD=s.shelfD, backH=s.backH;
   const sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
-  const toolN=Math.max(1,Math.round(p.mntToolN||4)), tr=Math.max(1.5,(p.mntToolD||16)/2), tris=[];
-  const m=Math.max(tr+3, W*0.5/toolN), holes=[];                            // a row of tool holes through the shelf (Y)
-  for(let k=0;k<toolN;k++){ const cp=toolN===1?0:-W/2+m+(W-2*m)*k/(toolN-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,shelfD/2-1.5)}); }
+  const tris=[], holes=[];                                                  // a row of tool holes through the shelf (Y)
+  for(const cp of s.cps) holes.push({axis:1,cp,cq:0,r:s.r});
   for(const T of buildBoxWithHoles(W,t,shelfD,holes)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+shelfD/2]));       // shelf z∈[0,shelfD]
   const bw=W-0.6, hb=backH-(t-0.5), yc=(t-0.5+backH)/2, zc=t/2+0.3, backHoles=[];                                 // vertical back plate
   // Countersinks open on the FRONT (+Z) — the side you can reach to drive the screw; the back face stays flat
@@ -13112,6 +13202,17 @@ function buildAllParamUI() {
         container.appendChild(det);
         groups.set(groupName, body);
       }
+      // Rows of a family group carry their own applicability, so updateRowVisibility can hide them
+      // without another table to keep in step.
+      const wKey = FAMILY_MODE[groupName], wVal = (param.key === wKey) ? '*' :
+        (param.w === '*' || !param.w) ? '*' : param.w.join('|');
+      const onlyVal = param.only
+        ? Object.keys(param.only).map(k => k + '=' + param.only[k].join('|')).join(';') : '';
+      const needsVal = param.needs
+        ? Object.keys(param.needs).map(k => k + '>' + param.needs[k]).join(';') : '';
+      const markRow = el => { if (wKey){ el.dataset.wkey = wKey; el.dataset.w = wVal; }
+                              if (onlyVal) el.dataset.only = onlyVal;
+                              if (needsVal) el.dataset.needs = needsVal; };
       if (param.type === 'bool') {
         const row = document.createElement('label');
         row.className = 'toggle-row';
@@ -13119,7 +13220,7 @@ function buildAllParamUI() {
         cb.type = 'checkbox'; cb.dataset.shape = shapeKey; cb.dataset.key = param.key; cb.checked = !!param.default;
         const span = document.createElement('span'); span.textContent = param.label;
         row.appendChild(cb); row.appendChild(span);
-        body.appendChild(row);
+        markRow(row); body.appendChild(row);
       } else if (param.type === 'select') {
         const row = document.createElement('div');
         row.className = 'param-row';
@@ -13128,7 +13229,7 @@ function buildAllParamUI() {
           '<select class="param-select" data-shape="'+shapeKey+'" data-key="'+param.key+'">'+
           param.options.map(o=>'<option value="'+o.v+'"'+(o.v===param.default?' selected':'')+'>'+o.t+'</option>').join('')+
           '</select>';
-        body.appendChild(row);
+        markRow(row); body.appendChild(row);
       } else {
         const row = document.createElement('div');
         row.className = 'param-row';
@@ -13139,7 +13240,7 @@ function buildAllParamUI() {
           'min="'+param.min+'" max="'+param.max+'" step="'+param.step+'" value="'+param.default+'">'+
           '<span class="num-unit">'+(param.unit||'')+'</span>'+
           '</div>';
-        body.appendChild(row);
+        markRow(row); body.appendChild(row);
       }
     }
   }
@@ -14455,6 +14556,11 @@ function collectPrintWarnings(p){
     if (g.nothing) w.push('кромка ' + g.T.toFixed(1) + ' мм — зажимать нечего');
     if (g.weak) w.push('стенка ' + g.w.toFixed(1) + ' мм — прищепка разожмётся и не вернётся');
     if (g.shallow) w.push('полка ' + g.td.toFixed(0) + ' мм — телефон на ней не удержится');
+  }
+  if (p.mntMode === 'tool'){
+    const g = toolRackSpec(p);
+    if (g.widened) w.push(g.n + ' гнёзд Ø' + (2*g.r).toFixed(0) + ' мм не влезают в ' + g.wAsked.toFixed(0) + ' мм — полка расширена до ' + g.W.toFixed(0) + ' мм');
+    if (g.thin) w.push('гнездо Ø' + (2*g.r).toFixed(1) + ' мм вместо Ø' + (2*g.tr).toFixed(1) + ' — мешает глубина полки');
   }
   if (p.mntMode === 'cablecomb'){
     const g = cableCombSpec(p);

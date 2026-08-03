@@ -779,7 +779,7 @@
     <button id="btn-reset-view">⤾ сбросить вид</button>
     <button id="btn-move-mode" title="Режим перемещения: тяните модель по площадке (вместо вращения камеры)">✥ перемещение</button>
     <button id="stale-badge" title="Модель тяжёлая — превью обновляется по этой кнопке или при экспорте">превью устарело — обновить</button>
-    <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
+    <div class="viewport-hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;ПКМ / СКМ / два пальца — сдвиг&nbsp;&nbsp;·&nbsp;&nbsp;колесо / щипок — зум</div>
   </div>
 
   <div id="split-handle" title="Потяните, чтобы изменить высоту предпросмотра" aria-label="Изменить высоту предпросмотра"></div>
@@ -1003,7 +1003,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v170';
+const APP_VERSION = 'v171';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -14157,13 +14157,36 @@ let currentTris = [];
 let dimsVisible = true;
 let scene3DReady = false;
 
+/* How far the LOOK-AT POINT moves for a drag of (dx, dy) pixels — the whole of panning, as a pure
+   function, so it can be checked without a canvas.
+
+   The basis is three.js's own lookAt basis: zAxis = normalize(eye − target), which for a camera parked on
+   a sphere around the target IS the unit offset; xAxis = normalize(worldUp × zAxis); yAxis = zAxis × xAxis.
+   Written out, xAxis collapses to (cos θ, 0, −sin θ) — no φ in it at all. That is worth knowing rather
+   than deriving twice: it means a horizontal drag is exactly horizontal in the world no matter how high
+   the camera has climbed, so panning does not swim as you orbit.
+
+   The scale is one number: at the target's depth a perspective camera shows 2·d·tan(fov/2) of world per
+   viewport height, so a pixel is that over the height in pixels. Being proportional to the distance is
+   what makes a pan feel the same when zoomed in and when zoomed out.
+
+   Signs: dragging right carries the SCENE right, which is the camera going left, so the target moves
+   against xAxis; dragging down (screen y grows downward) carries the scene down, so the target moves
+   along yAxis. */
+function orbitPanDelta(theta, phi, distance, fovDeg, viewH, dxPx, dyPx){
+  const sp = Math.sin(phi), cp = Math.cos(phi), st = Math.sin(theta), ct = Math.cos(theta);
+  const rx = ct, ry = 0, rz = -st;                      // screen right, in world
+  const ux = -cp*st, uy = sp, uz = -cp*ct;              // screen up, in world
+  const k  = 2*distance*Math.tan(fovDeg*Math.PI/360)/Math.max(1, viewH);
+  return [(-rx*dxPx + ux*dyPx)*k, (-ry*dxPx + uy*dyPx)*k, (-rz*dxPx + uz*dyPx)*k];
+}
 class SimpleOrbit {
   constructor(camera, dom) {
     this.camera = camera; this.dom = dom;
     this.theta = Math.PI*0.28; this.phi = Math.PI*0.36;
     this.distance = 150; this.minDistance = 0.2; this.maxDistance = 200000;
     this.target = new THREE.Vector3(0,0,0);
-    this.pointers = new Map(); this._lastPinch = null;
+    this.pointers = new Map(); this._lastPinch = null; this._lastMid = null;
     this._bind();
     this.update();
   }
@@ -14172,31 +14195,44 @@ class SimpleOrbit {
     dom.style.touchAction = 'none';
     dom.addEventListener('pointerdown', (e) => {
       dom.setPointerCapture(e.pointerId);
-      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      // Which button started this drag decides what it does for its whole life: left orbits, middle or
+      // right pans. Read at pointerDOWN, because `buttons` during a move reports what is held now, and a
+      // second button pressed mid-drag would silently change the gesture under the hand.
+      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, pan: e.button === 1 || e.button === 2});
+      if (e.button === 1) e.preventDefault();          // middle click otherwise starts autoscroll
     });
+    dom.addEventListener('contextmenu', (e) => e.preventDefault());
     dom.addEventListener('pointermove', (e) => {
       if (!this.pointers.has(e.pointerId)) return;
       const prev = this.pointers.get(e.pointerId);
       const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
-      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      this.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, pan: prev.pan});
       if (this.pointers.size === 1) {
+        if (prev.pan) { this.pan(dx, dy); return; }
         this.theta -= dx*0.0065;
         this.phi -= dy*0.0065;
         this.phi = Math.max(0.06, Math.min(Math.PI-0.06, this.phi));
         this.update();
       } else if (this.pointers.size === 2) {
+        // Two fingers do both at once, which is what every map does and what the hand expects: the
+        // distance BETWEEN them is the zoom, the movement of the point between them is the pan.
         const pts = [...this.pointers.values()];
         const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+        const mx = (pts[0].x+pts[1].x)/2, my = (pts[0].y+pts[1].y)/2;
         if (this._lastPinch != null) {
           const delta = this._lastPinch - dist;
           this.distance *= (1 + delta*0.0035);
           this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, this.distance));
           this.update();
         }
-        this._lastPinch = dist;
+        if (this._lastMid != null) this.pan(mx - this._lastMid.x, my - this._lastMid.y);
+        this._lastPinch = dist; this._lastMid = {x:mx, y:my};
       }
     });
-    const endPointer = (e) => { this.pointers.delete(e.pointerId); this._lastPinch = null; };
+    const endPointer = (e) => { this.pointers.delete(e.pointerId); this._lastPinch = null;
+      // Lifting one of two fingers leaves the other one mid-gesture: forget the old midpoint, or the
+      // next move jumps the scene by the distance between the two fingers.
+      this._lastMid = null; };
     dom.addEventListener('pointerup', endPointer);
     dom.addEventListener('pointercancel', endPointer);
     dom.addEventListener('pointerleave', endPointer);
@@ -14206,6 +14242,12 @@ class SimpleOrbit {
       this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, this.distance));
       this.update();
     }, {passive:false});
+  }
+  pan(dxPx, dyPx) {
+    const h = (this.dom.clientHeight || this.dom.height || 600);
+    const d = orbitPanDelta(this.theta, this.phi, this.distance, this.camera.fov || 45, h, dxPx, dyPx);
+    this.target.set(this.target.x + d[0], this.target.y + d[1], this.target.z + d[2]);
+    this.update();
   }
   update() {
     const sinPhi = Math.sin(this.phi);
@@ -14267,6 +14309,9 @@ function frameCamera(bbox) {
   const radius = Math.sqrt(sizeX*sizeX+sizeY*sizeY+sizeZ*sizeZ)/2 || 10;
   controls.distance = Math.max(controls.minDistance, Math.min(controls.maxDistance, radius*2.5 + 12));
   controls.theta = Math.PI*0.28; controls.phi = Math.PI*0.36;
+  // Framing has to move the LOOK-AT POINT as well, or «сбросить вид» after a pan resets the angle and the
+  // zoom and leaves the model off to one side — which reads as the button not working.
+  controls.target.set((bbox.minX+bbox.maxX)/2, (bbox.minY+bbox.maxY)/2, (bbox.minZ+bbox.maxZ)/2);
   controls.update();
 }
 

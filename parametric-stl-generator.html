@@ -223,7 +223,12 @@
   }
   .param-cat[open] > summary::before{ transform:rotate(90deg); }
   .param-cat > summary:hover{ color:var(--ink); }
-  .param-cat-body{ padding:11px 0 4px; }
+  /* Flex column only so a family group can put its own settings above the ones it shares with the rest of
+     the family, by `order`, without moving a single node. As a block container it behaved the same. */
+  .param-cat-body{ padding:11px 0 4px; display:flex; flex-direction:column; align-items:stretch; }
+  .cat-split{ order:1; margin:9px 0 3px; padding-top:8px; border-top:1px dashed var(--paper-line);
+    font-size:10px; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-soft); }
+  .share-shared{ order:2; }
   /* A search hit that belongs to another base shape: visible, clearly not live, one click from being live. */
   .param-cat.off-shape > summary{ opacity:0.62; }
   .param-cat.off-shape .param-cat-body{ opacity:0.62; }
@@ -1024,7 +1029,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v173';
+const APP_VERSION = 'v174';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5000,7 +5005,7 @@ function updateSectionVisibility(){
   if (!paramState || !paramState.box) return;
   const srch = document.getElementById('tab-search');
   if (srch && srch.value.trim()) return;
-  const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow;
+  const p = paramState.box, mode = dominantMode(p), hollow = !!p.hollow, hoisted = subModelKey(mode);
   // Rows of a family group hide themselves by the sub-model they belong to. Done BEFORE the group pass,
   // because a group with nothing left to show is then folded away on that basis alone — which is what
   // lets the print-in-place sub-models (телескоп, цепь, шарнир…) keep a group each without a second
@@ -5012,16 +5017,21 @@ function updateSectionVisibility(){
       const i = c.indexOf('='); return c.slice(i+1).split('|').indexOf(String(p[c.slice(0,i)])) >= 0; });
     if (on && el.dataset.needs) on = el.dataset.needs.split(';').every(c => {
       const i = c.indexOf('>'); return (+p[c.slice(0,i)]) > (+c.slice(i+1)); });
+    // The sub-model selector now lives in the tile row at the top of the panel, so its own row inside the
+    // group would be the same control twice. Folded into THIS pass rather than a second one over the same
+    // rows: a second pass has to decide what to do with the rows it did not come for, and a `toggle` there
+    // un-hid every other select in the family — `gearBevelRole` belongs to the bevel alone and came back
+    // on screen for the spur. One pass, one verdict per row, and `panelRowVisible` states it in the open.
+    if (on && el.dataset.hoist) on = el.dataset.hoist !== hoisted;
     el.classList.toggle('row-off', !on);
   });
-  // The sub-model selector now lives in the tile row at the top of the panel, so its own row inside the
-  // group would be the same control twice. Hidden rather than removed: setBaseShape and setSubModel both
-  // drive the real <select>, which is what keeps the choice on the one code path everything else uses.
-  // (Search runs before any of this and returns early, so the row is still findable by name.)
-  const hoisted = subModelKey(mode);
-  document.querySelectorAll('#panel select[data-key]').forEach(sel => {
-    const row = sel.closest('.param-row') || sel.parentElement;
-    if (row && row !== sel) row.classList.toggle('row-off', sel.dataset.key === hoisted);
+  // The heading names the sub-model being edited, and the divider between «своё» and «общее» appears only
+  // when there is something on both sides of it — a heading over an empty half is worse than no heading.
+  document.querySelectorAll('#panel details.param-cat[data-group] > summary[data-head]').forEach(sum => {
+    sum.textContent = familyHeading(sum.dataset.head, p);
+  });
+  document.querySelectorAll('#panel .cat-split').forEach(sp => {
+    sp.classList.toggle('row-off', !familySplitVisible(sp.dataset.split, p));
   });
   // A group all of whose rows just went away is a heading over nothing. Folded here rather than in
   // sectionRelevant, so the rule stays one rule: a group is shown if it has something to show.
@@ -5080,6 +5090,50 @@ function subModelTiles(mode){
     if (head && s.toLowerCase().indexOf(head + ':') === 0) s = s.slice(head.length + 1).trim();
     return { v: o.v, title: o.t, label: s || o.t };
   });
+}
+// The heading of a family group, given the parameters as they stand: the family, then the sub-model being
+// edited — «Крепёж — гребёнка кабелей» rather than «Крепёж / монтаж» over settings that are now the cable
+// comb's alone. A satellite group (Телескоп, Цепь…) already names its sub-model, so it is left as it is.
+// Pure, so the tests read it directly instead of the DOM.
+// A family has one HUB group — the one carrying the selector, where all its sub-models share a heading —
+// and any number of SATELLITE groups, each already a heading for a single sub-model («Телескоп», «Цепь»).
+// Only the hub needs its heading rewritten and only the hub needs a divider.
+function isHubGroup(groupName){
+  const mk = FAMILY_MODE[groupName]; if (!mk) return false;
+  const row = SHAPE_PARAMS.box.find(r => r.key === mk);
+  return !!row && row.group === groupName;
+}
+function familyHeading(groupName, p){
+  const mk = FAMILY_MODE[groupName]; if (!mk) return groupName;
+  if (!isHubGroup(groupName)) return groupName;                   // satellite — its own name is the answer
+  const kind = GROUP_KIND[groupName];
+  const t = subModelTiles(kind).find(t => t.v === String((p||{})[mk]));
+  return t ? ((KIND_LABEL[kind] || groupName) + ' — ' + t.label) : groupName;
+}
+// Does a row belong to this sub-model alone, or is it shared with the rest of the family? The two are worth
+// telling apart once a group is down to a handful of rows: «стенка корпуса» that only the housing has reads
+// differently from «толщина», which every part of the family carries.
+function rowShare(param){
+  const mk = FAMILY_MODE[param.group];
+  if (!mk || param.key === mk || !param.w || param.w === '*') return 'own';
+  return param.w.length > 1 ? 'shared' : 'own';
+}
+// Whether a row is on screen: applicable to the sub-model AND not the selector that was hoisted into the
+// tile row at the top. Stated once, here; the panel's own pass reads the same two facts off the row's data
+// attributes, so there is nothing for the two to disagree about.
+function panelRowVisible(param, p){
+  if (!paramRowRelevant(param, p)) return false;
+  return param.key !== subModelKey(dominantMode(p || {}));
+}
+// The «общие для всех разновидностей» divider earns its line only with something on both sides of it.
+function familySplitVisible(groupName, p){
+  if (!isHubGroup(groupName)) return false;
+  let own = 0, shared = 0;
+  for (const r of SHAPE_PARAMS.box){
+    if (r.group !== groupName || !panelRowVisible(r, p)) continue;
+    if (rowShare(r) === 'shared') shared++; else own++;
+  }
+  return own > 0 && shared > 0;
 }
 function updateSubModelPicker(){
   const wrap = document.getElementById('submodel'), rowEl = document.getElementById('submodel-row');
@@ -13286,7 +13340,16 @@ function buildAllParamUI() {
         det.dataset.group = groupName; // lets updateSectionVisibility hide irrelevant groups per model kind
         det.dataset.tab = GROUP_TAB[groupName] || 'form'; // which top tab this group belongs to
         const sum = document.createElement('summary'); sum.textContent = groupName;
+        sum.dataset.head = groupName;   // the plain name, so the heading can be re-derived without drift
         body = document.createElement('div'); body.className = 'param-cat-body';
+        // A hub family group gets a divider between the sub-model's own settings and the ones the whole
+        // family shares. Placed by `order`, so the rows below it never move in the DOM.
+        if (isHubGroup(groupName)){
+          const sp = document.createElement('div');
+          sp.className = 'cat-split row-off'; sp.dataset.split = groupName;
+          sp.textContent = 'Общие для всех разновидностей';
+          body.appendChild(sp);
+        }
         det.appendChild(sum); det.appendChild(body);
         container.appendChild(det);
         groups.set(groupName, body);
@@ -13299,9 +13362,12 @@ function buildAllParamUI() {
         ? Object.keys(param.only).map(k => k + '=' + param.only[k].join('|')).join(';') : '';
       const needsVal = param.needs
         ? Object.keys(param.needs).map(k => k + '>' + param.needs[k]).join(';') : '';
+      const share = rowShare(param);
       const markRow = el => { if (wKey){ el.dataset.wkey = wKey; el.dataset.w = wVal; }
                               if (onlyVal) el.dataset.only = onlyVal;
-                              if (needsVal) el.dataset.needs = needsVal; };
+                              if (needsVal) el.dataset.needs = needsVal;
+                              if (wKey){ el.dataset.share = share; el.classList.add('share-'+share); }
+                              if (param.key === wKey) el.dataset.hoist = wKey; };
       if (param.type === 'bool') {
         const row = document.createElement('label');
         row.className = 'toggle-row';

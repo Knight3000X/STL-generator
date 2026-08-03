@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v178';
+const APP_VERSION = 'v179';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3673,15 +3673,17 @@ const SHAPE_PARAMS = {
       options:[{v:'none',t:'нет'},{v:'single',t:'кейкап (один цвет)'},{v:'shell',t:'AMS: внешний (легенда насквозь)'},{v:'core',t:'AMS: внутренний (вставка с легендой)'}]},
     {group:'Кейкап', key:'keyProfile', label:'Кейкап: профиль', type:'select', default:'custom',
       options:[{v:'custom',t:'свой (по параметрам ниже)'},{v:'cherry',t:'Cherry (скульптурный, низкий)'},{v:'oem',t:'OEM (скульптурный)'},{v:'sa',t:'SA (скульптурный, высокий)'},{v:'mda',t:'MDA (полускульптурный)'},{v:'xda',t:'XDA (плоский)'},{v:'dsa',t:'DSA (плоский, низкий)'}]},
-    {group:'Кейкап', key:'keyRow', label:'Кейкап: ряд (для скульптурных профилей)', type:'select', default:'r3',
+    {group:'Кейкап', key:'keyRow', only:{keyProfile:['cherry','oem','sa','mda']}, label:'Кейкап: ряд (для скульптурных профилей)', type:'select', default:'r3',
       options:[{v:'r1',t:'R1 (верхний)'},{v:'r2',t:'R2'},{v:'r3',t:'R3 (домашний)'},{v:'r4',t:'R4 (нижний)'}]},
     {group:'Кейкап', key:'keySizeU', label:'Кейкап: ширина в юнитах (1u = 18.2 мм)', min:0.25, max:7, step:0.25, default:1, unit:'u'},
-    {group:'Кейкап', key:'keyH', label:'Кейкап: высота', min:4, max:20, step:0.5, default:9, unit:'мм'},
-    {group:'Кейкап', key:'keyTaper', label:'Кейкап: сужение кверху (на сторону)', min:0, max:6, step:0.1, default:2.4, unit:'мм'},
+    {group:'Кейкап', key:'keyH', only:{keyProfile:['custom']}, label:'Кейкап: высота', min:4, max:20, step:0.5, default:9, unit:'мм'},
+    {group:'Кейкап', key:'keyTaper', only:{keyProfile:['custom']}, label:'Кейкап: сужение кверху (на сторону)', min:0, max:6, step:0.1, default:2.4, unit:'мм'},
     {group:'Кейкап', key:'keyRound', label:'Кейкап: скругление углов', min:0.3, max:6, step:0.1, default:1.8, unit:'мм'},
     {group:'Кейкап', key:'keyWall', label:'Кейкап: стенка юбки', min:0.8, max:3, step:0.1, default:1.3, unit:'мм'},
     {group:'Кейкап', key:'keyPlate', label:'Кейкап: толщина верхней площадки', min:1, max:4, step:0.1, default:1.8, unit:'мм'},
-    {group:'Кейкап', key:'keyDish', label:'Кейкап: чаша (углубление верха)', min:0, max:3, step:0.1, default:1, unit:'мм'},
+    {group:'Кейкап', key:'keyDish', only:{keyProfile:['custom']}, label:'Кейкап: чаша (углубление верха)', min:0, max:3, step:0.1, default:1, unit:'мм'},
+    {group:'Кейкап', key:'keyDishKind', only:{keyProfile:['custom']}, needs:{keyDish:0}, label:'Кейкап: форма чаши', type:'select', default:'cyl',
+      options:[{v:'cyl',t:'цилиндрическая — жёлоб поперёк (Cherry, OEM)'},{v:'sph',t:'сферическая — чаша (SA, XDA, DSA)'}]},
     {group:'Кейкап', key:'keyLegendDepth', label:'Кейкап: глубина легенды (− = рельеф наружу)', min:-2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Кейкап', key:'keyStem', label:'Кейкап: крепление (стем)', type:'select', default:'mx',
       options:[{v:'mx',t:'Cherry MX (крест)'},{v:'choc',t:'Kailh Choc (2 ножки)'},{v:'none',t:'без стема'}]},
@@ -7073,15 +7075,22 @@ function keycapStemHeightmap(kind, tol){
   return {heightmap:hm, spanX, spanZ};
 }
 // Keycap profile presets (approximations of the common standards): per-row height, TOP TILT (the top
-// plane's front-back angle — negative tips the front edge down, the R1 look), dish depth and side taper.
-// Sculpted profiles (Cherry/OEM/SA/MDA) vary by row R1–R4; uniform ones (XDA/DSA) ignore the row.
+// plane's front-back angle — negative tips the front edge down, the R1 look), dish depth, DISH SHAPE and
+// side taper. Sculpted profiles (Cherry/OEM/SA/MDA) vary by row R1–R4; uniform ones (XDA/DSA) ignore it.
+//
+// The shape is the thing the presets were missing, and it is what you see on a real board rather than a
+// number in a table: Cherry and OEM are scooped in ONE plane — a cylindrical trough across the key, dead
+// straight front to back, so the row tilt is the only slope along that axis. SA, MDA, XDA and DSA are
+// scooped in both, a spherical bowl. A cylindrical cap that has been given a bowl reads as the wrong
+// profile immediately, whatever its height and tilt are, which is why «dish: 0» for all six was worse than
+// no dish at all: every preset came out flat-topped.
 const KEYCAP_PROFILES = {
-  cherry:{ h:[9.4,8.6,8.2,9.1],     ang:[-8,-5,0,6],   dish:0, taper:2.6 },
-  oem:   { h:[11.2,10.2,9.8,10.6],  ang:[-9,-6,0,7],   dish:0, taper:2.6 },
-  sa:    { h:[14.9,13.4,12.9,13.4], ang:[-13,-7,0,7],  dish:0, taper:3.2 },
-  mda:   { h:[10.4,9.3,9.1,9.3],    ang:[-9,-3,0,3],   dish:0, taper:3.0 },
-  xda:   { h:[9.1,9.1,9.1,9.1],     ang:[0,0,0,0],     dish:0, taper:3.4 },
-  dsa:   { h:[7.6,7.6,7.6,7.6],     ang:[0,0,0,0],     dish:0, taper:3.0 },
+  cherry:{ h:[9.4,8.6,8.2,9.1],     ang:[-8,-5,0,6],   dish:0.9, dishKind:'cyl', taper:2.6 },
+  oem:   { h:[11.2,10.2,9.8,10.6],  ang:[-9,-6,0,7],   dish:1.0, dishKind:'cyl', taper:2.6 },
+  sa:    { h:[14.9,13.4,12.9,13.4], ang:[-13,-7,0,7],  dish:1.3, dishKind:'sph', taper:3.2 },
+  mda:   { h:[10.4,9.3,9.1,9.3],    ang:[-9,-3,0,3],   dish:1.2, dishKind:'sph', taper:3.0 },
+  xda:   { h:[9.1,9.1,9.1,9.1],     ang:[0,0,0,0],     dish:0.9, dishKind:'sph', taper:3.4 },
+  dsa:   { h:[7.6,7.6,7.6,7.6],     ang:[0,0,0,0],     dish:1.0, dishKind:'sph', taper:3.0 },
 };
 function buildKeycap(p, logoRes){
   const mode = p.keycapMode;
@@ -7097,6 +7106,7 @@ function buildKeycap(p, logoRes){
   const rT=Math.max(0.3,Math.min(rB, Math.min(topW,topD)/2-0.5));
   const wall=Math.max(0.8,Math.min(3,p.keyWall||1.3)), plateT=Math.max(1,Math.min(4,p.keyPlate||1.8));
   const dishD=Math.max(0,Math.min(3, prof?prof.dish:(p.keyDish||0)));
+  const dishKind = prof ? prof.dishKind : (p.keyDishKind === 'sph' ? 'sph' : 'cyl');
   const legD=Math.max(-2,Math.min(2,(p.keyLegendDepth!=null?p.keyLegendDepth:0.6)));
   const tris=[];
   const O0=ringRoundedRect(baseW/2,baseD/2,rB,seg), O1=ringRoundedRect(topW/2,topD/2,rT,seg);
@@ -7108,11 +7118,34 @@ function buildKeycap(p, logoRes){
   // top plane with the profile's row tilt: y = topYf(z); the plate bottom stays flat, low enough that the
   // tilted (and dished) top always keeps at least the plate thickness of material above it
   const topYf=(z)=>H+(z-R.cz)*tanT;
-  const yPlate=H-plateT-Math.abs(tanT)*(R.rz+0.5);
+  // The plate bottom drops with the dish as well as with the tilt. It did not before, and a 3 mm scoop over
+  // a 1.8 mm plate cut straight through into the cavity — a hole in the top of the cap, watertight and
+  // wrong. Whatever the dish takes off the top, the plate keeps its thickness underneath it.
+  const yPlate=H-plateT-dishD-Math.abs(tanT)*(R.rz+0.5);
   const nG=Math.max(48,Math.min(240,Math.round((logoRes||60)*1.6)));
   const X=i=>R.cx-R.rw+2*R.rw*i/nG, Z=j=>R.cz-R.rz+2*R.rz*j/nG;
-  const dish=(x,z)=>{ if(!(dishD>0)) return 0; const rx=(x-R.cx)/R.rw, rz=(z-R.cz)/R.rz;
-    return dishD*Math.max(0,1-(rx*rx+rz*rz)); };
+  // A real cap is cut by a cylinder or a ball, so the dish is a circular ARC of the depth asked for over the
+  // half-width it spans — radius (a²+d²)/2d — and not the parabola that is easier to write. At a shallow
+  // dish the two are within a hair of each other; at 3 mm the parabola is visibly pointier in the middle,
+  // which is exactly where the finger sits. CYLINDRICAL scoops across X only and leaves Z dead straight
+  // (Cherry, OEM); SPHERICAL scoops both, stretched to the key's own proportions so a 2u cap gets a bowl
+  // rather than a groove.
+  const arcDrop=(q, half)=>{ if(!(dishD>0) || !(half>0)) return 0;
+    const Rc=(half*half + dishD*dishD)/(2*dishD), u=Math.min(Math.abs(q), half);
+    return Math.max(0, dishD - (Rc - Math.sqrt(Math.max(0, Rc*Rc - u*u)))); };
+  // Spanned across the cap's own TOP FACE, not across the plate grid inside it. The dish reaches the top
+  // edge on a real cap — look at any Cherry board side-on and the edge is scalloped — and, less obviously,
+  // it HAS to: the top edge is where the dished grid meets the ring lofted up from the skirt, and a dish
+  // that stops short of it leaves the two at different heights along the front and back. Watertight
+  // everywhere the two happen to agree, three hundred open edges everywhere they do not.
+  const dhw = topW/2, dhd = topD/2;
+  const dish=(x,z)=>{ if(!(dishD>0)) return 0;
+    if(dishKind==='cyl') return arcDrop(x, dhw);
+    const sz = dhd>0 ? dhw/dhd : 1;                          // the bowl follows the cap's own proportions
+    return arcDrop(Math.hypot(x, z*sz), dhw); };
+  // THE top surface — every place the cap's top is drawn asks this and nothing else, so the grid, the
+  // annulus around it and the ring the skirt lofts up to cannot land on three different heights.
+  const topSurf=(x,z)=>topYf(z)-dish(x,z);
   // legend mask from the first logo card (text / image / QR share the heightmap pipeline)
   const lg=(typeof logos!=='undefined'&&logos.length&&logos[0].heightmap)?logos[0]:null;
   const mask=new Uint8Array(nG*nG);
@@ -7134,7 +7167,7 @@ function buildKeycap(p, logoRes){
   }
   const at=(i,j)=>(i>=0&&j>=0&&i<nG&&j<nG)?mask[j*nG+i]:0;
   // per-vertex top height (dish); legend offset applied PER CELL so shared lattice edges weld via walls
-  const yT=(i,j)=>topYf(Z(j))-dish(X(i),Z(j));
+  const yT=(i,j)=>topSurf(X(i),Z(j));
   if(mode==='core'){
     // standalone white insert: base slab (all cells, yPlate−slabT..yPlate) + legend plugs up to the shell's
     // outer surface. One cell of perimeter clearance so it drops into the skirt cavity.
@@ -7163,7 +7196,7 @@ function buildKeycap(p, logoRes){
   }
   // ---- shell / single: full cap ----
   for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[O0[i][0]+O0[j][0],0,O0[i][1]+O0[j][1]];
-    quad(V(O0,i,0),V(O0,j,0),V(O1,j,topYf(O1[j][1])),V(O1,i,topYf(O1[i][1])), ref); }   // outer loft (tilted top)
+    quad(V(O0,i,0),V(O0,j,0),V(O1,j,topSurf(O1[j][0],O1[j][1])),V(O1,i,topSurf(O1[i][0],O1[i][1])), ref); }   // outer loft (tilted + dished top)
   for(let i=0;i<N;i++){ const j=(i+1)%N, ref=[-(I0[i][0]+I0[j][0]),0,-(I0[i][1]+I0[j][1])];
     quad(V(I0,i,0),V(I0,j,0),V(I1,j,yPlate),V(I1,i,yPlate), ref); }             // inner loft (cavity)
   for(let i=0;i<N;i++){ const j=(i+1)%N;                                        // bottom rim annulus
@@ -7175,7 +7208,7 @@ function buildKeycap(p, logoRes){
   for(let i=nG;i>0;i--) ringTop.push([X(i),Z(nG)]);
   for(let j=nG;j>0;j--) ringTop.push([X(0),Z(j)]);
   for(const T of polyStitchAnnulus(O1, ringTop, [R.cx,R.cz]))
-    tris.push(orient(T.map(q=>[q[0],topYf(q[1]),q[1]]),[0,1,0]));                // top annulus (on the tilted plane)
+    tris.push(orient(T.map(q=>[q[0],topSurf(q[0],q[1]),q[1]]),[0,1,0]));        // top annulus (on the same surface)
   const through = (mode==='shell');
   for(let j=0;j<nG;j++)for(let i=0;i<nG;i++){
     const leg=at(i,j);

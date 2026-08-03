@@ -1,5 +1,12 @@
 // Keycaps (кейкапы): parametric cap with MX/Choc stems, dish, legend from the first logo card, and the
-// AMS two-colour shell/core pair. Watertight in every mode through the REAL pipeline. Run via ./run-all.sh.
+// AMS two-colour shell/core pair. Watertight in every mode through the REAL pipeline.
+//
+// The DISH is measured rather than assumed, because its shape is what tells one profile from another and
+// no amount of watertightness has an opinion about it. Cherry and OEM are scooped in ONE plane — a
+// cylindrical trough across the key, dead straight front to back — and SA, XDA and DSA in two. A cap that
+// says Cherry and comes out with a bowl is wrong in the only way that matters, and it is wrong silently.
+// So: rays down onto the top surface, and the sag across each axis compared with the other. Run via
+// ./run-all.sh.
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function blobHM(r){ const N=LOGO_HM_SIZE,h=new Float32Array(N*N); r=r||0.3; for(let y=0;y<N;y++)for(let x=0;x<N;x++){const fx=x/N-0.5,fy=y/N-0.5;h[y*N+x]=(Math.hypot(fx,fy)<r)?1:0;} return h; }
@@ -53,6 +60,137 @@ for(const pr of ['cherry','oem','sa','mda','xda','dsa'])
   chk('uniform profile ignores the row', Math.abs(a-b)<1e-6, {a,b}); }
 chk('profile + shell watertight', manifoldCheck(base({keyProfile:'sa',keycapMode:'shell'},true),4).watertight);
 chk('profile + core watertight', manifoldCheck(base({keyProfile:'oem',keyRow:'r1',keycapMode:'core'},true),4).watertight);
+
+
+console.log('=== чаша: цилиндрическая у Cherry, сферическая у SA ===');
+// Solid intervals along a ray, counted by DEPTH. `ax`=1 fixes the ray at (z, x) — that order, not (x, z).
+function solidRuns(tris, ax, p, q){
+  const u=(ax+1)%3, v=(ax+2)%3, hits=[];
+  for(const T of tris){ const [a,b,c]=T;
+    const d1=(b[u]-a[u])*(q-a[v])-(b[v]-a[v])*(p-a[u]);
+    const d2=(c[u]-b[u])*(q-b[v])-(c[v]-b[v])*(p-b[u]);
+    const d3=(a[u]-c[u])*(q-c[v])-(a[v]-c[v])*(p-c[u]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const A=(b[u]-a[u])*(c[v]-a[v])-(b[v]-a[v])*(c[u]-a[u]); if(Math.abs(A)<1e-12) continue;
+    const w1=((b[u]-p)*(c[v]-q)-(b[v]-q)*(c[u]-p))/A, w2=((c[u]-p)*(a[v]-q)-(c[v]-q)*(a[u]-p))/A;
+    const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const nrm=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+    if(Math.abs(nrm[ax])<1e-12) continue;
+    hits.push([w1*a[ax]+w2*b[ax]+(1-w1-w2)*c[ax], nrm[ax]<0 ? 1 : -1]);
+  }
+  hits.sort((A,B)=>A[0]-B[0]);
+  const runs=[]; let depth=0, start=null;
+  for(const [t0,d] of hits){ const prev=depth; depth+=d;
+    if(prev<=0 && depth>0) start=t0;
+    else if(prev>0 && depth<=0){ if(start!==null && t0-start > 1e-6) runs.push([start,t0]); start=null; } }
+  return runs;
+}
+// The top of the cap at (x, z). Probed OFF the centre line and off any round number: the middle of a grid
+// cell's face lies on the diagonal that splits it in two, and a ray through a shared edge is counted twice
+// and reads as no surface at all.
+const topAt = (tris,x,z) => { const r = solidRuns(tris,1,z,x); return r.length ? r[r.length-1][1] : NaN; };
+// Sag across each axis: how much lower the middle sits than the two sides. Cylindrical means one of these
+// is real and the other is zero; spherical means both.
+function sag(tris){
+  const c = topAt(tris, 0.37, 0.29);
+  return { x: (topAt(tris,-4.37,0.29) + topAt(tris,4.37,0.29))/2 - c,
+           z: (topAt(tris,0.37,-4.71) + topAt(tris,0.37,4.71))/2 - c, c };
+}
+{
+  // Every profile builds, and every profile now HAS a dish — «dish: 0» on all six was the real bug: the
+  // presets came out flat-topped, which is not a look any of them has.
+  for(const pr of ['cherry','oem','sa','mda','xda','dsa']){
+    const t = base({keyProfile:pr, keyRow:'r3'});
+    chk(pr+': водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4));
+    chk(pr+': чаша объявлена', KEYCAP_PROFILES[pr].dish > 0.5, KEYCAP_PROFILES[pr].dish);
+    chk(pr+': форма чаши названа', ['cyl','sph'].includes(KEYCAP_PROFILES[pr].dishKind),
+        KEYCAP_PROFILES[pr].dishKind);
+    const g = sag(t), want = KEYCAP_PROFILES[pr].dishKind;
+    chk(pr+': ложбина поперёк есть', g.x > 0.2, g);
+    if(want === 'cyl') chk(pr+': вдоль — прямая (цилиндр)', Math.abs(g.z) < 0.1, g);
+    else               chk(pr+': вдоль — тоже ложбина (сфера)', g.z > 0.2, g);
+  }
+  // Cherry and OEM are the two the photo is of; state them by name so the profile cannot quietly drift.
+  chk('Cherry — цилиндрическая', KEYCAP_PROFILES.cherry.dishKind === 'cyl');
+  chk('OEM — цилиндрическая', KEYCAP_PROFILES.oem.dishKind === 'cyl');
+  chk('SA — сферическая', KEYCAP_PROFILES.sa.dishKind === 'sph');
+}
+{
+  // The custom profile chooses for itself, and the choice is the ONLY difference between the two: across
+  // the key both sag the same, along it one does and one does not.
+  const cyl = base({keyProfile:'custom', keyDish:1.5, keyDishKind:'cyl'});
+  const sph = base({keyProfile:'custom', keyDish:1.5, keyDishKind:'sph'});
+  const flat= base({keyProfile:'custom', keyDish:0});
+  const gc = sag(cyl), gs = sag(sph), gf = sag(flat);
+  chk('цилиндр: поперёк ложбина', gc.x > 0.3, gc);
+  chk('цилиндр: вдоль ровно', Math.abs(gc.z) < 0.05, gc);
+  chk('сфера: ложбина в обе стороны', gs.x > 0.3 && gs.z > 0.3, gs);
+  chk('поперёк обе одинаковы', Math.abs(gc.x - gs.x) < 0.05, {cyl:gc.x, sph:gs.x});
+  chk('плоская: никакой ложбины', Math.abs(gf.x) < 0.02 && Math.abs(gf.z) < 0.02, gf);
+  chk('плоская выше обеих', gf.c > gc.c && gf.c > gs.c, {flat:gf.c, cyl:gc.c, sph:gs.c});
+  // deeper dish → lower middle, and by the depth asked for
+  for(const d of [0.5, 1, 2, 3]){
+    const t = base({keyProfile:'custom', keyDish:d, keyDishKind:'cyl'});
+    chk('глубина '+d+': середина ниже плоской на '+d+' мм',
+        Math.abs((gf.c - sag(t).c) - d) < 0.06, {got:gf.c - sag(t).c, want:d});
+  }
+  // ...and the shape of it is a circular ARC of the depth asked for over the top face's own half-width —
+  // radius (a²+d²)/2d — not the parabola that is easier to write. Checked against the closed form at
+  // several offsets rather than against "lower than a parabola", because that pins the radius too: at
+  // 3 mm the two curves differ by only ~0.05 mm and a comparison that loose would pass a wrong radius.
+  for(const d of [1, 3]){
+    const t2 = base({keyProfile:'custom', keyDish:d, keyDishKind:'cyl', keyTaper:2.4, keyH:9});
+    const a = (18.2 - 2*2.4)/2, Rc = (a*a + d*d)/(2*d);
+    for(const q of [0.37, 2.63, 4.37]){          // inside the cell grid, where the arc is sampled finely
+      const want = 9 - (d - (Rc - Math.sqrt(Rc*Rc - q*q)));
+      chk('чаша '+d+' на '+q+' мм от оси: поверхность на дуге R'+Rc.toFixed(2),
+          Math.abs(topAt(t2, q, 0.29) - want) < 0.03, {got:topAt(t2, q, 0.29), want});
+    }
+    // Past the grid the top is a coarse annulus stitched out to the cap's edge, so its facets are big
+    // enough to see in a measurement: a chord of a curve that sags away from you lies ABOVE it, never
+    // below, and here by under a tenth of a millimetre. Stated as the bound it is rather than hidden in a
+    // loose tolerance on the whole check.
+    { const q = 5.13, want = 9 - (d - (Rc - Math.sqrt(Rc*Rc - q*q))), got = topAt(t2, q, 0.29);
+      chk('чаша '+d+' у самой кромки: грань кольца лежит НАД дугой, не под ней',
+          got > want - 0.005 && got < want + 0.1, {got, want}); }
+  }
+}
+{
+  // The scoop must not eat the plate it is cut into. It did: a 3 mm dish over a 1.8 mm plate opened the
+  // cavity through the top of the cap — watertight, correctly paired edge for edge, and a hole.
+  for(const d of [0, 1, 2, 3]) for(const pl of [1, 1.8, 4]){
+    const t = base({keyProfile:'custom', keyDish:d, keyPlate:pl});
+    chk('чаша '+d+' плита '+pl+': водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0,
+        manifoldCheck(t,4));
+    // one solid run straight down the middle: top plate, then the cavity, then nothing
+    const runs = solidRuns(t, 1, 0.29, 0.37);
+    chk('чаша '+d+' плита '+pl+': крышка цела', runs.length >= 1 && runs[runs.length-1][1] > 1, runs);
+  }
+  // deep dish on a sculpted, tilted row is the worst case of the three effects at once
+  for(const pr of ['cherry','oem','sa']) for(const row of ['r1','r2','r3','r4'])
+    chk(pr+'/'+row+': водонепроницаем', manifoldCheck(base({keyProfile:pr, keyRow:row}),4).watertight);
+  for(const u of [1, 2, 6.25]) for(const pr of ['cherry','sa'])
+    chk(pr+' '+u+'u: водонепроницаем', manifoldCheck(base({keyProfile:pr, keySizeU:u}),4).watertight);
+}
+{
+  // The rows a preset decides for you are hidden while a preset is chosen — a control that does nothing is
+  // worse than a control that is not there.
+  const row = k => SHAPE_PARAMS.box.find(r => r.key === k);
+  for(const k of ['keyH','keyTaper','keyDish','keyDishKind']){
+    chk(k+': только для своего профиля', !!row(k).only && row(k).only.keyProfile.join() === 'custom',
+        row(k).only);
+    chk(k+': виден при «свой»', paramRowRelevant(row(k),
+        Object.assign({}, paramState.box, {keyProfile:'custom', keyDish:1})));
+    chk(k+': скрыт при Cherry', !paramRowRelevant(row(k),
+        Object.assign({}, paramState.box, {keyProfile:'cherry', keyDish:1})));
+  }
+  chk('форма чаши скрыта при нулевой чаше', !paramRowRelevant(row('keyDishKind'),
+      Object.assign({}, paramState.box, {keyProfile:'custom', keyDish:0})));
+  chk('ряд — только для скульптурных', row('keyRow').only.keyProfile.join() === 'cherry,oem,sa,mda',
+      row('keyRow').only);
+  chk('ряд скрыт у XDA', !paramRowRelevant(row('keyRow'),
+      Object.assign({}, paramState.box, {keyProfile:'xda'})));
+}
 
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;

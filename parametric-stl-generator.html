@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v177';
+const APP_VERSION = 'v178';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3932,9 +3932,7 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntPitchKind', w:['pitchgauge'], label:'Шаблон резьбы: наружная или внутренняя', type:'select', default:'ext',
       options:[{v:'ext',t:'наружная (винт)'},{v:'int',t:'внутренняя (гайка)'},{v:'both',t:'обе на одном инструменте'}]},
     {group:'Крепёж / монтаж', key:'mntPitchR', w:['pitchgauge'], label:'Шаблон резьбы: радиус кромки (0 = плоская)', min:0, max:40, step:0.5, default:4, unit:'мм', hint:'Кромка выгибается поперёк плиты: у наружной гребёнки плечи охватывают винт, у внутреннего пальца середина прилегает к отверстию. Плоская кромка касается резьбы по одной линии и качается.'},
-    {group:'Крепёж / монтаж', key:'mntPitchLean', w:['pitchgauge'], label:'Шаблон резьбы: наклон зубцов (угол подъёма)', min:0, max:30, step:0.5, default:0, unit:'°', hint:'Гребень резьбы — спираль, поэтому с зубом инструмента он встречается под углом. Ставьте угол подъёма своей резьбы: atan(шаг · заходов / (π · Ø)).'},
-    {group:'Крепёж / монтаж', key:'mntPitchHand', w:['pitchgauge'], needs:{mntPitchLean:0}, label:'Шаблон резьбы: направление', type:'select', default:'right',
-      options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
+    {group:'Крепёж / монтаж', key:'mntPitchLean', w:['pitchgauge'], label:'Шаблон резьбы: наклон зубцов (+ правая, − левая)', min:-3, max:3, step:0.1, default:0, unit:'°', hint:'Гребень резьбы — спираль, поэтому с зубом инструмента он встречается под углом. Знак — это направление резьбы: плюс правая, минус левая. Величина — угол подъёма вашей резьбы: atan(шаг · заходов / (π · Ø)); у метрического крепежа это 1.5–3°.'},
     {group:'Крепёж / монтаж', key:'mntPinN', w:['pingauge'], label:'Шаблон диаметров: число стоек', min:2, max:20, step:1, default:8, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntPinStart', w:['pingauge'], label:'Шаблон диаметров: первый Ø', min:0.8, max:40, step:0.1, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPinStep', w:['pingauge'], label:'Шаблон диаметров: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
@@ -5309,7 +5307,7 @@ const MODEL_HELP = {
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
   'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
-  'mount:pitchgauge':{what:'Шаблон шага резьбы: пластины со стандартными метрическими шагами, уложенные стопкой — каждая на своём уровне, так что винт ложится на одну и не задевает соседние. Есть вариант для гаек: вместо пластины палец, который входит в отверстие и меряет резьбу изнутри.', how:'Плашмя, зубьями вбок. Просвет между уровнями задайте не меньше Ø самого толстого винта, который будете мерить. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
+  'mount:pitchgauge':{what:'Шаблон шага резьбы: пластины со стандартными метрическими шагами, уложенные стопкой — каждая на своём уровне, так что винт ложится на одну и не задевает соседние. Есть вариант для гаек: вместо пластины палец, который входит в отверстие и меряет резьбу изнутри.', how:'Плашмя, зубьями вбок. Просвет между уровнями задайте не меньше Ø самого толстого винта, который будете мерить. Наклон зубцов — со знаком: плюс под правую резьбу, минус под левую. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
   'mount:pingauge':  {what:'Шаблон диаметров: ряд гладких стоек с шагом по диаметру, каждая подписана. Надеваешь отверстие — шайбу, кронштейн, готовую деталь — и последняя стойка, которая прошла, и есть его размер.', how:'Плитой на стол, стойками вверх. Стойки цилиндрические намеренно: конус покажет не размер отверстия, а глубину, на которую вы его надвинули.', mat:['pla','petg']},
   'mount:cablecomb': {what:'Гребёнка кабелей: ряд гнёзд с горловиной уже диаметра кабеля — провод защёлкивается и не выпадает.', how:'Спинкой на стол, гнёздами вверх. Горловина работает на разжим, поэтому жёсткий PLA колется.', mat:['petg','tpu']},
   'mount:edgeclip':  {what:'Держатель на кромку: прищепка на рамку монитора или дефлектор с полкой под телефон.', how:'Плашмя, сечением вверх. Стенка тоньше 1,6 мм разожмётся и не вернётся.', mat:['petg','tpu']},
@@ -11272,17 +11270,22 @@ function pitchGaugeSpec(p){
   const arcAt = y => R > 0 ? -(R - Math.sqrt(Math.max(0, R*R - y*y))) : 0;
   // ...and the teeth LEAN by the helix, because a thread's crest is a spiral and meets the tool at an
   // angle. Right-hand and left-hand lean opposite ways; a tool built for one rocks on the other.
-  const lean = Math.max(0, Math.min(30, p.mntPitchLean != null ? p.mntPitchLean : 0));
-  const hand = p.mntPitchHand === 'left' ? -1 : 1;
-  const skewAt = y => hand * y * Math.tan(lean*Math.PI/180);
-  const sweep = (R > 0 || lean > 0);
+  // The angle IS the hand: plus leans the teeth the way a right-hand thread climbs, minus the way a
+  // left-hand one does. One control rather than a magnitude and a separate switch — there is no such thing
+  // as a lean of 2° that is neither, and a switch that does nothing at zero is a switch that confuses.
+  // Bounded to ±3°, which covers the lead angle of ordinary metric fasteners; past that the tooth line
+  // shears further across the plate than the tooth is deep and the comb stops being a comb.
+  const lean = Math.max(-3, Math.min(3, p.mntPitchLean != null ? p.mntPitchLean : 0));
+  const hand = lean < 0 ? -1 : 1;
+  const skewAt = y => y * Math.tan(lean*Math.PI/180);
+  const sweep = (R > 0 || lean !== 0);
   const steps = sweep ? Math.max(4, Math.round(t*3)) : 1;
   const at = y => [skewAt(y), arcAt(y)];
   // How far a blade's root reaches INTO the spine. A millimetre would do for a straight blade, but the lean
   // slides the outermost stations sideways by (t/2)·tan λ, and a root that slides clear of the spine leaves
   // a blade touching it along a line — still watertight, still correctly paired edge for edge, and hanging
   // off the tool by nothing at all.
-  const bite = 1 + (t/2)*Math.tan(lean*Math.PI/180);
+  const bite = 1 + (t/2)*Math.abs(Math.tan(lean*Math.PI/180));
   // The smallest bore an internal finger will enter: its own section, corner to corner, plus a little.
   const bore = Math.hypot(t, fl) + 0.4;
   return {list, n:list.length, t, gap, bw, bl, fl, nose, hs, rowH, H, digit, kind, ext, int, bore,
@@ -14797,8 +14800,9 @@ function activeShapeLabel() {
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
     radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
     pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы ' +
-      ({ext:'(наружной)',int:'(внутренней)',both:'(наружной и внутренней)'}[g.kind]) + ' ' +
-      g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.'; })(),
+      ({ext:'(наружной)',int:'(внутренней)',both:'(наружной и внутренней)'}[g.kind]) +
+      (g.lean !== 0 ? ', ' + (g.lean < 0 ? 'левой' : 'правой') + ' ' + Math.abs(g.lean).toFixed(1) + '°' : '') +
+      ' ' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.'; })(),
     pingauge:(function(){ const g=pinGaugeSpec(p); return 'шаблон диаметров (' + fmtNum(g.d0) + '…' + fmtNum(g.dMax) + ' мм, ' + g.n + ' стоек)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
     edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })(),

@@ -307,43 +307,61 @@ console.log('=== выпуклая на гайку, вогнутая на бол�
       {ext:eMid-eEdge, int:iMid-iEdge, sag:se.sag});
 }
 
-console.log('=== зубцы наклонены под руку резьбы ===');
+console.log('=== зубцы наклонены под руку резьбы, знаком угла ===');
 // A thread's crest is a spiral, so it meets a square-cut tooth at an angle. The lean is a shear across the
-// thickness: the same tooth line, slid along X as you cross the plate. Read it as the shift between the
-// two faces, and demand the two hands shift opposite ways by the same amount.
+// thickness: the same tooth line, slid along X as you cross the plate. The SIGN is the hand — plus leans
+// the way a right-hand thread climbs, minus the way a left-hand one does — so a left-hand gauge is the
+// same control at a negative angle rather than a second switch that means nothing at zero.
 {
   const toothX = (tris, s, side) => { // x of the leftmost tooth tip of level 0 on the given face
     let best = 1e9;
     for(const T of tris) for(const v of T)
-      // NOT filtered on x: at a steep lean the run slides past the spine's own edge, and a filter there
-      // silently drops the leftmost tooth on one face and reads the second one instead — which looks like
-      // a shear of the wrong size rather than like a broken probe.
+      // NOT filtered on x: a lean slides the run past the spine's own edge, and a filter there silently
+      // drops the leftmost tooth on one face and reads the second one instead — which looks like a shear
+      // of the wrong size rather than like a broken probe.
       if(Math.abs(v[1]-side) < 1e-6 && v[0] > 0 && Math.abs(v[2] - (s.zAt(0) + s.arcAt(side))) < 1e-6)
         best = Math.min(best, v[0]);
     return best; };
-  for(const lean of [0, 5, 12, 30]){
-    for(const hand of ['right','left']){
-      const o = {mntMode:'pitchgauge', mntPitchLean:lean, mntPitchHand:hand};
-      const s = pitchGaugeSpec(Object.assign({}, DEF, o)), tris = build(o);
-      chk('наклон '+lean+'° '+hand+': водонепроницаем', wt(tris), manifoldCheck(tris,4));
-      const front = toothX(tris, s, s.t/2), back = toothX(tris, s, -s.t/2);
-      const want = (hand === 'left' ? -1 : 1) * s.t * Math.tan(lean*Math.PI/180);
-      chk('наклон '+lean+'° '+hand+': сдвиг между гранями = t·tg λ',
-          near(front - back, want, 1e-6), {got:front-back, want});
-    }
+  for(const lean of [-3, -1.5, -0.4, 0, 0.4, 1.5, 3]){
+    const o = {mntMode:'pitchgauge', mntPitchLean:lean};
+    const s = pitchGaugeSpec(Object.assign({}, DEF, o)), tris = build(o);
+    chk('наклон '+lean+'°: водонепроницаем', wt(tris), manifoldCheck(tris,4));
+    const front = toothX(tris, s, s.t/2), back = toothX(tris, s, -s.t/2);
+    const want = s.t * Math.tan(lean*Math.PI/180);
+    chk('наклон '+lean+'°: сдвиг между гранями = t·tg λ', near(front - back, want, 1e-6),
+        {got:front-back, want});
+    chk('наклон '+lean+'°: знак сдвига — знак угла',
+        lean === 0 ? near(front-back, 0, 1e-9) : Math.sign(front-back) === Math.sign(lean),
+        {lean, shift:front-back});
   }
   // ...and the two hands are mirror images, not the same tool twice
-  const r5 = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:9, mntPitchHand:'right'}));
-  const l5 = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:9, mntPitchHand:'left'}));
-  chk('правая и левая — зеркальны', r5.hand === -l5.hand && r5.hand === 1, {r:r5.hand, l:l5.hand});
+  const r = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:2.4}));
+  const l = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:-2.4}));
+  chk('плюс и минус — зеркальны', r.hand === 1 && l.hand === -1, {r:r.hand, l:l.hand});
   for(const y of [-2, -0.5, 0, 1.3, 2])
-    chk('сдвиг при y='+y+' противоположен по знаку', near(r5.skewAt(y), -l5.skewAt(y), 1e-12),
-        {r:r5.skewAt(y), l:l5.skewAt(y)});
-  chk('без наклона сдвига нет',
-      pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:0})).skewAt(2) === 0);
-  // The blade's root has to stay buried in the spine however far the lean slides it, or the blade hangs
-  // off the tool by a line of contact and nothing else.
-  for(const lean of [0, 10, 20, 30]){
+    chk('сдвиг при y='+y+' противоположен по знаку', near(r.skewAt(y), -l.skewAt(y), 1e-12),
+        {r:r.skewAt(y), l:l.skewAt(y)});
+  chk('без наклона сдвига нет', pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:0})).skewAt(2) === 0);
+  // The range is deliberate: ±3° covers the lead angle of ordinary metric fasteners, and past that the
+  // tooth line shears further across the plate than the tooth is deep.
+  const row = SHAPE_PARAMS.box.find(r => r.key === 'mntPitchLean');
+  chk('разлёт объявлен ±3°', row.min === -3 && row.max === 3, {min:row.min, max:row.max});
+  chk('по умолчанию без наклона', row.default === 0, row.default);
+  chk('шаг регулятора мельче градуса', row.step <= 0.5, row.step);
+  for(const v of [-90, -3.5, 3.5, 90]){
+    const s = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:v}));
+    chk('наклон '+v+'° урезан до разлёта', Math.abs(s.lean) <= 3 + 1e-12 && Math.sign(s.lean) === Math.sign(v), s.lean);
+  }
+  chk('прежнего переключателя направления больше нет',
+      !SHAPE_PARAMS.box.some(r => r.key === 'mntPitchHand'));
+  // the model's own name says which way it leans, so the file is telling them apart before it is opened
+  const nm = v => activeShapeLabel(Object.assign(paramState.box, DEF,
+    {shape:'box', mntMode:'pitchgauge', mntPitchLean:v}));
+  chk('левая названа левой', /левой 2\.0°/.test(nm(-2)), nm(-2));
+  chk('правая названа правой', /правой 2\.0°/.test(nm(2)), nm(2));
+  chk('без наклона в имени ничего лишнего', !/левой|правой/.test(nm(0)), nm(0));
+  // The blade's root has to stay buried in the spine however far the lean slides it, either way.
+  for(const lean of [-3, -1, 0, 1, 3]){
     const s = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:lean}));
     chk('наклон '+lean+'°: корень лепестка не выходит из хребта',
         s.bite >= Math.abs(s.skewAt(s.t/2)) + 1 - 1e-9, {bite:s.bite, slide:s.skewAt(s.t/2)});
@@ -358,11 +376,10 @@ console.log('=== выгиб и наклон вместе, и плоский сл
   const s = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchR:0, mntPitchLean:0}));
   chk('без выгиба и наклона проход один', s.steps === 1 && !s.sweep, {steps:s.steps, sweep:s.sweep});
   chk('плоский случай замкнут', wt(flat), manifoldCheck(flat,4));
-  for(const kind of ['ext','int','both']) for(const R of [0, 5]) for(const lean of [0, 14])
-    for(const hand of ['right','left']){
+  for(const kind of ['ext','int','both']) for(const R of [0, 5]) for(const lean of [-3, 0, 1.7, 3]){
       const tris = build({mntMode:'pitchgauge', mntPitchKind:kind, mntPitchR:R,
-                          mntPitchLean:lean, mntPitchHand:hand, mntPitchMin:0.5, mntPitchMax:2.5});
-      chk(kind+' R='+R+' λ='+lean+' '+hand+': замкнут', wt(tris), manifoldCheck(tris,4));
+                          mntPitchLean:lean, mntPitchMin:0.5, mntPitchMax:2.5});
+      chk(kind+' R='+R+' λ='+lean+': замкнут', wt(tris), manifoldCheck(tris,4));
     }
 }
 

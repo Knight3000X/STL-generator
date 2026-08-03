@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v175';
+const APP_VERSION = 'v176';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3899,7 +3899,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -3928,6 +3928,13 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntRadN', w:['radgauge'], label:'Шаблон радиусов: число ступеней', min:2, max:14, step:1, default:6, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntRadStart', w:['radgauge'], label:'Шаблон радиусов: первый радиус', min:0.4, max:20, step:0.1, default:1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntRadStep', w:['radgauge'], label:'Шаблон радиусов: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntGaugeGap', w:['radgauge','pitchgauge','pingauge'], label:'Шаблон: просвет между мерными местами', min:0, max:40, step:0.5, default:4, unit:'мм', hint:'У шаблона шага резьбы это рабочий размер: под пластиной должен проходить винт, который вы меряете, иначе он ляжет сразу на две.'},
+    {group:'Крепёж / монтаж', key:'mntPitchKind', w:['pitchgauge'], label:'Шаблон резьбы: наружная или внутренняя', type:'select', default:'ext',
+      options:[{v:'ext',t:'наружная (винт)'},{v:'int',t:'внутренняя (гайка)'},{v:'both',t:'обе на одном инструменте'}]},
+    {group:'Крепёж / монтаж', key:'mntPinN', w:['pingauge'], label:'Шаблон диаметров: число стоек', min:2, max:20, step:1, default:8, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'mntPinStart', w:['pingauge'], label:'Шаблон диаметров: первый Ø', min:0.8, max:40, step:0.1, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPinStep', w:['pingauge'], label:'Шаблон диаметров: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPinH', w:['pingauge'], label:'Шаблон диаметров: высота стойки', min:3, max:60, step:0.5, default:12, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPitchMin', w:['pitchgauge'], label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPitchMax', w:['pitchgauge'], label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCabD', w:['cablecomb'], label:'Гребёнка кабелей: Ø кабеля', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
@@ -3962,7 +3969,7 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntFootPad', w:['foot'], label:'Ножка: толщина подошвы', min:1.2, max:20, step:0.5, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootClear', w:['foot'], label:'Ножка: зазор посадки на ножку', min:0, max:1.5, step:0.05, default:0.3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntW', w:['temptower','bridgetest','retract','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pitchgauge','bridgetest','retract','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pitchgauge','pingauge','bridgetest','retract','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegA', w:['boss','tool','pipe','lbracket'], label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegB', w:['tool','lbracket'], label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntScrewD', w:['battery','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
@@ -5298,7 +5305,8 @@ const MODEL_HELP = {
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
   'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
-  'mount:pitchgauge':{what:'Шаблон шага резьбы: гребёнки со стандартными метрическими шагами, каждая с подписью.', how:'Плашмя. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
+  'mount:pitchgauge':{what:'Шаблон шага резьбы: пластины со стандартными метрическими шагами, уложенные стопкой — каждая на своём уровне, так что винт ложится на одну и не задевает соседние. Есть вариант для гаек: вместо пластины палец, который входит в отверстие и меряет резьбу изнутри.', how:'Плашмя, зубьями вбок. Просвет между уровнями задайте не меньше Ø самого толстого винта, который будете мерить. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
+  'mount:pingauge':  {what:'Шаблон диаметров: ряд гладких стоек с шагом по диаметру, каждая подписана. Надеваешь отверстие — шайбу, кронштейн, готовую деталь — и последняя стойка, которая прошла, и есть его размер.', how:'Плитой на стол, стойками вверх. Стойки цилиндрические намеренно: конус покажет не размер отверстия, а глубину, на которую вы его надвинули.', mat:['pla','petg']},
   'mount:cablecomb': {what:'Гребёнка кабелей: ряд гнёзд с горловиной уже диаметра кабеля — провод защёлкивается и не выпадает.', how:'Спинкой на стол, гнёздами вверх. Горловина работает на разжим, поэтому жёсткий PLA колется.', mat:['petg','tpu']},
   'mount:edgeclip':  {what:'Держатель на кромку: прищепка на рамку монитора или дефлектор с полкой под телефон.', how:'Плашмя, сечением вверх. Стенка тоньше 1,6 мм разожмётся и не вернётся.', mat:['petg','tpu']},
   'mount:cupholder': {what:'Двустенный подстаканник: воздушная прослойка между стенками держит температуру.', how:'Дном на стол. Между стенками мостить нечего — обод печатается по кольцу.', mat:['petg','pla']},
@@ -11093,6 +11101,25 @@ function seg7TrisXZ(text, xc, zb, h, yTop){
     for(const T of boxSpanTris(b[0], b[1], yTop - 0.4, yTop + 0.6, b[2], b[3])) out.push(T);
   return out;
 }
+// «Сколько оставить между соседними мерными местами» — один вопрос, а не три: между зубчатыми ступенями
+// шаблона радиусов, между уровнями шаблона шага и между стойками шаблона диаметров. Названо здесь, читается
+// всеми тремя. У шаблона шага это ещё и рабочий размер, а не отступ: под пластиной должно проходить то,
+// что вы меряете, иначе винт ляжет сразу на две.
+function gaugeGap(p){ return Math.max(0, Math.min(40, p.mntGaugeGap != null ? p.mntGaugeGap : 4)); }
+// The same digits turned a quarter turn, reading along +Z with glyph-up towards −X. Every bar of a
+// seven-segment glyph is an axis-aligned rectangle, and a right-angle turn maps one of those onto another,
+// so this is a swap of coordinates rather than a second font. Wanted where a label sits BESIDE its feature
+// instead of under it: on the pin gauge, laid flat, a horizontal label is wider than the post it names and
+// would set the spacing of the whole row.
+function seg7TrisXZV(text, xRight, z0, h, yTop){
+  const out = [];
+  for(const b of seg7BarsXZ(text, 0, 0, h)){
+    // bar spans x∈[b0,b1] (advance) and z∈[b2,b3] (glyph height, negative). Turn: x→z, z→x.
+    const x0 = xRight + b[2], x1 = xRight + b[3], zz0 = z0 + b[0], zz1 = z0 + b[1];
+    for(const T of boxSpanTris(x0, x1, yTop - 0.4, yTop + 0.6, zz0, zz1)) out.push(T);
+  }
+  return out;
+}
 /* ---- Шаблон радиусов ------------------------------------------------------------------------------
    One plate, two combs. The BACK edge is bitten into with concave half-circles, which measure an OUTSIDE
    radius (a fillet on a corner); the FRONT edge carries convex half-circles standing proud, which measure
@@ -11113,8 +11140,9 @@ function radGaugeSpec(p){
   // The label has to fit between columns as well as the notch does, so it gets a say in the pitch.
   const digit = Math.max(3, Math.min(6, D/2 - 2));
   let wide = 0; for(const r of rs) wide = Math.max(wide, seg7Width(fmtNum(r), digit));
-  const pitch = Math.max(2*rMax + 4, wide + 3, 10);
-  return {n, r0, dr, t, rs, rMax, pitch, D, W: n*pitch, digit,
+  const gap = gaugeGap(p);
+  const pitch = Math.max(2*rMax + gap, wide + 3, 10);
+  return {n, r0, dr, t, rs, rMax, gap, pitch, D, W: n*pitch, digit,
           xAt: k => (k - (n-1)/2)*pitch,
           fine: r0 < 0.6, thin: t < 1.2 + 1e-9};
 }
@@ -11138,16 +11166,27 @@ function buildRadGauge(p){
   return tris;
 }
 /* ---- Шаблон шага резьбы ---------------------------------------------------------------------------
-   A spine with N blades hanging off it, each blade's front edge cut to one STANDARD pitch. The sizes are
-   not stepped by an arithmetic increment the way the radius gauge's are, because thread pitches are not:
-   0.7, 0.75, 0.8, 1.0, 1.25 — the useful ones are a published list, and a gauge carrying 0.9 mm would be
-   a gauge with a blade that never matches anything. So the range is given in millimetres and whatever
-   standard pitches fall inside it become the blades.
+   A spine with N blades off it, each blade's edge cut to one STANDARD pitch. The sizes are not stepped by
+   an arithmetic increment the way the radius gauge's are, because thread pitches are not: 0.7, 0.75, 0.8,
+   1.0, 1.25 — the useful ones are a published list, and a gauge carrying 0.9 mm would be a gauge with a
+   blade that never matches anything. So the range is given in millimetres and whatever standard pitches
+   fall inside it become the blades.
 
    The tooth is the ISO profile rather than a plain 60° zigzag: crest flat P/8, root flat P/4, 60° flanks
    between them, which puts the depth at 0.5413·P — the H1 out of the standard, arrived at by construction
    rather than copied. A blade whose teeth are the right pitch but the wrong depth still rocks in the
-   thread instead of seating, and rocking is exactly what the tool is read by. */
+   thread instead of seating, and rocking is exactly what the tool is read by.
+
+   THE BLADES STACK, they do not stand side by side. Side by side is how the first version was built and it
+   is unusable: every blade's teeth face the same way along one edge, so a screw offered up to blade k lies
+   across blades k−1 and k+1 as well and never seats on the one you meant. Stacked, each blade is alone on
+   its own level, and the clear space under it is a parameter — set it above the diameter of the screws you
+   measure and nothing else is in the way.
+
+   And a nut is measured from the inside, which no edge comb can reach, so a blade can be built as a FINGER
+   instead: teeth on its upper edge, thin enough in section to go into the bore, with a lead-in chamfer on
+   its nose. Both kinds can be on the same tool — external blades off one side of the spine, internal
+   fingers off the other. */
 const ISO_PITCHES = [0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.75, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5];
 function pitchGaugeSpec(p){
   const lo = Math.max(0.3, p.mntPitchMin>0 ? p.mntPitchMin : 0.7);
@@ -11157,39 +11196,126 @@ function pitchGaugeSpec(p){
   // producing nothing would be the worst answer, so the nearest standard pitch stands in and is warned about.
   const list = inRange.length ? inRange
     : [ISO_PITCHES.reduce((a,b)=>Math.abs(b-lo) < Math.abs(a-lo) ? b : a)];
+  const kind = (p.mntPitchKind === 'int' || p.mntPitchKind === 'both') ? p.mntPitchKind : 'ext';
+  const ext = kind !== 'int', int = kind !== 'ext';
   const t  = Math.max(1.2, p.mntT>0 ? p.mntT : 4);
-  const pMax = list[list.length-1], hs = 10, digit = 5;
+  // A millimetre of clear space at the very least. At zero the levels touch, and two plates meeting exactly
+  // on a plane is not a union — it is two lids on one hole, and the mesh comes out with edges on four
+  // triangles. Zero is also useless as a tool, so nothing is lost by refusing it.
+  const gap = Math.max(1, gaugeGap(p));
+  const pMax = list[list.length-1];
+  const td  = P => 0.5413*P;
+  const bw  = Math.max(12, 6*pMax);                    // tooth run along X — six threads at least
+  const bl  = td(pMax) + 3;                            // blade depth: the teeth plus a back to hold them
+  const fl  = td(pMax) + 2;                            // the internal finger is slimmer — it goes in a bore
+  const nose = Math.min(2, fl*0.6);                    // lead-in chamfer on the finger's tip
+  // External blades hang off the right of the spine, internal fingers off the left, so a level is as tall
+  // as its taller half and the two never touch. What separates the levels is the clear space you asked for.
+  const rowH = Math.max(ext ? bl : 0, int ? fl : 0) + gap;
+  // The label lies within its own level, so the level's height caps the digits — and then the spine has to
+  // be wide enough to carry them. A spine wide enough to read is a spine wide enough to hold, so nothing is
+  // lost: it is the handle.
+  const digit = Math.max(2.5, Math.min(5, rowH - 1));
   let wide = 0; for(const v of list) wide = Math.max(wide, seg7Width(fmtNum(v), digit));
-  const bw = Math.max(12, 6*pMax, wide + 4), bl = 0.5413*pMax + 7, gap = 2.5;
-  const colW = bw + gap, W = list.length*colW + gap;
-  return {list, n:list.length, t, bw, bl, gap, colW, hs, W, digit, empty: !inRange.length,
-          xAt: k => -W/2 + gap + colW*k + bw/2,
-          td:  P => 0.5413*P,
-          nTeeth: P => Math.max(3, Math.floor(bw/P)),
-          fine: 0.5413*list[0] < 0.32};
+  const hs  = Math.max(10, wide + 3);
+  const H   = list.length*rowH + gap;
+  // The smallest bore an internal finger will enter: its own section, corner to corner, plus a little.
+  const bore = Math.hypot(t, fl) + 0.4;
+  return {list, n:list.length, t, gap, bw, bl, fl, nose, hs, rowH, H, digit, kind, ext, int, bore,
+          empty: !inRange.length,
+          zAt: k => -H/2 + gap + rowH*k,                // bottom of level k
+          td, nTeeth: P => Math.max(3, Math.floor(bw/P)),
+          fine: td(list[0]) < 0.32,
+          crowded: gap < 6,
+          fat: int && bore > 2 + 1.0825*list[0] + 6};   // finger vs the smallest nut this pitch belongs to
 }
 function buildPitchGauge(p){
-  const s = pitchGaugeSpec(p), P = [];
-  P.push([-s.W/2, 0]);
+  const s = pitchGaugeSpec(p), tris = [];
+  const xs0 = -s.hs/2, xs1 = s.hs/2;                    // the spine, dead centre
+  // The ISO tooth line along X. It is walked along the ROOT line — the flat between two teeth, P/4 wide —
+  // and `dir` points from there towards the CREST, the tool's tooth tip, whose flat is P/8. Getting those
+  // two flats the wrong way round leaves a tooth of the right pitch and the right depth that still will not
+  // seat, because a P/4 tip does not go into a P/8 groove.
+  const teeth = (P, xMid, zRoot, dir) => {
+    const nT = s.nTeeth(P), run = nT*P, d = s.td(P), out = [];
+    let x = xMid - run/2;
+    out.push([x, zRoot]);
+    for(let i=0;i<nT;i++){
+      out.push([x + P/4, zRoot]);
+      out.push([x + P/4 + 0.3125*P, zRoot + dir*d]);
+      out.push([x + P/4 + 0.3125*P + P/8, zRoot + dir*d]);
+      out.push([x + P, zRoot]);
+      x += P; }
+    return out;
+  };
   for(let k=0;k<s.n;k++){
-    const pk = s.list[k], td = s.td(pk), nT = s.nTeeth(pk), run = nT*pk;
-    const x0 = s.xAt(k) - s.bw/2, x1 = s.xAt(k) + s.bw/2;
-    const zR = -s.bl + td, zC = -s.bl;                    // root line and crest line of this blade
-    P.push([x0, 0], [x0, zR]);                            // down the blade's left side
-    let x = s.xAt(k) - run/2;
-    P.push([x, zR]);                                      // flat lead-in to the first tooth
-    for(let i=0;i<nT;i++){                                // ISO tooth: P/4 root, flank, P/8 crest, flank
-      P.push([x + pk/4, zR], [x + pk/4 + 0.3125*pk, zC],
-             [x + pk/4 + 0.3125*pk + pk/8, zC], [x + pk, zR]);
-      x += pk; }
-    P.push([x1, zR], [x1, 0]);                            // flat run-out, then up the right side
+    const P = s.list[k], z0 = s.zAt(k);
+    if(s.ext){                                          // blade to the RIGHT: teeth point DOWN off its underside
+      const xa = xs1 - 1, xb = xs1 + s.bw, zr = z0 + s.td(P), zt = z0 + s.bl, L = [];
+      L.push([xa, zr]);
+      for(const v of teeth(P, (xs1 + xb)/2, zr, -1)) L.push(v);
+      L.push([xb, zr], [xb, zt], [xa, zt]);
+      for(const T of extrudePolyYTris([L], -s.t/2, s.t/2)) tris.push(T);
+    }
+    if(s.int){                                          // finger to the LEFT: teeth on its top, nose chamfered
+      const xa = xs0 + 1, xb = xs0 - s.bw, zt = z0 + s.fl, L = [];
+      // Walked from the finger's root along the bottom to the nose (−X), up over the chamfer, then back
+      // along the toothed top edge (+X) to the root. The tooth run is emitted left→right, which is the
+      // direction of that return leg — walking it the other way folds the loop over itself.
+      const zr = zt - s.td(P);
+      L.push([xa, z0], [xb + s.nose, z0], [xb, z0 + s.nose], [xb, zr]);
+      for(const v of teeth(P, (xs0 + xb)/2, zr, +1)) L.push(v);
+      L.push([xa, zr]);
+      for(const T of extrudePolyYTris([L], -s.t/2, s.t/2)) tris.push(T);
+    }
   }
-  P.push([s.W/2, 0], [s.W/2, s.hs], [-s.W/2, s.hs]);      // right end, spine back, left end closes it
-  const tris = extrudePolyYTris([P], -s.t/2, s.t/2);
-  for(let k=0;k<s.n;k++)                                  // the pitch, on the spine over its own blade
-    for(const T of seg7TrisXZ(fmtNum(s.list[k]), s.xAt(k), s.hs/2 + s.digit/2, s.digit, s.t/2)) tris.push(T);
-  const dz = (s.bl - s.hs)/2;
-  return tris.map(T=>T.map(v=>[v[0], v[1], v[2]+dz]));
+  // The spine runs the full height and every level bites 1 mm into it — interpenetrating volumes, never a
+  // shared face. Two plates meeting exactly on a plane is not a union.
+  for(const T of boxSpanTris(xs0, xs1, -s.t/2, s.t/2, -s.H/2, s.H/2)) tris.push(T);
+  for(let k=0;k<s.n;k++)                                // the pitch, on the spine beside its own level
+    for(const T of seg7TrisXZ(fmtNum(s.list[k]), 0, s.zAt(k) + s.digit + 0.5, s.digit, s.t/2)) tris.push(T);
+  return tris;
+}
+/* ---- Шаблон диаметров (стойки) --------------------------------------------------------------------
+   A row of plain cylindrical posts of stepped diameter on a plate. Push a hole over them — a washer, a
+   bracket, a bore in something already made — and the last post that goes through is its size.
+
+   Plain cylinders, not tapered: a taper reads a hole as whatever depth you pushed it to, which is not a
+   measurement. Watertight by construction — the plate is one closed box, each post one closed cylinder,
+   and they interpenetrate rather than share a face. The spacing between posts is the same parameter the
+   other two gauges use, because "how far apart the measuring points are" is one question, not three. */
+function pinGaugeSpec(p){
+  const n  = Math.max(2, Math.min(20, Math.round(p.mntPinN>0 ? p.mntPinN : 8)));
+  const d0 = Math.max(0.8, p.mntPinStart>0 ? p.mntPinStart : 3);
+  const dd = Math.max(0.1, p.mntPinStep>0 ? p.mntPinStep : 1);
+  const H  = Math.max(3, p.mntPinH>0 ? p.mntPinH : 12);
+  const t  = Math.max(1.2, p.mntT>0 ? p.mntT : 4);
+  const gap = gaugeGap(p);
+  const ds = []; for(let k=0;k<n;k++) ds.push(d0 + dd*k);
+  const dMax = ds[n-1], digit = Math.max(3, Math.min(6, 4 + dMax/8));
+  let wide = 0; for(const d of ds) wide = Math.max(wide, seg7Width(fmtNum(d), digit));
+  // The label is turned on its side and read along the depth of the plate, so the spacing of the row is set
+  // by the posts and nothing else. Laid flat it is wider than the post it names — twenty posts would make a
+  // plate a third of a metre long, and the number is not what you are measuring with.
+  const pitch = Math.max(dMax + gap, digit + 2);
+  const W = n*pitch + gap, D = dMax + 4 + wide + 3;
+  return {n, d0, dd, H, t, gap, ds, dMax, pitch, W, D, digit, wide,
+          zPin: -D/2 + 2 + dMax/2,                      // posts along the back, labels in front of them
+          zLab: -D/2 + dMax + 4,
+          xAt: k => (k - (n-1)/2)*pitch,
+          seg: d => Math.max(16, 2*Math.round(d*3)),
+          fine: d0 < 1.2, tall: H > 6*d0};
+}
+function buildPinGauge(p){
+  const s = pinGaugeSpec(p), tris = [];
+  for(const T of boxSpanTris(-s.W/2, s.W/2, 0, s.t, -s.D/2, s.D/2)) tris.push(T);
+  for(let k=0;k<s.n;k++){
+    // Sunk 0.6 mm into the plate: interpenetrating volumes, never a shared face — two solids meeting on a
+    // plane is not a union, it is two lids on one hole.
+    for(const T of discYTris(s.xAt(k), s.zPin, s.ds[k]/2, s.t - 0.6, s.t + s.H, s.seg(s.ds[k]))) tris.push(T);
+    for(const T of seg7TrisXZV(fmtNum(s.ds[k]), s.xAt(k) + s.digit/2, s.zLab, s.digit, s.t)) tris.push(T);
+  }
+  return tris.map(T => T.map(v => [v[0], v[1] - (s.t + s.H)/2, v[2]]));
 }
 /* ---- Гребёнка кабелей ------------------------------------------------------------------------------
    A bar of keyhole slots: each cable is pushed through a neck narrower than itself into a round pocket
@@ -11417,6 +11543,7 @@ function buildMount(p){
   if(p.mntMode==='gauge') return buildGoNoGo(p);
   if(p.mntMode==='radgauge') return buildRadGauge(p);
   if(p.mntMode==='pitchgauge') return buildPitchGauge(p);
+  if(p.mntMode==='pingauge') return buildPinGauge(p);
   if(p.mntMode==='cablecomb') return buildCableComb(p);
   if(p.mntMode==='edgeclip') return buildEdgeClip(p);
   if(p.mntMode==='cupholder') return buildCupHolder(p);
@@ -14603,7 +14730,10 @@ function activeShapeLabel() {
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
     radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
-    pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы (' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.)'; })(),
+    pitchgauge:(function(){ const g=pitchGaugeSpec(p); return 'шаблон шага резьбы ' +
+      ({ext:'(наружной)',int:'(внутренней)',both:'(наружной и внутренней)'}[g.kind]) + ' ' +
+      g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.'; })(),
+    pingauge:(function(){ const g=pinGaugeSpec(p); return 'шаблон диаметров (' + fmtNum(g.d0) + '…' + fmtNum(g.dMax) + ' мм, ' + g.n + ' стоек)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
     edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })(),
     cupholder:(function(){ const g=cupHolderSpec(p); return 'подстаканник двустенный (Ø' + (+g.D.toFixed(0)) + ')'; })(),
@@ -14956,6 +15086,14 @@ function collectPrintWarnings(p){
     const g = pitchGaugeSpec(p);
     if (g.empty) w.push('в заданном промежутке нет ни одного стандартного шага — взят ближайший, ' + g.list[0] + ' мм');
     if (g.fine) w.push('зуб шага ' + g.list[0] + ' мм глубиной ' + (0.5413*g.list[0]).toFixed(2) + ' мм — на грани того, что печатается');
+    if (g.crowded) w.push('просвет между уровнями ' + g.gap.toFixed(1) + ' мм — винт толще этого ляжет сразу на две пластины');
+    if (g.fat) w.push('палец для внутренней резьбы в сечении ' + g.t.toFixed(1) + ' × ' + g.fl.toFixed(1) +
+                      ' мм — в гайку под шаг ' + g.list[0] + ' мм он не войдёт; уменьшите толщину плиты');
+  }
+  if (p.mntMode === 'pingauge'){
+    const g = pinGaugeSpec(p);
+    if (g.fine) w.push('первая стойка Ø' + fmtNum(g.d0) + ' мм — тоньше того, что стоит на плите не ломаясь');
+    if (g.tall) w.push('стойка Ø' + fmtNum(g.d0) + ' при высоте ' + g.H.toFixed(0) + ' мм — отломится; уменьшите высоту');
   }
   if (p.mntMode === 'radgauge'){
     const g = radGaugeSpec(p);

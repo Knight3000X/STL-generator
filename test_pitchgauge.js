@@ -1,6 +1,10 @@
-// Шаблон шага резьбы — a spine with one blade per STANDARD pitch inside the requested range. Two things
+// Шаблон шага резьбы — ЗУБ. A spine with one blade per STANDARD pitch inside the requested range; two things
 // have to be right and neither shows in a preview: the spacing of the teeth on each blade (that is what the
 // tool reads) and their depth (that is what makes a right-pitch blade seat instead of rock).
+//
+// The LAYOUT of those blades — stacked rather than side by side, the clear space under each one, the
+// internal finger, the shared spacing parameter — is test_gauges2.js. This file is about the tooth form and
+// nothing else, so the two do not restate each other.
 //
 // Both are measured off the mesh, and the depth is checked against 0.5413·P — the ISO H1, which here is not
 // a constant copied in but the consequence of the profile the blade is cut to: crest flat P/8, root flat
@@ -54,12 +58,17 @@ function minDepth(tris, ax, p, q){
   for(const [,d] of hits){ depth+=d; if(depth<lo) lo=depth; }
   return lo;
 }
-// Every mesh vertex belonging to blade k, as (x, z) at the model's own front face.
-function bladePts(t, s, k, dz){
-  const x0 = s.xAt(k) - s.bw/2 - 1e-6, x1 = s.xAt(k) + s.bw/2 + 1e-6, out = [];
-  for(const T of t) for(const v of T) if(v[0] > x0 && v[0] < x1) out.push([v[0], v[2] - dz]);
+// Every mesh vertex belonging to level k's blade, as (x, z). Blades hang off the RIGHT of the spine and
+// each one owns a band of z, so both coordinates have to be asked about.
+function bladePts(t, s, k){
+  const out = [];
+  for(const T of t) for(const v of T)
+    if(v[0] > s.hs/2 && v[2] > s.zAt(k) - 1e-6 && v[2] < s.zAt(k) + s.bl + 1e-6) out.push([v[0], v[2]]);
   return out;
 }
+// A ray straight across level k's teeth, at `frac` of the way up the tooth from tip to root.
+const toothRuns = (t, s, k, frac) => solidRuns(t, 0, 0, s.zAt(k) + s.td(s.list[k])*frac)
+  .filter(r => (r[0]+r[1])/2 > s.hs/2);
 
 console.log('=== список шагов ===');
 {
@@ -83,24 +92,22 @@ for(const lo of [0.35, 0.7, 1.25]) for(const hi of [1, 2, 3.5]){
   const t = mk({mntPitchMin:lo, mntPitchMax:hi}), mc = manifoldCheck(t,4);
   chk(lo+'…'+hi+': замкнут', mc.watertight && vol(t)>0, {open:mc.openEdges, bad:mc.badEdges});
   chk(lo+'…'+hi+': обмотка', minDepth(t,1,0.13,0.29)===0 && minDepth(t,2,0.13,0.29)===0);
-  // The comb itself is one piece; the raised digits of each pitch are separate shells sunk into the spine.
+  // Spine, one blade per pitch, and the raised strokes of the digits: every one an independent closed
+  // shell sunk into its neighbour. Interpenetrating volumes, never a shared face.
   const sp = pitchGaugeSpec(paramState.box);
   let bars = 0; for(const v of sp.list) bars += seg7BarsXZ(fmtNum(v), 0, 0, sp.digit).length;
-  chk(lo+'…'+hi+': хребет с лепестками и штрихи цифр', meshComponents(t).length === 1 + bars,
-      meshComponents(t).length + ' vs ' + (1+bars));
+  chk(lo+'…'+hi+': хребет, лепестки и штрихи цифр', meshComponents(t).length === 1 + sp.n + bars,
+      meshComponents(t).length + ' vs ' + (1 + sp.n + bars));
 }
 
 console.log('=== шаг зубьев, снятый с меша ===');
 for(const lo of [0.4, 0.7]) for(const hi of [1.5, 3]){
   const t = mk({mntPitchMin:lo, mntPitchMax:hi});
-  const s = pitchGaugeSpec(paramState.box), dz = (s.bl - s.hs)/2;
+  const s = pitchGaugeSpec(paramState.box);
   let okPitch = 0, okCount = 0, okDepth = 0;
   for(let k=0;k<s.n;k++){
     const pk = s.list[k], td = s.td(pk), nT = s.nTeeth(pk);
-    // A ray along X at half tooth depth cuts every tooth of every blade; keep only this blade's.
-    const z = -s.bl + td/2 + dz, y = 0;
-    const runs = solidRuns(t, 0, y, z).filter(r =>
-      (r[0]+r[1])/2 > s.xAt(k) - s.bw/2 && (r[0]+r[1])/2 < s.xAt(k) + s.bw/2);
+    const runs = toothRuns(t, s, k, 0.5);              // half a tooth up: cuts every tooth of this blade
     if(runs.length === nT) okCount++;
     if(runs.length >= 3){
       let worst = 0;
@@ -109,11 +116,11 @@ for(const lo of [0.4, 0.7]) for(const hi of [1.5, 3]){
         worst = Math.max(worst, Math.abs(step - pk)); }
       if(worst < 0.01) okPitch++;
     }
-    // Depth: the front-most point of the blade against its root line. 0.5413·P falls out of the 60°
-    // flanks, so a wrong flank angle shows up here without the angle ever being measured directly.
-    const pts = bladePts(t, s, k, dz);
+    // Depth: the tooth tips sit on the level's own line and the roots one depth above it. 0.5413·P falls
+    // out of the 60° flanks, so a wrong flank angle shows up here without the angle being measured.
+    const pts = bladePts(t, s, k);
     let zMin = 1e9; for(const q of pts) zMin = Math.min(zMin, q[1]);
-    if(Math.abs((-s.bl + td) - zMin - td) < 1e-6 && Math.abs(td - 0.5413*pk) < 1e-9) okDepth++;
+    if(Math.abs(zMin - s.zAt(k)) < 1e-6 && Math.abs(td - 0.5413*pk) < 1e-9) okDepth++;
   }
   chk(lo+'…'+hi+': шаг зубьев = заявленному', okPitch === s.n, okPitch+'/'+s.n);
   chk(lo+'…'+hi+': число зубьев на лепестке', okCount === s.n, okCount+'/'+s.n);
@@ -123,12 +130,11 @@ for(const lo of [0.4, 0.7]) for(const hi of [1.5, 3]){
 console.log('=== профиль зуба ===');
 {
   const t = mk({mntPitchMin:1.5, mntPitchMax:1.5});
-  const s = pitchGaugeSpec(paramState.box), pk = s.list[0], td = s.td(pk), dz = (s.bl - s.hs)/2;
+  const s = pitchGaugeSpec(paramState.box), pk = s.list[0], td = s.td(pk);
   // Width of a tooth measured at two heights gives the flank angle without trusting any single vertex:
   // over a rise of Δz the tooth narrows by 2·Δz·tan(30°), which is the 60° included angle.
   const width = frac => {
-    const z = -s.bl + td*frac + dz;
-    const runs = solidRuns(t, 0, 0, z).filter(r => (r[0]+r[1])/2 > s.xAt(0)-s.bw/2 && (r[0]+r[1])/2 < s.xAt(0)+s.bw/2);
+    const runs = toothRuns(t, s, 0, frac);
     const mid = runs[Math.floor(runs.length/2)];
     return mid ? mid[1]-mid[0] : NaN; };
   const w1 = width(0.2), w2 = width(0.8), rise = td*0.6;
@@ -138,50 +144,59 @@ console.log('=== профиль зуба ===');
       {w1:+w1.toFixed(3), want:+(pk/8 + 2*td*0.2*Math.tan(Math.PI/6)).toFixed(3)});
 }
 
-console.log('=== лепестки не срослись ===');
+console.log('=== зубья не срослись, хребет сплошной ===');
 for(const lo of [0.5, 1]){
   const t = mk({mntPitchMin:lo, mntPitchMax:2.5});
-  const s = pitchGaugeSpec(paramState.box), dz = (s.bl - s.hs)/2;
-  const runs = solidRuns(t, 0, 0, -s.bl + s.td(s.list[0])*0.5 + dz);
-  chk(lo+'…2.5: между лепестками просвет', runs.length > s.n, runs.length + ' vs ' + s.n);
-  const spine = solidRuns(t, 0, 0, s.hs/2 + dz);
-  chk(lo+'…2.5: хребет сплошной', spine.length === 1, spine.length);
+  const s = pitchGaugeSpec(paramState.box);
+  for(let k=0;k<s.n;k++){
+    const runs = toothRuns(t, s, k, 0.5);
+    chk(lo+'…2.5, уровень '+k+': между зубьями просвет', runs.length >= 3, runs.length);
+    chk(lo+'…2.5, уровень '+k+': зубьев столько, сколько посчитано',
+        runs.length === s.nTeeth(s.list[k]), runs.length + ' vs ' + s.nTeeth(s.list[k]));
+  }
+  const spine = solidRuns(t, 2, 0, 0);                 // fore and aft down the spine's own line
+  chk(lo+'…2.5: хребет сплошной', spine.length === 1, spine);
 }
 
-console.log('=== шаг подписан на лепестке ===');
+console.log('=== шаг подписан у своего уровня ===');
 for(const lo of [0.35, 0.7]) for(const hi of [1.5, 3.5]){
   const t = mk({mntPitchMin:lo, mntPitchMax:hi});
-  const s = pitchGaugeSpec(paramState.box), dz = (s.bl - s.hs)/2;
+  const s = pitchGaugeSpec(paramState.box);
   let stamped = 0, fits = 0;
   for(let k=0;k<s.n;k++){
     const txt = fmtNum(s.list[k]);
-    const bars = seg7BarsXZ(txt, s.xAt(k) - seg7Width(txt, s.digit)/2, s.hs/2 + s.digit/2, s.digit);
-    let found = 0;
+    // Laid flat on the spine, reading across it: the spine is a handle and a handle is wide enough for
+    // digits anyway, so nothing has to be turned.
+    let found = 0, bars = seg7BarsXZ(txt, -seg7Width(txt, s.digit)/2, s.zAt(k) + s.digit + 0.5, s.digit);
     for(const b of bars){
-      // Off-centre: the middle of a box face sits on the diagonal between its two triangles, and a ray
-      // through a shared edge is counted twice and reads as no crossing at all.
-      const runs = solidRuns(t, 1, b[2] + (b[3]-b[2])*0.29 + dz, b[0] + (b[1]-b[0])*0.37);
+      const x = b[0] + (b[1]-b[0])*0.37, z = b[2] + (b[3]-b[2])*0.29;
+      // Off-centre on purpose: the middle of a box face sits on the diagonal between its two triangles,
+      // and a ray through a shared edge is counted twice and reads as no crossing at all.
+      const runs = solidRuns(t, 1, z, x);
       if(runs.length === 1 && runs[0][1] > s.t/2 + 0.5 && runs[0][0] < -s.t/2 + 1e-6) found++; }
     if(found === bars.length) stamped++;
-    // the label belongs on the SPINE, clear of the blade below it, and inside its own column
-    if(seg7Width(txt, s.digit) + 3 <= s.bw && s.hs/2 + s.digit/2 <= s.hs && s.hs/2 - s.digit/2 >= 0) fits++;
+    // ...and the label belongs ON the spine, within its width and within its own level
+    if(seg7Width(txt, s.digit) + 3 <= s.hs && s.digit + 0.5 <= s.rowH) fits++;
   }
   chk(lo+'…'+hi+': каждый шаг подписан', stamped === s.n, stamped+'/'+s.n);
   chk(lo+'…'+hi+': подписи умещаются на хребте', fits === s.n, fits+'/'+s.n);
-  chk(lo+'…'+hi+': лепесток расширен под подпись',
-      s.bw >= Math.max(...s.list.map(v=>seg7Width(fmtNum(v), s.digit))) + 4 - 1e-9, s.bw);
+  chk(lo+'…'+hi+': хребет шире самой длинной подписи',
+      s.hs >= Math.max(...s.list.map(v=>seg7Width(fmtNum(v), s.digit))) + 3 - 1e-9, s.hs);
+  chk(lo+'…'+hi+': подпись ниже уровня', s.digit + 0.5 <= s.rowH + 1e-9, {digit:s.digit, rowH:s.rowH});
 }
 
 console.log('=== имя и предупреждения ===');
 {
   chk('диапазон и число в имени', /0\.7…2 мм, 8 шт\./.test(activeShapeLabel(setp({mntPitchMin:0.7, mntPitchMax:2}))),
       activeShapeLabel());
+  chk('род резьбы в имени', /наружной/.test(activeShapeLabel(setp({mntPitchKind:'ext'}))) &&
+      /внутренней/.test(activeShapeLabel(setp({mntPitchKind:'int'}))), activeShapeLabel());
   const w1 = collectPrintWarnings(setp({mntPitchMin:0.85, mntPitchMax:0.95}));
   chk('пустой промежуток назван', w1.some(x=>/стандартного шага/.test(x)), w1);
   const w2 = collectPrintWarnings(setp({mntPitchMin:0.35, mntPitchMax:1}));
   chk('слишком мелкий зуб назван', w2.some(x=>/зуб шага/.test(x)), w2);
-  const w3 = collectPrintWarnings(setp({mntPitchMin:1, mntPitchMax:2}));
-  chk('нормальный шаблон — молча', !w3.some(x=>/зуб шага|стандартного шага/.test(x)), w3);
+  const w3 = collectPrintWarnings(setp({mntPitchMin:1, mntPitchMax:2, mntGaugeGap:10}));
+  chk('нормальный шаблон — молча', !w3.some(x=>/зуб шага|стандартного шага|просвет/.test(x)), w3);
 }
 
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

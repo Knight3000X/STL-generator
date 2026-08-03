@@ -113,8 +113,11 @@ console.log('=== шаг зубьев — тот, что написан ===');
 // Read the tooth line off the mesh: down the blade's own X line, the tips are the extreme −Z points. The
 // distance from one tip to the next has to be the pitch on the label, to a hundredth.
 {
-  const p = Object.assign({}, DEF, {mntMode:'pitchgauge', mntPitchMin:0.5, mntPitchMax:2.5});
-  const s = pitchGaugeSpec(p), tris = build({mntMode:'pitchgauge', mntPitchMin:0.5, mntPitchMax:2.5});
+  // Flat-edged on purpose: the pitch is a fact about the tooth line along X, and the arc across Y moves
+  // every vertex off the level's own plane, which is what this probe reads. The arc has its own section.
+  const o = {mntPitchMin:0.5, mntPitchMax:2.5, mntPitchR:0, mntPitchLean:0};
+  const p = Object.assign({}, DEF, {mntMode:'pitchgauge'}, o);
+  const s = pitchGaugeSpec(p), tris = build(Object.assign({mntMode:'pitchgauge'}, o));
   for(let k=0;k<s.n;k++){
     const P = s.list[k], zb = s.zAt(k);
     // every vertex of this level's blade that sits on the tooth-tip line
@@ -233,6 +236,134 @@ console.log('=== просвет — один параметр на три шаб
   chk('шаблон радиусов слушает просвет', grows('radgauge', 0));
   chk('шаблон шага слушает просвет', grows('pitchgauge', 2));
   chk('шаблон диаметров слушает просвет', grows('pingauge', 0));
+}
+
+
+console.log('=== кромка выгнута поперёк плиты ===');
+// The arc is across the THICKNESS, not along the length: a flat edge laid on a round thread touches it on
+// one line and rocks off it. Measured by sending a ray down the tooth line at three points across the
+// plate — the shoulders must reach further than the middle, by the sagitta and by nothing else.
+{
+  for(const R of [0, 3, 6, 20]){
+    const p = Object.assign({}, DEF, {mntMode:'pitchgauge', mntPitchR:R, mntPitchLean:0});
+    const s = pitchGaugeSpec(p), tris = build({mntMode:'pitchgauge', mntPitchR:R, mntPitchLean:0});
+    chk('R='+R+': водонепроницаем', wt(tris), manifoldCheck(tris,4));
+    chk('R='+R+': радиус не меньше полутолщины', s.R === 0 || s.R >= s.t/2, {R:s.R, t:s.t});
+    chk('R='+R+': прогиб согласован с радиусом',
+        near(s.sag, s.R > 0 ? s.R - Math.sqrt(s.R*s.R - s.t*s.t/4) : 0, 1e-9), s.sag);
+    // the lowest point of the blade, at the middle of the plate and at its shoulder
+    const k = 0, x = s.hs/2 + s.bw*0.6;
+    const zAtY = y => { let lo = 1e9;
+      for(const T of tris) for(const v of T)
+        if(Math.abs(v[1]-y) < 1e-6 && v[0] > s.hs/2 && v[2] > s.zAt(k)-3 && v[2] < s.zAt(k)+s.bl) lo = Math.min(lo, v[2]);
+      return lo; };
+    // A flat blade is extruded in ONE step, so it has no station at y = 0 to probe — its two faces are the
+    // whole story, and they must be level with each other.
+    if(R === 0){
+      chk('плоская кромка — обе грани вровень', near(zAtY(-s.t/2), zAtY(s.t/2), 1e-9),
+          {a:zAtY(-s.t/2), b:zAtY(s.t/2)});
+    } else {
+      const mid = zAtY(0), edge = zAtY(-s.t/2);
+      chk('R='+R+': плечо тянется дальше середины', edge < mid - 1e-9, {mid, edge});
+      chk('R='+R+': ровно на прогиб', near(mid - edge, s.sag, 1e-6), {got:mid-edge, sag:s.sag});
+    }
+  }
+  // Bigger radius, shallower arc — the flat plate is the limit, and the tool says so rather than being
+  // silently clamped: a radius under the half-thickness is not an arc, it is a cusp.
+  const sags = [2, 3, 6, 12, 40].map(R => pitchGaugeSpec(Object.assign({}, DEF, {mntPitchR:R})).sag);
+  chk('чем больше радиус, тем меньше прогиб', sags.every((v,i)=>i===0||v<sags[i-1]), sags);
+  const tiny = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchR:0.5, mntT:4}));
+  chk('слишком малый радиус поднят до полутолщины', tiny.R >= tiny.t/2, {R:tiny.R, t:tiny.t});
+  const wTiny = collectPrintWarnings(Object.assign({}, DEF, {shape:'box', mntMode:'pitchgauge', mntPitchR:0.5}));
+  chk('и об этом сказано', wTiny.some(w => w.indexOf('радиус кромки') >= 0), wTiny);
+  const wDeep = collectPrintWarnings(Object.assign({}, DEF, {shape:'box', mntMode:'pitchgauge',
+    mntPitchR:2.2, mntPitchMin:0.35, mntPitchMax:0.5}));
+  chk('прогиб глубже мелкого зуба — предупреждение', wDeep.some(w => w.indexOf('прогиб') >= 0), wDeep);
+}
+
+console.log('=== выпуклая на гайку, вогнутая на болт ===');
+// Same offset serves both, which reads wrong until you notice the teeth point opposite ways: the blade's
+// shoulders reach DOWN past its middle so the screw nestles between them, and the finger's middle stands UP
+// past its shoulders so it beds against the bore. Both are the tool reaching towards what it measures.
+{
+  const R = 6;
+  const se = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchKind:'ext', mntPitchR:R}));
+  const te = build({mntMode:'pitchgauge', mntPitchKind:'ext', mntPitchR:R});
+  const si = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchKind:'int', mntPitchR:R}));
+  const ti = build({mntMode:'pitchgauge', mntPitchKind:'int', mntPitchR:R});
+  const extreme = (tris, s, side, pick) => { let best = pick > 0 ? -1e9 : 1e9;
+    for(const T of tris) for(const v of T){
+      if(Math.abs(v[1]-side) > 1e-6) continue;
+      if(pick > 0 ? v[0] < -s.hs/2 : v[0] > s.hs/2) continue;   // the finger side / the blade side
+      if(v[2] < s.zAt(0)-3 || v[2] > s.zAt(0)+Math.max(s.bl,s.fl)) continue;
+      best = pick > 0 ? Math.max(best, v[2]) : Math.min(best, v[2]); }
+    return best; };
+  const eMid = extreme(te, se, 0, -1), eEdge = extreme(te, se, -se.t/2, -1);
+  chk('болт: зубья наружной гребёнки смотрят вниз, плечи ниже середины', eEdge < eMid - 1e-9, {eMid, eEdge});
+  const iMid = extreme(ti, si, 0, +1), iEdge = extreme(ti, si, -si.t/2, +1);
+  chk('гайка: зубья пальца смотрят вверх, середина выше плеч', iMid > iEdge + 1e-9, {iMid, iEdge});
+  chk('оба выгнуты на один и тот же прогиб',
+      near(eMid - eEdge, se.sag, 1e-6) && near(iMid - iEdge, si.sag, 1e-6),
+      {ext:eMid-eEdge, int:iMid-iEdge, sag:se.sag});
+}
+
+console.log('=== зубцы наклонены под руку резьбы ===');
+// A thread's crest is a spiral, so it meets a square-cut tooth at an angle. The lean is a shear across the
+// thickness: the same tooth line, slid along X as you cross the plate. Read it as the shift between the
+// two faces, and demand the two hands shift opposite ways by the same amount.
+{
+  const toothX = (tris, s, side) => { // x of the leftmost tooth tip of level 0 on the given face
+    let best = 1e9;
+    for(const T of tris) for(const v of T)
+      // NOT filtered on x: at a steep lean the run slides past the spine's own edge, and a filter there
+      // silently drops the leftmost tooth on one face and reads the second one instead — which looks like
+      // a shear of the wrong size rather than like a broken probe.
+      if(Math.abs(v[1]-side) < 1e-6 && v[0] > 0 && Math.abs(v[2] - (s.zAt(0) + s.arcAt(side))) < 1e-6)
+        best = Math.min(best, v[0]);
+    return best; };
+  for(const lean of [0, 5, 12, 30]){
+    for(const hand of ['right','left']){
+      const o = {mntMode:'pitchgauge', mntPitchLean:lean, mntPitchHand:hand};
+      const s = pitchGaugeSpec(Object.assign({}, DEF, o)), tris = build(o);
+      chk('наклон '+lean+'° '+hand+': водонепроницаем', wt(tris), manifoldCheck(tris,4));
+      const front = toothX(tris, s, s.t/2), back = toothX(tris, s, -s.t/2);
+      const want = (hand === 'left' ? -1 : 1) * s.t * Math.tan(lean*Math.PI/180);
+      chk('наклон '+lean+'° '+hand+': сдвиг между гранями = t·tg λ',
+          near(front - back, want, 1e-6), {got:front-back, want});
+    }
+  }
+  // ...and the two hands are mirror images, not the same tool twice
+  const r5 = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:9, mntPitchHand:'right'}));
+  const l5 = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:9, mntPitchHand:'left'}));
+  chk('правая и левая — зеркальны', r5.hand === -l5.hand && r5.hand === 1, {r:r5.hand, l:l5.hand});
+  for(const y of [-2, -0.5, 0, 1.3, 2])
+    chk('сдвиг при y='+y+' противоположен по знаку', near(r5.skewAt(y), -l5.skewAt(y), 1e-12),
+        {r:r5.skewAt(y), l:l5.skewAt(y)});
+  chk('без наклона сдвига нет',
+      pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:0})).skewAt(2) === 0);
+  // The blade's root has to stay buried in the spine however far the lean slides it, or the blade hangs
+  // off the tool by a line of contact and nothing else.
+  for(const lean of [0, 10, 20, 30]){
+    const s = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchLean:lean}));
+    chk('наклон '+lean+'°: корень лепестка не выходит из хребта',
+        s.bite >= Math.abs(s.skewAt(s.t/2)) + 1 - 1e-9, {bite:s.bite, slide:s.skewAt(s.t/2)});
+    chk('наклон '+lean+'°: корень не шире хребта', 2*s.bite <= s.hs, {bite:s.bite, hs:s.hs});
+  }
+}
+
+console.log('=== выгиб и наклон вместе, и плоский случай прежний ===');
+{
+  // With neither, the swept extrusion must produce exactly what the straight one did — same triangles.
+  const flat = build({mntMode:'pitchgauge', mntPitchR:0, mntPitchLean:0});
+  const s = pitchGaugeSpec(Object.assign({}, DEF, {mntPitchR:0, mntPitchLean:0}));
+  chk('без выгиба и наклона проход один', s.steps === 1 && !s.sweep, {steps:s.steps, sweep:s.sweep});
+  chk('плоский случай замкнут', wt(flat), manifoldCheck(flat,4));
+  for(const kind of ['ext','int','both']) for(const R of [0, 5]) for(const lean of [0, 14])
+    for(const hand of ['right','left']){
+      const tris = build({mntMode:'pitchgauge', mntPitchKind:kind, mntPitchR:R,
+                          mntPitchLean:lean, mntPitchHand:hand, mntPitchMin:0.5, mntPitchMax:2.5});
+      chk(kind+' R='+R+' λ='+lean+' '+hand+': замкнут', wt(tris), manifoldCheck(tris,4));
+    }
 }
 
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

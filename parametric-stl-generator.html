@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v176';
+const APP_VERSION = 'v177';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3931,6 +3931,10 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntGaugeGap', w:['radgauge','pitchgauge','pingauge'], label:'Шаблон: просвет между мерными местами', min:0, max:40, step:0.5, default:4, unit:'мм', hint:'У шаблона шага резьбы это рабочий размер: под пластиной должен проходить винт, который вы меряете, иначе он ляжет сразу на две.'},
     {group:'Крепёж / монтаж', key:'mntPitchKind', w:['pitchgauge'], label:'Шаблон резьбы: наружная или внутренняя', type:'select', default:'ext',
       options:[{v:'ext',t:'наружная (винт)'},{v:'int',t:'внутренняя (гайка)'},{v:'both',t:'обе на одном инструменте'}]},
+    {group:'Крепёж / монтаж', key:'mntPitchR', w:['pitchgauge'], label:'Шаблон резьбы: радиус кромки (0 = плоская)', min:0, max:40, step:0.5, default:4, unit:'мм', hint:'Кромка выгибается поперёк плиты: у наружной гребёнки плечи охватывают винт, у внутреннего пальца середина прилегает к отверстию. Плоская кромка касается резьбы по одной линии и качается.'},
+    {group:'Крепёж / монтаж', key:'mntPitchLean', w:['pitchgauge'], label:'Шаблон резьбы: наклон зубцов (угол подъёма)', min:0, max:30, step:0.5, default:0, unit:'°', hint:'Гребень резьбы — спираль, поэтому с зубом инструмента он встречается под углом. Ставьте угол подъёма своей резьбы: atan(шаг · заходов / (π · Ø)).'},
+    {group:'Крепёж / монтаж', key:'mntPitchHand', w:['pitchgauge'], needs:{mntPitchLean:0}, label:'Шаблон резьбы: направление', type:'select', default:'right',
+      options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Крепёж / монтаж', key:'mntPinN', w:['pingauge'], label:'Шаблон диаметров: число стоек', min:2, max:20, step:1, default:8, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntPinStart', w:['pingauge'], label:'Шаблон диаметров: первый Ø', min:0.8, max:40, step:0.1, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPinStep', w:['pingauge'], label:'Шаблон диаметров: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
@@ -9040,6 +9044,43 @@ function extrudePolyYTris(loops, y0, y1){
       out.push(orient([[u[0],y0,u[1]],[v[0],y1,v[1]],[u[0],y1,u[1]]], ref)); } }
   return out;
 }
+// The same loops swept along Y while being MOVED — every station is the identical loop translated by
+// (dx, dz) = at(y). Not deformed: that is what keeps it easy to be sure of, because the side walls stay
+// ruled quads between corresponding vertices and the caps stay the flat case's own ear-clipping, merely
+// shifted. A straight extrusion is at(y) = [0, 0], and the two agree triangle for triangle there.
+//
+// Two things want exactly this. A gauge blade that CRADLES what it measures instead of balancing on it:
+// dz along an arc, so the blade's shoulders reach the thread and its middle stands off. And a tooth line
+// that LEANS with the helix: dx growing across the thickness, so the tool's teeth lie along the crest's
+// own spiral rather than square across it.
+function extrudePolySweptYTris(loops, y0, y1, steps, at){
+  const clean = loops.map(P=>{ const q=[];
+    for(const v of P){ const l=q[q.length-1]; if(!l || Math.abs(l[0]-v[0])>1e-9 || Math.abs(l[1]-v[1])>1e-9) q.push(v); }
+    while(q.length>1 && Math.abs(q[0][0]-q[q.length-1][0])<1e-9 && Math.abs(q[0][1]-q[q.length-1][1])<1e-9) q.pop();
+    return q; }).filter(P=>P.length>=3);
+  if(!clean.length) return [];
+  const L = clean.map((P,i)=>{ const wantCCW = (i===0); const isCCW = loopArea2(P)>=0;
+    return wantCCW===isCCW ? P : P.slice().reverse(); });
+  const N = Math.max(1, Math.round(steps)), out = [];
+  const ys = []; for(let j=0;j<=N;j++) ys.push(y0 + (y1-y0)*j/N);
+  const off = ys.map(y => at(y));
+  const at3 = (u, j) => [u[0] + off[j][0], ys[j], u[1] + off[j][1]];
+  const flat = bridgeHolesXZ(L[0], L.slice(1));
+  for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
+    out.push(orient([at3(A,N), at3(B,N), at3(C,N)], [0,1,0]));
+    out.push(orient([at3(A,0), at3(B,0), at3(C,0)], [0,-1,0])); }
+  // Wall facing, as in the straight case: (dz, −dx) for every loop, outer and hole alike, with no winding
+  // sign of its own — normalising the loops above has already accounted for that once, and accounting for
+  // it twice turns every bore inside out in a way no edge count and no depth probe can see.
+  for(const P of L){
+    for(let i=0;i<P.length;i++){ const k=(i+1)%P.length, u=P[i], v=P[k];
+      const ref=[v[1]-u[1], 0, -(v[0]-u[0])];
+      if(Math.abs(ref[0])<1e-12 && Math.abs(ref[2])<1e-12) continue;
+      for(let j=0;j<N;j++){
+        out.push(orient([at3(u,j), at3(v,j), at3(v,j+1)], ref));
+        out.push(orient([at3(u,j), at3(v,j+1), at3(u,j+1)], ref)); } } }
+  return out;
+}
 // Convex 2D polygon (points as [y,z]) extruded along X — fan caps at both ends + one quad per edge.
 function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
   const cy=poly.reduce((s,q)=>s+q[0],0)/n, cz=poly.reduce((s,q)=>s+q[1],0)/n;
@@ -11219,10 +11260,35 @@ function pitchGaugeSpec(p){
   let wide = 0; for(const v of list) wide = Math.max(wide, seg7Width(fmtNum(v), digit));
   const hs  = Math.max(10, wide + 3);
   const H   = list.length*rowH + gap;
+  // The toothed edge follows an arc across the plate's THICKNESS, not along its length: a flat edge laid on
+  // a round thread touches it on one line and rocks off it, and rocking is what the tool is read by. The
+  // sign is the same for both kinds, which is worth stating because it reads wrong: the external blade's
+  // shoulders reach down past its middle so the screw nestles between them, and the internal finger's
+  // middle stands proud of its shoulders so it beds against the bore. Teeth point opposite ways, so one
+  // offset serves both. Radius is clamped to the half-thickness — below that there is no arc, only a cusp.
+  const rad = Math.max(0, p.mntPitchR != null ? p.mntPitchR : 4);
+  const R   = rad > 0 ? Math.max(rad, t/2 + 0.05) : 0;
+  const sag = R > 0 ? R - Math.sqrt(Math.max(0, R*R - t*t/4)) : 0;
+  const arcAt = y => R > 0 ? -(R - Math.sqrt(Math.max(0, R*R - y*y))) : 0;
+  // ...and the teeth LEAN by the helix, because a thread's crest is a spiral and meets the tool at an
+  // angle. Right-hand and left-hand lean opposite ways; a tool built for one rocks on the other.
+  const lean = Math.max(0, Math.min(30, p.mntPitchLean != null ? p.mntPitchLean : 0));
+  const hand = p.mntPitchHand === 'left' ? -1 : 1;
+  const skewAt = y => hand * y * Math.tan(lean*Math.PI/180);
+  const sweep = (R > 0 || lean > 0);
+  const steps = sweep ? Math.max(4, Math.round(t*3)) : 1;
+  const at = y => [skewAt(y), arcAt(y)];
+  // How far a blade's root reaches INTO the spine. A millimetre would do for a straight blade, but the lean
+  // slides the outermost stations sideways by (t/2)·tan λ, and a root that slides clear of the spine leaves
+  // a blade touching it along a line — still watertight, still correctly paired edge for edge, and hanging
+  // off the tool by nothing at all.
+  const bite = 1 + (t/2)*Math.tan(lean*Math.PI/180);
   // The smallest bore an internal finger will enter: its own section, corner to corner, plus a little.
   const bore = Math.hypot(t, fl) + 0.4;
   return {list, n:list.length, t, gap, bw, bl, fl, nose, hs, rowH, H, digit, kind, ext, int, bore,
+          rad, R, sag, lean, hand, sweep, steps, at, arcAt, skewAt, bite,
           empty: !inRange.length,
+          deepArc: sag > 0.6*td(list[0]),
           zAt: k => -H/2 + gap + rowH*k,                // bottom of level k
           td, nTeeth: P => Math.max(3, Math.floor(bw/P)),
           fine: td(list[0]) < 0.32,
@@ -11251,14 +11317,14 @@ function buildPitchGauge(p){
   for(let k=0;k<s.n;k++){
     const P = s.list[k], z0 = s.zAt(k);
     if(s.ext){                                          // blade to the RIGHT: teeth point DOWN off its underside
-      const xa = xs1 - 1, xb = xs1 + s.bw, zr = z0 + s.td(P), zt = z0 + s.bl, L = [];
+      const xa = xs1 - s.bite, xb = xs1 + s.bw, zr = z0 + s.td(P), zt = z0 + s.bl, L = [];
       L.push([xa, zr]);
       for(const v of teeth(P, (xs1 + xb)/2, zr, -1)) L.push(v);
       L.push([xb, zr], [xb, zt], [xa, zt]);
-      for(const T of extrudePolyYTris([L], -s.t/2, s.t/2)) tris.push(T);
+      for(const T of extrudePolySweptYTris([L], -s.t/2, s.t/2, s.steps, s.at)) tris.push(T);
     }
     if(s.int){                                          // finger to the LEFT: teeth on its top, nose chamfered
-      const xa = xs0 + 1, xb = xs0 - s.bw, zt = z0 + s.fl, L = [];
+      const xa = xs0 + s.bite, xb = xs0 - s.bw, zt = z0 + s.fl, L = [];
       // Walked from the finger's root along the bottom to the nose (−X), up over the chamfer, then back
       // along the toothed top edge (+X) to the root. The tooth run is emitted left→right, which is the
       // direction of that return leg — walking it the other way folds the loop over itself.
@@ -11266,7 +11332,7 @@ function buildPitchGauge(p){
       L.push([xa, z0], [xb + s.nose, z0], [xb, z0 + s.nose], [xb, zr]);
       for(const v of teeth(P, (xs0 + xb)/2, zr, +1)) L.push(v);
       L.push([xa, zr]);
-      for(const T of extrudePolyYTris([L], -s.t/2, s.t/2)) tris.push(T);
+      for(const T of extrudePolySweptYTris([L], -s.t/2, s.t/2, s.steps, s.at)) tris.push(T);
     }
   }
   // The spine runs the full height and every level bites 1 mm into it — interpenetrating volumes, never a
@@ -15089,6 +15155,11 @@ function collectPrintWarnings(p){
     if (g.crowded) w.push('просвет между уровнями ' + g.gap.toFixed(1) + ' мм — винт толще этого ляжет сразу на две пластины');
     if (g.fat) w.push('палец для внутренней резьбы в сечении ' + g.t.toFixed(1) + ' × ' + g.fl.toFixed(1) +
                       ' мм — в гайку под шаг ' + g.list[0] + ' мм он не войдёт; уменьшите толщину плиты');
+    if (g.rad > 0 && g.R > g.rad + 1e-9)
+      w.push('радиус кромки поднят с ' + g.rad.toFixed(1) + ' до ' + g.R.toFixed(1) +
+             ' мм — при плите ' + g.t.toFixed(1) + ' мм меньший даёт не дугу, а излом');
+    if (g.deepArc) w.push('прогиб кромки ' + g.sag.toFixed(2) + ' мм при глубине зуба ' +
+                          g.td(g.list[0]).toFixed(2) + ' мм — мелкий зуб дугой съест целиком');
   }
   if (p.mntMode === 'pingauge'){
     const g = pinGaugeSpec(p);

@@ -301,6 +301,111 @@ console.log('=== профили и ряды с таблицы сравнения
   chk('«свой» профиль имени не портит', /кейкап/.test(nm({keyProfile:'custom'})), nm({keyProfile:'custom'}));
 }
 
+
+console.log('=== стабилизаторы на широкой клавише ===');
+// A wide cap on one stem rocks and binds, so it gets three: the switch in the middle and a stabiliser to
+// each side. What has to be right is that there are three of them, that they are in a line and evenly
+// spaced — the middle one exactly halfway between the outer two — and that they are all INSIDE the cap,
+// which is the one thing the reference table does not guarantee on its own.
+{
+  const stab = ov => { base(ov); return keycapStabSpec(paramState.box); };
+  chk('1u — один стем', stab({keySizeU:1}).n === 1, stab({keySizeU:1}).n);
+  chk('1.5u — один стем', stab({keySizeU:1.5}).n === 1, stab({keySizeU:1.5}).n);
+  chk('2u — три стема', stab({keySizeU:2}).n === 3, stab({keySizeU:2}).n);
+  chk('6.25u — три стема', stab({keySizeU:6.25}).n === 3, stab({keySizeU:6.25}).n);
+  chk('можно выключить', stab({keySizeU:6.25, keyStab:'none'}).n === 1);
+  chk('без стема нет и стабилизаторов', stab({keySizeU:6.25, keyStem:'none'}).n === 1);
+  // the geometry the request is actually about
+  for(const u of [2, 2.25, 2.75, 6.25, 7]){
+    const g = stab({keySizeU:u});
+    chk(u+'u: стемов ровно три', g.n === 3 && g.xs.length === 3, g.xs);
+    chk(u+'u: они в одну линию и по возрастанию', g.xs[0] < g.xs[1] && g.xs[1] < g.xs[2], g.xs);
+    chk(u+'u: центральный ровно посередине между крайними',
+        Math.abs(g.xs[1] - (g.xs[0] + g.xs[2])/2) < 1e-12, g.xs);
+    chk(u+'u: и он же в центре клавиши', Math.abs(g.xs[1]) < 1e-12, g.xs[1]);
+    chk(u+'u: промежутки равны', Math.abs((g.xs[1]-g.xs[0]) - (g.xs[2]-g.xs[1])) < 1e-12, g.xs);
+    chk(u+'u: расстояние между крайними = заявленному', Math.abs((g.xs[2]-g.xs[0]) - g.span) < 1e-12,
+        {got:g.xs[2]-g.xs[0], span:g.span});
+    chk(u+'u: все стемы внутри клавиши',
+        Math.abs(g.xs[0]) + 2.9 <= 18.2*u/2 - 0.8 + 1e-9, {x:g.xs[0], half:18.2*u/2});
+  }
+  // the table, verbatim from the reference
+  const TABLE = {2:23.88, 2.25:42.86, 2.75:61.91, 6.25:100};
+  for(const u in TABLE)
+    chk(u+'u: расстояние из таблицы', Math.abs(KEYCAP_STAB_SPAN[u] - TABLE[u]) < 1e-9,
+        {got:KEYCAP_STAB_SPAN[u], table:TABLE[u]});
+  chk('7u тоже есть (её на картинке нет, но её печатают)', KEYCAP_STAB_SPAN[7] === 133.35);
+  // Two of the reference's own numbers are wider than the cap they belong to. Clamped rather than left
+  // hanging: a stem past the cap's edge is not a stem in the wrong place, it is a separate lump in the file.
+  for(const u of [2.25, 2.75, 7]){
+    const g = stab({keySizeU:u});
+    chk(u+'u: таблица шире клавиши — это замечено', !g.fits, {asked:g.asked, max:g.maxSpan});
+    chk(u+'u: разведено ровно на сколько влезает', Math.abs(g.span - g.maxSpan) < 1e-9,
+        {span:g.span, max:g.maxSpan});
+    const ws = collectPrintWarnings(Object.assign({}, paramState.box, {keySizeU:u}));
+    chk(u+'u: и сказано вслух', ws.some(x => /не помещаются/.test(x)), ws);
+  }
+  chk('2u и 6.25u помещаются как есть', stab({keySizeU:2}).fits && stab({keySizeU:6.25}).fits);
+  // a hand-set span overrides the table
+  { const g = stab({keySizeU:2.25, keyStabSpan:23.8});
+    chk('своё расстояние перебивает таблицу', Math.abs(g.span - 23.8) < 1e-9 && g.fits, g); }
+  // an off-table width borrows the nearest and says so
+  { const g = stab({keySizeU:3});
+    chk('3u: взято от ближайшей', !g.tabled && g.near === 2.75, {near:g.near, tabled:g.tabled});
+    const ws = collectPrintWarnings(Object.assign({}, paramState.box, {keySizeU:3}));
+    chk('3u: и об этом сказано', ws.some(x => /в таблице расстояния нет/.test(x)), ws); }
+  { const ws = collectPrintWarnings(Object.assign({}, paramState.box,
+      {keycapMode:'single', keySizeU:6.25, keyStab:'none', keyStem:'mx'}));
+    chk('широкая клавиша без стабилизаторов — предупреждение', ws.some(x => /перекашиваться/.test(x)), ws); }
+}
+{
+  // ...and the mesh: three stems really are there, they are separate closed shells sunk into the plate,
+  // and a ray up through each one finds material.
+  for(const u of [2, 2.75, 6.25]){
+    const t1 = base({keySizeU:u, keyStab:'none'}), t3 = base({keySizeU:u, keyStab:'auto'});
+    chk(u+'u без стабилизаторов: водонепроницаем', manifoldCheck(t1,4).watertight && vol(t1)>0);
+    chk(u+'u со стабилизаторами: водонепроницаем', manifoldCheck(t3,4).watertight && vol(t3)>0);
+    chk(u+'u: стабилизаторы добавили материал', vol(t3) > vol(t1), {one:vol(t1), three:vol(t3)});
+    chk(u+'u: и добавили ровно две оболочки',
+        meshComponents(t3).length === meshComponents(t1).length + 2,
+        {one:meshComponents(t1).length, three:meshComponents(t3).length});
+    // material under each of the three, and clear space between them
+    base({keySizeU:u, keyStab:'auto'});
+    const g = keycapStabSpec(paramState.box);
+    for(const dx of g.xs){
+      const runs = solidRuns(t3, 1, 0.29, dx + 0.37);
+      chk(u+'u: под стемом на x='+dx.toFixed(1)+' есть материал', runs.length >= 1, runs);
+    }
+    const gapX = (g.xs[0] + g.xs[1])/2;
+    const between = solidRuns(t3, 1, 0.29, gapX);
+    const under = between.filter(r => r[0] < 0.5);      // below the plate: the skirt cavity, nothing else
+    chk(u+'u: между стемами пусто', under.length === 0, between);
+  }
+  // choc legs get the same treatment — two legs per stem, six in all
+  { const t = base({keySizeU:2, keyStem:'choc', keyStab:'auto'});
+    chk('choc 2u: водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0);
+    const one = base({keySizeU:2, keyStem:'choc', keyStab:'none'});
+    chk('choc: три стема — это шесть ножек',
+        meshComponents(t).length === meshComponents(one).length + 4,
+        {one:meshComponents(one).length, three:meshComponents(t).length}); }
+  // and every profile/row at spacebar width still closes
+  for(const pr of ['sa','cherry','dsa','mt3'])
+    chk(pr+' пробел 6.25u со стабилизаторами: водонепроницаем',
+        manifoldCheck(base({keyProfile:pr, keyRow:'space', keySizeU:6.25}),4).watertight);
+}
+{
+  // The controls appear only where they mean something.
+  const row = k => SHAPE_PARAMS.box.find(r => r.key === k);
+  for(const k of ['keyStab','keyStabSpan']){
+    chk(k+': скрыт на узкой клавише', !paramRowRelevant(row(k),
+        Object.assign({}, paramState.box, {keySizeU:1, keyStab:'auto'})));
+    chk(k+': виден на широкой', paramRowRelevant(row(k),
+        Object.assign({}, paramState.box, {keySizeU:6.25, keyStab:'auto'})));
+  }
+  chk('расстояние скрыто, когда стабилизаторы выключены', !paramRowRelevant(row('keyStabSpan'),
+      Object.assign({}, paramState.box, {keySizeU:6.25, keyStab:'none'})));
+}
+
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('scoop/grip/ears/feet/dividers skipped on keycap', a===b, {a,b}); }

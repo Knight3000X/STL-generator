@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v180';
+const APP_VERSION = 'v181';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3697,6 +3697,41 @@ const KEYCAP_PROFILES = {
   dsa:    {t:'DSA (без скульптуры, низкий)',        top: 7.6, sculpt:'flat', dish:1.0, dishKind:'sph', taper:3.0},
   g20:    {t:'G20 (без скульптуры, самый низкий)',  top: 7.1, sculpt:'flat', dish:0.4, dishKind:'sph', taper:1.2},
 };
+/* СТАБИЛИЗАТОРЫ на широких клавишах. A wide cap on one stem rocks and binds; a real board carries it on
+   three — the switch in the middle and a stabiliser stem to each side, all in a line and evenly spaced, so
+   the middle one sits exactly halfway between the outer two. The distance between the OUTER two is the
+   number that matters, because that is what the board's stabiliser wires are set to, and it is what the
+   table below holds.
+
+   The numbers are the reference's own. Two of them do not fit the cap they belong to — 42.86 mm across a
+   2.25u cap that is 41 mm wide, 61.91 mm across a 2.75u cap of 50 — and the Cherry standard for 2u, 2.25u
+   and 2.75u alike is 23.8 mm, not a figure that grows with the key. Rather than quietly substitute, the
+   span is a parameter with the table as its default, and a cap whose stems fall outside it says so in the
+   print warnings with the standard figure named. 7u is not on the reference; 133.35 mm is its published
+   spacing and it is the other spacebar people print. */
+const KEYCAP_STAB_SPAN = {2:23.88, 2.25:42.86, 2.75:61.91, 6.25:100, 7:133.35};
+function keycapStabSpec(p){
+  const u = Math.max(0.25, Math.min(7, p.keySizeU || 1));
+  const stem = p.keyStem && p.keyStem !== 'none';
+  const manual = (p.keyStabSpan || 0) > 0;
+  // Nearest tabled size, so an in-between width still gets a plausible span rather than none at all — and
+  // `tabled` records whether it was an exact hit, because that is the difference between "this fits your
+  // board" and "this is the closest thing I had".
+  const sizes = Object.keys(KEYCAP_STAB_SPAN).map(Number).sort((a,b)=>a-b);
+  const near = sizes.reduce((a,b)=>Math.abs(b-u) < Math.abs(a-u) ? b : a, sizes[0]);
+  const asked = manual ? p.keyStabSpan : KEYCAP_STAB_SPAN[near];
+  const wide = u >= 2 - 1e-9;
+  const on = stem && wide && p.keyStab !== 'none' && asked > 0;
+  // A stem is 5.8 mm across at its widest (the MX barrel) and has to stay inside the skirt. CLAMPED, not
+  // merely warned about: a stem placed past the cap's own edge is not a stem in the wrong place, it is a
+  // lump of plastic floating beside the model, and the file would carry it out to the slicer.
+  const wall = Math.max(0.8, Math.min(3, p.keyWall || 1.3));
+  const maxSpan = Math.max(0, 18.2*u - 2*wall - 5.8);
+  const span = Math.min(asked, maxSpan);
+  const xs = on ? [-span/2, 0, span/2] : [0];
+  return {on, span, asked, u, near, xs, n:xs.length, maxSpan,
+          tabled: Math.abs(near - u) < 1e-9, fits: !on || asked <= maxSpan + 1e-9};
+}
 // What a profile actually is at a given row: height, top-plane tilt, dish depth and dish shape. One place,
 // so the builder, the model's name and the tests all read the same answer.
 function keycapRowSpec(profKey, rowKey){
@@ -3747,6 +3782,11 @@ const SHAPE_PARAMS = {
     {group:'Кейкап', key:'keyStem', label:'Кейкап: крепление (стем)', type:'select', default:'mx',
       options:[{v:'mx',t:'Cherry MX (крест)'},{v:'choc',t:'Kailh Choc (2 ножки)'},{v:'none',t:'без стема'}]},
     {group:'Кейкап', key:'keyStemTol', label:'Кейкап: допуск посадки стема', min:0, max:0.5, step:0.05, default:0.1, unit:'мм'},
+    {group:'Кейкап', key:'keyStab', needs:{keySizeU:1.99}, label:'Кейкап: стабилизаторы на широкой клавише', type:'select', default:'auto',
+      options:[{v:'auto',t:'три стема: центральный + два по краям'},{v:'none',t:'только центральный'}],
+      hint:'Широкая клавиша на одном стеме перекашивается и заедает. Крайние стемы стоят на расстоянии из таблицы, центральный — ровно посередине между ними.'},
+    {group:'Кейкап', key:'keyStabSpan', needs:{keySizeU:1.99}, only:{keyStab:['auto']}, label:'Кейкап: расстояние между крайними стемами (0 = из таблицы)', min:0, max:150, step:0.01, default:0, unit:'мм',
+      hint:'По таблице: 2u — 23.88, 2.25u — 42.86, 2.75u — 61.91, 6.25u — 100, 7u — 133.35 мм. Стандарт Cherry для 2u…2.75u — 23.8 мм на всех трёх.'},
     {group:'Лист / панель', key:'sheetShape', label:'Плоский лист (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'rect',t:'прямоугольник'},{v:'round',t:'скруглённый прямоугольник'},{v:'ngon',t:'многоугольник'},{v:'circle',t:'круг / эллипс'},{v:'svg',t:'контур из SVG (кнопка ниже)'}]},
     {group:'Лист / панель', key:'sheetThick', label:'Лист: толщина', min:0.4, max:20, step:0.2, default:3, unit:'мм'},
@@ -7301,7 +7341,11 @@ function buildKeycap(p, logoRes){
     const stemH=yPlate+Math.min(1.2,plateT*0.6);
     const st=buildLogoExtrudeTris({heightmap:sh.heightmap,rotation:0,invert:false,threshold:0.5},
       sh.spanX, sh.spanZ, stemH, 150);
-    for(const t of st) tris.push(t.map(q=>[q[0], q[1]+stemH/2, q[2]]));
+    // One stem on a narrow cap, three on a wide one: the switch in the middle and a stabiliser to each
+    // side. Each is its own closed shell sunk into the plate — interpenetrating volumes, never a shared
+    // face — and they are far enough apart that they never touch one another.
+    for(const dx of keycapStabSpec(p).xs)
+      for(const t of st) tris.push(t.map(q=>[q[0]+dx, q[1]+stemH/2, q[2]]));
   }
   return polyDropDegen(snapWeldTris(tris));
 }
@@ -15242,6 +15286,18 @@ function collectPrintWarnings(p){
     if (g.nothing) w.push('кромка ' + g.T.toFixed(1) + ' мм — зажимать нечего');
     if (g.weak) w.push('стенка ' + g.w.toFixed(1) + ' мм — прищепка разожмётся и не вернётся');
     if (g.shallow) w.push('полка ' + g.td.toFixed(0) + ' мм — телефон на ней не удержится');
+  }
+  if (p.keycapMode && p.keycapMode !== 'none'){
+    const g = keycapStabSpec(p);
+    if (g.on && !g.fits)
+      w.push('крайние стемы на ' + g.asked.toFixed(2) + ' мм не помещаются в клавишу ' + g.u +
+             'u — раздвинуты на ' + g.span.toFixed(1) + ' мм, дальше некуда' +
+             (g.u <= 2.75 ? '; у Cherry для 2u…2.75u расстояние 23.8 мм на всех трёх' : ''));
+    if (g.on && !g.tabled)
+      w.push('для ' + g.u + 'u в таблице расстояния нет — взято от ближайшей, ' + g.near +
+             'u (' + g.span.toFixed(2) + ' мм); проверьте по своей плате');
+    if (!g.on && g.u >= 2 && p.keyStem !== 'none')
+      w.push('клавиша ' + g.u + 'u на одном стеме будет перекашиваться — включите стабилизаторы');
   }
   if (p.mntMode === 'tool'){
     const g = toolRackSpec(p);

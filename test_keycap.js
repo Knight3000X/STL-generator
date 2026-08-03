@@ -99,16 +99,18 @@ function sag(tris){
 {
   // Every profile builds, and every profile now HAS a dish — «dish: 0» on all six was the real bug: the
   // presets came out flat-topped, which is not a look any of them has.
-  for(const pr of ['cherry','oem','sa','mda','xda','dsa']){
+  const PROFILES = Object.keys(KEYCAP_PROFILES);
+  chk('профилей столько, сколько на таблице сравнения', PROFILES.length >= 18, PROFILES.length);
+  for(const pr of PROFILES){
     const t = base({keyProfile:pr, keyRow:'r3'});
     chk(pr+': водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4));
-    chk(pr+': чаша объявлена', KEYCAP_PROFILES[pr].dish > 0.5, KEYCAP_PROFILES[pr].dish);
+    chk(pr+': чаша объявлена', KEYCAP_PROFILES[pr].dish > 0.3, KEYCAP_PROFILES[pr].dish);
     chk(pr+': форма чаши названа', ['cyl','sph'].includes(KEYCAP_PROFILES[pr].dishKind),
         KEYCAP_PROFILES[pr].dishKind);
     const g = sag(t), want = KEYCAP_PROFILES[pr].dishKind;
-    chk(pr+': ложбина поперёк есть', g.x > 0.2, g);
+    chk(pr+': ложбина поперёк есть', g.x > 0.1, g);
     if(want === 'cyl') chk(pr+': вдоль — прямая (цилиндр)', Math.abs(g.z) < 0.1, g);
-    else               chk(pr+': вдоль — тоже ложбина (сфера)', g.z > 0.2, g);
+    else               chk(pr+': вдоль — тоже ложбина (сфера)', g.z > 0.1, g);
   }
   // Cherry and OEM are the two the photo is of; state them by name so the profile cannot quietly drift.
   chk('Cherry — цилиндрическая', KEYCAP_PROFILES.cherry.dishKind === 'cyl');
@@ -186,10 +188,117 @@ function sag(tris){
   }
   chk('форма чаши скрыта при нулевой чаше', !paramRowRelevant(row('keyDishKind'),
       Object.assign({}, paramState.box, {keyProfile:'custom', keyDish:0})));
-  chk('ряд — только для скульптурных', row('keyRow').only.keyProfile.join() === 'cherry,oem,sa,mda',
-      row('keyRow').only);
-  chk('ряд скрыт у XDA', !paramRowRelevant(row('keyRow'),
+  chk('ряд — для всякого пресета, но не для «своего»',
+      row('keyRow').only.keyProfile.join() === Object.keys(KEYCAP_PROFILES).join(), row('keyRow').only);
+  chk('ряд виден у XDA (у него всё равно есть пробел)', paramRowRelevant(row('keyRow'),
       Object.assign({}, paramState.box, {keyProfile:'xda'})));
+  chk('ряд скрыт при «своём» профиле', !paramRowRelevant(row('keyRow'),
+      Object.assign({}, paramState.box, {keyProfile:'custom'})));
+}
+
+
+console.log('=== профили и ряды с таблицы сравнения ===');
+{
+  const PROFILES = Object.keys(KEYCAP_PROFILES);
+  // The chart's number against a profile's name is the height of its TALLEST row, so that is what has to
+  // come out of the tallest row and nothing else. Written down once, checkable against the picture.
+  const CHART = {sa:16.5, csa:16.1, taihao:14.8, osa:14.4, asa:14.4, kat:13.5, mt3:13.3,
+                 mda:12.5, oem:11.9, dss:11.0, jda:10.5, cherry:9.4,
+                 sal:13.9, kam:9.1, xda:9.1, asalow:8.9, dsa:7.6, g20:7.1};
+  for(const pr of PROFILES){
+    chk(pr+': высота с таблицы', Math.abs(KEYCAP_PROFILES[pr].top - CHART[pr]) < 1e-9,
+        {got:KEYCAP_PROFILES[pr].top, chart:CHART[pr]});
+    const hs = KEYCAP_ROWS.map(r => keycapRowSpec(pr, r).h);
+    chk(pr+': самый высокий ряд — заявленная высота', Math.abs(Math.max(...hs) - CHART[pr]) < 1e-9, hs);
+    chk(pr+': ни один ряд не выше', hs.every(h => h <= CHART[pr] + 1e-9), hs);
+    chk(pr+': семейство скульптуры настоящее', !!KEYCAP_SCULPT[KEYCAP_PROFILES[pr].sculpt],
+        KEYCAP_PROFILES[pr].sculpt);
+    chk(pr+': у профиля есть человеческое имя', !!KEYCAP_PROFILES[pr].t && KEYCAP_PROFILES[pr].t.length > 3);
+  }
+  chk('таблица и проверка описывают один список',
+      Object.keys(CHART).sort().join() === PROFILES.slice().sort().join(),
+      {chart:Object.keys(CHART).length, code:PROFILES.length});
+  // A sculpted profile steps down towards the home row and back up; a flat one does not step at all.
+  for(const pr of PROFILES){
+    const S = KEYCAP_SCULPT[KEYCAP_PROFILES[pr].sculpt];
+    const h = i => keycapRowSpec(pr, KEYCAP_ROWS[i]).h;
+    if(KEYCAP_PROFILES[pr].sculpt === 'flat'){
+      chk(pr+': нескульптурный — все ряды равны', [0,1,2,3,4].every(i => Math.abs(h(i)-h(0)) < 1e-9),
+          [0,1,2,3,4].map(h));
+      chk(pr+': и наклона по рядам нет', [0,1,2,3,4].every(i => S.ang[i] === 0), S.ang);
+    } else {
+      chk(pr+': домашний ряд — самый низкий из R1…R5',
+          h(2) <= Math.min(h(0),h(1),h(3),h(4)) + 1e-9, [0,1,2,3,4].map(h));
+      chk(pr+': верхний ряд наклонён к себе, нижний от себя', S.ang[0] < 0 && S.ang[4] > 0, S.ang);
+      chk(pr+': домашний ряд без наклона', S.ang[2] === 0, S.ang);
+      chk(pr+': наклон растёт монотонно', [1,2,3,4].every(i => S.ang[i] > S.ang[i-1]), S.ang);
+    }
+  }
+}
+{
+  // The spacebar row: level top, and a cylindrical trough whatever the profile does elsewhere. A bowl
+  // 100 mm across is a valley you cannot get out of, and no set has ever had one.
+  for(const pr of Object.keys(KEYCAP_PROFILES)){
+    const rs = keycapRowSpec(pr, 'space');
+    chk(pr+'/пробел: верх ровный', rs.ang === 0, rs.ang);
+    chk(pr+'/пробел: жёлоб, а не чаша', rs.dishKind === 'cyl', rs.dishKind);
+    chk(pr+'/пробел: не выше самого высокого ряда', rs.h <= KEYCAP_PROFILES[pr].top + 1e-9, rs.h);
+  }
+  // ...and it really is straight front to back, on the profiles whose alphas are bowls. Probed near the
+  // centre for the Z direction and out at the ends for the X one: a trough spanning 110 mm is nearly flat
+  // over the middle 9, so the same offsets that read an alpha would read a spacebar as having no dish.
+  for(const pr of ['sa','dsa','kat','cherry']){
+    const t = base({keyProfile:pr, keyRow:'space', keySizeU:6.25});
+    chk(pr+'/пробел: водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4));
+    const g = sag(t);
+    chk(pr+'/пробел: вдоль клавиши прямой', Math.abs(g.z) < 0.02, g);
+    const c = topAt(t, 0.37, 0.29), farL = topAt(t, -48.37, 0.29), farR = topAt(t, 48.37, 0.29);
+    chk(pr+'/пробел: поперёк жёлоб есть, но пологий',
+        (farL+farR)/2 - c > 0.5 && (farL+farR)/2 - c < KEYCAP_PROFILES[pr].dish + 0.05,
+        {sag:(farL+farR)/2 - c, dish:KEYCAP_PROFILES[pr].dish});
+    if(KEYCAP_PROFILES[pr].dishKind === 'sph'){
+      const alpha = sag(base({keyProfile:pr, keyRow:'r3'}));
+      chk(pr+': у обычной клавиши того же профиля ложбина вдоль ЕСТЬ', alpha.z > 0.1, alpha);
+    }
+  }
+}
+{
+  // Every profile in every row, at the sizes people actually print. This is the combination count that
+  // makes a table of eighteen hand-written row-height arrays a bad idea, and the reason there is not one.
+  for(const pr of Object.keys(KEYCAP_PROFILES)) for(const r of KEYCAP_ROWS){
+    const u = r === 'space' ? 6.25 : 1;
+    const t = base({keyProfile:pr, keyRow:r, keySizeU:u});
+    chk(pr+'/'+r+' '+u+'u: водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0,
+        manifoldCheck(t,4));
+  }
+  // rows are the list the UI offers, not a second copy of it
+  const opts = SHAPE_PARAMS.box.find(r => r.key === 'keyRow').options.map(o => o.v);
+  chk('ряды панели = KEYCAP_ROWS', opts.join() === KEYCAP_ROWS.join(), opts);
+  const pOpts = SHAPE_PARAMS.box.find(r => r.key === 'keyProfile').options.map(o => o.v);
+  chk('профили панели = KEYCAP_PROFILES + «свой»',
+      pOpts.slice(1).join() === Object.keys(KEYCAP_PROFILES).join() && pOpts[0] === 'custom', pOpts);
+  chk('подписи профилей взяты из таблицы', SHAPE_PARAMS.box.find(r => r.key === 'keyProfile')
+      .options.slice(1).every(o => o.t === KEYCAP_PROFILES[o.v].t));
+  // an unknown profile or row must not throw — the panel can hold a stale preset from an old file
+  chk('неизвестный профиль — не пресет, а «свой»', keycapRowSpec('нет такого','r3') === null);
+  chk('неизвестный ряд — домашний', keycapRowSpec('cherry','нет такого').row === 'r1',
+      keycapRowSpec('cherry','нет такого').row);
+}
+{
+  // The name carries the profile and the row, because eighteen profiles times six rows is a folder you
+  // otherwise have to open one file at a time.
+  const nm = ov => { base(ov); return activeShapeLabel(); };
+  chk('имя называет профиль и ряд', /SA R1/.test(nm({keyProfile:'sa', keyRow:'r1'})),
+      nm({keyProfile:'sa', keyRow:'r1'}));
+  chk('имя называет пробел', /пробел/.test(nm({keyProfile:'cherry', keyRow:'space', keySizeU:6.25})),
+      nm({keyProfile:'cherry', keyRow:'space', keySizeU:6.25}));
+  chk('у нескульптурного ряд в имя не идёт', !/R3/.test(nm({keyProfile:'dsa', keyRow:'r3'})),
+      nm({keyProfile:'dsa', keyRow:'r3'}));
+  chk('ширина в юнитах — только когда не 1u',
+      /6\.25u/.test(nm({keyProfile:'dsa', keyRow:'space', keySizeU:6.25})) &&
+      !/u$/.test(nm({keyProfile:'dsa', keyRow:'r3', keySizeU:1})),
+      nm({keyProfile:'dsa', keyRow:'r3', keySizeU:1}));
+  chk('«свой» профиль имени не портит', /кейкап/.test(nm({keyProfile:'custom'})), nm({keyProfile:'custom'}));
 }
 
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');

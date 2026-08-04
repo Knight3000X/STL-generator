@@ -467,6 +467,8 @@
      the per-group notes buried inside it. */
   #model-help{ margin:-2px 0 12px; }
   #model-help .export-note{ font-size:11px; }
+  .logo-src-row{ grid-column:1 / -1; }
+  .logo-src-row select{ width:100%; }
   ul.help-mats, ol.help-steps{ margin:2px 0 8px; padding-left:18px; }
   ul.help-mats li, ol.help-steps li{ margin-bottom:4px; }
 
@@ -913,7 +915,7 @@
         <button id="btn-add-texture" title="Процедурная текстура рельефом: размер логотипа задаёт шаг узора">+ Текстура</button>
       </div>
       <div id="logo-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх).</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё два разных тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». Если на модели виден только контур логотипа — поставьте «детали» вручную. До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх).</div></details>
     </details>
     </div>
 
@@ -1039,7 +1041,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v186';
+const APP_VERSION = 'v187';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2924,28 +2926,58 @@ function downloadBlob(blob, filename) {
    ========================================================= */
 const LOGO_HM_SIZE = 256; // fixed sampling resolution for the stored heightmap
 
-// Decides whether to read the logo's shape from the alpha channel or from luminance, and
-// (for the luminance case) suggests a sensible default `invert` so the icon itself — not
-// whichever of icon/background happens to be the brighter majority — ends up as the
-// relief. Without this, a dark icon on a transparent or light background can read as
-// uniformly low everywhere (icon and background both near 0), so the threshold never
-// triggers and the logo produces no visible relief at all.
-function analyzeLogoImageData(data, size) {
-  const lum = new Float32Array(size*size);
-  const alpha = new Float32Array(size*size);
+/* Which channel of the picture the relief is read from. There are three, and picking the wrong one is the
+   difference between a logo and its outline:
+
+     СИЛУЭТ (alpha)  — the shape is where the image is opaque. Right for text and for a one-colour icon on
+                       a transparent background, and it is why letters need no invert guessing.
+     ЯРКОСТЬ (lum)   — the shape is where the image is light (or dark). Right for a picture with no alpha
+                       at all: a black drawing on white.
+     ДЕТАЛИ (detail) — opaque AND light. Right for a COLOURED icon on a transparent background, which the
+                       other two both flatten: alpha sees one solid silhouette and loses every line inside
+                       it, luminance sees the transparent background as black and merges it with the dark
+                       parts of the icon. Outside stays flat and the tones inside are stretched over the
+                       full range, so the threshold has something to cut at.
+
+   The relief itself is binary — `val > threshold ? depth : 0` — so all the detail there is has to be in
+   this mask. That is why «детали» is not a nicety: without it a two-tone badge prints as a blank shield.
+
+   AUTO picks `detail` when the image is transparent AND the opaque part really has two tones: a spread of
+   more than a quarter of the range between its 10th and 90th percentiles, with at least a twentieth of the
+   pixels on each side of the middle. Black text on transparency has no spread and stays on alpha. */
+function analyzeLogoImageData(data, size, mode) {
+  const n = size*size;
+  const lum = new Float32Array(n), alpha = new Float32Array(n);
   let minA = 255, maxA = 0, sumLum = 0, countOpaque = 0;
-  for (let i = 0; i < size*size; i++) {
+  const op = [];
+  for (let i = 0; i < n; i++) {
     const r=data[i*4], g=data[i*4+1], b=data[i*4+2], a=data[i*4+3];
     alpha[i] = a/255;
     lum[i] = (0.299*r + 0.587*g + 0.114*b)/255;
     if (a < minA) minA = a;
     if (a > maxA) maxA = a;
-    if (a >= 10) { sumLum += lum[i]; countOpaque++; }
+    if (a >= 10) { sumLum += lum[i]; countOpaque++; op.push(lum[i]); }
   }
   const hasTransparency = (maxA - minA) > 40;
-  if (hasTransparency) return { heightmap: alpha, suggestedInvert: false };
   const avgLum = countOpaque ? sumLum/countOpaque : 0.5;
-  return { heightmap: lum, suggestedInvert: avgLum > 0.5 };
+  // Percentiles rather than min/max: one stray antialiased pixel is not a second tone.
+  op.sort();
+  const q = t => op.length ? op[Math.min(op.length-1, Math.floor(t*(op.length-1)))] : 0;
+  const p10 = q(0.10), p90 = q(0.90), spread = p90 - p10, mid = (p10 + p90)/2;
+  let dark = 0; for (const l of op) if (l < mid) dark++;
+  const darkFrac = op.length ? dark/op.length : 0;
+  const twoTone = hasTransparency && spread > 0.25 &&
+                  Math.min(darkFrac, 1-darkFrac) > 0.05;
+  const chose = (mode && mode !== 'auto') ? mode
+              : twoTone ? 'detail' : hasTransparency ? 'alpha' : 'lum';
+  const stats = {chose, spread:+spread.toFixed(4), darkFrac:+darkFrac.toFixed(4),
+                 hasTransparency, twoTone, opaque:countOpaque};
+  if (chose === 'alpha') return { heightmap: alpha, suggestedInvert: false, stats };
+  if (chose === 'lum')   return { heightmap: lum,   suggestedInvert: avgLum > 0.5, stats };
+  const hm = new Float32Array(n), lo = p10, span = Math.max(1e-6, p90 - p10);
+  for (let i = 0; i < n; i++)
+    hm[i] = alpha[i] < 0.5 ? 0 : Math.max(0, Math.min(1, (lum[i] - lo)/span));
+  return { heightmap: hm, suggestedInvert: false, stats };
 }
 
 // Loads an image file into a heightmap (Float32Array, 0..1, row-major) plus a suggested
@@ -2963,11 +2995,11 @@ function loadLogoImageFile(file, cb) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, size, size); // stretch to fit; logo W/H controls handle aspect on the model
       const data = ctx.getImageData(0, 0, size, size).data;
-      const { heightmap, suggestedInvert } = analyzeLogoImageData(data, size);
+      const { heightmap, suggestedInvert, stats } = analyzeLogoImageData(data, size);
       // Native aspect (w/h) of the uploaded image: the heightmap itself is square-stretched, so the
       // aspect must ride along for the "link W/H" proportions lock on the logo card.
       const aspect = (img.naturalWidth || img.width || 1) / (img.naturalHeight || img.height || 1);
-      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect });
+      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect, src: stats.chose });
     };
     img.onerror = () => cb(null);
     img.src = dataUrl;
@@ -2999,11 +3031,11 @@ function makeTextLogoResult(text, bold, underline) {
           uh = Math.max(4, Math.round(fs * 0.1)), uy = Math.min(size - uh, Math.round(size / 2 + fs * 0.46));
     ctx.fillRect((size - uw) / 2, uy, uw, uh);
   }
-  const { heightmap, suggestedInvert } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
+  const { heightmap, suggestedInvert, stats } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
   // Visible aspect of the rendered line: measured width over ~cap height (≈0.72 em) — drives the
   // proportions lock so "TEXT" defaults to a wide, not square, footprint.
   const aspect = (ctx.measureText(text).width || 1) / (Math.round(fs) * 0.72);
-  return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect };
+  return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect, src: stats.chose };
 }
 
 /* =========================================================
@@ -14358,6 +14390,29 @@ function attachModelEventListeners() {
   });
 }
 
+// The channel the relief is read from — see analyzeLogoImageData. Offered per logo because AUTO is a
+// guess, and a guess about a picture is exactly the thing a person can overrule at a glance.
+const LOGO_SRC_OPTIONS = [
+  {v:'auto',   t:'авто'},
+  {v:'detail', t:'детали (цвет + прозрачность)'},
+  {v:'alpha',  t:'силуэт (прозрачность)'},
+  {v:'lum',    t:'яркость'},
+];
+// Re-read a logo's heightmap from its stored preview in another channel. The preview IS the source image
+// resampled to the heightmap's own grid, so nothing is lost by going back to it.
+function relogoFromPreview(logo, mode, done){
+  if (!logo.previewUrl) { done && done(false); return; }
+  const img = new Image();
+  img.onload = () => {
+    const size = LOGO_HM_SIZE, c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size); ctx.drawImage(img, 0, 0, size, size);
+    const r = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, mode);
+    logo.heightmap = r.heightmap; logo.src = mode;
+    done && done(true);
+  };
+  img.onerror = () => done && done(false);
+  img.src = logo.previewUrl;
+}
 function renderLogoCards() {
   const container = document.getElementById('logo-cards');
   container.innerHTML = '';
@@ -14384,6 +14439,10 @@ function renderLogoCards() {
         '<div class="logo-field"><label>Порог %</label><input type="number" data-field="thresholdPct" step="1" min="1" max="99" value="'+Math.round(logo.threshold*100)+'"></div>'+
         '<div class="logo-field"><label>Поворот °</label><input type="number" data-field="rotation" step="1" min="-180" max="180" value="'+(logo.rotation||0)+'"></div>'+
       '</div>'+
+      '<div class="logo-field logo-src-row"><label>Рельеф читать по</label>'+
+        '<select data-field="src">'+
+          LOGO_SRC_OPTIONS.map(o=>'<option value="'+o.v+'" '+((logo.src||'auto')===o.v?'selected':'')+'>'+o.t+'</option>').join('')+
+        '</select></div>'+
       (logo.aspect > 0 ?
         '<label class="logo-invert-row"><input type="checkbox" data-field="lockAspect" '+(logo.lockAspect?'checked':'')+'> Связать Ш/В (пропорции исходника)</label>' : '')+
       '<label class="logo-invert-row"><input type="checkbox" data-field="invert" '+(logo.invert?'checked':'')+'> Инвертировать (фон выпуклый, а не сам рисунок)</label>';
@@ -14693,6 +14752,7 @@ function addLogoFromResult(result) {
     h: Math.max(2, Math.min(Math.round(w / aspect * 10) / 10, dims.vLen-3)),
     aspect, lockAspect: true,
     depth: -0.2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,  // утоплено по умолчанию
+    src: result.src || 'auto',   // which channel the relief was read from — shown and changeable on the card
   };
   clampLogoToFace(logo);
   logos.push(logo);
@@ -14767,6 +14827,11 @@ function attachLogoEventListeners() {
     const logo = logos.find(l => l.id === Number(card.dataset.logoId));
     if (!logo) return;
     if (field === 'face') logo.face = e.target.value;
+    else if (field === 'src') {
+      // Rebuilt from the preview, so the choice is live rather than something you must re-upload for.
+      relogoFromPreview(logo, e.target.value, ok => { if (ok && currentShape === 'box') markPending(); });
+      return;
+    }
     else if (field === 'invert') logo.invert = e.target.checked;
     else if (field === 'lockAspect') {
       logo.lockAspect = e.target.checked;
@@ -15894,7 +15959,7 @@ function exportAssemblyJSON() {
       name: m.name, params: m.params, rx:m.rx, ry:m.ry, rz:m.rz, px:m.px, py:m.py, pz:m.pz,
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
-        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl,
+        threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl, src:l.src||'auto',
         aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
         pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
@@ -15916,8 +15981,8 @@ function restoreLogoFromDef(ld) {
     img.onload = () => {
       const size = LOGO_HM_SIZE, canvas = document.createElement('canvas'); canvas.width=size; canvas.height=size;
       const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
-      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size);
-      res({ id: nextLogoId++, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
+      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto');
+      res({ id: nextLogoId++, src: ld.src || 'auto', face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
         threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl,
         aspect: ld.aspect > 0 ? ld.aspect : undefined, lockAspect: !!ld.lockAspect });
     };

@@ -329,26 +329,41 @@ console.log('=== стабилизаторы на широкой клавише =
     chk(u+'u: все стемы внутри клавиши',
         Math.abs(g.xs[0]) + 2.9 <= 18.2*u/2 - 0.8 + 1e-9, {x:g.xs[0], half:18.2*u/2});
   }
-  // the table, verbatim from the reference
-  const TABLE = {2:23.88, 2.25:42.86, 2.75:61.91, 6.25:100};
+  // The table. 2u, 2.25u and 2.75u take the SAME spacing — one pair of stabiliser wires serves all three,
+  // which is the point of the standard. A figure that grows with the key is the width of the cap, not the
+  // spacing of its stems, and stems that far apart land outside the very cap they belong to.
+  const TABLE = {2:23.88, 2.25:23.88, 2.75:23.88, 6.25:100, 7:133.35};
   for(const u in TABLE)
     chk(u+'u: расстояние из таблицы', Math.abs(KEYCAP_STAB_SPAN[u] - TABLE[u]) < 1e-9,
         {got:KEYCAP_STAB_SPAN[u], table:TABLE[u]});
-  chk('7u тоже есть (её на картинке нет, но её печатают)', KEYCAP_STAB_SPAN[7] === 133.35);
-  // Two of the reference's own numbers are wider than the cap they belong to. Clamped rather than left
-  // hanging: a stem past the cap's edge is not a stem in the wrong place, it is a separate lump in the file.
-  for(const u of [2.25, 2.75, 7]){
+  chk('у 2u, 2.25u и 2.75u расстояние одно и то же',
+      KEYCAP_STAB_SPAN[2] === KEYCAP_STAB_SPAN[2.25] && KEYCAP_STAB_SPAN[2] === KEYCAP_STAB_SPAN[2.75],
+      [KEYCAP_STAB_SPAN[2], KEYCAP_STAB_SPAN[2.25], KEYCAP_STAB_SPAN[2.75]]);
+  chk('таблица и код описывают один список',
+      Object.keys(TABLE).sort().join() === Object.keys(KEYCAP_STAB_SPAN).sort().join());
+  // ...and every tabled size now actually fits the cap it belongs to, except the 7u spacebar, whose 133.35
+  // is wider than this generator's own 7u cap (18.2 mm to the unit, not 19.05).
+  for(const u of [2, 2.25, 2.75, 6.25]){
     const g = stab({keySizeU:u});
-    chk(u+'u: таблица шире клавиши — это замечено', !g.fits, {asked:g.asked, max:g.maxSpan});
+    chk(u+'u: расстояние из таблицы помещается в клавишу', g.fits, {asked:g.asked, max:g.maxSpan});
+    chk(u+'u: и разводится ровно на него', Math.abs(g.span - KEYCAP_STAB_SPAN[u]) < 1e-9,
+        {span:g.span, table:KEYCAP_STAB_SPAN[u]});
+    const ws = collectPrintWarnings(Object.assign({}, paramState.box, {keySizeU:u}));
+    chk(u+'u: и молчит', !ws.some(x => /не помещаются/.test(x)), ws);
+  }
+  // Clamped rather than left hanging: a stem past the cap's edge is not a stem in the wrong place, it is a
+  // separate lump in the file.
+  for(const u of [7]){
+    const g = stab({keySizeU:u});
+    chk(u+'u: шире клавиши — это замечено', !g.fits, {asked:g.asked, max:g.maxSpan});
     chk(u+'u: разведено ровно на сколько влезает', Math.abs(g.span - g.maxSpan) < 1e-9,
         {span:g.span, max:g.maxSpan});
     const ws = collectPrintWarnings(Object.assign({}, paramState.box, {keySizeU:u}));
     chk(u+'u: и сказано вслух', ws.some(x => /не помещаются/.test(x)), ws);
   }
-  chk('2u и 6.25u помещаются как есть', stab({keySizeU:2}).fits && stab({keySizeU:6.25}).fits);
   // a hand-set span overrides the table
-  { const g = stab({keySizeU:2.25, keyStabSpan:23.8});
-    chk('своё расстояние перебивает таблицу', Math.abs(g.span - 23.8) < 1e-9 && g.fits, g); }
+  { const g = stab({keySizeU:2.25, keyStabSpan:30});
+    chk('своё расстояние перебивает таблицу', Math.abs(g.span - 30) < 1e-9 && g.fits, g); }
   // an off-table width borrows the nearest and says so
   { const g = stab({keySizeU:3});
     chk('3u: взято от ближайшей', !g.tabled && g.near === 2.75, {near:g.near, tabled:g.tabled});

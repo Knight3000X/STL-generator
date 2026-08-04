@@ -1038,7 +1038,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v181';
+const APP_VERSION = 'v182';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3703,13 +3703,16 @@ const KEYCAP_PROFILES = {
    number that matters, because that is what the board's stabiliser wires are set to, and it is what the
    table below holds.
 
-   The numbers are the reference's own. Two of them do not fit the cap they belong to — 42.86 mm across a
-   2.25u cap that is 41 mm wide, 61.91 mm across a 2.75u cap of 50 — and the Cherry standard for 2u, 2.25u
-   and 2.75u alike is 23.8 mm, not a figure that grows with the key. Rather than quietly substitute, the
-   span is a parameter with the table as its default, and a cap whose stems fall outside it says so in the
-   print warnings with the standard figure named. 7u is not on the reference; 133.35 mm is its published
-   spacing and it is the other spacebar people print. */
-const KEYCAP_STAB_SPAN = {2:23.88, 2.25:42.86, 2.75:61.91, 6.25:100, 7:133.35};
+   2u, 2.25u and 2.75u all take the SAME spacing — one pair of stabiliser wires serves the three of them,
+   which is the whole point of the standard. The reference this table was first built from gave 2.25u as
+   42.86 mm and 2.75u as 61.91, figures that grow with the key; those are the widths of the caps themselves
+   (2.25 × 19.05 and 3.25 × 19.05), not their stabiliser spacing, and stems that far apart fall outside the
+   very cap they belong to. Corrected to match the 2u figure. 7u is not on the reference either; 133.35 mm
+   is its published spacing and it is the other spacebar people print.
+
+   The span is still a parameter with this table as its default, and a cap whose stems will not fit inside
+   it says so in the print warnings. */
+const KEYCAP_STAB_SPAN = {2:23.88, 2.25:23.88, 2.75:23.88, 6.25:100, 7:133.35};
 function keycapStabSpec(p){
   const u = Math.max(0.25, Math.min(7, p.keySizeU || 1));
   const stem = p.keyStem && p.keyStem !== 'none';
@@ -3786,7 +3789,7 @@ const SHAPE_PARAMS = {
       options:[{v:'auto',t:'три стема: центральный + два по краям'},{v:'none',t:'только центральный'}],
       hint:'Широкая клавиша на одном стеме перекашивается и заедает. Крайние стемы стоят на расстоянии из таблицы, центральный — ровно посередине между ними.'},
     {group:'Кейкап', key:'keyStabSpan', needs:{keySizeU:1.99}, only:{keyStab:['auto']}, label:'Кейкап: расстояние между крайними стемами (0 = из таблицы)', min:0, max:150, step:0.01, default:0, unit:'мм',
-      hint:'По таблице: 2u — 23.88, 2.25u — 42.86, 2.75u — 61.91, 6.25u — 100, 7u — 133.35 мм. Стандарт Cherry для 2u…2.75u — 23.8 мм на всех трёх.'},
+      hint:'По таблице: 2u, 2.25u и 2.75u — 23.88 мм (одна и та же пара проволок обслуживает все три), 6.25u — 100 мм, 7u — 133.35 мм.'},
     {group:'Лист / панель', key:'sheetShape', label:'Плоский лист (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'rect',t:'прямоугольник'},{v:'round',t:'скруглённый прямоугольник'},{v:'ngon',t:'многоугольник'},{v:'circle',t:'круг / эллипс'},{v:'svg',t:'контур из SVG (кнопка ниже)'}]},
     {group:'Лист / панель', key:'sheetThick', label:'Лист: толщина', min:0.4, max:20, step:0.2, default:3, unit:'мм'},
@@ -15292,7 +15295,7 @@ function collectPrintWarnings(p){
     if (g.on && !g.fits)
       w.push('крайние стемы на ' + g.asked.toFixed(2) + ' мм не помещаются в клавишу ' + g.u +
              'u — раздвинуты на ' + g.span.toFixed(1) + ' мм, дальше некуда' +
-             (g.u <= 2.75 ? '; у Cherry для 2u…2.75u расстояние 23.8 мм на всех трёх' : ''));
+             (g.u <= 2.75 ? '; у Cherry 2u, 2.25u и 2.75u берут одно и то же — 23.88 мм' : ''));
     if (g.on && !g.tabled)
       w.push('для ' + g.u + 'u в таблице расстояния нет — взято от ближайшей, ' + g.near +
              'u (' + g.span.toFixed(2) + ' мм); проверьте по своей плате');

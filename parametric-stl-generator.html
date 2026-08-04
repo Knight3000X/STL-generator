@@ -71,6 +71,17 @@
     --stats-veil:rgba(255,255,255,0.35);    /* stats box fill */
     --on-accent:#fff;                       /* text on the red export/apply buttons */
     --viewport-clear:#0F3A5F;               /* WebGL clear colour (mirrors --blueprint) */
+    /* Accent: the colour of «this one is selected». It used to be written as var(--accent,#4a90d9) in
+       four places with the variable defined nowhere, so every selected tile was a blue borrowed from
+       no palette at all. Named here, drawn from the blueprint the whole page is built on. */
+    --accent:#1F5F8B;
+    --accent-soft:rgba(31,95,139,0.12);
+    /* Radii and shadows as a scale rather than a number per rule: everything on the panel is one of two
+       radii and one of two elevations, and that is most of what separates «laid out» from «designed». */
+    --r-sm:5px; --r-md:8px; --r-lg:12px;
+    --sh-1:0 1px 2px rgba(16,38,56,0.07), 0 1px 6px rgba(16,38,56,0.05);
+    --sh-2:0 2px 5px rgba(16,38,56,0.10), 0 8px 22px rgba(16,38,56,0.09);
+    --sh-focus:0 0 0 3px rgba(31,95,139,0.22);
   }
   /* Dark theme — set via data-theme on <html> (see the early head script + applyTheme()).
      Only the palette + surfaces are overridden; every rule already reads these vars. */
@@ -91,6 +102,11 @@
     --stats-veil:rgba(255,255,255,0.04);
     --on-accent:#fff;
     --viewport-clear:#0a141d;
+    --accent:#4E9FD1;
+    --accent-soft:rgba(78,159,209,0.16);
+    --sh-1:0 1px 2px rgba(0,0,0,0.30), 0 1px 6px rgba(0,0,0,0.22);
+    --sh-2:0 2px 5px rgba(0,0,0,0.38), 0 8px 22px rgba(0,0,0,0.30);
+    --sh-focus:0 0 0 3px rgba(78,159,209,0.28);
   }
   input.param-number, #filename, .logo-field input[type=number], .model-name,
   .hole-card select, .hole-card input, .logo-face-select, #logo-text-input{ color-scheme:light dark; }
@@ -108,27 +124,33 @@
 
   /* ---------- panel (paper / spec sheet) ---------- */
   #panel{
-    width:360px;
-    min-width:360px;
+    width:372px;
+    min-width:372px;
     background:var(--paper);
-    border-right:2px solid var(--ink);
+    border-right:1px solid var(--paper-line);
+    box-shadow:6px 0 24px rgba(10,34,56,0.16);
+    z-index:2;
     overflow-y:auto;
-    padding:14px 16px 28px;
+    padding:16px 18px 32px;
   }
   #panel::-webkit-scrollbar{width:8px;}
   #panel::-webkit-scrollbar-thumb{background:var(--paper-line);border-radius:4px;}
 
   .titleblock{
-    border:1.5px solid var(--ink);
-    padding:10px 12px;
-    margin-bottom:14px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-lg);
+    background:linear-gradient(180deg, var(--card-veil-active), transparent);
+    box-shadow:var(--sh-1);
+    padding:13px 15px 14px;
+    margin-bottom:16px;
     position:relative;
   }
   .titleblock h1{
     margin:0;
-    font-size:16px;
-    letter-spacing:0.06em;
+    font-size:18px;
+    letter-spacing:0.02em;
     font-weight:700;
+    line-height:1.15;
     color:var(--ink);
   }
   .titleblock .sub{
@@ -138,9 +160,11 @@
     letter-spacing:0.03em;
   }
   .titleblock h1 .ver{
+    display:inline-block; vertical-align:3px; margin-left:7px;
     font-family:'IBM Plex Mono', monospace;
-    font-size:11px; font-weight:500; letter-spacing:0.04em;
-    color:var(--ink-soft); vertical-align:2px; margin-left:4px;
+    font-size:10.5px; font-weight:600; letter-spacing:0.03em;
+    color:var(--accent); background:var(--accent-soft);
+    border-radius:999px; padding:2px 7px;
   }
   .titleblock .tag{
     position:absolute; top:8px; right:42px;
@@ -174,13 +198,15 @@
 
   .section-label{
     font-size:11px;
+    font-weight:600;
     text-transform:uppercase;
-    letter-spacing:0.08em;
-    color:var(--ink-soft);
-    margin:18px 0 8px;
+    letter-spacing:0.09em;
+    color:var(--ink);
+    margin:20px 0 9px;
     border-bottom:1px solid var(--paper-line);
-    padding-bottom:5px;
+    padding-bottom:6px;
   }
+  .panel-fold > summary.section-label:hover{ color:var(--accent); border-color:var(--ink-soft); }
   .section-label:first-of-type{margin-top:0;}
   /* Every panel section is a collapsible <details class="panel-fold"> whose summary IS the old
      section label; the ▸ marker rotates when open, state persists in localStorage. */
@@ -245,28 +271,33 @@
   #tab-search{ width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; font-size:13px;
     border:1px solid var(--paper-line); border-radius:7px; background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink); }
   #tab-search::placeholder{ color:var(--ink-soft); }
-  #tab-search:focus{ outline:none; border-color:var(--accent,#4a90d9); }
+  #tab-search:focus{ outline:none; border-color:var(--accent); }
   .tab-row{ display:flex; gap:4px; }
   .tab-btn{ flex:1; padding:8px 4px; font-size:12px; font-weight:600; letter-spacing:0.02em; cursor:pointer;
     border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ink-soft);
     transition:background 0.12s,color 0.12s; white-space:nowrap; }
   .tab-btn:hover{ color:var(--ink); background:var(--paper-2,rgba(0,0,0,0.04)); }
   .tab-btn.active{ color:var(--ink); background:var(--paper-2,rgba(0,0,0,0.07)); border-color:var(--paper-line);
-    box-shadow:inset 0 -2px 0 0 var(--accent,#4a90d9); }
+    box-shadow:inset 0 -2px 0 0 var(--accent); }
   .tab-btn.empty{ opacity:0.32; pointer-events:none; }
   /* When tabbed, the wrapping "ПАРАМЕТРЫ" fold is just a transparent container — its header is redundant. */
   .param-wrap > summary.section-label{ display:none; }
-  .search-hit mark{ background:var(--accent,#4a90d9); color:#fff; border-radius:2px; padding:0 1px; }
+  .search-hit mark{ background:var(--accent); color:#fff; border-radius:2px; padding:0 1px; }
   /* Base-shape picker: one always-visible place to choose the model kind (cube/prism, die, keycap, sheet) so
      switching never depends on a mode-specific group being visible. */
   #baseshape{ margin:2px 0 10px; }
   .basepick-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-soft); padding:2px 0 6px; }
   .basepick-row{ display:flex; gap:4px; flex-wrap:wrap; }
-  .base-btn{ flex:1 1 40%; padding:9px 6px; font-size:12px; font-weight:600; cursor:pointer; border-radius:7px;
-    border:1px solid var(--paper-line); background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink-soft);
-    transition:background 0.12s,color 0.12s,border-color 0.12s; }
-  .base-btn:hover{ color:var(--ink); }
-  .base-btn.active{ color:#fff; background:var(--accent,#4a90d9); border-color:var(--accent,#4a90d9); }
+  .base-btn{ flex:1 1 40%; padding:9px 7px; font-size:12px; font-weight:600; cursor:pointer;
+    border-radius:var(--r-md);
+    border:1px solid var(--paper-line); background:var(--field-bg); color:var(--ink-soft);
+    box-shadow:var(--sh-1);
+    transition:background .13s, color .13s, border-color .13s, box-shadow .13s, transform .08s; }
+  .base-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  .base-btn:active{ transform:translateY(1px); }
+  .base-btn:focus-visible{ outline:none; box-shadow:var(--sh-focus); }
+  .base-btn.active{ color:var(--on-accent); background:var(--accent); border-color:var(--accent);
+    box-shadow:var(--sh-2); }
 
   /* Sub-model picker: the four big families (крепёж, шестерня, резьба, печать в сборе) are twenty-odd
      different parts each, and which one you are making decided everything else on the panel from inside a
@@ -274,12 +305,16 @@
      whole range is readable at a glance instead of one line at a time through a dropdown. */
   #submodel{ margin:-4px 0 10px; }
   #submodel .basepick-row{ gap:3px; }
-  .sub-btn{ flex:1 1 30%; padding:7px 5px; font-size:11px; font-weight:600; cursor:pointer; border-radius:6px;
-    border:1px solid var(--paper-line); background:var(--paper-2,rgba(0,0,0,0.03)); color:var(--ink-soft);
+  .sub-btn{ flex:1 1 30%; padding:7px 6px; font-size:11px; font-weight:600; cursor:pointer;
+    border-radius:var(--r-sm);
+    border:1px solid var(--paper-line); background:var(--field-bg); color:var(--ink-soft);
     text-align:center; line-height:1.25;
-    transition:background 0.12s,color 0.12s,border-color 0.12s; }
-  .sub-btn:hover{ color:var(--ink); }
-  .sub-btn.active{ color:#fff; background:var(--accent,#4a90d9); border-color:var(--accent,#4a90d9); }
+    transition:background .13s, color .13s, border-color .13s, box-shadow .13s, transform .08s; }
+  .sub-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  .sub-btn:active{ transform:translateY(1px); }
+  .sub-btn:focus-visible{ outline:none; box-shadow:var(--sh-focus); }
+  .sub-btn.active{ color:var(--on-accent); background:var(--accent); border-color:var(--accent);
+    box-shadow:var(--sh-1); }
 
   .param-row{
     display:flex;
@@ -296,18 +331,20 @@
     flex:0 0 auto;
   }
   input.param-number{
-    width:72px;
-    padding:5px 7px;
-    border:1.5px solid var(--ink-soft);
-    border-radius:2px;
+    width:76px;
+    padding:6px 8px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-sm);
     background:var(--field-bg);
     font-family:'IBM Plex Mono', monospace;
     font-size:12.5px;
     font-weight:600;
     color:var(--redline-dark);
     text-align:right;
+    transition:border-color .13s, box-shadow .13s;
   }
-  input.param-number:focus{ outline:none; border-color:var(--redline); }
+  input.param-number:hover{ border-color:var(--ink-soft); }
+  input.param-number:focus{ outline:none; border-color:var(--accent); box-shadow:var(--sh-focus); }
   .num-unit{
     font-size:11px;
     color:var(--ink-soft);
@@ -363,11 +400,14 @@
 
   .stats-box{
     border:1px solid var(--paper-line);
+    border-radius:var(--r-md);
     background:var(--stats-veil);
-    padding:9px 11px;
+    box-shadow:var(--sh-1);
+    padding:10px 12px;
     font-size:12px;
   }
-  .stats-row{ display:flex; justify-content:space-between; padding:2px 0; }
+  .stats-row{ display:flex; justify-content:space-between; padding:3px 0; }
+  .stats-row + .stats-row{ border-top:1px solid var(--paper-line); }
   .stats-row .k{ color:var(--ink-soft); }
   .stats-row .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--ink); }
   .stats-row .v.ok{ color:var(--ok); }
@@ -375,9 +415,9 @@
 
   #filename{
     width:100%;
-    padding:7px 9px;
-    border:1.5px solid var(--ink-soft);
-    border-radius:2px;
+    padding:8px 10px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-sm);
     background:var(--field-bg);
     font-family:'IBM Plex Mono', monospace;
     font-size:13px;
@@ -386,28 +426,32 @@
   }
   #btn-export{
     width:100%;
-    padding:11px 0;
+    padding:12px 0;
     background:var(--redline);
     border:none;
-    border-radius:2px;
+    border-radius:var(--r-md);
+    box-shadow:var(--sh-2);
     color:var(--on-accent);
     font-family:inherit;
     font-size:14px;
     font-weight:700;
-    letter-spacing:0.04em;
+    letter-spacing:0.03em;
     cursor:pointer;
-    transition:background 0.12s;
+    transition:background .13s, box-shadow .13s, transform .08s;
   }
   #btn-export:hover{ background:var(--redline-dark); }
+  #btn-export:active{ transform:translateY(1px); box-shadow:var(--sh-1); }
+  #btn-export:focus-visible{ outline:none; box-shadow:var(--sh-focus), var(--sh-2); }
   #btn-export-3mf{
-    width:100%; margin-top:6px; padding:8px 0;
-    background:transparent; border:1.5px dashed var(--ink-soft); border-radius:2px;
+    width:100%; margin-top:7px; padding:9px 0;
+    background:transparent; border:1px dashed var(--ink-soft); border-radius:var(--r-sm);
     color:var(--ink); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
-  }
-  #btn-export-3mf:hover{ border-color:var(--ink); }
+    transition:border-color .13s, background .13s; }
+  #btn-export-3mf:hover{ border-color:var(--accent); background:var(--accent-soft); }
   #btn-save-config, #btn-load-config{
     width:100%; padding:9px 0; margin-bottom:6px;
-    background:var(--field-bg); border:1.5px solid var(--ink-soft); border-radius:2px;
+    background:var(--field-bg); border:1px solid var(--paper-line); border-radius:var(--r-sm);
+    box-shadow:var(--sh-1);
     color:var(--ink); font-family:inherit; font-size:13px; cursor:pointer;
     transition:background 0.12s, border-color 0.12s;
   }
@@ -450,15 +494,23 @@
   .note-fold > summary{
     list-style:none; cursor:pointer;
     display:inline-block;
-    font-size:11px; color:var(--ink-soft);
-    border-bottom:1px dotted var(--ink-soft);
+    font-size:11px; font-weight:600; color:var(--accent);
+    background:var(--accent-soft);
+    border-radius:999px; padding:3px 10px;
     user-select:none;
+    transition:background .13s;
   }
+  .note-fold > summary:hover{ background:var(--accent); color:var(--on-accent); }
   .note-fold > summary::-webkit-details-marker{ display:none; }
-  .note-fold[open] > summary{ color:var(--ink); }
+  .note-fold[open] > summary{ background:var(--accent); color:var(--on-accent); }
   .export-note{
-    font-size:10.5px;
+    font-size:11px;
+    line-height:1.55;
     color:var(--ink-soft);
+    background:var(--stats-veil);
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-md);
+    padding:10px 12px;
     margin-top:8px;
     line-height:1.4;
   }
@@ -468,7 +520,16 @@
   #model-help{ margin:-2px 0 12px; }
   #model-help .export-note{ font-size:11px; }
   .light-row{ display:grid; grid-template-columns:1fr 1.6fr auto; align-items:center; gap:8px; margin:6px 0; }
-.light-row input[type=range]{ width:100%; }
+.light-row input[type=range]{ width:100%; -webkit-appearance:none; appearance:none;
+    height:4px; border-radius:2px; background:var(--paper-line); outline:none; }
+.light-row input[type=range]:disabled{ opacity:.4; }
+.light-row input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none;
+    width:15px; height:15px; border-radius:50%; background:var(--accent); cursor:pointer;
+    border:2px solid var(--field-bg); box-shadow:var(--sh-1); }
+.light-row input[type=range]::-moz-range-thumb{ width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid var(--field-bg); box-shadow:var(--sh-1); }
+.light-row input[type=range]:focus-visible{ box-shadow:var(--sh-focus); }
+.light-row label{ font-size:12.5px; color:var(--ink); }
 .light-val{ min-width:3.4em; text-align:right; opacity:.75; font-size:12px; }
 .logo-src-row{ grid-column:1 / -1; }
   .logo-src-row select{ width:100%; }
@@ -496,16 +557,20 @@
   }
   #btn-add-model:disabled, #btn-add-lid:disabled, #btn-add-mate:disabled{ opacity:0.4; cursor:not-allowed; }
   .model-card{
-    border:1px solid var(--ink-soft);
-    border-radius:2px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-md);
     background:var(--card-veil);
-    padding:8px 9px;
-    margin-bottom:8px;
+    box-shadow:var(--sh-1);
+    padding:9px 10px;
+    margin-bottom:9px;
     cursor:pointer;
+    transition:border-color .13s, box-shadow .13s, background .13s;
   }
+  .model-card:hover{ border-color:var(--ink-soft); }
   .model-card.active{
-    border:1.5px solid var(--redline);
+    border-color:var(--accent);
     background:var(--card-veil-active);
+    box-shadow:var(--sh-2);
   }
   .model-card-head{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
   .model-name{
@@ -579,11 +644,12 @@
   .hole-card .hole-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; }
   .hole-card .hole-del{ border:none; background:transparent; color:var(--redline); cursor:pointer; font-size:15px; line-height:1; padding:0 2px; }
   .logo-card{
-    border:1px solid var(--ink-soft);
-    border-radius:2px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--r-md);
     background:var(--card-veil);
-    padding:9px;
-    margin-bottom:10px;
+    box-shadow:var(--sh-1);
+    padding:10px 11px;
+    margin-bottom:11px;
   }
   .logo-card-head{
     display:flex;
@@ -1049,7 +1115,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v192';
+const APP_VERSION = 'v193';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */

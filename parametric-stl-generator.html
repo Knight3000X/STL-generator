@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.3.5';
+const APP_VERSION = 'v16.4.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3175,12 +3175,12 @@ function analyzeLogoImageData(data, size, mode, levels) {
   const suggestedLevels = (chose === 'detail' && solid.length >= 3) ? Math.min(4, solid.length) : 2;
 
   if (levels <= 2) {   // one threshold, one step — unchanged
-    if (chose === 'alpha') return { heightmap: alpha, suggestedInvert: false, suggestedLevels, stats };
-    if (chose === 'lum')   return { heightmap: lum,   suggestedInvert: avgLum > 0.5, suggestedLevels, stats };
+    if (chose === 'alpha') return { heightmap: alpha, suggestedInvert: false, suggestedLevels, toneColors: [], stats };
+    if (chose === 'lum')   return { heightmap: lum,   suggestedInvert: avgLum > 0.5, suggestedLevels, toneColors: [], stats };
     const hm = new Float32Array(n), lo = p10, span = Math.max(1e-6, p90 - p10);
     for (let i = 0; i < n; i++)
       hm[i] = alpha[i] < 0.5 ? 0 : Math.max(0, Math.min(1, (lum[i] - lo)/span));
-    return { heightmap: hm, suggestedInvert: false, suggestedLevels, stats };
+    return { heightmap: hm, suggestedInvert: false, suggestedLevels, toneColors: [], stats };
   }
 
   // Stepped relief: the tones ARE the heights, so the map is baked and no threshold is applied later.
@@ -3191,7 +3191,7 @@ function analyzeLogoImageData(data, size, mode, levels) {
   const lv = logoTones(h2, tot, levels), m = lv.length;
   stats.tones = m;
   const hm = new Float32Array(n);
-  if (!m) return { heightmap: hm, suggestedInvert: false, suggestedLevels, stats };
+  if (!m) return { heightmap: hm, suggestedInvert: false, suggestedLevels, toneColors: [], stats };
   const lut = new Float32Array(256);
   for (let b = 0; b < 256; b++) {
     const v = b/255; let best = 0, bd = Infinity;
@@ -3199,7 +3199,28 @@ function analyzeLogoImageData(data, size, mode, levels) {
     lut[b] = gated ? (best+1)/m : (m > 1 ? best/(m-1) : 1);
   }
   for (let i = 0; i < n; i++) hm[i] = (gated && alpha[i] < 0.5) ? 0 : lut[Math.round(src[i]*255)];
-  return { heightmap: hm, suggestedInvert: chose === 'lum' && avgLum > 0.5, suggestedLevels, stats };
+  // The COLOUR of each level, averaged over the pixels that landed on it. The relief only ever carried a
+  // height, so a three-tone emblem came out as three grey parts and the person had to remember which was
+  // which. The picture already knows; this is only a matter of not throwing it away. Ordered like the
+  // levels, so tone k is colour k.
+  const sumR = new Float64Array(m), sumG = new Float64Array(m), sumB = new Float64Array(m), cnt = new Float64Array(m);
+  const lev = new Float32Array(256);
+  for (let b2 = 0; b2 < 256; b2++){
+    const v = b2/255; let best = 0, bd = Infinity;
+    for (let k = 0; k < m; k++){ const d = Math.abs(v - lv[k].v); if (d < bd){ bd = d; best = k; } }
+    lev[b2] = best;
+  }
+  for (let i = 0; i < n; i++){
+    if (gated && alpha[i] < 0.5) continue;
+    const k = lev[Math.round(src[i]*255)];
+    sumR[k] += data[i*4]; sumG[k] += data[i*4+1]; sumB[k] += data[i*4+2]; cnt[k]++;
+  }
+  const hex = c => '#' + [0,1,2].map(q => Math.max(0, Math.min(255, Math.round(c[q]))).toString(16).padStart(2,'0')).join('');
+  const toneColors = [];
+  for (let k = 0; k < m; k++)
+    toneColors.push(cnt[k] ? hex([sumR[k]/cnt[k], sumG[k]/cnt[k], sumB[k]/cnt[k]]) : '#b9c5cd');
+  return { heightmap: hm, suggestedInvert: chose === 'lum' && avgLum > 0.5, suggestedLevels,
+           toneColors, stats };
 }
 // Is this logo's relief cut into more than one step? The heightmap is then already AT its level values, so
 // nothing thresholds it — named once here because four call sites have to agree about it.
@@ -3228,13 +3249,13 @@ function loadLogoImageFile(file, cb) {
       const first = analyzeLogoImageData(data, size);
       // A three-tone emblem must not arrive as two. Re-read at the level count the picture asked for.
       const levels = first.suggestedLevels;
-      const { heightmap, suggestedInvert, stats } =
+      const { heightmap, suggestedInvert, stats, toneColors } =
         levels > 2 ? analyzeLogoImageData(data, size, 'auto', levels) : first;
       // Native aspect (w/h) of the uploaded image: the heightmap itself is square-stretched, so the
       // aspect must ride along for the "link W/H" proportions lock on the logo card.
       const aspect = (img.naturalWidth || img.width || 1) / (img.naturalHeight || img.height || 1);
       cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect,
-           src: stats.chose, levels });
+           src: stats.chose, levels, toneColors });
     };
     img.onerror = () => cb(null);
     img.src = dataUrl;
@@ -3837,6 +3858,16 @@ function reliefSlabTris(mask, N, M, U, V, hi, lo, yb, fr){
 // The stand is NOT here: its surfaces are raked or are strips inside the bounding box, so it names them
 // itself (standLogoFrame) instead of having outermostFlatPlaneAt fail to find them.
 const LOGO_PLATE_MODES = new Set(['sheet','thread','hinge','gear','mount','hook','wallorg','pbox','funnel']);
+/* Shapes whose logo EXTENT is decided by their own builder rather than by the cube's faces. The plate
+   shapes are here because buildLogoPlateTris clamps against the real bounding box at build time; the
+   stand and the coaster are here because they name their own surfaces and windows.
+
+   Keeping the two sets apart matters: clampLogoToFace used to ask LOGO_PLATE_MODES, so taking the stand
+   OUT of it in v191 silently capped every stand logo at the cube's 37 mm — and the coaster, which was
+   never in it, could not be made bigger than 37 mm on a 90 mm disc however much room it had. One set
+   answers «who builds the relief», the other «who decides how big it may be», and they are not the same
+   question. */
+const LOGO_OWN_BOUNDS = new Set([...LOGO_PLATE_MODES, 'stand', 'coaster']);
 
 // Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
 // (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
@@ -3906,7 +3937,7 @@ function clampLogoToFace(logo) {
   // the label will land on — clamping against them would shrink a perfectly good label on a gear to
   // fit a box that isn't being built. Those shapes get the label as a plate, and buildLogoPlateTris
   // clamps it against the real bounding box at build time, where the true extents are known.
-  if (LOGO_PLATE_MODES.has(dominantMode(paramState.box))) {
+  if (LOGO_OWN_BOUNDS.has(dominantMode(paramState.box))) {
     logo.w = Math.max(1, Math.min(400, logo.w));
     logo.h = Math.max(1, Math.min(400, logo.h));
     return;
@@ -4876,7 +4907,11 @@ function assemblyMate(p){
     const at = coasterInkIndex(p.csPart);
     const next = (n && at < n) ? at + 1 : 0;
     const seat = (A,B,S)=>({px:S.px, py:S.py, pz:S.pz});
-    return next ? { name:'Цвет ' + next + ' (AMS)', over:{csPart:'ink'+next}, logos:true, seat }
+    const inks = coasterInks((typeof logos !== 'undefined' && logos.length) ? logos[0] : null);
+    // The accent part is shown in the colour it will be PRINTED in — the picture already knows it, and a
+    // set of identical grey discs is a puzzle about which one is which.
+    return next ? { name:'Цвет ' + next + ' (AMS)', over:{csPart:'ink'+next}, logos:true, seat,
+                    color:(inks.colors || [])[next-1] }
                 : { name:'Подстаканник (AMS)', over:{csPart:'body'}, logos:true, seat };
   }
   if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
@@ -4996,7 +5031,7 @@ function assemblyPlacement(p, self){
     off.py += spec.back > 0 ? (P - r) % P : -r;
   }
   return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris, logos:!!spec.logos,
-           frozenTris: spec.frozen ? rawMate : null };
+           color: spec.color || null, frozenTris: spec.frozen ? rawMate : null };
 }
 function addAssemblyMate(){
   if (models.length >= MAX_MODELS){ alert('Достигнут лимит моделей ('+MAX_MODELS+').'); return; }
@@ -5007,6 +5042,7 @@ function addAssemblyMate(){
   if (!plan){ alert('Для этой детали пары не предусмотрено. Есть: крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо.'); return; }
   const rec = makeModelRecord(plan.name, plan.params);
   if (plan.logos) rec.logos = logos.slice();      // heightmaps shared by reference, as everywhere else
+  if (plan.color) rec.color = plan.color;         // an accent part wears the colour it will be printed in
   rec.rx = plan.rx; rec.ry = plan.ry; rec.rz = plan.rz;
   rec.px = plan.px; rec.py = plan.py; rec.pz = plan.pz;
   if (plan.frozenTris){                      // a reference part: geometry, not parameters
@@ -11505,12 +11541,20 @@ function coasterGridN(g, res){
 function coasterInks(lg){
   if (!lg || !lg.heightmap) return {levels: [], bg: true};
   const bg = (lg.chan || lg.src || 'lum') !== 'lum';
-  if (!logoStepped(lg)) return {levels: [1], bg: true};   // one threshold, one accent colour
+  const tones = lg.tones || [];
+  if (!logoStepped(lg))
+    return {levels: [1], bg: true, colors: [tones[tones.length-1] || '#b9c5cd']};
   const seen = new Set();
   for (const v of lg.heightmap) seen.add(+v.toFixed(4));
-  let levels = [...seen].sort((a,b)=>a-b);
-  if (bg) levels = levels.filter(v => v > 1e-4);
-  return {levels: levels.slice(0, COASTER_MAX_INKS), bg};
+  let all = [...seen].sort((a,b)=>a-b);
+  // `tones` is indexed by TONE, and the distinct heights include the background when there is one — so
+  // the background is dropped FIRST and the colours are taken by position in what is LEFT. Lining them up
+  // against the full list instead shifts every colour by one: the outline gets the background's place,
+  // the red falls off the end, and the last part comes out in the fallback grey. (Written the wrong way
+  // round on the first pass, in a comment warning about exactly this.)
+  const keep = bg ? all.filter(v => v > 1e-4) : all;
+  const cut = keep.slice(0, COASTER_MAX_INKS);
+  return {levels: cut, bg, colors: cut.map((v, i) => tones[i] || '#b9c5cd')};
 }
 // Which part `csPart` names: the coaster itself, or accent colour k (1-based).
 function coasterInkIndex(csPart){
@@ -15148,6 +15192,7 @@ function relogoFromPreview(logo, mode, levels, done){
     const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size); ctx.drawImage(img, 0, 0, size, size);
     const r = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, mode, levels);
     logo.heightmap = r.heightmap; logo.src = mode; logo.levels = levels; logo.chan = r.stats.chose;
+    logo.tones = r.toneColors || [];
     done && done(true);
   };
   img.onerror = () => done && done(false);
@@ -15501,6 +15546,7 @@ function addLogoFromResult(result) {
     chan: result.src || 'lum',   // ...RESOLVED: 'auto' is a request, this is the answer, and only the answer
                                  // says whether height 0 means «background» or «the darkest tone»
     levels: result.levels || 2,  // 2 = one threshold, one step; above that the tones ARE the heights
+    tones: result.toneColors || [],   // the picture's own colour for each level — shown on the AMS parts
   };
   clampLogoToFace(logo);
   logos.push(logo);
@@ -16749,7 +16795,7 @@ function exportAssemblyJSON() {
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl, src:l.src||'auto',
-        levels:l.levels||2, chan:l.chan||l.src||'lum',
+        levels:l.levels||2, chan:l.chan||l.src||'lum', tones:(l.tones||[]).slice(),
         aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
         pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
@@ -16774,7 +16820,8 @@ function restoreLogoFromDef(ld) {
       const lv = Math.max(2, Math.min(6, Math.round(ld.levels || 2)));
       const an = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto', lv);
       const heightmap = an.heightmap;
-      res({ id: nextLogoId++, src: ld.src || 'auto', levels: lv, chan: an.stats.chose, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
+      res({ id: nextLogoId++, src: ld.src || 'auto', levels: lv, chan: an.stats.chose,
+            tones: an.toneColors || [], face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
         threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl,
         aspect: ld.aspect > 0 ? ld.aspect : undefined, lockAspect: !!ld.lockAspect });
     };

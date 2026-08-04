@@ -466,6 +466,93 @@ console.log('=== плотность кармана задана в миллим�
   }
 }
 
+console.log('=== цвет каждой детали берётся из самой картинки ===');
+{
+  // The relief only ever carried a HEIGHT, so a three-tone emblem arrived as three identical grey discs
+  // and remembering which was which was the person's problem. The picture already knows: each level's
+  // colour is the mean of the pixels that landed on it.
+  const shield = img((x,y)=>{
+    const dx=Math.abs(x-0.5), dy=y-0.5;
+    if(dx > 0.45 || dy < -0.45 || dy > 0.45) return [0,0,0,0];
+    if(dx > 0.36 || dy > 0.36) return [200,30,40,255];    // красный
+    if(dx > 0.30 || dy > 0.30) return [20,20,20,255];     // почти чёрный
+    return [60,60,60,255];                                // серый
+  });
+  const an = analyzeLogoImageData(shield, S, 'auto', 3);
+  chk('цвета тонов сосчитаны', Array.isArray(an.toneColors) && an.toneColors.length === 3, an.toneColors);
+  const near = (hex, r,g,b) => { const n = parseInt(hex.slice(1),16);
+    return Math.abs((n>>16&255)-r) < 12 && Math.abs((n>>8&255)-g) < 12 && Math.abs((n&255)-b) < 12; };
+  chk('самый тёмный тон — почти чёрный', near(an.toneColors[0], 20,20,20), an.toneColors[0]);
+  chk('средний — серый', near(an.toneColors[1], 60,60,60), an.toneColors[1]);
+  chk('светлый — красный, а не серый', near(an.toneColors[2], 200,30,40), an.toneColors[2]);
+  chk('и это НЕ оттенки серого', an.toneColors[2] !== an.toneColors[1], an.toneColors);
+
+  const card = {id:1, face:'-Y', u0:0, v0:0, w:40, h:40, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:an.heightmap, levels:3,
+                chan:an.stats.chose, tones:an.toneColors};
+  const ink = coasterInks(card);
+  // The alignment is the whole trick and it is off by one if you look away: `tones` is indexed by TONE,
+  // while the distinct heights include the BACKGROUND when the picture has transparency. Drop the
+  // background first, then take colours by position in what is left. Done the other way round, every
+  // part wears its neighbour's colour and the last one falls off the end into the fallback grey — which
+  // is exactly what the first version of this did.
+  chk('цветов столько же, сколько красок', ink.colors.length === ink.levels.length, [ink.colors, ink.levels]);
+  chk('фон не съел первый цвет', ink.colors[0] === an.toneColors[0], [ink.colors[0], an.toneColors[0]]);
+  chk('и последний не свалился в запасной серый', ink.colors[2] === an.toneColors[2], ink.colors);
+  chk('запасного цвета вообще нет в списке', !ink.colors.includes('#b9c5cd'), ink.colors);
+
+  // ...and it reaches the model that gets added, which is the only place it does any good
+  logos.length = 0; logos.push(card);
+  const walk = [];
+  let cur = 'body';
+  for(let i=0;i<6;i++){
+    const m = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:cur}));
+    if(!m) break; cur = m.over.csPart; if(cur === 'body') break;
+    walk.push(m.color);
+  }
+  chk('каждое звено цепочки несёт свой цвет', walk.join() === ink.colors.join(), [walk, ink.colors]);
+  chk('возврат к подстаканнику цвета не навязывает',
+      !assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:'ink3'})).color);
+
+  // A logo with no tones recorded must not break the chain — old saved configs have no `tones` at all.
+  const bare = Object.assign({}, card); delete bare.tones;
+  const bi = coasterInks(bare);
+  chk('без записанных цветов краски всё равно есть', bi.levels.length === 3, bi.levels.length);
+  chk('и цвет подставляется запасной', bi.colors.every(c => /^#[0-9a-f]{6}$/.test(c)), bi.colors);
+  logos.length = 0;
+}
+
+console.log('=== логотип ограничен своей формой, а не кубом, который не строится ===');
+{
+  // «Не могу сделать логотип больше»: the size was clamped against BOX_FACE_DIMS — the cube's 40 mm
+  // faces — on a 90 mm disc that is not a cube at all. 40/2 − 1.5 = 18.5 half, so 37 mm was the ceiling
+  // whatever the coaster's size. Two sets were being confused: who BUILDS the relief, and who decides
+  // how big it may be.
+  const grown = (ov) => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), ov);
+    const hm = new Float32Array(S*S); hm.fill(1);
+    const lg = {id:1, face:'-Y', u0:0, v0:0, w:80, h:80, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:hm, levels:2};
+    logos.push(lg); clampLogoToFace(lg); return lg.w; };
+  chk('на подстаканнике Ø90 логотип растёт дальше 37 мм', grown({csMode:'round', csD:90}) === 80,
+      grown({csMode:'round', csD:90}));
+  chk('и на Ø160 тоже', grown({csMode:'round', csD:160}) === 80);
+  // The same set answers for the stand, which lost it when the stand left LOGO_PLATE_MODES in v191.
+  chk('на подставке — тоже (её сломало v191)', grown({psOn:true, psW:120}) === 80, grown({psOn:true, psW:120}));
+  chk('на воронке как было', grown({fnOn:true}) === 80);
+  // ...and the cube itself still measures against its own faces, which is the case the clamp exists for
+  chk('куб по-прежнему меряет себя', grown({}) === 37, grown({}));
+  chk('и растёт вместе со своей гранью', grown({width:200, depth:200}) === 80, grown({width:200, depth:200}));
+
+  chk('множество «сам решает границы» шире, чем «строит плитой»',
+      LOGO_OWN_BOUNDS.size === LOGO_PLATE_MODES.size + 2, [LOGO_OWN_BOUNDS.size, LOGO_PLATE_MODES.size]);
+  chk('и включает обе формы со своей машинерией',
+      LOGO_OWN_BOUNDS.has('coaster') && LOGO_OWN_BOUNDS.has('stand'));
+  chk('а строит плитой их по-прежнему не он',
+      !LOGO_PLATE_MODES.has('coaster') && !LOGO_PLATE_MODES.has('stand'));
+  logos.length = 0;
+}
+
 console.log('=== о срезанном логотипе говорят вслух ===');
 {
   // Clipping is silent by nature — the card still says 60 mm while the pocket is 44 — so the only place

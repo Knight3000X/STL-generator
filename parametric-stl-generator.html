@@ -915,7 +915,7 @@
         <button id="btn-add-texture" title="Процедурная текстура рельефом: размер логотипа задаёт шаг узора">+ Текстура</button>
       </div>
       <div id="logo-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё два разных тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». Если на модели виден только контур логотипа — поставьте «детали» вручную. До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх).</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё больше одного тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». <b>«Ступеней»</b> — на сколько уровней режется рельеф. 2 — как раньше: один порог, одна ступень, видна ровно одна граница. Настоящая эмблема нарисована в три-четыре плоских цвета, и двумя уровнями из трёх границ показать можно только одну — остальное сливается. При 3–6 порога нет вовсе: приложение само находит тона картинки (кластеризацией, а не делением диапазона поровну — иначе тон может лечь ровно на разрез) и делает каждый своей высотой; прозрачный фон остаётся заподлицо. Число реальных тонов может оказаться меньше запрошенного — лишних ступеней не выдумывается. При загрузке картинки ступени и глубина ставятся сами: 0,2 мм на КАЖДУЮ ступень, потому что ступень тоньше слоя не пропечатается (об этом же скажут предупреждения). До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх).</div></details>
     </details>
     </div>
 
@@ -1041,7 +1041,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v187';
+const APP_VERSION = 'v188';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2925,6 +2925,55 @@ function downloadBlob(blob, filename) {
    LOGO / RELIEF IMAGE HANDLING
    ========================================================= */
 const LOGO_HM_SIZE = 256; // fixed sampling resolution for the stored heightmap
+// One step of relief, in mm — the default depth of a plain logo, and on a stepped one the height of each
+// level. Also the floor the print warning measures against: a step under one layer is not a step.
+const LOGO_STEP_MM = 0.2;
+
+/* How many TONES a picture is actually painted in, and where they sit: one-dimensional k-means over a
+   256-bin luminance histogram. A histogram rather than the pixels themselves — the source is 8-bit, so the
+   bins throw nothing away, and 256×K×iterations is instant where 200 000×K×iterations is not.
+
+   Returns centres ascending with their share of the pixels, empty and indistinguishable clusters dropped:
+   asked for six tones from a two-tone picture it must answer TWO, not six with four of them imaginary. The
+   count it returns is what the relief gets levels for, so an invented tone would be an invented step. */
+function logoTones(hist, total, K){
+  if(!total) return [];
+  K = Math.max(1, Math.min(8, K|0));
+  const c = [];
+  for(let k=0;k<K;k++){                       // seed on the quantiles — where the pixels actually are
+    const target = total*(k+0.5)/K; let acc=0, b=0;
+    for(b=0;b<256;b++){ acc+=hist[b]; if(acc>=target) break; }
+    c.push(Math.min(255,b)/255);
+  }
+  const nearest = v => { let best=0, bd=Infinity;
+    for(let k=0;k<c.length;k++){ const d=Math.abs(v-c[k]); if(d<bd){bd=d;best=k;} } return best; };
+  for(let it=0; it<24; it++){
+    const sum=new Float64Array(K), cnt=new Float64Array(K);
+    for(let b=0;b<256;b++){ const h=hist[b]; if(!h) continue;
+      const k=nearest(b/255); sum[k]+=(b/255)*h; cnt[k]+=h; }
+    let moved=0;
+    for(let k=0;k<K;k++) if(cnt[k]){ const nv=sum[k]/cnt[k]; moved=Math.max(moved,Math.abs(nv-c[k])); c[k]=nv; }
+    if(moved < 1e-4) break;
+  }
+  const cnt=new Float64Array(K);
+  for(let b=0;b<256;b++){ const h=hist[b]; if(h) cnt[nearest(b/255)]+=h; }
+  const out=[];
+  for(let k=0;k<K;k++) if(cnt[k]>0) out.push({v:c[k], n:cnt[k]/total});
+  out.sort((a,b)=>a.v-b.v);
+  // Two things collapse an over-large K and they overlap on purpose. Ask six levels of a one-tone picture
+  // and all six seeds land on the same bin; `nearest` awards every pixel to the first of them, so five
+  // come back empty and the filter above drops them — and even without it their centres are identical and
+  // the merge below folds them together. Exact ties are the filter's, near ties are the merge's, and each
+  // covers the other's case: removing either one alone changes nothing observable, which is why the
+  // contract («сколько тонов, столько ступеней») is pinned in the test rather than attributed here.
+  const merged=[];
+  for(const t of out){
+    const last = merged[merged.length-1];
+    if(last && t.v - last.v < 0.02){ const s=last.n+t.n; last.v=(last.v*last.n + t.v*t.n)/s; last.n=s; }
+    else merged.push({v:t.v, n:t.n});
+  }
+  return merged;
+}
 
 /* Which channel of the picture the relief is read from. There are three, and picking the wrong one is the
    difference between a logo and its outline:
@@ -2936,18 +2985,34 @@ const LOGO_HM_SIZE = 256; // fixed sampling resolution for the stored heightmap
      ДЕТАЛИ (detail) — opaque AND light. Right for a COLOURED icon on a transparent background, which the
                        other two both flatten: alpha sees one solid silhouette and loses every line inside
                        it, luminance sees the transparent background as black and merges it with the dark
-                       parts of the icon. Outside stays flat and the tones inside are stretched over the
-                       full range, so the threshold has something to cut at.
+                       parts of the icon.
 
-   The relief itself is binary — `val > threshold ? depth : 0` — so all the detail there is has to be in
-   this mask. That is why «детали» is not a nicety: without it a two-tone badge prints as a blank shield.
+   AND HOW MANY LEVELS the relief is cut into. At `levels` 2 the relief is what it always was — one
+   threshold, one step, `val > threshold ? depth : 0` — and the map stays continuous so the threshold has
+   something to cut at (for `detail`, tones stretched between the 10th and 90th percentile).
 
-   AUTO picks `detail` when the image is transparent AND the opaque part really has two tones: a spread of
-   more than a quarter of the range between its 10th and 90th percentiles, with at least a twentieth of the
-   pixels on each side of the middle. Black text on transparency has no spread and stays on alpha. */
-function analyzeLogoImageData(data, size, mode) {
+   Above 2 the threshold is gone and the tones themselves become the heights. This is the difference
+   between showing a logo and showing two thirds of it: a real emblem is drawn in three or four flat
+   colours, and TWO levels can only ever show one boundary out of the three. The user's shield is painted
+   in a near-black outline (luma 0.06), a grey panel (0.19) and red (0.32); cut at one threshold the grey
+   and the red land on the same side and all that survives is the outline.
+
+   The levels come from k-means on the picture's own tones, NOT from slicing the range evenly, because an
+   even slice puts its cuts wherever the range happens to end and a tone can sit right on one — the grey
+   panel above normalises to 0.509 against a 0.5 cut. Where there is transparency the background is level
+   0, flush with the face, and every tone stands above it (tone k of m → (k+1)/m); where there is none
+   there is no background to be flush with, so the darkest tone IS the floor (tone k → k/(m−1)).
+
+   AUTO picks `detail` when the image is transparent AND its opaque part is painted in more than one tone:
+   at least two clusters carrying a twentieth of the pixels each, spanning at least 0.10 of luminance
+   between them. (The rule used to be a flat spread of 0.25 between percentiles, which called that same
+   three-tone shield single-toned — its p10..p90 spread is 0.216.) Black text on transparency is one
+   cluster and stays on alpha. */
+function analyzeLogoImageData(data, size, mode, levels) {
   const n = size*size;
+  levels = Math.max(2, Math.min(6, Math.round(levels || 2)));
   const lum = new Float32Array(n), alpha = new Float32Array(n);
+  const hist = new Float64Array(256);
   let minA = 255, maxA = 0, sumLum = 0, countOpaque = 0;
   const op = [];
   for (let i = 0; i < n; i++) {
@@ -2956,29 +3021,63 @@ function analyzeLogoImageData(data, size, mode) {
     lum[i] = (0.299*r + 0.587*g + 0.114*b)/255;
     if (a < minA) minA = a;
     if (a > maxA) maxA = a;
-    if (a >= 10) { sumLum += lum[i]; countOpaque++; op.push(lum[i]); }
+    if (a >= 10) { sumLum += lum[i]; countOpaque++; op.push(lum[i]); hist[Math.round(lum[i]*255)]++; }
   }
   const hasTransparency = (maxA - minA) > 40;
   const avgLum = countOpaque ? sumLum/countOpaque : 0.5;
   // Percentiles rather than min/max: one stray antialiased pixel is not a second tone.
   op.sort();
   const q = t => op.length ? op[Math.min(op.length-1, Math.floor(t*(op.length-1)))] : 0;
-  const p10 = q(0.10), p90 = q(0.90), spread = p90 - p10, mid = (p10 + p90)/2;
-  let dark = 0; for (const l of op) if (l < mid) dark++;
-  const darkFrac = op.length ? dark/op.length : 0;
-  const twoTone = hasTransparency && spread > 0.25 &&
-                  Math.min(darkFrac, 1-darkFrac) > 0.05;
+  const p10 = q(0.10), p90 = q(0.90), spread = p90 - p10;
+  const tones = logoTones(hist, countOpaque, 3);
+  const solid = tones.filter(t => t.n >= 0.05);
+  const manyTones = hasTransparency && solid.length >= 2 &&
+                    (solid[solid.length-1].v - solid[0].v) >= 0.10;
   const chose = (mode && mode !== 'auto') ? mode
-              : twoTone ? 'detail' : hasTransparency ? 'alpha' : 'lum';
-  const stats = {chose, spread:+spread.toFixed(4), darkFrac:+darkFrac.toFixed(4),
-                 hasTransparency, twoTone, opaque:countOpaque};
-  if (chose === 'alpha') return { heightmap: alpha, suggestedInvert: false, stats };
-  if (chose === 'lum')   return { heightmap: lum,   suggestedInvert: avgLum > 0.5, stats };
-  const hm = new Float32Array(n), lo = p10, span = Math.max(1e-6, p90 - p10);
-  for (let i = 0; i < n; i++)
-    hm[i] = alpha[i] < 0.5 ? 0 : Math.max(0, Math.min(1, (lum[i] - lo)/span));
-  return { heightmap: hm, suggestedInvert: false, stats };
+              : manyTones ? 'detail' : hasTransparency ? 'alpha' : 'lum';
+  const stats = {chose, levels, spread:+spread.toFixed(4), tones:solid.length,
+                 hasTransparency, manyTones, opaque:countOpaque};
+  // What a fresh upload should be given. `levels` stays an explicit 2 unless the caller says otherwise —
+  // predictable for everything that already exists — but a picture painted in three tones has no business
+  // arriving as two, so the upload path reads this and asks for that many. Capped at 4: past that the
+  // clusters are antialiasing, and every extra level is another ledge for a nozzle to fumble.
+  const suggestedLevels = (chose === 'detail' && solid.length >= 3) ? Math.min(4, solid.length) : 2;
+
+  if (levels <= 2) {   // one threshold, one step — unchanged
+    if (chose === 'alpha') return { heightmap: alpha, suggestedInvert: false, suggestedLevels, stats };
+    if (chose === 'lum')   return { heightmap: lum,   suggestedInvert: avgLum > 0.5, suggestedLevels, stats };
+    const hm = new Float32Array(n), lo = p10, span = Math.max(1e-6, p90 - p10);
+    for (let i = 0; i < n; i++)
+      hm[i] = alpha[i] < 0.5 ? 0 : Math.max(0, Math.min(1, (lum[i] - lo)/span));
+    return { heightmap: hm, suggestedInvert: false, suggestedLevels, stats };
+  }
+
+  // Stepped relief: the tones ARE the heights, so the map is baked and no threshold is applied later.
+  const src = chose === 'alpha' ? alpha : lum;
+  const gated = chose !== 'lum';           // 'lum' has no background to hold flush
+  const h2 = new Float64Array(256); let tot = 0;
+  for (let i = 0; i < n; i++) if (!gated || alpha[i] >= 0.5) { h2[Math.round(src[i]*255)]++; tot++; }
+  const lv = logoTones(h2, tot, levels), m = lv.length;
+  stats.tones = m;
+  const hm = new Float32Array(n);
+  if (!m) return { heightmap: hm, suggestedInvert: false, suggestedLevels, stats };
+  const lut = new Float32Array(256);
+  for (let b = 0; b < 256; b++) {
+    const v = b/255; let best = 0, bd = Infinity;
+    for (let k = 0; k < m; k++) { const d = Math.abs(v - lv[k].v); if (d < bd) { bd = d; best = k; } }
+    lut[b] = gated ? (best+1)/m : (m > 1 ? best/(m-1) : 1);
+  }
+  for (let i = 0; i < n; i++) hm[i] = (gated && alpha[i] < 0.5) ? 0 : lut[Math.round(src[i]*255)];
+  return { heightmap: hm, suggestedInvert: chose === 'lum' && avgLum > 0.5, suggestedLevels, stats };
 }
+// Is this logo's relief cut into more than one step? The heightmap is then already AT its level values, so
+// nothing thresholds it — named once here because four call sites have to agree about it.
+function logoStepped(logo){ return (logo && logo.levels || 2) > 2; }
+// The depth a freshly loaded logo gets. LOGO_STEP_MM has always meant the size of one step, so a stepped
+// relief takes that PER LEVEL rather than sharing one step out between them — three levels inside 0.2 mm
+// put each boundary 0.07 mm from the next, under a layer at any common height, and the picture that was
+// supposed to gain detail comes out flat again. Negative: engraved, as it has always defaulted.
+function logoDefaultDepth(levels){ return -LOGO_STEP_MM * Math.max(1, (levels > 2 ? levels : 1)); }
 
 // Loads an image file into a heightmap (Float32Array, 0..1, row-major) plus a suggested
 // `invert` default. Calls cb({heightmap, previewUrl, suggestedInvert}) when ready, or
@@ -2995,11 +3094,16 @@ function loadLogoImageFile(file, cb) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, size, size); // stretch to fit; logo W/H controls handle aspect on the model
       const data = ctx.getImageData(0, 0, size, size).data;
-      const { heightmap, suggestedInvert, stats } = analyzeLogoImageData(data, size);
+      const first = analyzeLogoImageData(data, size);
+      // A three-tone emblem must not arrive as two. Re-read at the level count the picture asked for.
+      const levels = first.suggestedLevels;
+      const { heightmap, suggestedInvert, stats } =
+        levels > 2 ? analyzeLogoImageData(data, size, 'auto', levels) : first;
       // Native aspect (w/h) of the uploaded image: the heightmap itself is square-stretched, so the
       // aspect must ride along for the "link W/H" proportions lock on the logo card.
       const aspect = (img.naturalWidth || img.width || 1) / (img.naturalHeight || img.height || 1);
-      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect, src: stats.chose });
+      cb({ heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect,
+           src: stats.chose, levels });
     };
     img.onerror = () => cb(null);
     img.src = dataUrl;
@@ -3333,7 +3437,8 @@ function makeLogoDispFn(logo, frame) {
     let v01 = 1 - (ldv + logo.h/2) / logo.h; // image is top-down; v is face-up
     let val = sampleHeightmap(logo.heightmap, u01, v01);
     if (logo.invert) val = 1 - val;
-    return val > logo.threshold ? logo.depth : 0;
+    // Stepped: the map already holds the level, so the height IS the value. Binary: one cut, one step.
+    return logoStepped(logo) ? val * logo.depth : (val > logo.threshold ? logo.depth : 0);
   };
 }
 
@@ -3354,7 +3459,8 @@ function makeLogoMaskFn(logo, frame) {
     const u01 = (ldu + logo.w/2) / logo.w, v01 = 1 - (ldv + logo.h/2) / logo.h;
     let val = sampleHeightmap(logo.heightmap, u01, v01);
     if (logo.invert) val = 1 - val;
-    return val > logo.threshold ? 1 : 0;
+    // The patch is the logo's FOOTPRINT, so on a stepped relief every level counts, not just the top one.
+    return (logoStepped(logo) ? val > 1e-4 : val > logo.threshold) ? 1 : 0;
   };
 }
 
@@ -3374,7 +3480,8 @@ function buildLogoSilhouetteMask(logo, N) {
     if (Math.abs(lu) > 0.5 || Math.abs(lv) > 0.5) continue;        // rotated sample fell off the image
     let val = sampleHeightmap(logo.heightmap, lu + 0.5, lv + 0.5);
     if (logo.invert) val = 1 - val;
-    if (val > logo.threshold) { mask[j * N + i] = 1; count++; }
+    // A silhouette is the whole footprint, so a stepped map contributes every level, not just the top one.
+    if (logoStepped(logo) ? val > 1e-4 : val > logo.threshold) { mask[j * N + i] = 1; count++; }
   }
   return count ? mask : null; // null = threshold left nothing (caller falls back to a solid plate)
 }
@@ -3514,7 +3621,8 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
     if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) continue;
     let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);
     if (logo.invert) val = 1 - val;
-    if (val > logo.threshold) { mask[j*N+i]=1; any=true; }
+    // A second-colour insert is one material, so it takes the whole footprint of a stepped relief.
+    if (logoStepped(logo) ? val > 1e-4 : val > logo.threshold) { mask[j*N+i]=1; any=true; }
   }
   if (!any && plate <= 0) return [];
   // Cells touching only at a CORNER would put four wall quads on one vertical edge — non-manifold.
@@ -14400,14 +14508,14 @@ const LOGO_SRC_OPTIONS = [
 ];
 // Re-read a logo's heightmap from its stored preview in another channel. The preview IS the source image
 // resampled to the heightmap's own grid, so nothing is lost by going back to it.
-function relogoFromPreview(logo, mode, done){
+function relogoFromPreview(logo, mode, levels, done){
   if (!logo.previewUrl) { done && done(false); return; }
   const img = new Image();
   img.onload = () => {
     const size = LOGO_HM_SIZE, c = document.createElement('canvas'); c.width = c.height = size;
     const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size); ctx.drawImage(img, 0, 0, size, size);
-    const r = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, mode);
-    logo.heightmap = r.heightmap; logo.src = mode;
+    const r = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, mode, levels);
+    logo.heightmap = r.heightmap; logo.src = mode; logo.levels = levels;
     done && done(true);
   };
   img.onerror = () => done && done(false);
@@ -14436,7 +14544,11 @@ function renderLogoCards() {
         '<div class="logo-field"><label>Ширина</label><input type="number" data-field="w" step="0.5" min="1" value="'+logo.w+'"></div>'+
         '<div class="logo-field"><label>Высота</label><input type="number" data-field="h" step="0.5" min="1" value="'+logo.h+'"></div>'+
         '<div class="logo-field"><label>Глубина мм</label><input type="number" data-field="depth" step="0.1" value="'+logo.depth+'"></div>'+
-        '<div class="logo-field"><label>Порог %</label><input type="number" data-field="thresholdPct" step="1" min="1" max="99" value="'+Math.round(logo.threshold*100)+'"></div>'+
+        // Above 2 levels there is no threshold to set — the tones themselves are the heights. A control
+        // that does nothing is worse than no control, so it goes away rather than sitting there inert.
+        (logoStepped(logo) ? '' :
+          '<div class="logo-field"><label>Порог %</label><input type="number" data-field="thresholdPct" step="1" min="1" max="99" value="'+Math.round(logo.threshold*100)+'"></div>')+
+        '<div class="logo-field"><label>Ступеней</label><input type="number" data-field="levels" step="1" min="2" max="6" value="'+(logo.levels||2)+'"></div>'+
         '<div class="logo-field"><label>Поворот °</label><input type="number" data-field="rotation" step="1" min="-180" max="180" value="'+(logo.rotation||0)+'"></div>'+
       '</div>'+
       '<div class="logo-field logo-src-row"><label>Рельеф читать по</label>'+
@@ -14751,8 +14863,10 @@ function addLogoFromResult(result) {
     w,
     h: Math.max(2, Math.min(Math.round(w / aspect * 10) / 10, dims.vLen-3)),
     aspect, lockAspect: true,
-    depth: -0.2, threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,  // утоплено по умолчанию
+    depth: logoDefaultDepth(result.levels || 2),   // утоплено по умолчанию, 0.2 мм на ступень
+    threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
     src: result.src || 'auto',   // which channel the relief was read from — shown and changeable on the card
+    levels: result.levels || 2,  // 2 = one threshold, one step; above that the tones ARE the heights
   };
   clampLogoToFace(logo);
   logos.push(logo);
@@ -14827,9 +14941,19 @@ function attachLogoEventListeners() {
     const logo = logos.find(l => l.id === Number(card.dataset.logoId));
     if (!logo) return;
     if (field === 'face') logo.face = e.target.value;
-    else if (field === 'src') {
-      // Rebuilt from the preview, so the choice is live rather than something you must re-upload for.
-      relogoFromPreview(logo, e.target.value, ok => { if (ok && currentShape === 'box') markPending(); });
+    else if (field === 'src' || field === 'levels') {
+      // Both re-read the picture, so both go back to the preview — the choice is live rather than
+      // something you must re-upload for. Levels crossing 2 also adds or removes the threshold row.
+      const mode = field === 'src' ? e.target.value : (logo.src || 'auto');
+      const lv = field === 'levels'
+        ? Math.max(2, Math.min(6, Math.round(parseFloat(e.target.value) || 2)))
+        : (logo.levels || 2);
+      const was = logoStepped(logo);
+      relogoFromPreview(logo, mode, lv, ok => {
+        if (!ok) return;
+        if (was !== logoStepped(logo)) renderLogoCards();
+        if (currentShape === 'box') markPending();
+      });
       return;
     }
     else if (field === 'invert') logo.invert = e.target.checked;
@@ -15430,6 +15554,18 @@ function collectPrintWarnings(p){
   if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
+  // A stepped relief divides its depth between the levels, so the number that has to clear a layer is the
+  // STEP, not the depth. Three levels in 0.2 mm look right in the preview and print as one flat plateau.
+  if (typeof logos !== 'undefined')
+    for (const l of logos) {
+      if (!logoStepped(l)) continue;
+      const step = Math.abs(l.depth || 0) / (l.levels || 2);
+      if (step < LOGO_STEP_MM - 1e-9) {
+        w.push('ступень рельефа ' + step.toFixed(2) + ' мм при ' + l.levels + ' ступенях — тоньше слоя, ' +
+               'ступени сольются (нужна глубина от ' + (LOGO_STEP_MM*l.levels).toFixed(1) + ' мм)');
+        break;
+      }
+    }
   // An auger's flight is the thinnest thing the thread engine draws, and it is drawn standing up off the
   // shaft, so it is the first thing to come out unprintable. Its root thickness is what is asked for.
   // A snap beam over its material's allowable strain does not fail in the preview. It fails once, on the
@@ -15960,6 +16096,7 @@ function exportAssemblyJSON() {
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl, src:l.src||'auto',
+        levels:l.levels||2,
         aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
         pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
@@ -15981,8 +16118,9 @@ function restoreLogoFromDef(ld) {
     img.onload = () => {
       const size = LOGO_HM_SIZE, canvas = document.createElement('canvas'); canvas.width=size; canvas.height=size;
       const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
-      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto');
-      res({ id: nextLogoId++, src: ld.src || 'auto', face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
+      const lv = Math.max(2, Math.min(6, Math.round(ld.levels || 2)));
+      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto', lv);
+      res({ id: nextLogoId++, src: ld.src || 'auto', levels: lv, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
         threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl,
         aspect: ld.aspect > 0 ? ld.aspect : undefined, lockAspect: !!ld.lockAspect });
     };

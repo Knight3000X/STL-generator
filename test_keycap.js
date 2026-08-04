@@ -10,9 +10,9 @@
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function blobHM(r){ const N=LOGO_HM_SIZE,h=new Float32Array(N*N); r=r||0.3; for(let y=0;y<N;y++)for(let x=0;x<N;x++){const fx=x/N-0.5,fy=y/N-0.5;h[y*N+x]=(Math.hypot(fx,fy)<r)?1:0;} return h; }
-function base(ov, withLegend){
+function base(ov, withLegend, blobR){
   logos.length=0; boxHoles.length=0; dieFaces.length=0;
-  if(withLegend) logos.push({id:nextLogoId++,face:'+Y',u0:0,v0:0,w:8,h:8,depth:1,threshold:0.5,invert:false,rotation:0,heightmap:blobHM(),previewUrl:null});
+  if(withLegend) logos.push({id:nextLogoId++,face:'+Y',u0:0,v0:0,w:8,h:8,depth:1,threshold:0.5,invert:false,rotation:0,heightmap:blobHM(blobR),previewUrl:null});
   Object.assign(paramState.box, defaultBoxParams(), {keycapMode:'single',keySizeU:1,keyH:9,keyTaper:2.4,keyRound:1.8,
     keyWall:1.3,keyPlate:1.8,keyDish:1,keyLegendDepth:0.6,keyStem:'mx',keyStemTol:0.1}, ov);
   return buildTrisForShape('box',paramState.box); }
@@ -475,6 +475,78 @@ console.log('=== вставка AMS несёт легенду и встаёт в
     chk(pr+': и достаёт до поверхности', c.maxY > sh.maxY - 2, {ins:c.maxY, shell:sh.maxY});
     chk(pr+': вставка замкнута', manifoldCheck(base({keycapMode:'core', keyProfile:pr}, true),4).watertight);
   }
+}
+
+
+console.log('=== вставка обходит стем оболочки ===');
+// The shell's stem stands in the middle of the cavity the insert lives in. The insert used to run straight
+// through it: both meshes right, and two objects asked to occupy the same cubic millimetres — which a
+// slicer resolves by printing both. What is measured here is that they share NO volume anywhere, that the
+// insert is still closed, and that every piece of it rests on something rather than floating.
+{
+  const runsUp = (t,x,z) => solidRuns(t,1,z,x);
+  const overlap = (A,B) => { let m=0; for(const a of A) for(const b of B) m=Math.max(m, Math.min(a[1],b[1])-Math.max(a[0],b[0])); return m; };
+  for(const pr of ['cherry','sa','dsa','mt3']) for(const st of ['mx','choc']) for(const u of [1,2,6.25]){
+    const o = {keyProfile:pr, keyStem:st, keySizeU:u};
+    const sh = base(Object.assign({keycapMode:'shell'}, o), true);
+    const co = base(Object.assign({keycapMode:'core'},  o), true);
+    chk(pr+'/'+st+'/'+u+'u: вставка замкнута', manifoldCheck(co,4).watertight && vol(co)>0, manifoldCheck(co,4));
+    base(Object.assign({keycapMode:'core'}, o), true);
+    const g = keycapStabSpec(paramState.box);
+    let worst = 0;
+    for(const dx of g.xs) for(const [ex,ez] of [[0.31,0.29],[1.7,0.4],[0.4,1.7],[-1.6,-0.5],[0.9,-1.3]])
+      worst = Math.max(worst, overlap(runsUp(sh,dx+ex,ez), runsUp(co,dx+ex,ez)));
+    chk(pr+'/'+st+'/'+u+'u: оболочка и вставка не делят объём', worst < 1e-6, worst);
+  }
+  // ...and across the whole footprint, not only over the stem
+  { const o = {keyProfile:'cherry', keyStem:'mx'};
+    const sh = base(Object.assign({keycapMode:'shell'}, o), true);
+    const co = base(Object.assign({keycapMode:'core'},  o), true);
+    let worst = 0;
+    for(let a=-6;a<=6;a++) for(let b=-6;b<=6;b++)
+      worst = Math.max(worst, overlap(runsUp(sh, a*1.42+0.31, b*1.42+0.29),
+                                      runsUp(co, a*1.42+0.31, b*1.42+0.29)));
+    chk('и нигде по всей площадке', worst < 1e-6, worst); }
+}
+{
+  // Every piece of the insert stands on something: the sheet's own underside, or the top of the stem. A
+  // small centred glyph lies entirely inside the stem's footprint and becomes an island — which is fine
+  // while it RESTS on the stem and would be a lump floating in mid-air over any clearance at all. That is
+  // why the gap over the stem is zero: the plug is simply the next layers up in the same print.
+  const c0 = keycapCoreSpec(paramState.box, 0);
+  chk('над стемом зазора нет', c0.clr === 0, c0.clr);
+  for(const [r,st] of [[0.10,'mx'],[0.10,'choc'],[0.30,'mx'],[0.45,'mx']]){
+    const t = base({keycapMode:'core', keyStem:st, keyProfile:'cherry', keyRow:'r3'}, true, r);
+    const g = keycapCoreSpec(paramState.box, 0);
+    // rebuild the plate line the way the builder does, to know what the two legal footings are
+    const prof = keycapRowSpec('cherry','r3');
+    const H = prof.h, pT = Math.max(1,Math.min(4,paramState.box.keyPlate||1.8));
+    const yPlate = H - pT - prof.dish, stemTop = yPlate + g.reach, yB = yPlate - 1.6;
+    const parts = meshComponents(t);
+    chk('r='+r+'/'+st+': вставка замкнута', manifoldCheck(t,4).watertight);
+    for(const c of parts){ let lo = 1e9;
+      for(const T of c) for(const v of T) lo = Math.min(lo, v[1]);
+      chk('r='+r+'/'+st+': кусок опирается на лист или на стем',
+          Math.abs(lo-yB) < 0.02 || Math.abs(lo-stemTop) < 0.02, {lo, yB, stemTop}); }
+  }
+}
+{
+  // There is ALWAYS room for a plug above the stem, and that is an invariant rather than a happy accident:
+  // the stem reaches 0.6·plateT into the plate and never more than 1.2, so what is left is 0.4·plateT up
+  // to a 2 mm plate and plateT − 1.2 after. Held here so that deepening the stem cannot quietly turn a
+  // legend over the crosspoint into a see-through hole — nothing at runtime warns about it, because
+  // nothing at runtime can hit it.
+  const row = SHAPE_PARAMS.box.find(r => r.key === 'keyPlate');
+  for(let pl = row.min; pl <= row.max + 1e-9; pl += 0.1){
+    const c = keycapCoreSpec(Object.assign({}, paramState.box, {keyPlate:+pl.toFixed(2)}), 0);
+    chk('площадка '+pl.toFixed(1)+': над стемом остаётся '+c.room.toFixed(2)+' мм', c.room >= 0.3, c.room);
+    chk('площадка '+pl.toFixed(1)+': запас = толщина минус заход', Math.abs(c.room - (c.plateT - c.reach)) < 1e-9);
+  }
+  for(const pl of [1, 1.2, 1.8, 4]){
+    const t = base({keycapMode:'core', keyPlate:pl}, true);
+    chk('площадка '+pl+': вставка замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  }
+  chk('без стема вопрос не стоит', keycapCoreSpec(Object.assign({}, paramState.box, {keyStem:'none'}), 0).xs.length === 0);
 }
 
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');

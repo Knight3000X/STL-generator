@@ -1039,7 +1039,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v185';
+const APP_VERSION = 'v186';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3745,6 +3745,31 @@ function keycapStabSpec(p){
   const xs = on ? [-span/2, 0, span/2] : [0];
   return {on, span, asked, u, near, xs, n:xs.length, maxSpan,
           tabled: Math.abs(near - u) < 1e-9, fits: !on || asked <= maxSpan + 1e-9};
+}
+// Where the insert has to get out of the stem's way, and whether the legend can pass over it. Published
+// rather than buried in the builder, because the print warning and the tests need the same numbers and a
+// second copy of them would drift. `yPlate` is the builder's own plate line, handed in — everything else
+// follows from the parameters.
+function keycapCoreSpec(p, yPlate){
+  const stem = !!(p.keyStem && p.keyStem !== 'none');
+  const plateT = Math.max(1, Math.min(4, p.keyPlate || 1.8));
+  const reach = Math.min(1.2, plateT*0.6);          // how far the stem pushes up into the plate
+  // NO gap over the stem: the plug RESTS on it. A gap would be right if the insert were dropped into a
+  // finished shell, but a legend that sits entirely inside the stem's footprint — a small centred glyph is
+  // exactly that — becomes an island of the insert with nothing under it, and an island over a gap is a
+  // lump floating in mid-air. Resting on the stem it is simply the next layers up in the same print, which
+  // is what a two-colour job is. The two objects touch on a plane and share no volume.
+  const clr = 0;
+  const sh = stem ? keycapStemHeightmap(p.keyStem, Math.max(0, Math.min(0.5, p.keyStemTol || 0.1))) : null;
+  // Meat left for a plug above the stem, inside the plate. The stem reaches 0.6·plateT into it and never
+  // more than 1.2, so this is 0.4·plateT up to a 2 mm plate and plateT − 1.2 after — at the thinnest plate
+  // the app allows, 0.4 mm, and it only grows. There is therefore always room, which is why nothing here
+  // warns about it; test_keycap.js holds that invariant so that deepening the stem cannot break it quietly.
+  const room = plateT - reach - clr;
+  return {stem, plateT, reach, clr, room,
+          hx: sh ? sh.spanX/2 + 0.6 : 0, hz: sh ? sh.spanZ/2 + 0.6 : 0,
+          xs: stem ? keycapStabSpec(p).xs : [],
+          stemTop: (yPlate || 0) + reach + clr};
 }
 // What a profile actually is at a given row: height, top-plane tilt, dish depth and dish shape. One place,
 // so the builder, the model's name and the tests all read the same answer.
@@ -7312,20 +7337,56 @@ function buildKeycap(p, logoRes){
   // per-vertex top height (dish); legend offset applied PER CELL so shared lattice edges weld via walls
   const yT=(i,j)=>topSurf(X(i),Z(j));
   if(mode==='core'){
-    // standalone white insert: base slab (all cells, yPlate−slabT..yPlate) + legend plugs up to the shell's
-    // outer surface. One cell of perimeter clearance so it drops into the skirt cavity.
+    /* The white insert: a sheet under the shell's top plate, with the legend rising through the shell's own
+       through-holes to finish flush with its outer surface. One cell of perimeter clearance so it drops
+       into the skirt cavity — and it must clear the STEM, which is the shell's and stands right in the
+       middle of that cavity. Without that the two parts occupy the same cubic millimetres: both meshes
+       right, and a slicer asked to print two objects in one place.
+
+       WATERTIGHTNESS HERE IS BOOKKEEPING, not geometry, and the rule is worth stating once because every
+       attempt that skipped it leaked. The part is two height fields over a grid — a top and a bottom —
+       plus vertical walls wherever a cell has no neighbour or its neighbour sits at another level. A
+       wall's two side edges are shared with whatever else meets that corner, so every wall touching a
+       corner must CUT THAT VERTICAL LINE IN THE SAME PLACES. Hence:
+
+         * the bottom `yBotV` is a function of the VERTEX, never of the cell — then two neighbours cannot
+           disagree about it (a per-cell bottom left 132 open edges along the stem's cross slot);
+         * so is the cut line `yMidV` — max(plate line, bottom). Every wall is emitted as two stacked
+           quads through it, and where it coincides with an end the quad simply degenerates. A cut chosen
+           per cell instead left 6 more, where a plug next to the hole met a plain cell that cut at the
+           plate and a level step that started there.
+
+       A cell is kept if it clears the stem, or if it carries legend AND there is room for the plug to
+       pass over the stem. Room is plateT less the stem's reach into the plate less the clearances — about
+       0.47 mm on a 1.8 mm plate. Thinner than the minimum and the cell goes, which leaves a see-through
+       hole in the shell, so it is warned about rather than done quietly. */
     const slabT=1.6, yB=yPlate-slabT, m0=1, m1=nG-1;
-    const cin=(i,j)=>(i>=m0&&j>=m0&&i<m1&&j<m1);
+    const g = keycapCoreSpec(p, yPlate);
+    const overStem = (x,z) => g.stem && Math.abs(z) <= g.hz &&
+      g.xs.some(dx => Math.abs(x-dx) <= g.hx);
+    const cellOverStem = (i,j) => overStem(X(i),Z(j)) || overStem(X(i+1),Z(j)) ||
+                                  overStem(X(i),Z(j+1)) || overStem(X(i+1),Z(j+1));
+    const yBotV=(i,j)=> overStem(X(i),Z(j)) ? g.stemTop : yB;
+    const yMidV=(i,j)=> Math.max(yPlate, yBotV(i,j));
+    // Over the stem only the legend stays — a plain cell there would be a sheet where the stem is. There is
+    // always room for the plug: see keycapCoreSpec.
+    const cin=(i,j)=>(i>=m0&&j>=m0&&i<m1&&j<m1) && (!cellOverStem(i,j) || at(i,j));
     for(let j=m0;j<m1;j++)for(let i=m0;i<m1;i++){
+      if(!cin(i,j)) continue;
       const leg=at(i,j);
+      const b00=yBotV(i,j), b10=yBotV(i+1,j), b11=yBotV(i+1,j+1), b01=yBotV(i,j+1);
       const y00=leg?yT(i,j):yPlate, y10=leg?yT(i+1,j):yPlate, y11=leg?yT(i+1,j+1):yPlate, y01=leg?yT(i,j+1):yPlate;
       quad([X(i),y00,Z(j)],[X(i+1),y10,Z(j)],[X(i+1),y11,Z(j+1)],[X(i),y01,Z(j+1)],[0,1,0]);   // top (2 levels)
-      quad([X(i),yB,Z(j)],[X(i+1),yB,Z(j)],[X(i+1),yB,Z(j+1)],[X(i),yB,Z(j+1)],[0,-1,0]);       // bottom
-      // side walls: slab perimeter (full height) and legend↔flat level steps — exact shared vertices
+      quad([X(i),b00,Z(j)],[X(i+1),b10,Z(j)],[X(i+1),b11,Z(j+1)],[X(i),b01,Z(j+1)],[0,-1,0]);   // bottom (field)
       const eWall=(iN,jN,ax,az,bx,bz,va,vb,ref)=>{
         const nIn=cin(iN,jN), nLeg=nIn?at(iN,jN):null;
         const yaThis=leg?yT(va[0],va[1]):yPlate, ybThis=leg?yT(vb[0],vb[1]):yPlate;
-        if(!nIn){ quad([ax,yaThis,az],[bx,ybThis,bz],[bx,yB,bz],[ax,yB,az], ref); return; }
+        if(!nIn){                        // perimeter, in two stacked quads through the shared cut line
+          const ba=yBotV(va[0],va[1]), bb=yBotV(vb[0],vb[1]);
+          const ma=Math.min(yMidV(va[0],va[1]), yaThis), mb=Math.min(yMidV(vb[0],vb[1]), ybThis);
+          quad([ax,ma,az],[bx,mb,bz],[bx,bb,bz],[ax,ba,az], ref);
+          quad([ax,yaThis,az],[bx,ybThis,bz],[bx,mb,bz],[ax,ma,az], ref);
+          return; }
         if(nLeg===leg || !leg) return;   // level step emitted ONCE, from the plug side
         const yaN=nLeg?yT(va[0],va[1]):yPlate, ybN=nLeg?yT(vb[0],vb[1]):yPlate;
         quad([ax,yaThis,az],[bx,ybThis,bz],[bx,ybN,bz],[ax,yaN,az], ref);

@@ -23,7 +23,16 @@ for(const u of [1,1.5,2,6.25]){ const t=base({keySizeU:u}); const mc=manifoldChe
 chk('cap choc stem watertight', manifoldCheck(base({keyStem:'choc'}),4).watertight);
 chk('cap no stem watertight', manifoldCheck(base({keyStem:'none'}),4).watertight);
 chk('cap flat top (dish 0) watertight', manifoldCheck(base({keyDish:0}),4).watertight);
+// The unit is the PITCH, 19.05 mm; the cap is a gap narrower so neighbours do not rub, which puts a 1u cap
+// at 18.2 mm across — the number that is so often mistaken for the unit.
+chk('единица — шаг клавиш, 19.05 мм', KEYCAP_UNIT === 19.05 && KEYCAP_GAP === 0.85, {KEYCAP_UNIT, KEYCAP_GAP});
+for(const [u,w] of [[1,18.2],[1.25,22.9625],[2,37.25],[2.25,42.0125],[6.25,118.2125],[7,132.5]])
+  chk(u+'u шириной '+w+' мм', Math.abs(keycapWidth(u)-w)<1e-9, {got:keycapWidth(u), want:w});
 { const b=computeBBox(base({keySizeU:1})); chk('1u footprint ≈18.2mm', Math.abs((b.maxX-b.minX)-18.2)<0.2 && Math.abs(b.minY-0)<1e-6, {w:b.maxX-b.minX,y0:b.minY}); }
+for(const u of [1.25, 2, 2.25, 6.25, 7]){ const b=computeBBox(base({keySizeU:u}));
+  chk(u+'u: габарит = шагу минус зазор', Math.abs((b.maxX-b.minX)-keycapWidth(u))<0.2, {w:b.maxX-b.minX, want:keycapWidth(u)}); }
+{ const b=computeBBox(base({keySizeU:6.25}));
+  chk('глубина не зависит от ширины', Math.abs((b.maxZ-b.minZ)-18.2)<0.2, {d:b.maxZ-b.minZ}); }
 { const noStem=vol(base({keyStem:'none'})), mx=vol(base({keyStem:'mx'}));
   chk('MX stem adds material', mx>noStem, {noStem,mx}); }
 
@@ -142,7 +151,7 @@ function sag(tris){
   // 3 mm the two curves differ by only ~0.05 mm and a comparison that loose would pass a wrong radius.
   for(const d of [1, 3]){
     const t2 = base({keyProfile:'custom', keyDish:d, keyDishKind:'cyl', keyTaper:2.4, keyH:9});
-    const a = (18.2 - 2*2.4)/2, Rc = (a*a + d*d)/(2*d);
+    const a = (keycapWidth(1) - 2*2.4)/2, Rc = (a*a + d*d)/(2*d);
     for(const q of [0.37, 2.63, 4.37]){          // inside the cell grid, where the arc is sampled finely
       const want = 9 - (d - (Rc - Math.sqrt(Rc*Rc - q*q)));
       chk('чаша '+d+' на '+q+' мм от оси: поверхность на дуге R'+Rc.toFixed(2),
@@ -202,9 +211,18 @@ console.log('=== профили и ряды с таблицы сравнения
   const PROFILES = Object.keys(KEYCAP_PROFILES);
   // The chart's number against a profile's name is the height of its TALLEST row, so that is what has to
   // come out of the tallest row and nothing else. Written down once, checkable against the picture.
-  const CHART = {sa:16.5, csa:16.1, taihao:14.8, osa:14.4, asa:14.4, kat:13.5, mt3:13.3,
+  // MT3 is the one figure the chart and everybody else disagree about: 13.3 there, 16.5 (level with SA)
+  // in every independent source, which also calls its scoop the deepest spherical dish of any mainstream
+  // profile. Written down here as the corrected value so the disagreement cannot quietly reappear.
+  const CHART = {sa:16.5, csa:16.1, taihao:14.8, osa:14.4, asa:14.4, kat:13.5, mt3:16.5,
                  mda:12.5, oem:11.9, dss:11.0, jda:10.5, cherry:9.4,
                  sal:13.9, kam:9.1, xda:9.1, asalow:8.9, dsa:7.6, g20:7.1};
+  chk('MT3 вровень с SA', KEYCAP_PROFILES.mt3.top === KEYCAP_PROFILES.sa.top,
+      {mt3:KEYCAP_PROFILES.mt3.top, sa:KEYCAP_PROFILES.sa.top});
+  chk('MT3 — сфера, и самая глубокая',
+      KEYCAP_PROFILES.mt3.dishKind === 'sph' &&
+      Object.keys(KEYCAP_PROFILES).every(k => KEYCAP_PROFILES[k].dish <= KEYCAP_PROFILES.mt3.dish),
+      {kind:KEYCAP_PROFILES.mt3.dishKind, dish:KEYCAP_PROFILES.mt3.dish});
   for(const pr of PROFILES){
     chk(pr+': высота с таблицы', Math.abs(KEYCAP_PROFILES[pr].top - CHART[pr]) < 1e-9,
         {got:KEYCAP_PROFILES[pr].top, chart:CHART[pr]});
@@ -327,7 +345,7 @@ console.log('=== стабилизаторы на широкой клавише =
     chk(u+'u: расстояние между крайними = заявленному', Math.abs((g.xs[2]-g.xs[0]) - g.span) < 1e-12,
         {got:g.xs[2]-g.xs[0], span:g.span});
     chk(u+'u: все стемы внутри клавиши',
-        Math.abs(g.xs[0]) + 2.9 <= 18.2*u/2 - 0.8 + 1e-9, {x:g.xs[0], half:18.2*u/2});
+        Math.abs(g.xs[0]) + 2.9 <= keycapWidth(u)/2 - 0.8 + 1e-9, {x:g.xs[0], half:keycapWidth(u)/2});
   }
   // The table. 2u, 2.25u and 2.75u take the SAME spacing — one pair of stabiliser wires serves all three,
   // which is the point of the standard. A figure that grows with the key is the width of the cap, not the
@@ -342,7 +360,8 @@ console.log('=== стабилизаторы на широкой клавише =
   chk('таблица и код описывают один список',
       Object.keys(TABLE).sort().join() === Object.keys(KEYCAP_STAB_SPAN).sort().join());
   // ...and every tabled size now actually fits the cap it belongs to, except the 7u spacebar, whose 133.35
-  // is wider than this generator's own 7u cap (18.2 mm to the unit, not 19.05).
+  // leaves no room for the stem's own body inside a 7u cap: 132.5 mm wide, less two skirt walls and the
+  // 5.8 mm barrel, is 124.1 mm of usable span.
   for(const u of [2, 2.25, 2.75, 6.25]){
     const g = stab({keySizeU:u});
     chk(u+'u: расстояние из таблицы помещается в клавишу', g.fits, {asked:g.asked, max:g.maxSpan});
@@ -425,7 +444,7 @@ console.log('=== keycap overrides other box modes; organizer add-ons gated ===')
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('scoop/grip/ears/feet/dividers skipped on keycap', a===b, {a,b}); }
 { const t=base({platonic:'d20',polyN:6,binRound:5}); const b=computeBBox(t);
-  chk('keycap wins over die/poly/bin (footprint still ≈18.2)', Math.abs((b.maxX-b.minX)-18.2)<0.2, {w:b.maxX-b.minX}); }
+  chk('keycap wins over die/poly/bin (footprint still ≈18.2)', Math.abs((b.maxX-b.minX)-keycapWidth(1))<0.2, {w:b.maxX-b.minX}); }
 console.log('=== regression: keycapMode none → normal cube ===');
 { logos.length=0; Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,keycapMode:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);

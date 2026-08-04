@@ -965,7 +965,7 @@
     <input type="file" id="mesh-import-input" accept=".stl,.obj,model/stl,model/obj" style="display:none">
     <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
     <input type="file" id="sheet-svg-input" accept=".svg,image/svg+xml" style="display:none">
-    <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель отдельным объектом (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
+    <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель уходит частью печатаемого тела и несёт свою катушку, а детали одной AMS-сборки (подстаканник с цветами, оболочка кейкапа с сердечником) собираются в ОДИН объект, потому что они занимают одно и то же место (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
     </details>
 
     <div id="tabnav">
@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.4.1';
+const APP_VERSION = 'v16.4.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3015,33 +3015,97 @@ function tris3MFObject(id, trisIn, pid, pindex){
   s.push('</triangles></mesh></object>');
   return s.join('');
 }
-/* Every visible model as a separate object, transforms baked (same coords the merged STL exports) — AND
-   each one carrying its colour as a 3MF base material.
+const MF_IDENT3 = '1 0 0 0 1 0 0 0 1 0 0 0';                 // 3MF component transform: 3×3 + offset
+const MF_IDENT4 = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1';         // slicer part matrix: 4×4, row-major
+/* Which printed BODY a model belongs to — or null for "a body of its own".
+
+   AMS colour parts are not separate objects. The plugs of a coaster fill the coaster's own pocket and the
+   core of a two-colour keycap fills the shell's own cavity: the parts INTERPENETRATE, which is exactly the
+   thing a slicer refuses to reason about between two objects — it prints both and the overlap is extruded
+   twice. Between PARTS of one object the same overlap is resolved for free, later part winning, which is
+   the arrangement these pairs were designed for in the first place.
+
+   The relation is read from the parameters that create it (`assemblyMate` builds an AMS chain for a coaster
+   and a shell/core pair for a keycap), not guessed from geometry: two coasters standing side by side must
+   stay two objects, so the placement is part of the key, and the AMS chain seats every colour at exactly the
+   body's own origin, which makes that test exact rather than approximate. */
+function mfBodyKey(m){
+  const p = m.params || {};
+  const r3 = v => Math.round((v || 0) * 1000) / 1000;
+  const at = '@' + [m.px, m.py, m.pz, m.rx, m.ry, m.rz].map(r3).join(',');
+  if (p.csMode && p.csMode !== 'none') return 'coaster' + at;
+  if (p.keycapMode === 'shell' || p.keycapMode === 'core') return 'keycap' + at;
+  return null;
+}
+/* Every visible model, transforms baked (same coords the merged STL exports) — as PARTS of the printed body
+   they belong to, each part carrying its colour twice over: as a 3MF base material and as a slicer filament.
 
    The colour is not decoration here. A two-colour keycap or a coaster whose logo is three tones exports as
-   several objects sitting in exactly the same place, flush, so the outside is one smooth surface: opened in
-   a slicer with no material information every part lands on filament 1 and the result is a plain grey disc.
-   Nothing is missing from the file — the objects are all there, in the right places — but there is no way
-   for the slicer to know which is which, so the person is asked to work that out and assign five filaments
-   by hand to parts they cannot see. The picture already knew the colours; now the file carries them.
+   several shells sitting in exactly the same place, flush, so the outside is one smooth surface: opened in a
+   slicer with nothing to tell them apart every one of them lands on filament 1 and the result is a plain grey
+   disc. Nothing is missing from the file — the shells are all there, in the right places — but there is no way
+   for the slicer to know which is which, so the person is asked to work that out and assign five filaments by
+   hand to parts they cannot see. The picture already knew the colours; now the file carries them.
 
-   `<basematerials>` shares the resource id namespace with objects, so it takes id 1 and the objects start
-   at 2. `displaycolor` is #RRGGBBAA. */
+   `<basematerials>` is the 3MF core spec's answer and every conforming viewer reads it, but a slicer decides
+   what to print with from its OWN metadata, so displaycolor alone changes nothing where it matters. Orca and
+   Bambu Studio read `Metadata/model_settings.config`: objects, their parts, and the extruder each part is
+   assigned to. That is the file written below — one `<object>` per body, built out of `<components>`, one
+   component per part, and one config entry per part naming its filament.
+
+   Filaments are numbered by DISTINCT COLOUR, not per part: two parts painted the same colour are one filament,
+   which is what an AMS slot is. Extruder numbers are 1-based. The slicer still needs that many filaments
+   loaded — a printer profile with one extruder has nowhere to put filament 3.
+
+   Resource ids share one namespace with `<basematerials>`, so materials take id 1 and objects start at 2; a
+   component may only reference an object already defined, so parts are emitted before the body that holds
+   them. */
 function assemblyTo3MF(){
   saveActiveModel();
-  const objects = [], items = [], mats = [];
+  const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   const MAT_ID = 1;
-  let id = MAT_ID + 1;
+  const bodies = [], byKey = new Map();
   for (const m of models){
     if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
-    let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
-    if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
+    const key = mfBodyKey(m);
+    if (key && byKey.has(key)) { byKey.get(key).parts.push(m); continue; }
+    const body = { name: m.name || 'Модель', parts: [m] };
+    bodies.push(body);
+    if (key) byKey.set(key, body);
+  }
+  const mats = [], inkOf = new Map();
+  const inkIndex = (m) => {
     const col = /^#[0-9a-fA-F]{6}$/.test(m.color || '') ? m.color.toUpperCase() : '#B9C5CD';
-    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-    mats.push('<base name="' + esc(m.name || ('Деталь ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
-    objects.push(tris3MFObject(id, tris, MAT_ID, mats.length - 1));
-    items.push('<item objectid="' + id + '"/>');
-    id++;
+    if (!inkOf.has(col)){
+      inkOf.set(col, mats.length);
+      mats.push('<base name="' + esc(m.name || ('Филамент ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
+    }
+    return inkOf.get(col);
+  };
+  const objects = [], items = [], cfg = [];
+  let id = MAT_ID + 1;
+  for (const body of bodies){
+    const comps = [], parts = [];
+    for (const m of body.parts){
+      let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
+      if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
+      const ink = inkIndex(m);
+      objects.push(tris3MFObject(id, tris, MAT_ID, ink));
+      comps.push('<component objectid="' + id + '" transform="' + MF_IDENT3 + '"/>');
+      parts.push('<part id="' + id + '" subtype="normal_part">' +
+        '<metadata key="name" value="' + esc(m.name || ('Деталь ' + id)) + '"/>' +
+        '<metadata key="matrix" value="' + MF_IDENT4 + '"/>' +
+        '<metadata key="extruder" value="' + (ink + 1) + '"/>' +
+        '<mesh_stat edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>' +
+        '</part>');
+      id++;
+    }
+    const gid = id++;
+    objects.push('<object id="' + gid + '" type="model"><components>' + comps.join('') + '</components></object>');
+    items.push('<item objectid="' + gid + '" transform="' + MF_IDENT3 + '"/>');
+    cfg.push('<object id="' + gid + '">' +
+      '<metadata key="name" value="' + esc(body.name) + '"/>' +
+      '<metadata key="extruder" value="1"/>' + parts.join('') + '</object>');
   }
   const model = '<?xml version="1.0" encoding="UTF-8"?>' +
     '<model unit="millimeter" xml:lang="und" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">' +
@@ -3053,12 +3117,15 @@ function assemblyTo3MF(){
     { name: '[Content_Types].xml', text: '<?xml version="1.0" encoding="UTF-8"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-      '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>' },
+      '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>' +
+      '<Default Extension="config" ContentType="application/xml"/></Types>' },
     { name: '_rels/.rels', text: '<?xml version="1.0" encoding="UTF-8"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       '<Relationship Target="/3D/3dmodel.model" Id="rel0" ' +
       'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>' },
     { name: '3D/3dmodel.model', text: model },
+    { name: 'Metadata/model_settings.config', text: '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<config>' + cfg.join('') + '</config>' },
   ]);
 }
 
@@ -5797,8 +5864,8 @@ const MODEL_HELP = {
                'Добавьте логотип или текст — легенда берётся из ПЕРВОЙ карточки логотипа. Без неё делить нечего.',
                'Поставьте «Кейкап» → «AMS: внешний (легенда насквозь)». Легенда станет сквозным отверстием в верхней площадке.',
                'Нажмите «+ Вставка с легендой (AMS)» — рядом появится вторая модель, та же во всём, кроме режима: это сердечник, чьи буквы поднимаются вровень с верхом оболочки. Она встаёт ровно на место первой.',
-               'Сохраните в 3MF, а не в STL: в 3MF каждая модель уходит отдельным объектом, и это единственное, что позволяет слайсеру дать им разные катушки. В STL обе склеятся в одну деталь.',
-               'В слайсере назначьте объектам разные филаменты — тёмный оболочке, светлый вставке (или наоборот) — и печатайте вместе, обе стоят на своих местах.',
+               'Сохраните в 3MF, а не в STL: в 3MF оболочка и сердечник уходят двумя частями одного объекта, каждая со своей катушкой — слайсеру больше ничего назначать не нужно. В STL обе склеятся в одну деталь.',
+               'В слайсере перед открытием файла должно быть заряжено столько филаментов, сколько цветов: номера уже расставлены, но принтер с одной катушкой поставит обе части на филамент №1. Какой цвет какой — решает цвет модели в её карточке: тёмный оболочке, светлый вставке или наоборот.',
                'Продувочная башня обязательна: смена филамента идёт на каждом слое, где есть буквы, и без башни первые миллиметры нового цвета уйдут прямо в легенду.',
                'Одноцветный колпачок ничего этого не требует — режим «кейкап (один цвет)» просто вдавливает или выдавливает легенду на той же площадке.',
              ],
@@ -5813,8 +5880,8 @@ const MODEL_HELP = {
                'Загрузите картинку или текст в «Логотипы» — карман в дне повторит её форму. Один логотип, первая карточка.',
                'Цветов будет столько, сколько ТОНОВ в логотипе: поле «Ступеней» на карточке логотипа задаёт, на сколько уровней разбирается картинка, и каждый уровень получает свою деталь и свою катушку. Настоящая эмблема обычно в три-четыре плоских цвета — двух мало.',
                'Оставьте «Что печатаем» → «подстаканник» и нажмите «+ Цвет 1 (AMS)», затем «+ Цвет 2 (AMS)» и так далее — столько раз, сколько тонов: каждая новая модель это пробки одного цвета, ровно по карману. Кнопка сама ведёт по цепочке и возвращается к подстаканнику, когда все цвета набраны.',
-               'Сохраните в 3MF, а не в STL: только в 3MF каждая модель уходит отдельным объектом, и только это позволяет слайсеру дать им разные катушки.',
-               'В слайсере назначьте объектам разные филаменты и печатайте вместе — обе стоят на своих местах.',
+               'Сохраните в 3MF, а не в STL: подстаканник и все его цвета уходят частями ОДНОГО объекта, каждая со своим номером филамента. Части одного объекта слайсер разбирает сам, а вот отдельные объекты, стоящие друг в друге, он печатает дважды. В STL от всего этого не остаётся ничего: одна безымянная сетка.',
+               'В слайсере перед открытием файла зарядите столько филаментов, сколько у логотипа цветов (в Orca — слоты AMS): номера уже расставлены, но принтер с одной катушкой поставит всё на филамент №1, и подстаканник откроется ровным серым диском.',
                'Высоту первого слоя возьмите 0,2 мм и кратной глубине кармана: тогда смена цвета попадает ровно на границу кармана и не размазывается по следующему слою.',
                'Продувочная башня обязательна — смена филамента идёт в первых слоях, и без неё остатки прошлого цвета уйдут прямо в логотип.',
                'Все цвета лежат в ОДНОМ кармане на одной глубине: на детали, печатаемой лицом вниз, цвета замощают плоскость, а не громоздятся друг на друга.',

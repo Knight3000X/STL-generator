@@ -85,7 +85,7 @@ console.log('=== замкнутость: каждая деталь закрыт�
 {
   let bad = [], n = 0;
   for(const csMode of ['round','square'])
-    for(const csPart of ['body','inlay'])
+    for(const csPart of ['body','ink1'])
       for(const csRim of [0, 2, 5])
         for(const csD of [55, 90, 180])
           for(const csT of [3, 6, 12]){
@@ -101,12 +101,12 @@ console.log('=== замкнутость: каждая деталь закрыт�
     if(!m.watertight) bareBad.push({csMode, csRim, open:m.openEdges});
   }
   chk('без логотипа тоже', bareBad.length === 0, bareBad);
-  chk('и без логотипа вставки просто нет', build({csPart:'inlay'}, false).length === 0);
+  chk('и без логотипа вставки просто нет', build({csPart:'ink1'}, false).length === 0);
 }
 
 console.log('=== главное: два филамента не делят объём ===');
 {
-  const A = build({csPart:'body'}), B = build({csPart:'inlay'});
+  const A = build({csPart:'body'}), B = build({csPart:'ink1'});
   const g = coasterSpec(paramState.box);
   let shared = 0, probed = 0, inlayFound = 0, bodyOverInlay = 0;
   for(let x=-20; x<=20; x+=1.3) for(let z=-20; z<=20; z+=1.3){
@@ -295,25 +295,111 @@ console.log('=== модель зарегистрирована везде, гд�
 
 console.log('=== пара AMS: вторая модель существует и это именно вставка ===');
 {
+  logos.length = 0;
+  logos.push({id:1, face:'-Y', u0:0, v0:0, w:40, h:40, depth:-0.8, threshold:0.5,
+              invert:false, rotation:0, heightmap:HM, levels:2});
   const body = Object.assign({}, defaultBoxParams(), {csMode:'round'});
   const rec = assemblyMate(body);
   chk('у подстаканника есть пара', !!rec, rec);
-  chk('пара — вставка', !!rec && rec.over.csPart === 'inlay', rec && rec.over);
+  chk('пара — первый цвет', !!rec && rec.over.csPart === 'ink1', rec && rec.over);
   chk('и она несёт логотип с собой', !!rec && rec.logos === true, rec && rec.logos);
-  const back = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:'inlay'}));
-  chk('от вставки есть путь обратно', !!back && back.over.csPart === 'body', back && back.over);
+  const back = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:'ink1'}));
+  chk('от последнего цвета есть путь обратно', !!back && back.over.csPart === 'body', back && back.over);
   chk('и обратно тоже с логотипом', !!back && back.logos === true);
   chk('пара садится в то же место',
       !!rec && JSON.stringify(rec.seat({},{},{px:3,py:4,pz:5})) === JSON.stringify({px:3,py:4,pz:5}));
 
   // The second filament must be the plugs and NOTHING else: an inlay that quietly carried a coaster body
   // would print a whole second coaster in the accent colour.
-  const A = build({csPart:'body'}), B = build({csPart:'inlay'});
+  const A = build({csPart:'body'}), B = build({csPart:'ink1'});
   const bA = bbox(A), bB = bbox(B);
   chk('вставка тонкая', bB.hi[1] - bB.lo[1] < 1.01, bB.hi[1]-bB.lo[1]);
   chk('и мельче подстаканника по площади', (bB.hi[0]-bB.lo[0]) < (bA.hi[0]-bA.lo[0])*0.6,
       [bB.hi[0]-bB.lo[0], bA.hi[0]-bA.lo[0]]);
   chk('вставка не выходит за окно', bB.hi[0] <= coasterSpec(paramState.box).winHalf + 1e-6, bB.hi[0]);
+}
+
+console.log('=== цветов столько, сколько тонов в логотипе ===');
+{
+  // Two was never a property of the coaster — it was a property of a relief cut at ONE threshold. A real
+  // emblem is painted in three or four flat colours, and each of them can have its own part and its own
+  // filament. They all sit in the SAME pocket at the SAME depth: on a part printed face-down the colours
+  // tile a plane, they are not stacked by height.
+  const shield = img((x,y)=>{
+    const dx=Math.abs(x-0.5), dy=y-0.5;
+    if(dx > 0.45 || dy < -0.45 || dy > 0.45) return [0,0,0,0];
+    if(dx > 0.36 || dy > 0.36) return [192,32,48,255];
+    if(dx > 0.30 || dy > 0.30) return [16,16,16,255];
+    return [48,48,48,255];
+  });
+  const an = analyzeLogoImageData(shield, S, 'auto', 3);
+  const card = {id:1, face:'-Y', u0:0, v0:0, w:40, h:40, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:an.heightmap, levels:3, chan:an.stats.chose};
+  const mk = (csPart) => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csPart, logoResolution:140});
+    logos.push(card); return buildTrisForShape('box', paramState.box); };
+
+  chk('трёхтоновый логотип даёт три краски', coasterInks(card).levels.length === 3,
+      coasterInks(card).levels);
+  chk('и фон остаётся цветом самого подстаканника', coasterInks(card).bg === true);
+  // A binary logo still asks for exactly one accent — the old behaviour, unchanged.
+  chk('двоичный логотип — одна краска',
+      coasterInks({heightmap:HM, levels:2, chan:'alpha'}).levels.length === 1);
+  // ...and a picture with NO transparency has no background to leave alone, so its darkest tone is a
+  // colour like any other. Nothing in the numbers can tell those two apart, which is why `chan` is carried.
+  const noAlpha = analyzeLogoImageData(img((x,y)=> y<0.33?[20,20,20,255]:y<0.66?[128,128,128,255]:[240,240,240,255]),
+                                       S, 'lum', 3);
+  chk('без прозрачности тёмный тон — тоже краска',
+      coasterInks({heightmap:noAlpha.heightmap, levels:3, chan:'lum'}).levels.length === 3,
+      coasterInks({heightmap:noAlpha.heightmap, levels:3, chan:'lum'}).levels);
+  chk('и фон там не заявляется', coasterInks({heightmap:noAlpha.heightmap, levels:3, chan:'lum'}).bg === false);
+
+  const parts = {}; let holes = [];
+  for(const q of ['body','ink1','ink2','ink3']){
+    parts[q] = mk(q);
+    const m = manifoldCheck(parts[q], 4);
+    if(!m.watertight) holes.push({q, open:m.openEdges, bad:m.badEdges});
+  }
+  chk('все четыре детали герметичны', holes.length === 0, holes);
+  for(const q of ['ink1','ink2','ink3']) chk(q+' не пуст', parts[q].length > 200, parts[q].length);
+  chk('несуществующий цвет — пустая деталь', mk('ink5').length === 0);
+
+  // The claim that matters, now over every PAIR: no two filaments may share a cubic millimetre.
+  const names = ['body','ink1','ink2','ink3'];
+  let worst = 0, seen = {};
+  for(let x=-20; x<=20; x+=1.1) for(let z=-20; z<=20; z+=1.1){
+    const runs = names.map(nm => upY(parts[nm], x, z));
+    for(let a=0;a<names.length;a++){
+      if(runs[a].length) seen[names[a]] = (seen[names[a]]||0) + 1;
+      for(let b=a+1;b<names.length;b++) worst = Math.max(worst, overlap(runs[a], runs[b]));
+    }
+  }
+  chk('каждый цвет где-то есть', names.every(nm => (seen[nm]||0) > 40), seen);
+  chk('ни одна пара деталей не делит объём', worst < 1e-6, worst);
+  // ...and every accent sits at the same depth, flush with the coaster's bottom
+  for(const q of ['ink1','ink2','ink3']){
+    const bb = bbox(parts[q]);
+    chk(q+' лежит в том же кармане', Math.abs(bb.lo[1]) < 1e-9 &&
+        Math.abs(bb.hi[1] - coasterSpec(paramState.box).inlay) < 1e-6, [bb.lo[1], bb.hi[1]]);
+  }
+
+  // The chain: body → цвет 1 → цвет 2 → цвет 3 → back to the body. Walking it must reach every part
+  // exactly once, or a colour is unreachable from the panel and the model is a lie.
+  logos.length = 0; logos.push(card);
+  const walk = [], seenParts = new Set();
+  let cur = 'body';
+  for(let i=0;i<10;i++){
+    const m = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:cur}));
+    if(!m) break;
+    cur = m.over.csPart; if(seenParts.has(cur)) break;
+    seenParts.add(cur); walk.push({name:m.name, to:cur});
+  }
+  chk('цепочка обходит все цвета и возвращается',
+      walk.map(w=>w.to).join() === 'ink1,ink2,ink3,body', walk.map(w=>w.to));
+  chk('и у каждого звена человеческое имя',
+      walk.every(w => w.name && w.name.length > 5), walk.map(w=>w.name));
+  chk('имя называет номер цвета', walk[1].name.indexOf('2') >= 0, walk[1].name);
+  logos.length = 0;
 }
 
 console.log('=== о срезанном логотипе говорят вслух ===');

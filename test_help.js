@@ -172,10 +172,22 @@ console.log('=== порядок действий там, где он нужен 
 // format that can carry two objects. An entry with no mate is a procedure for a part that is printed in
 // one go, which is a procedure for nothing.
 {
-  const STEPPED = { keycap: {keycapMode:'shell'}, coaster: {csMode:'round'} };
+  // Some models only HAVE a second part once there is artwork to split — a coaster with no logo has no
+  // colours, and its «pair» is the walk back to itself. Each entry therefore says what to set up, not just
+  // what to switch on, so the mate being checked is the real one a person would meet.
+  const STEPPED = {
+    keycap:  {on:{keycapMode:'shell'}, prep:()=>{ logos.length = 0; }},
+    coaster: {on:{csMode:'round'}, prep:()=>{
+                logos.length = 0;
+                const hm = new Float32Array(LOGO_HM_SIZE*LOGO_HM_SIZE);
+                for(let i=0;i<hm.length;i++) hm[i] = [0, 1/3, 2/3, 1][i % 4];   // three tones over a background
+                logos.push({id:1, face:'-Y', u0:0, v0:0, w:20, h:20, depth:-0.6,
+                            threshold:0.5, invert:false, rotation:0, heightmap:hm, levels:3, chan:'detail'}); }},
+  };
   const withSteps = Object.keys(MODEL_HELP).filter(k => (MODEL_HELP[k].steps || []).length);
   chk('порядок действий ровно у тех, кто печатается в два захода',
       withSteps.slice().sort().join() === Object.keys(STEPPED).sort().join(), withSteps);
+  const savedLogos = (typeof logos !== 'undefined') ? logos.slice() : [];
   for(const k of withSteps){
     const h = MODEL_HELP[k];
     chk(k+': у порядка есть заголовок', !!h.stepsTitle && h.stepsTitle.length > 5, h.stepsTitle);
@@ -187,7 +199,8 @@ console.log('=== порядок действий там, где он нужен 
     // the procedure exists because there is a second part — and it names the button that makes it
     const on = STEPPED[k];
     chk(k+': у модели правда есть вторая деталь', !!on, k);
-    const spec = on && assemblyMate(Object.assign({}, DEF, on));
+    if(on && on.prep) on.prep();
+    const spec = on && assemblyMate(Object.assign({}, DEF, on.on));
     chk(k+': пара находится', !!spec, spec && spec.name);
     chk(k+': её кнопка названа в шагах',
         !!spec && h.steps.some(x => x.indexOf(spec.name) >= 0), spec && spec.name);
@@ -199,10 +212,11 @@ console.log('=== порядок действий там, где он нужен 
     chk(k+': шаги называют 3MF', h.steps.some(x => /3MF/.test(x)));
     chk(k+': шаги предупреждают про STL', h.steps.some(x => /STL/.test(x)));
     // and the help travels: modelHelp must hand the whole procedure on, not just the prose
-    const got = modelHelp(Object.assign({}, DEF, on));
+    const got = modelHelp(Object.assign({}, DEF, on.on));
     chk(k+': справка несёт порядок дальше', got.steps.length === h.steps.length, got.steps.length);
     chk(k+': и заголовок к нему', got.stepsTitle === h.stepsTitle, got.stepsTitle);
   }
+  logos.length = 0; for(const l of savedLogos) logos.push(l);
   chk('у куба порядка нет', modelHelp(DEF).steps.length === 0);
   chk('у одноцветного колпачка пары нет', !assemblyMate(Object.assign({}, DEF, {keycapMode:'single'})));
   const back = assemblyMate(Object.assign({}, DEF, {keycapMode:'core'}));

@@ -1042,7 +1042,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v189';
+const APP_VERSION = 'v190';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4367,7 +4367,9 @@ const SHAPE_PARAMS = {
     {group:'Подстаканник', key:'csMode', label:'Подстаканник', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'round',t:'круглый'},{v:'square',t:'квадратный (скруглённые углы)'}]},
     {group:'Подстаканник', key:'csPart', label:'Что печатаем', type:'select', default:'body',
-      options:[{v:'body',t:'подстаканник'},{v:'inlay',t:'AMS: вставка-логотип'}]},
+      options:[{v:'body',t:'подстаканник'},{v:'ink1',t:'AMS: цвет 1'},{v:'ink2',t:'AMS: цвет 2'},
+               {v:'ink3',t:'AMS: цвет 3'},{v:'ink4',t:'AMS: цвет 4'},{v:'ink5',t:'AMS: цвет 5'},
+               {v:'ink6',t:'AMS: цвет 6'}]},
     {group:'Подстаканник', key:'csD', label:'Подстаканник: диаметр / сторона', min:40, max:220, step:1, default:90, unit:'мм'},
     {group:'Подстаканник', key:'csCorner', label:'Подстаканник: радиус углов', min:0, max:60, step:1, default:10, unit:'мм', only:{csMode:['square']}},
     {group:'Подстаканник', key:'csT', label:'Подстаканник: толщина', min:2, max:15, step:0.5, default:6, unit:'мм'},
@@ -4697,10 +4699,17 @@ function assemblyMate(p){
   // AMS coaster: the body and the inlay are the same coaster built twice, and they go in the same place —
   // the plugs fill the body's own pocket, so the seat is the active model's origin. `logos` carries the
   // artwork across, without which the inlay is an empty list and comes out as nothing at all.
-  if (p.csMode && p.csMode !== 'none' && p.csPart !== 'inlay') return { name:'Вставка-логотип (AMS)',
-    over:{csPart:'inlay'}, logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
-  if (p.csMode && p.csMode !== 'none' && p.csPart === 'inlay') return { name:'Подстаканник (AMS)',
-    over:{csPart:'body'}, logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+  // A CHAIN rather than a pair: the artwork may be painted in three or four tones and each one gets its
+  // own part and its own filament, so «+ пара» walks body → цвет 1 → цвет 2 → … and wraps back to the
+  // body once every colour exists. How many there are is the artwork's business, not a setting.
+  if (p.csMode && p.csMode !== 'none'){
+    const n = coasterInks((typeof logos !== 'undefined' && logos.length) ? logos[0] : null).levels.length;
+    const at = coasterInkIndex(p.csPart);
+    const next = (n && at < n) ? at + 1 : 0;
+    const seat = (A,B,S)=>({px:S.px, py:S.py, pz:S.pz});
+    return next ? { name:'Цвет ' + next + ' (AMS)', over:{csPart:'ink'+next}, logos:true, seat }
+                : { name:'Подстаканник (AMS)', over:{csPart:'body'}, logos:true, seat };
+  }
   if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
     logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (p.keycapMode === 'core') return { name:'Внешняя оболочка (AMS)', over:{keycapMode:'shell'},
@@ -5575,14 +5584,16 @@ const MODEL_HELP = {
   pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
   coaster:  {what:'Подстаканник: круг или квадрат со скруглёнными углами, с бортом против конденсата. Логотип лежит в кармане на НИЖНЕЙ стороне.',
              how:'Логотипом ВНИЗ, на стол — карман печатается первым слоем. Это не прихоть: первый слой — самая гладкая поверхность, какую даёт принтер, и логотип на нём выходит зеркальной вставкой, а тот же логотип сверху — рельефом со следами слоёв.',
-             stepsTitle:'Двухцветный логотип через AMS',
+             stepsTitle:'Цветной логотип через AMS',
              steps:[
                'Загрузите картинку или текст в «Логотипы» — карман в дне повторит её форму. Один логотип, первая карточка.',
-               'Оставьте «Что печатаем» → «подстаканник» и нажмите «+ Вставка-логотип (AMS)»: рядом появится вторая модель — те самые пробки, ровно по карману.',
+               'Цветов будет столько, сколько ТОНОВ в логотипе: поле «Ступеней» на карточке логотипа задаёт, на сколько уровней разбирается картинка, и каждый уровень получает свою деталь и свою катушку. Настоящая эмблема обычно в три-четыре плоских цвета — двух мало.',
+               'Оставьте «Что печатаем» → «подстаканник» и нажмите «+ Цвет 1 (AMS)», затем «+ Цвет 2 (AMS)» и так далее — столько раз, сколько тонов: каждая новая модель это пробки одного цвета, ровно по карману. Кнопка сама ведёт по цепочке и возвращается к подстаканнику, когда все цвета набраны.',
                'Сохраните в 3MF, а не в STL: только в 3MF каждая модель уходит отдельным объектом, и только это позволяет слайсеру дать им разные катушки.',
                'В слайсере назначьте объектам разные филаменты и печатайте вместе — обе стоят на своих местах.',
                'Высоту первого слоя возьмите 0,2 мм и кратной глубине кармана: тогда смена цвета попадает ровно на границу кармана и не размазывается по следующему слою.',
                'Продувочная башня обязательна — смена филамента идёт в первых слоях, и без неё остатки прошлого цвета уйдут прямо в логотип.',
+               'Все цвета лежат в ОДНОМ кармане на одной глубине: на детали, печатаемой лицом вниз, цвета замощают плоскость, а не громоздятся друг на друга.',
                'Одноцветный подстаканник ничего этого не требует: карман просто останется углублением.',
              ],
              mat:['pla','petg']},
@@ -11212,6 +11223,35 @@ function buildWallOrg(p){
    as everywhere else: two closed bodies that share a face get welded into one that is closed nowhere. */
 const COASTER_GRID_LAP = 0.5;    // how far the cell grid runs under the smooth ring around it
 const COASTER_BODY_LAP = 0.6;    // how far same-filament bodies interpenetrate
+const COASTER_MAX_INKS = 6;      // as many accent parts as a filament changer plausibly has slots
+
+/* How many COLOURS the artwork asks for, and which height belongs to each.
+   Two was never a property of the coaster — it was a property of a relief cut at one threshold. Since the
+   logo can be read into as many levels as the picture has tones (v188), the coaster can hand each tone its
+   own part and its own filament, and all of them sit in the SAME pocket at the SAME depth: on a part
+   printed face-down the colours are not stacked by height, they tile a plane.
+
+   Height 0 is the one ambiguous value. Where the picture had transparency it means «no artwork here» and
+   the coaster's own colour shows through; where it had none there is no background at all and 0 is simply
+   the darkest tone, which deserves a filament like any other. Nothing about the numbers themselves can
+   tell those two apart — {0, ⅓, ⅔, 1} is three tones over a background, {0, ½, 1} is three tones and no
+   background, and both are «starts at zero, ends at one». So the answer is carried, not guessed: `chan`
+   records which channel the map was actually read from, and only «яркость» has no background. */
+function coasterInks(lg){
+  if (!lg || !lg.heightmap) return {levels: [], bg: true};
+  const bg = (lg.chan || lg.src || 'lum') !== 'lum';
+  if (!logoStepped(lg)) return {levels: [1], bg: true};   // one threshold, one accent colour
+  const seen = new Set();
+  for (const v of lg.heightmap) seen.add(+v.toFixed(4));
+  let levels = [...seen].sort((a,b)=>a-b);
+  if (bg) levels = levels.filter(v => v > 1e-4);
+  return {levels: levels.slice(0, COASTER_MAX_INKS), bg};
+}
+// Which part `csPart` names: the coaster itself, or accent colour k (1-based).
+function coasterInkIndex(csPart){
+  const m = /^ink([1-9])$/.exec(String(csPart||''));
+  return m ? +m[1] : 0;
+}
 function coasterLoop(shape, half, cornerR, seg){
   const P = [];
   if (shape === 'square'){
@@ -11230,7 +11270,8 @@ function coasterSpec(p){
   p = p || {};
   const cl = (v, lo, hi, d) => { const n = (v==null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); };
   const shape = (p.csMode === 'square') ? 'square' : 'round';
-  const part  = (p.csPart === 'inlay') ? 'inlay' : 'body';
+  const ink   = coasterInkIndex(p.csPart);          // 0 = the coaster itself, k = accent colour k
+  const part  = ink ? 'ink' : 'body';
   const size  = cl(p.csD, 40, 220, 90);          // диаметр круга / сторона квадрата
   const half  = size/2;
   const t     = cl(p.csT, 2, 15, 6);
@@ -11244,7 +11285,7 @@ function coasterSpec(p){
   // The logo window: a rectangle strictly inside the outline, so the ring around it is a real ring. On a
   // circle the usable inscribed square is half*√2 a side; 0.62 of the size leaves a comfortable margin.
   const winHalf = Math.max(4, (shape === 'round' ? half*0.66 : half - Math.max(3, rimW)) - 1);
-  return {shape, part, size, half, t, inlay, rim, rimW, cornerR, seg, winHalf,
+  return {shape, part, ink, size, half, t, inlay, rim, rimW, cornerR, seg, winHalf,
           // where the logo may reach: the window, less the lap the grid runs under the ring
           artHalf: Math.max(2, winHalf - COASTER_GRID_LAP - 0.5),
           topFlat: t - rim,                        // the recessed middle of the top face
@@ -11262,6 +11303,7 @@ function buildCoaster(p, res){
   const nG = Math.max(24, Math.min(400, Math.round(res || 120)));
   const cellAt = (i) => -g.winHalf - COASTER_GRID_LAP + (i/nG)*2*(g.winHalf + COASTER_GRID_LAP);
   const mask = new Uint8Array(nG*nG);
+  const inks = coasterInks(lg);
   let anyArt = false;
   if (lg){
     const rot=(lg.rotation||0)*Math.PI/180, cR=Math.cos(-rot), sR=Math.sin(-rot);
@@ -11280,20 +11322,31 @@ function buildCoaster(p, res){
       if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) continue;
       let val = sampleHeightmap(lg.heightmap, (lu+w/2)/w, 1-(lv+h/2)/h);
       if (lg.invert) val = 1 - val;
-      if (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) { mask[j*nG+i]=1; anyArt=true; }
+      // Not a silhouette but an INK MAP: 0 is the coaster's own colour, k is accent colour k. A logo cut
+      // at one threshold has exactly one accent, and this reduces to the mask it used to be.
+      const k = logoStepped(lg)
+        ? (inks.levels.findIndex(v => Math.abs(v - val) < 5e-4) + 1)
+        : (val > (lg.threshold!=null?lg.threshold:0.5) ? 1 : 0);
+      if (k > 0) { mask[j*nG+i]=k; anyArt=true; }
     }
-    // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
-    for(let changed=true; changed; ){ changed=false;
-      for(let j=0;j+1<nG;j++) for(let i=0;i+1<nG;i++){
-        const a=mask[j*nG+i], b=mask[j*nG+i+1], c=mask[(j+1)*nG+i], d=mask[(j+1)*nG+i+1];
-        if(a&&d&&!b&&!c){ mask[j*nG+i+1]=1; changed=true; }
-        else if(b&&c&&!a&&!d){ mask[j*nG+i]=1; changed=true; } } }
+    // Cells of ONE colour meeting only at a corner would put four wall quads on one vertical edge. Run the
+    // fix per colour — each accent part is its own closed body and shares edges only with itself — and
+    // then once more for the coaster's own field, which is a body like any other. The filler always takes
+    // the colour being fixed, so a cell never changes hands twice.
+    for(const k of inks.levels.map((_,q)=>q+1).concat([0]))
+      for(let changed=true; changed; ){ changed=false;
+        for(let j=0;j+1<nG;j++) for(let i=0;i+1<nG;i++){
+          const a=mask[j*nG+i]===k, b=mask[j*nG+i+1]===k, c=mask[(j+1)*nG+i]===k, d=mask[(j+1)*nG+i+1]===k;
+          if(a&&d&&!b&&!c){ mask[j*nG+i+1]=k; changed=true; }
+          else if(b&&c&&!a&&!d){ mask[j*nG+i]=k; changed=true; } } }
   }
 
-  // The inlay part is ONLY the plugs — nothing else, or the second filament would print a whole coaster.
-  if (g.part === 'inlay'){
-    if (!anyArt) return [];
-    return coasterGridSlab(mask, 1, nG, cellAt, 0, g.inlay);
+  // An accent part is ONLY its own plugs — nothing else, or that filament would print a whole coaster.
+  // Every colour shares one pocket at one depth: on a part printed face-down the colours tile a plane,
+  // they are not stacked by height.
+  if (g.ink){
+    if (!anyArt || g.ink > inks.levels.length) return [];
+    return coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay);
   }
 
   if (!anyArt){
@@ -14697,7 +14750,7 @@ function relogoFromPreview(logo, mode, levels, done){
     const size = LOGO_HM_SIZE, c = document.createElement('canvas'); c.width = c.height = size;
     const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size); ctx.drawImage(img, 0, 0, size, size);
     const r = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, mode, levels);
-    logo.heightmap = r.heightmap; logo.src = mode; logo.levels = levels;
+    logo.heightmap = r.heightmap; logo.src = mode; logo.levels = levels; logo.chan = r.stats.chose;
     done && done(true);
   };
   img.onerror = () => done && done(false);
@@ -15048,6 +15101,8 @@ function addLogoFromResult(result) {
     depth: logoDefaultDepth(result.levels || 2),   // утоплено по умолчанию, 0.2 мм на ступень
     threshold: 0.5, invert: suggestedInvert, rotation: 0, heightmap, previewUrl,
     src: result.src || 'auto',   // which channel the relief was read from — shown and changeable on the card
+    chan: result.src || 'lum',   // ...RESOLVED: 'auto' is a request, this is the answer, and only the answer
+                                 // says whether height 0 means «background» or «the darkest tone»
     levels: result.levels || 2,  // 2 = one threshold, one step; above that the tones ARE the heights
   };
   clampLogoToFace(logo);
@@ -15768,8 +15823,13 @@ function collectPrintWarnings(p){
     if (need > 2*g.artHalf + 1e-6)
       w.push('логотип ' + need.toFixed(0) + ' мм шире окна ' + (2*g.artHalf).toFixed(0) +
              ' мм — края срежутся (уменьшите логотип или возьмите подстаканник побольше)');
-    if (g.part === 'inlay' && !(logos.length && logos[0].heightmap))
-      w.push('вставка без логотипа — печатать нечего');
+    const inks = coasterInks(lg).levels.length;
+    if (g.ink > inks)
+      w.push('цвет ' + g.ink + ' у этого логотипа не используется — в нём ' +
+             (inks || 'нет') + (inks ? ' тон' + (inks===1?'':inks<5?'а':'ов') : ' тонов') + ' (деталь выйдет пустой)');
+    else if (inks > 1 && g.ink === 0)
+      w.push('логотип в ' + inks + ' тона — кроме подстаканника напечатайте ' + inks +
+             ' детали цветов через «+ Цвет N (AMS)»');
   }
   if (p.mntMode === 'transition'){
     const g = transitionSpec(p);
@@ -16292,7 +16352,7 @@ function exportAssemblyJSON() {
       visible: m.visible, color: m.color,
       logos: (m.logos||[]).map(l => ({ face:l.face, u0:l.u0, v0:l.v0, w:l.w, h:l.h, depth:l.depth,
         threshold:l.threshold, invert:l.invert, rotation:l.rotation, previewUrl:l.previewUrl, src:l.src||'auto',
-        levels:l.levels||2,
+        levels:l.levels||2, chan:l.chan||l.src||'lum',
         aspect:l.aspect, lockAspect:l.lockAspect })),
       holes: (m.holes||[]).map(h => ({ face:h.face, u0:h.u0, v0:h.v0, shape:h.shape||'circle', diameter:h.diameter, portW:h.portW, portH:h.portH, cornerR:h.cornerR, head:h.head, headDiameter:h.headDiameter, headDepth:h.headDepth, edgeCh:h.edgeCh,
         pattern:h.pattern, gridNU:h.gridNU, gridNV:h.gridNV, gridPU:h.gridPU, gridPV:h.gridPV, circN:h.circN, circR:h.circR,
@@ -16315,8 +16375,9 @@ function restoreLogoFromDef(ld) {
       const size = LOGO_HM_SIZE, canvas = document.createElement('canvas'); canvas.width=size; canvas.height=size;
       const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, size, size);
       const lv = Math.max(2, Math.min(6, Math.round(ld.levels || 2)));
-      const { heightmap } = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto', lv);
-      res({ id: nextLogoId++, src: ld.src || 'auto', levels: lv, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
+      const an = analyzeLogoImageData(ctx.getImageData(0,0,size,size).data, size, ld.src || 'auto', lv);
+      const heightmap = an.heightmap;
+      res({ id: nextLogoId++, src: ld.src || 'auto', levels: lv, chan: an.stats.chose, face:ld.face, u0:ld.u0, v0:ld.v0, w:ld.w, h:ld.h, depth:ld.depth,
         threshold:ld.threshold, invert:ld.invert, rotation:ld.rotation, heightmap, previewUrl: ld.previewUrl,
         aspect: ld.aspect > 0 ? ld.aspect : undefined, lockAspect: !!ld.lockAspect });
     };

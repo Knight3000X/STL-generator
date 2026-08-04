@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.1';
+const APP_VERSION = 'v16.5.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4351,7 +4351,7 @@ const SHAPE_PARAMS = {
     {group:'Многогранник', key:'polyN', label:'Многогранник: число боковых граней (0 = куб)', min:0, max:64, step:1, default:0, unit:'', int:true},
     {group:'Многогранник', key:'polyRound', label:'Многогранник: скругление вертикальных рёбер', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Многогранник', key:'binRound', label:'Бин: скругление вертикальных углов, полный габарит (0 = выкл)', min:0, max:150, step:0.5, default:0, unit:'мм'},
-    {group:'Многогранник', key:'dieBead', label:'Кость: скруглённый бортик-рамка вокруг граней (0 = выкл)', min:0, max:3, step:0.1, default:0, unit:'мм'},
+    {group:'Многогранник', key:'dieBead', label:'Кость: валик по рёбрам, разделитель граней (0 = выкл)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Многогранник', key:'platonic', label:'Игральная кость / правильный многогранник (перекрывает призму)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'d4',t:'D4 — тетраэдр (4)'},{v:'d6',t:'D6 — куб (6)'},{v:'d8',t:'D8 — октаэдр (8)'},{v:'d10',t:'D10 — трапецоэдр (10)'},{v:'d12',t:'D12 — додекаэдр (12)'},{v:'d20',t:'D20 — икосаэдр (20)'},{v:'d100',t:'D100 — сфера/Zocchihedron (100)'}]},
     {group:'Кейкап', key:'keycapMode', label:'Кейкап (перекрывает куб/бин/кость)', type:'select', default:'none',
@@ -7238,37 +7238,76 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs){
 }
 // Whole die: flat body when no relief, otherwise every face tessellated (a global edge subdivision so
 // shared edges match) and the assigned faces displaced (emboss or engrave). Watertight by construction.
-// Raised rounded FRAME (валик) around a die face: a closed rounded tube swept along the face's inset
-// boundary, half-protruding above the face and half-sunk into the solid body. Appended to the die like a
-// divider — a closed torus interpenetrating the closed body stays manifold (a slicer unions it), so the
-// number's crisp patch and the sharp edges are untouched. Auto-skips faces too small to host the bead.
-function buildDieBeadTube(face, poly, r, segCross){
-  const nP=poly.length; if(nP<3 || !(r>0)) return [];
-  const U=face.u, V=face.v, N=face.n, C=face.c;
-  const to2=p=>[dot(sub(p,C),U), dot(sub(p,C),V)];
-  const to3=(a,b)=>[C[0]+a*U[0]+b*V[0], C[1]+a*U[1]+b*V[1], C[2]+a*U[2]+b*V[2]];
-  const inset=r+Math.max(0.35, r*0.6);
-  if(inset > face.r*0.85) return [];                       // no room → skip (tiny faces, e.g. most of D100)
-  const ring2=polyInsetRing(poly.map(to2), inset);
-  let rMax=0; const ctr=polyRingCentroid(ring2);
-  for(const q of ring2) rMax=Math.max(rMax, Math.hypot(q[0]-ctr[0], q[1]-ctr[1]));
-  if(rMax < r*1.6) return [];                               // inset ring collapsed
-  const maxEdge=Math.max(0.6, r*1.1), dense=[];
-  for(let i=0;i<ring2.length;i++){ const a=ring2[i], b=ring2[(i+1)%ring2.length];
-    const L=Math.hypot(b[0]-a[0], b[1]-a[1]), steps=Math.max(1, Math.ceil(L/maxEdge));
-    for(let s=0;s<steps;s++){ const t=s/steps; dense.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); } }
-  const M=dense.length; if(M<3) return [];
-  const P=dense.map(q=>to3(q[0],q[1])), rings=[];
-  for(let i=0;i<M;i++){ const a=P[(i-1+M)%M], b=P[(i+1)%M];
-    const T=normalize([b[0]-a[0], b[1]-a[1], b[2]-a[2]]), rad=normalize(cross(T,N)), cs=[];
-    for(let j=0;j<segCross;j++){ const th=2*Math.PI*j/segCross, cn=Math.cos(th)*r, cr=Math.sin(th)*r;
-      cs.push([P[i][0]+cn*N[0]+cr*rad[0], P[i][1]+cn*N[1]+cr*rad[1], P[i][2]+cn*N[2]+cr*rad[2]]); }
-    rings.push(cs); }
-  const tris=[];
-  for(let i=0;i<M;i++){ const A=rings[i], B=rings[(i+1)%M];
-    for(let j=0;j<segCross;j++){ const jn=(j+1)%segCross;
-      const ref=[(A[j][0]+B[jn][0])/2-P[i][0], (A[j][1]+B[jn][1])/2-P[i][1], (A[j][2]+B[jn][2])/2-P[i][2]];
-      tris.push(orient([A[j],B[j],B[jn]], ref)); tris.push(orient([A[j],B[jn],A[jn]], ref)); } }
+/* Raised rounded ridge (валик) along every EDGE of a die — a divider BETWEEN faces, not a frame inside
+   each one.
+
+   The frame version drew an inset loop on each face, so every shared edge came out as TWO parallel ridges
+   with a groove between them: three lines where the die has one. A die's edge is a single feature and both
+   faces meet at it, so it gets a single bead sitting on the edge itself.
+
+   Each unique edge becomes one cylinder of radius r centred ON the edge line. Centred is not arbitrary:
+   the edge lies IN both face planes, so a tube centred on it rises exactly r above each of them — the same
+   «half proud, half sunk» the frame bead had, seen from either face.
+
+   The ends are FLAT and stop short of the vertices; a stud sphere there closes the joint. Rounding them
+   instead is the obvious thing to try and it does not work: a hemispherical cap is part of the sphere of
+   radius r about the vertex, and every edge meeting that vertex would contribute the same sphere — three
+   surfaces lying exactly on top of one another, which is not interpenetration but a non-manifold seam.
+   Measured: 15 edges with more than two faces on a single pair of tubes. The stud is a sphere of a
+   different radius about the same point, so it merely passes through them.
+
+   Edges are deduped by their two endpoints: each is shared by two faces and drawing it twice would put two
+   identical shells in one place. Closed shells interpenetrating a closed body stay manifold (a slicer
+   unions them), so the numbers' crisp patches and the sharp face edges are untouched. */
+function dieUniqueEdges(polys){
+  const key = q => Math.round(q[0]*100) + '|' + Math.round(q[1]*100) + '|' + Math.round(q[2]*100);
+  const seen = new Set(), out = [];
+  for (const poly of polys)
+    for (let i = 0; i < poly.length; i++){
+      const a = poly[i], b = poly[(i+1) % poly.length];
+      const ka = key(a), kb = key(b);
+      if (ka === kb) continue;
+      const k = ka < kb ? ka + '>' + kb : kb + '>' + ka;
+      if (seen.has(k)) continue;
+      seen.add(k); out.push([a, b]);
+    }
+  return out;
+}
+function buildDieEdgeRidge(a, b, r, segCross){
+  const d = [b[0]-a[0], b[1]-a[1], b[2]-a[2]], L = Math.hypot(d[0], d[1], d[2]);
+  if (!(r > 0) || !(L > 1e-6)) return [];
+  const T = [d[0]/L, d[1]/L, d[2]/L];
+  // any two directions across the edge; which two does not matter, the cross-section is a circle
+  const seed = Math.abs(T[0]) < 0.9 ? [1,0,0] : [0,1,0];
+  const U = normalize(cross(T, seed)), V = cross(T, U);
+  const M = Math.max(6, Math.min(24, segCross|0));
+  const at = (t, j) => { const th = 2*Math.PI*j/M, cu = Math.cos(th)*r, cv = Math.sin(th)*r;
+    return [a[0] + T[0]*t + U[0]*cu + V[0]*cv, a[1] + T[1]*t + U[1]*cu + V[1]*cv,
+            a[2] + T[2]*t + U[2]*cu + V[2]*cv]; };
+  /* The ends stop SHORT of the vertices, and the stud sphere bridges the gap. Ending them exactly at the
+     vertex is what the obvious version does, and it is non-manifold: two tubes meeting there both put a
+     disc apex on that one point and both rings pass through ±r along their common perpendicular, so the
+     two discs come to share edges — 2 bad edges on a single pair, 216 across a d6.
+
+     What the tests pin is that there must BE a pullback: set it to zero and seven of the die/radius
+     combinations go non-manifold. The exact value they do not pin — ½·r passes every case measured too.
+     0.618·r is belt-and-braces on top of that: a neighbour's end ring can only reach this tube's end plane
+     where sin(2πk/M) = −δ/r, and ½ is such a sine at M = 12 while the golden fraction is not one at any
+     segment count in use. That argument predicts shared VERTICES, which are harmless on their own — only
+     shared edges are not — so it is a reason to prefer the value, not evidence for it. test_dice.js walks
+     every die and every bead radius and asks for watertight. */
+  const dEnd = Math.min(0.618*r, L*0.35);
+  const A = [], B = [];
+  for (let j = 0; j < M; j++){ A.push(at(dEnd, j)); B.push(at(L - dEnd, j)); }
+  const capA = [a[0]+T[0]*dEnd, a[1]+T[1]*dEnd, a[2]+T[2]*dEnd];
+  const capB = [a[0]+T[0]*(L-dEnd), a[1]+T[1]*(L-dEnd), a[2]+T[2]*(L-dEnd)];
+  const tris = [], nA = [-T[0], -T[1], -T[2]];
+  for (let j = 0; j < M; j++){ const jn = (j+1)%M;
+    tris.push(orient([capA, A[jn], A[j]], nA));
+    tris.push(orient([capB, B[j], B[jn]], T));
+    const ref = [(A[j][0]+B[jn][0])/2 - (a[0]+T[0]*L/2), (A[j][1]+B[jn][1])/2 - (a[1]+T[1]*L/2),
+                 (A[j][2]+B[jn][2])/2 - (a[2]+T[2]*L/2)];
+    tris.push(orient([A[j],B[j],B[jn]], ref)); tris.push(orient([A[j],B[jn],A[jn]], ref)); }
   return polyDropDegen(tris);
 }
 // Small rounded stud (UV sphere) — a decorative bump at each die vertex where the bead frames meet (the
@@ -7317,9 +7356,10 @@ function buildDie(kind, hw, hh, hd, assignments, res, beadR){
   const active=(assignments||[]).filter(a=>a && (a.face|0)>=0 && (a.face|0)<G.faces.length && a.heightmap);
   let tris=[];
   const appendBeads=()=>{ if(!(beadR>0)) return; const segC=Math.max(8, Math.min(18, Math.round(8+beadR*4)));
-    for(let f=0;f<G.polys.length;f++) tris=tris.concat(buildDieBeadTube(G.faces[f], G.polys[f], beadR, segC));
-    // vertex studs where the frames meet (skip dense dice like D100). Unique vertices from the face polys.
-    if(G.faces.length<=24){ const seen=new Map(), studR=beadR*1.15, ss=Math.max(4,Math.round(4+beadR*3));
+    for(const [ea,eb] of dieUniqueEdges(G.polys)) tris=tris.concat(buildDieEdgeRidge(ea, eb, beadR, segC));
+    // A stud at every vertex — not decoration any more: the ridges end flat there and the sphere is what
+    // rounds the joint off. Coarser on many-faced dice (D100) so the triangle count stays sane.
+    { const seen=new Map(), studR=beadR*1.15, ss=Math.max(4, Math.round((4+beadR*3)*(G.faces.length>24?0.7:1)));
       for(const poly of G.polys) for(const q of poly){ const key=Math.round(q[0]*50)+'|'+Math.round(q[1]*50)+'|'+Math.round(q[2]*50);
         if(!seen.has(key)){ seen.set(key,1); tris=tris.concat(buildStudSphere(q, studR, ss)); } } }
   };

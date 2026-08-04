@@ -117,5 +117,63 @@ chk('bead + taper watertight', manifoldCheck(base({platonic:'d8',dieBead:0.7,tap
 { // tiny faces auto-skip the bead: still watertight, no crash
   chk('d100 with bead watertight (mostly skipped)', manifoldCheck(base({platonic:'d100',dieBead:0.8,width:44,height:44,depth:44}),4).watertight); }
 
+console.log('=== валик по рёбрам, а не рамка на гранях ===');
+{
+  // A frame inset into each face put TWO parallel ridges on every shared edge, with a groove between
+  // them: three lines where a die has one. A die's edge is one feature, so it gets one bead sitting ON
+  // the edge — which is measurable, not a matter of taste, because a ridge on the edge line is at most
+  // its own radius away from it and an inset frame is much further.
+  const KEYQ = q => Math.round(q[0]*100)+'|'+Math.round(q[1]*100)+'|'+Math.round(q[2]*100);
+  for (const k in DICE){
+    const G = dieFaceGeometry(k, 15, 15, 15);
+    const V = new Set(); for (const poly of G.polys) for (const q of poly) V.add(KEYQ(q));
+    const E = dieUniqueEdges(G.polys).length;
+    // every edge is shared by exactly two faces, so drawing one per face would be twice this
+    chk(k+': рёбра посчитаны по Эйлеру (V−E+F=2)', V.size - E + G.polys.length === 2,
+        {V:V.size, E, F:G.polys.length});
+  }
+  // Watertight is the honest test of «no coincident surfaces»: rounded caps, or ends meeting exactly at
+  // a vertex, both make two tubes share edges rather than interpenetrate, and that is what this catches.
+  let bad = [];
+  for (const k in DICE) for (const r of [0.3, 0.6, 1, 1.5, 2, 3]){
+    const t = base({platonic:k, dieBead:r, width:30, height:30, depth:30});
+    if (!manifoldCheck(t, 4).watertight) bad.push(k+'@'+r);
+  }
+  chk('все кости × все радиусы валика герметичны', bad.length === 0, bad);
+
+  // …and the bead really is ON the edges: everything that stands proud of the die's own surface is within
+  // one bead radius (plus the stud's) of an EDGE LINE. An inset frame would sit far from every edge.
+  {
+    const r = 1.2, half = 15;
+    const t = base({platonic:'d6', dieBead:r, width:30, height:30, depth:30});
+    const G = dieFaceGeometry('d6', half, half, half);
+    const edges = dieUniqueEdges(G.polys);
+    const distToSeg = (p, a, b) => {
+      const d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], L2=d[0]*d[0]+d[1]*d[1]+d[2]*d[2];
+      let u=((p[0]-a[0])*d[0]+(p[1]-a[1])*d[1]+(p[2]-a[2])*d[2])/L2;
+      u=Math.max(0,Math.min(1,u));
+      return Math.hypot(p[0]-(a[0]+d[0]*u), p[1]-(a[1]+d[1]*u), p[2]-(a[2]+d[2]*u));
+    };
+    let outside = 0, far = 0, worst = 0;
+    for (const T of t) for (const q of T){
+      if (Math.max(Math.abs(q[0]), Math.abs(q[1]), Math.abs(q[2])) <= half + 1e-6) continue;
+      outside++;
+      let best = Infinity;
+      for (const [ea, eb] of edges) best = Math.min(best, distToSeg(q, ea, eb));
+      if (best > r*1.2 + 1e-6) far++;
+      worst = Math.max(worst, best);
+    }
+    chk('над поверхностью кости вообще что-то есть', outside > 100, outside);
+    chk('и всё это сидит на рёбрах, а не отступя внутрь граней', far === 0,
+        {far, worst: +worst.toFixed(3), tol: +(r*1.2).toFixed(3)});
+  }
+  // The stud closes the joint, so it has to be wider than the tube it caps.
+  {
+    const r = 1.2, t = base({platonic:'d6', dieBead:r, width:30, height:30, depth:30});
+    chk('шарик в вершине шире валика', bboxOfTris(t).hi[0] > 15 + r + 1e-3,
+        {gabarit: +bboxOfTris(t).hi[0].toFixed(3), want: 15 + r});
+  }
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

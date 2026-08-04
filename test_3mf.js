@@ -67,11 +67,11 @@ console.log('\n=== assembly → 3MF ===');
   const items = (xml.match(/<item /g)||[]).length;
   check('2 visible models → 2 objects + 2 build items (hidden skipped)', objects === 2 && items === 2, {objects, items});
   // cube object: 8 unique vertices, 12 triangles
-  const first = xml.slice(xml.indexOf('<object id="1"'), xml.indexOf('</object>'));
+  const first = xml.slice(xml.indexOf('<object id="2"'), xml.indexOf('</object>'));
   check('cube: 8 deduped vertices', (first.match(/<vertex /g)||[]).length === 8, (first.match(/<vertex /g)||[]).length);
   check('cube: 12 triangles', (first.match(/<triangle /g)||[]).length === 12, (first.match(/<triangle /g)||[]).length);
   // second object baked at px=50: its vertices centre around x≈50
-  const second = xml.slice(xml.indexOf('<object id="2"'));
+  const second = xml.slice(xml.indexOf('<object id="3"'));
   const xs = [...second.matchAll(/<vertex x="([-0-9.]+)"/g)].map(m=>parseFloat(m[1]));
   const cx = xs.reduce((a,b)=>a+b,0)/xs.length;
   check('moved model baked at x≈50', Math.abs(cx - 50) < 0.5, {cx:+cx.toFixed(2)});
@@ -80,6 +80,35 @@ console.log('\n=== assembly → 3MF ===');
   const bad = [...second.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"/g)]
     .some(m => +m[1] >= nV || +m[2] >= nV || +m[3] >= nV);
   check('triangle indices in range', !bad, {nV});
+
+  // ---- COLOUR ------------------------------------------------------------------------------------
+  // The two-colour keycap and the multi-tone coaster export as several objects sitting in EXACTLY the
+  // same place, flush, so the outside is one smooth surface. Without material information every part
+  // lands on filament 1 and the slicer shows a plain grey disc — nothing is missing from the file, but
+  // there is no way to tell which object is which, and the person is asked to assign filaments by hand
+  // to parts they cannot see. So each object carries its colour.
+  const bases = [...xml.matchAll(/<base name="([^"]*)" displaycolor="(#[0-9A-F]{8})"\/>/g)];
+  check('a material for every object', bases.length === objects, {bases: bases.length, objects});
+  check('materials come before the objects that reference them',
+        xml.indexOf('<basematerials') < xml.indexOf('<object '));
+  check('the group has an id', /<basematerials id="\d+"/.test(xml));
+  // ids share ONE namespace in 3MF, so the material group and the objects must not collide
+  const matId = (/<basematerials id="(\d+)"/.exec(xml)||[])[1];
+  const objIds = [...xml.matchAll(/<object id="(\d+)"/g)].map(m => m[1]);
+  check('material id does not collide with an object id', objIds.indexOf(matId) < 0, {matId, objIds});
+  check('object ids are unique', new Set(objIds).size === objIds.length, objIds);
+  // every object points at the group, and at its OWN entry
+  const refs = [...xml.matchAll(/<object id="\d+" type="model" pid="(\d+)" pindex="(\d+)"/g)];
+  check('every object names its material', refs.length === objects, {refs: refs.length, objects});
+  check('all of them point at the one group', refs.every(r => r[1] === matId), refs.map(r=>r[1]));
+  check('and each at a different entry',
+        new Set(refs.map(r => r[2])).size === refs.length, refs.map(r=>r[2]));
+  check('no entry index runs past the list',
+        refs.every(r => +r[2] < bases.length), {idx: refs.map(r=>+r[2]), have: bases.length});
+  // the colours are the models' own, not a default repeated
+  check('colours carry the models\' names', bases.some(b => b[1].length > 0), bases.map(b=>b[1]));
+  check('a colour is 8 hex digits (RGB + alpha)', bases.every(b => /^#[0-9A-F]{8}$/.test(b[2])), bases.map(b=>b[2]));
+  check('alpha is opaque', bases.every(b => b[2].slice(7) === 'FF'), bases.map(b=>b[2]));
 }
 
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);

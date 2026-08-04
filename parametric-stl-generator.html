@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.4.0';
+const APP_VERSION = 'v16.4.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2992,7 +2992,7 @@ function makeZipStore(entries){
   return new Blob(parts, { type: 'model/3mf' });
 }
 // One model's tris → a 3MF <object> (vertices deduped after 3-decimal rounding; degenerates dropped).
-function tris3MFObject(id, trisIn){
+function tris3MFObject(id, trisIn, pid, pindex){
   const tris = toPrintFrameTris(trisIn);          // Y-up → Z-up, same as the STL writer
   const r3 = v => Math.round(v * 1000) / 1000;
   const vmap = new Map(), verts = [], faces = [];
@@ -3006,7 +3006,8 @@ function tris3MFObject(id, trisIn){
     const a = idx(t[0]), b = idx(t[1]), c = idx(t[2]);
     if (a !== b && b !== c && a !== c) faces.push(a, b, c);
   }
-  const s = ['<object id="' + id + '" type="model"><mesh><vertices>'];
+  const attr = (pid != null && pindex != null) ? ' pid="' + pid + '" pindex="' + pindex + '"' : '';
+  const s = ['<object id="' + id + '" type="model"' + attr + '><mesh><vertices>'];
   for (const v of verts) s.push('<vertex x="' + v[0] + '" y="' + v[1] + '" z="' + v[2] + '"/>');
   s.push('</vertices><triangles>');
   for (let i = 0; i < faces.length; i += 3)
@@ -3014,22 +3015,39 @@ function tris3MFObject(id, trisIn){
   s.push('</triangles></mesh></object>');
   return s.join('');
 }
-// Every visible model as a separate object, transforms baked (same coords the merged STL exports).
+/* Every visible model as a separate object, transforms baked (same coords the merged STL exports) — AND
+   each one carrying its colour as a 3MF base material.
+
+   The colour is not decoration here. A two-colour keycap or a coaster whose logo is three tones exports as
+   several objects sitting in exactly the same place, flush, so the outside is one smooth surface: opened in
+   a slicer with no material information every part lands on filament 1 and the result is a plain grey disc.
+   Nothing is missing from the file — the objects are all there, in the right places — but there is no way
+   for the slicer to know which is which, so the person is asked to work that out and assign five filaments
+   by hand to parts they cannot see. The picture already knew the colours; now the file carries them.
+
+   `<basematerials>` shares the resource id namespace with objects, so it takes id 1 and the objects start
+   at 2. `displaycolor` is #RRGGBBAA. */
 function assemblyTo3MF(){
   saveActiveModel();
-  const objects = [], items = [];
-  let id = 1;
+  const objects = [], items = [], mats = [];
+  const MAT_ID = 1;
+  let id = MAT_ID + 1;
   for (const m of models){
     if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
     let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
     if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
-    objects.push(tris3MFObject(id, tris));
+    const col = /^#[0-9a-fA-F]{6}$/.test(m.color || '') ? m.color.toUpperCase() : '#B9C5CD';
+    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    mats.push('<base name="' + esc(m.name || ('Деталь ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
+    objects.push(tris3MFObject(id, tris, MAT_ID, mats.length - 1));
     items.push('<item objectid="' + id + '"/>');
     id++;
   }
   const model = '<?xml version="1.0" encoding="UTF-8"?>' +
     '<model unit="millimeter" xml:lang="und" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">' +
-    '<resources>' + objects.join('') + '</resources>' +
+    '<resources>' +
+      (mats.length ? '<basematerials id="' + MAT_ID + '">' + mats.join('') + '</basematerials>' : '') +
+      objects.join('') + '</resources>' +
     '<build>' + items.join('') + '</build></model>';
   return makeZipStore([
     { name: '[Content_Types].xml', text: '<?xml version="1.0" encoding="UTF-8"?>' +

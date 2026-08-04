@@ -131,6 +131,13 @@
     box-shadow:6px 0 24px rgba(10,34,56,0.16);
     z-index:2;
     overflow-y:auto;
+    /* The gutter is reserved whether or not there is anything to scroll. The panel has a FIXED width, so
+       a scrollbar appearing takes its 8 px out of the content box and every row inside re-flows — open a
+       group and the whole panel jumps sideways. Reserving the space costs 8 px once; not reserving it
+       costs a layout shift on every fold, tab and search, which is the kind of thing that reads as the
+       page being unfinished. `both-edges` is deliberately NOT used: it would pad the left as well and the
+       panel would stop lining up with the title block. */
+    scrollbar-gutter:stable;
     padding:16px 18px 32px;
   }
   #panel::-webkit-scrollbar{width:8px;}
@@ -1165,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.3.2';
+const APP_VERSION = 'v16.3.4';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */

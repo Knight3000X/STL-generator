@@ -440,6 +440,43 @@ console.log('=== стабилизаторы на широкой клавише =
       Object.assign({}, paramState.box, {keySizeU:6.25, keyStab:'none'})));
 }
 
+
+console.log('=== вставка AMS несёт легенду и встаёт вровень с верхом ===');
+// The insert IS the legend. A new model record starts with an empty logo list — right for most pairs, a
+// nut has no business wearing the bolt's logo — and for this one it left a bare 1.6 mm slab lying at the
+// bottom of the cavity. That looks exactly like «вставка встала слишком низко» and is really «вставки нет»,
+// which is why the check is on the HEIGHT the plugs reach and not on the presence of a flag.
+{
+  const spec = assemblyMate(Object.assign({}, paramState.box, {keycapMode:'shell'}));
+  chk('пара оболочки просит перенести логотипы', !!spec && spec.logos === true, spec && spec.logos);
+  const back = assemblyMate(Object.assign({}, paramState.box, {keycapMode:'core'}));
+  chk('и обратная тоже', !!back && back.logos === true, back && back.logos);
+  // no other pair asks for them
+  const others = [{threadMode:'cap'}, {threadMode:'bolt'}, {gearMode:'spur'}, {pbPart:'tray'}];
+  for(const o of others){ const sp = assemblyMate(Object.assign({}, defaultBoxParams(), o));
+    if(sp) chk(JSON.stringify(o)+': логотипы не переносятся', !sp.logos, sp.logos); }
+
+  const bare = computeBBox(base({keycapMode:'core'}));                 // no legend at all
+  const full = computeBBox(base({keycapMode:'core'}, true));           // with one
+  const shell= computeBBox(base({keycapMode:'shell'}, true));
+  chk('без легенды вставка — одна плита', (bare.maxY-bare.minY) < 2, bare.maxY-bare.minY);
+  chk('с легендой она заметно выше', (full.maxY-full.minY) > (bare.maxY-bare.minY) + 1,
+      {bare:bare.maxY-bare.minY, full:full.maxY-full.minY});
+  // ...and the plugs finish flush with the shell's own top surface, not below it and not through it
+  chk('верх букв не выше верха оболочки', full.maxY <= shell.maxY + 1e-6, {ins:full.maxY, shell:shell.maxY});
+  chk('и не утоплен под ним', full.maxY > shell.maxY - 1.2, {ins:full.maxY, shell:shell.maxY});
+  chk('низ вставки — в полости под площадкой', full.minY > 0 && full.minY < shell.maxY - 2,
+      {ins:full.minY, shell:shell.maxY});
+  // every profile: the plugs reach the dished surface, which sits lower in the middle than the rim
+  for(const pr of ['cherry','sa','dsa','mt3']){
+    const c = computeBBox(base({keycapMode:'core', keyProfile:pr}, true));
+    const sh = computeBBox(base({keycapMode:'shell', keyProfile:pr}, true));
+    chk(pr+': вставка не торчит наружу', c.maxY <= sh.maxY + 1e-6, {ins:c.maxY, shell:sh.maxY});
+    chk(pr+': и достаёт до поверхности', c.maxY > sh.maxY - 2, {ins:c.maxY, shell:sh.maxY});
+    chk(pr+': вставка замкнута', manifoldCheck(base({keycapMode:'core', keyProfile:pr}, true),4).watertight);
+  }
+}
+
 console.log('=== keycap overrides other box modes; organizer add-ons gated ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('scoop/grip/ears/feet/dividers skipped on keycap', a===b, {a,b}); }

@@ -1039,7 +1039,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v184';
+const APP_VERSION = 'v185';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4514,10 +4514,14 @@ function assemblyMate(p){
   // core drops into the shell's own cavity, so the seat is simply the active model's origin. Being a pair
   // at all is what puts them in the 3MF as two objects, which is what lets the slicer give each its own
   // filament. Without this the two-colour cap is five manual steps and a chance to mistype a parameter.
+  // `logos` says to carry the legend across. A new model record starts with an empty logo list, which for
+  // most pairs is right — a nut has no business wearing the bolt's logo — but for these two it is the whole
+  // point: the insert IS the legend. Without it the insert came out a bare 1.6 mm slab lying at the bottom
+  // of the cavity, which looks exactly like «вставка встала слишком низко» and is really «вставки нет».
   if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
-    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+    logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (p.keycapMode === 'core') return { name:'Внешняя оболочка (AMS)', over:{keycapMode:'shell'},
-    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+    logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
     seat:(A,B,S)=>({px:S.px + m*Z, py:S.py, pz:S.pz}) };
   // Worm drive: the axes cross at a right angle, so the newcomer is laid on its side and set out
@@ -4630,7 +4634,7 @@ function assemblyPlacement(p, self){
     const r = ((delta % P) + P) % P;
     off.py += spec.back > 0 ? (P - r) % P : -r;
   }
-  return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris,
+  return { name:spec.name, params, rx, ry, rz, px:off.px, py:off.py, pz:off.pz, tris:mateTris, logos:!!spec.logos,
            frozenTris: spec.frozen ? rawMate : null };
 }
 function addAssemblyMate(){
@@ -4641,6 +4645,7 @@ function addAssemblyMate(){
   const plan = assemblyPlacement(paramState.box, self);
   if (!plan){ alert('Для этой детали пары не предусмотрено. Есть: крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо.'); return; }
   const rec = makeModelRecord(plan.name, plan.params);
+  if (plan.logos) rec.logos = logos.slice();      // heightmaps shared by reference, as everywhere else
   rec.rx = plan.rx; rec.ry = plan.ry; rec.rz = plan.rz;
   rec.px = plan.px; rec.py = plan.py; rec.pz = plan.pz;
   if (plan.frozenTris){                      // a reference part: geometry, not parameters

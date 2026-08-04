@@ -1035,7 +1035,7 @@
         <button id="btn-add-texture" title="Процедурная текстура рельефом: размер логотипа задаёт шаг узора">+ Текстура</button>
       </div>
       <div id="logo-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё больше одного тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». <b>«Ступеней»</b> — на сколько уровней режется рельеф. 2 — как раньше: один порог, одна ступень, видна ровно одна граница. Настоящая эмблема нарисована в три-четыре плоских цвета, и двумя уровнями из трёх границ показать можно только одну — остальное сливается. При 3–6 порога нет вовсе: приложение само находит тона картинки (кластеризацией, а не делением диапазона поровну — иначе тон может лечь ровно на разрез) и делает каждый своей высотой; прозрачный фон остаётся заподлицо. Число реальных тонов может оказаться меньше запрошенного — лишних ступеней не выдумывается. При загрузке картинки ступени и глубина ставятся сами: 0,2 мм на КАЖДУЮ ступень, потому что ступень тоньше слоя не пропечатается (об этом же скажут предупреждения). До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх). <b>«Цветная печать логотипа (AMS)»</b> — то же, что у подстаканника, но на ЛЮБОЙ форме: тон логотипа становится отдельной деталью со своей катушкой. Поставьте «тело (карман под логотип)» — рисунок уйдёт в карман одной глубины, — и нажимайте «+ Цвет N (AMS)» столько раз, сколько у логотипа тонов: каждая новая модель это пробки одного цвета, ровно по карману, и кнопка сама возвращается к телу, когда цвета набраны. Цвета читаются с самой картинки. Сохранять только в 3MF: тело и все его цвета уходят частями ОДНОГО объекта, каждая со своим номером филамента, и в слайсере должно быть заряжено столько филаментов, сколько цветов. Оговорки, которые лучше знать заранее: при включённой цветной печати рисунок кладётся ПЛИТОЙ-бляшкой поверх грани (чуть выступает) даже на кубе, где обычный логотип вдавливается в саму стенку — иначе карман и пробки резались бы двумя разными сетками и не совпали бы; кость и другие формы без плоской грани под рисунком цвета не получают; а на выпуклом логотипе пробкой становится сама надпись, и карман не нужен.</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё больше одного тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». <b>«Ступеней»</b> — на сколько уровней режется рельеф. 2 — как раньше: один порог, одна ступень, видна ровно одна граница. Настоящая эмблема нарисована в три-четыре плоских цвета, и двумя уровнями из трёх границ показать можно только одну — остальное сливается. При 3–6 порога нет вовсе: приложение само находит тона картинки (кластеризацией, а не делением диапазона поровну — иначе тон может лечь ровно на разрез) и делает каждый своей высотой; прозрачный фон остаётся заподлицо. Число реальных тонов может оказаться меньше запрошенного — лишних ступеней не выдумывается. При загрузке картинки ступени и глубина ставятся сами: 0,2 мм на КАЖДУЮ ступень, потому что ступень тоньше слоя не пропечатается (об этом же скажут предупреждения). До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх). <b>«Цветная печать логотипа (AMS)»</b> — то же, что у подстаканника, но на ЛЮБОЙ форме: тон логотипа становится отдельной деталью со своей катушкой. Поставьте «тело (карман под логотип)» — рисунок уйдёт в карман одной глубины, — и нажимайте «+ Цвет N (AMS)» столько раз, сколько у логотипа тонов: каждая новая модель это пробки одного цвета, ровно по карману, и кнопка сама возвращается к телу, когда цвета набраны. Цвета читаются с самой картинки. Сохранять только в 3MF: тело и все его цвета уходят частями ОДНОГО объекта, каждая со своим номером филамента, и в слайсере должно быть заряжено столько филаментов, сколько цветов. Оговорки, которые лучше знать заранее: при включённой цветной печати рисунок кладётся ПЛИТОЙ-бляшкой поверх грани (чуть выступает) даже на кубе, где обычный логотип вдавливается в саму стенку — иначе карман и пробки резались бы двумя разными сетками и не совпали бы; формы без плоской грани под рисунком (конус воронки, скруглённая стенка) цвета не получают, ровно как не получают и обычную этикетку; а на выпуклом логотипе пробкой становится сама надпись, и карман не нужен. У игральной КОСТИ та же строка красит её цифры — они не логотипы, поэтому идут своим построителем, и цвет у кости всегда один: глиф режется одним порогом.</div></details>
     </details>
     </div>
 
@@ -1057,7 +1057,7 @@
       </div>
       <input type="file" id="die-file-input" accept="image/*" style="display:none">
       <div id="die-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись кладёт рельеф (номер, текст или логотип) на ОТДЕЛЬНУЮ грань — сама поверхность грани смещается по нормали, поэтому модель остаётся водонепроницаемой без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа: ПОЛОЖИТЕЛЬНАЯ выдавливает символы наружу, ОТРИЦАТЕЛЬНАЯ гравирует (символы утоплены в грань). «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. «Детализация граней» — отдельная от логотипов плотность сетки грани (выше = чётче цифры; на D100 автоматически ограничивается, чтобы не раздувать число треугольников).</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Работает, когда выбрана игральная кость (D4/D6/D8/D10/D12/D20/D100) в блоке «Многогранник». Каждая запись кладёт рельеф (номер, текст или логотип) на ОТДЕЛЬНУЮ грань — сама поверхность грани смещается по нормали, поэтому модель остаётся водонепроницаемой без CSG. «Авто-номера» раскладывает 1…N (D10 → 0…9) по всем граням. «Размер %» — доля грани под рисунком, «Глубина» — высота рельефа: ПОЛОЖИТЕЛЬНАЯ выдавливает символы наружу, ОТРИЦАТЕЛЬНАЯ гравирует (символы утоплены в грань). «Поворот» — ориентация номера, «Инверт.» меняет фон/фигуру местами. «Детализация граней» — отдельная от логотипов плотность сетки грани (выше = чётче цифры; на D100 автоматически ограничивается, чтобы не раздувать число треугольников). <b>Двухцветная кость</b>: в разделе «Логотипы» поставьте «Цветная печать логотипа (AMS)» → «тело», затем нажмите «+ Цвет 1 (AMS)» — рядом встанет вторая модель, в которой ТОЛЬКО цифры. Цвет у кости один: глиф режется одним порогом, сколько бы граней ни было подписано. Цифры вдавленные — пробки заполняют карманы заподлицо; выпуклые — пробкой становится сама цифра. Обе модели садятся на одно место и уходят в 3MF частями одного объекта, каждая со своим филаментом.</div></details>
       </details>
     </div>
 
@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.0';
+const APP_VERSION = 'v16.5.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3972,6 +3972,24 @@ function logoPatchPlan(logo, bb, plateParam, res, hostTris){
 const LOGO_AMS_LAP = 0.4;      // how far a plug reaches past its own pocket, so the two interpenetrate
 function logoAmsIndex(v){ const m = /^ink([1-9])$/.exec(String(v||'')); return m ? +m[1] : 0; }
 function logoAmsOn(p){ return !!(p && p.logoAms && p.logoAms !== 'none'); }
+function dieShape(p){ return !!(p && p.platonic && p.platonic !== 'none'); }
+/* How many colours the artwork on this model has — the one number the assembly chain walks.
+
+   A die's numbers are cut at a single threshold, so a die has ONE accent colour however many faces carry
+   numbers; a label has as many as the picture has tones. Asking the artwork rather than the settings is
+   what keeps «+ пара» from offering a colour that would come out empty. */
+function amsInkCount(p){
+  if (dieShape(p)) return (typeof dieFaces !== 'undefined' && dieFaces.some(a => a && a.heightmap)) ? 1 : 0;
+  if (typeof logos !== 'undefined' && logos.length) return logoInks(logos[0]).levels.length;
+  return 0;
+}
+// The colour that part k will be printed in. A picture knows its own tones; a die's numbers do not come
+// from a picture at all, so they get an ink dark enough to read against a light body.
+function amsInkColor(p, k){
+  if (dieShape(p)) return '#20242a';
+  const inks = (typeof logos !== 'undefined' && logos.length) ? logoInks(logos[0]) : {colors:[]};
+  return (inks.colors || [])[k-1] || '#20242a';
+}
 /* Colour k of every label on the model, as its own closed body — and NOTHING else, or that filament would
    print a whole container.
 
@@ -5054,15 +5072,15 @@ function assemblyMate(p){
      It goes FIRST because it is asked for explicitly — a jar with a colour logo has both a cap and a set
      of inks to offer, and the one the person just switched on is the one they mean. Switch colour
      printing back off and the cap is offered again. */
-  if (logoAmsOn(p) && typeof logos !== 'undefined' && logos.length){
-    const inks = logoInks(logos[0]);
-    const n = inks.levels.length;
+  if (logoAmsOn(p) && amsInkCount(p) > 0){
+    const n = amsInkCount(p);
     const at = logoAmsIndex(p.logoAms);
     const next = (n && at < n) ? at + 1 : 0;
     const seat = (A,B,S)=>({px:S.px, py:S.py, pz:S.pz});
     return next ? { name:'Цвет ' + next + ' (AMS)', over:{logoAms:'ink'+next}, logos:true, seat,
-                    color:(inks.colors || [])[next-1] }
-                : { name:'Тело с логотипом (AMS)', over:{logoAms:'body'}, logos:true, seat };
+                    color:amsInkColor(p, next) }
+                : { name:(dieShape(p) ? 'Кость без цифр (AMS)' : 'Тело с логотипом (AMS)'),
+                    over:{logoAms:'body'}, logos:true, seat };
   }
   const th = p.threadMode || 'none', gr = p.gearMode || 'none';
   const pb = (p.pbPart && p.pbPart !== 'none') ? p.pbPart : 'none';   // 'both' already holds the pair
@@ -7141,7 +7159,7 @@ function buildDieFaceTess(face, poly, dispFn, k, fracs){
    detail), independent of the surrounding face tessellation. The patch is cut to the glyph's mask bbox
    (+pad) and stitched into the flat face by one angular annulus. Supports emboss (+depth) and engrave (−).
    Returns { tris (3D), ring (2D face-plane boundary loop, y=0), center (2D) } or null. */
-function buildDieGlyphPatch(face, asg, nC){
+function buildDieGlyphPatch(face, asg, nC, wantPlugs){
   if(!asg || !asg.heightmap) return null;
   const S=Math.max(1,(asg.sizeFrac||0.55)*face.r*2*0.9);
   let depth=asg.depth||0; const cap=Math.max(0.2, face.r*0.6); depth=Math.max(-cap,Math.min(cap,depth));
@@ -7166,6 +7184,25 @@ function buildDieGlyphPatch(face, asg, nC){
     for(let j=0;j+1<nC;j++)for(let i=0;i+1<nC;i++){
       const a=mask[j*nC+i],b=mask[j*nC+i+1],c2=mask[(j+1)*nC+i],d=mask[(j+1)*nC+i+1];
       if(a&&d&&!b&&!c2){mask[j*nC+i+1]=1;ch=true;} else if(b&&c2&&!a&&!d){mask[j*nC+i]=1;ch=true;} } }
+  /* The same glyph, as a PLUG rather than as the face it is cut into: colour k of a two-colour die.
+     Everything it needs has already been decided above — the mask, the cell size, the glyph's own
+     rotation and offset — so the plug cannot come out anywhere but exactly where the pocket is. The
+     rotation is folded into the FRAME rather than applied per cell: `l2f` turns (lu,lv) by `rot` about
+     the face centre and shifts it by (cU,cV), which is the same thing as a frame whose in-plane axes are
+     turned by `rot` and whose origin is moved — and then the plug is `maskedSlabTris` like every other
+     colour part in the app.
+     Flush with the face, and reaching LAP past the far end so plug and body interpenetrate instead of
+     sharing a plane. An ENGRAVED number leaves a pocket and the plug drops in; an EMBOSSED one stands
+     proud and the plug IS the number. */
+  const lxq = q => -P/2 + q*h;
+  if (wantPlugs){
+    const o3 = [face.c[0] + cU*face.u[0] + cV*face.v[0], face.c[1] + cU*face.u[1] + cV*face.v[1], face.c[2] + cU*face.u[2] + cV*face.v[2]];
+    const uR = [cR*face.u[0] + sR*face.v[0], cR*face.u[1] + sR*face.v[1], cR*face.u[2] + sR*face.v[2]];
+    const vR = [-sR*face.u[0] + cR*face.v[0], -sR*face.u[1] + cR*face.v[1], -sR*face.u[2] + cR*face.v[2]];
+    const outer = Math.max(0, depth), inner = Math.min(0, depth) - LOGO_AMS_LAP;
+    return { tris: maskedSlabTris(mask, 1, nC, nC, lxq, lxq, outer, inner, {o:o3, u:uR, v:vR, n:face.n}),
+             ring: [], center: null };
+  }
   // emit only the glyph's bbox (+3-cell empty pad) — the annulus stitch covers the rest of the face
   i0=Math.max(0,i0-3); j0=Math.max(0,j0-3); i1=Math.min(nC-1,i1+3); j1=Math.min(nC-1,j1+3);
   const C3=face.c,U3=face.u,V3=face.v,N3=face.n;
@@ -7250,6 +7287,31 @@ function buildStudSphere(c, r, seg){
       tris.push(orient([A[j],B[j],B[jn]],ref)); tris.push(orient([A[j],B[jn],A[jn]],ref)); } }
   return polyDropDegen(tris);
 }
+// How many cells across a die's glyph patch — one formula, because the body's pocket and the colour plug
+// that fills it are cut on this grid and have to be the same grid.
+function dieGlyphCells(nF, res){ return Math.max(48, Math.min(256, Math.round((res||160)*(nF>=24?0.35:0.55)))); }
+/* A two-colour die: the numbers, as their own closed body and nothing else.
+
+   A die's numbers are not logos — they come from the «Грани кости» cards and are cut into each face by the
+   die's own machinery — so colour printing reaches them through their own builder rather than through the
+   label patch. Everything else is shared: the same emitter, the same chain of assembly parts, the same one
+   object with several filaments in the 3MF.
+
+   A glyph is cut at ONE threshold, so a die has one accent colour, not a palette. Faces the die built by
+   displacing its radial grid rather than by a cell patch (a glyph too big for its face, D4 corner numbers
+   that escaped their quad) still get a plug of exactly the glyph's shape: it is the pocket's WALLS that
+   are then discretised differently, and since plug and body are parts of one object the plug wins there. */
+function buildDieInkTris(kind, hw, hh, hd, assignments, res){
+  const G = dieFaceGeometry(kind, hw, hh, hd);
+  const active = (assignments||[]).filter(a => a && (a.face|0) >= 0 && (a.face|0) < G.faces.length && a.heightmap);
+  if (!active.length) return [];
+  const nC = dieGlyphCells(G.faces.length, res), out = [];
+  for (const a of active){
+    const patch = buildDieGlyphPatch(G.faces[a.face|0], a, nC, true);
+    if (patch) for (const T of patch.tris) out.push(T);
+  }
+  return out;
+}
 function buildDie(kind, hw, hh, hd, assignments, res, beadR){
   const G=dieFaceGeometry(kind, hw, hh, hd);
   const active=(assignments||[]).filter(a=>a && (a.face|0)>=0 && (a.face|0)<G.faces.length && a.heightmap);
@@ -7272,7 +7334,7 @@ function buildDie(kind, hw, hh, hd, assignments, res, beadR){
   // Scaled down a little on many-faced dice (D100) so a high detail setting doesn't explode the triangle
   // count. Higher `res` (the die-face detail control) → crisper numbers.
   const nF=G.faces.length, dsc=nF>=60?0.4:(nF>=24?0.7:(nF<=4?1.2:1));
-  const nC=Math.max(48, Math.min(256, Math.round((res||160)*(nF>=24?0.35:0.55))));   // glyph patch cells
+  const nC=dieGlyphCells(nF, res);                                                   // glyph patch cells
   const perim=Math.max(48, Math.min(480, Math.round(res||160)))*dsc;
   const k=Math.max(4, Math.min(96, 2*Math.round(perim/10))); // GLOBAL edge subdivision (shared → watertight); even, so edge midpoints are lattice points (D4 sector split)
   const R=Math.max(10, Math.min(120, Math.round(perim/4)));
@@ -14631,7 +14693,8 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildFingerGrip(p));
   // Labels on a shape with no tessellated face to displace — see buildLogoPlateTris. Measured off
   // the finished mesh's bounding box, so it works the same whatever the shape turned out to be.
-  if (shape === 'box' && logos.length > 0 && (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
+  if (shape === 'box' && logos.length > 0 && !dieShape(p) &&
+      (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
     const bb = bboxOfTris(tris);
     const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;
     const host = tris;
@@ -14710,6 +14773,9 @@ function buildTrisForShapeCore(shape, p) {
       const dieAsg = (typeof dieFaces !== 'undefined' && dieFaces.length) ? dieFaces : null;
       const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
       const beadR = Math.max(0, Math.min(3, p.dieBead||0));
+      // A colour part of a die is ONLY its numbers — that filament must not print a second die under them.
+      if (logoAmsIndex(p.logoAms))
+        return applyTaper(snapWeldTris(buildDieInkTris(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes)));
       return applyTaper(snapWeldTris(buildDie(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes, beadR)));
     }
     if ((p.polyN|0) >= 3 || (p.binRound||0) > 0) {

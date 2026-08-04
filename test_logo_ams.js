@@ -344,5 +344,92 @@ console.log('\n=== выпуклый логотип: пробка это сама
   check('и стоит НАД гранью, а не под ней', b.hi[2] > 20, {hi: +b.hi[2].toFixed(2)});
 }
 
+console.log('\n=== игральная кость: цифры своим цветом ===');
+{
+  // A die's numbers are not logos — they come from the «Грани кости» cards and are cut by the die's own
+  // machinery — so colour printing reaches them through their own builder. Everything else is shared.
+  // Deliberately NOT a circle: a disc is invariant under the glyph's own rotation, so a plug built with
+  // the rotation dropped would still land in the right place and cover the right area. An L catches it.
+  const blob = () => { const N = LOGO_HM_SIZE, h = new Float32Array(N*N);
+    for (let y=0;y<N;y++) for (let x=0;x<N;x++){ const fx=x/N-0.5, fy=y/N-0.5;
+      h[y*N+x] = (Math.abs(fx) < 0.08 && Math.abs(fy) < 0.28) || (fy > 0.12 && fy < 0.28 && fx > -0.08 && fx < 0.26)
+        ? 1 : 0; } return h; };
+  const die = (over) => {
+    logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(),
+      {width:20, height:20, depth:20, platonic:'d6', hollow:false}, over || {});
+    for (let f=0; f<6; f++) dieFaces.push({id:f+1, face:f, src:'text', depth:-0.8, sizeFrac:0.5,
+      rotation:(f*30)%360, invert:false, threshold:0.5, offU:(f%2?0.18:-0.12), offV:(f%3?-0.15:0.2), heightmap:blob()});
+    return paramState.box;
+  };
+  const p = die();
+  check('у кости с цифрами один акцентный цвет', amsInkCount(p) === 1, amsInkCount(p));
+  check('и он тёмный по умолчанию — картинки, с которой его взять, тут нет',
+        amsInkColor(p, 1) === '#20242a', amsInkColor(p, 1));
+  dieFaces.length = 0;
+  check('без цифр красить нечего', amsInkCount(p) === 0, amsInkCount(p));
+
+  die();
+  p.logoAms = 'body';
+  const body = buildTrisForShape('box', p);
+  check('тело кости герметично', manifoldCheck(body, 4).watertight);
+  p.logoAms = 'ink1';
+  const ink = buildTrisForShape('box', p);
+  check('цифры построились', ink.length > 0, ink.length);
+  check('и они герметичны', manifoldCheck(ink, 4).watertight, manifoldCheck(ink, 4));
+  // ONLY the numbers: a die's own volume is orders of magnitude bigger than six little glyphs.
+  const vol = t => { let v = 0; for (const T of t){ const [a1,b1,c1] = T;
+    v += (a1[0]*(b1[1]*c1[2]-b1[2]*c1[1]) - a1[1]*(b1[0]*c1[2]-b1[2]*c1[0]) + a1[2]*(b1[0]*c1[1]-b1[1]*c1[0]))/6; }
+    return v; };
+  check('цветная деталь не несёт саму кость', vol(ink) > 0 && vol(ink) < vol(body) * 0.1,
+        {ink: +vol(ink).toFixed(1), body: +vol(body).toFixed(1)});
+  // The plug fills exactly the pocket the body cut: same grid, same cells, so the two areas are equal.
+  // Measured on the +X face, where the die's own face plane is axis-aligned and the numbers are flush.
+  const nX = [1,0,0];
+  const floor = faceArea(body, nX, 10 - 0.8, 1e-6);       // pocket floor of the +X face
+  const top   = faceArea(ink,  nX, 10, 1e-6);             // top of that face's plug
+  check('дно кармана и пробка совпадают по площади', floor > 1 && Math.abs(top - floor) < 1e-6 * floor,
+        {floor, top});
+  check('пробка не выходит за поверхность кости', bboxOfTris(ink).hi[0] <= 10 + 1e-6,
+        bboxOfTris(ink).hi[0]);
+  // Area alone would not notice the glyph's own rotation being dropped — an L would simply land turned.
+  // So the two are compared by WHERE they are as well: same centroid in the face's own plane.
+  const centroid = (tris, n, want) => { let A=0, cy=0, cz=0;
+    for (const T of tris){
+      const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]], v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+      const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+      if (L < 1e-12 || (c[0]*n[0]+c[1]*n[1]+c[2]*n[2])/L < 0.999) continue;
+      if (Math.abs(T[0][0]*n[0]+T[0][1]*n[1]+T[0][2]*n[2] - want) > 1e-6) continue;
+      const a2=L/2; A+=a2; cy += a2*(T[0][1]+T[1][1]+T[2][1])/3; cz += a2*(T[0][2]+T[1][2]+T[2][2])/3;
+    }
+    return A > 0 ? [cy/A, cz/A] : null; };
+  const cF = centroid(body, nX, 10 - 0.8), cP = centroid(ink, nX, 10);
+  check('и стоит там же, где карман — с тем же поворотом глифа',
+        cF && cP && Math.hypot(cF[0]-cP[0], cF[1]-cP[1]) < 1e-6, {pocket: cF, plug: cP});
+  check('а глиф несимметричен и сдвинут с центра, иначе ни поворот, ни смещение поймать нечем',
+        cF && Math.hypot(cF[0], cF[1]) > 0.3, cF);
+  // …and an EMBOSSED number is the plug itself, standing proud.
+  for (const a1 of dieFaces) a1.depth = 0.8;
+  const up = buildTrisForShape('box', p);
+  check('выпуклые цифры тоже строятся и замкнуты',
+        up.length > 0 && manifoldCheck(up, 4).watertight);
+  check('и стоят НАД гранью', bboxOfTris(up).hi[0] > 10 + 1e-6, bboxOfTris(up).hi[0]);
+
+  die();
+  check('цепочка ведёт к цвету', /Цвет 1/.test((assemblyMate(Object.assign({}, p, {logoAms:'body'}))||{}).name));
+  check('и возвращает к кости',
+        /Кость/.test((assemblyMate(Object.assign({}, p, {logoAms:'ink1'}))||{}).name),
+        (assemblyMate(Object.assign({}, p, {logoAms:'ink1'}))||{}).name);
+  // A die may also carry a label on the cube-logo list. The label patch must not take over its ink part —
+  // the numbers are what the colour is for.
+  putLogo();
+  p.logoAms = 'ink1';
+  const both = buildTrisForShape('box', p);
+  check('этикетка не перехватывает цветную деталь кости',
+        Math.abs(vol(both) - vol(ink)) < 1e-6 * Math.max(1, Math.abs(vol(ink))),
+        {both: +vol(both).toFixed(3), die: +vol(ink).toFixed(3)});
+  logos.length = 0; dieFaces.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

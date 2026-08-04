@@ -1042,7 +1042,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v190';
+const APP_VERSION = 'v191';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3644,11 +3644,30 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
                         : (sgn > 0 ? bb.hi[nAx] : bb.lo[nAx]);
   if (plane === null) return [];      // nothing flat to sit on — no label rather than a broken one
   const base  = plate > 0 ? plate : -0.15;     // field between glyphs: the plaque, or just under the skin
-  const yb    = -LOGO_PLATE_EMBED;
-  const hOf = (i,j) => (i<0||j<0||i>=N||j>=M) ? null : (mask[j*N+i] ? plate + depth : base);
-  const P = (uu,vv,out) => { const q=[0,0,0]; q[nAx]=plane + sgn*out; q[uAx]=uu; q[vAx]=vv; return q; };
+  // An axis-aligned face is a frame like any other: origin on the plane, the two face axes, and the
+  // outward normal. Writing it that way is what lets a RAKED surface use the same emitter — see
+  // standLogoFrame, where the plane is nobody's axis and there is nothing else to special-case.
+  const e = a => { const q=[0,0,0]; q[a]=1; return q; };
+  const o = [0,0,0]; o[nAx] = plane;
+  const frame = {o, u:e(uAx), v:e(vAx), n:(sgn>0 ? e(nAx) : e(nAx).map(c=>-c))};
   const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
-  const nOut=[0,0,0]; nOut[nAx]=sgn; const nIn=[0,0,0]; nIn[nAx]=-sgn;
+  return reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, frame);
+}
+/* The emission half of a relief patch, in a FRAME rather than along an axis: origin, two in-plane axes and
+   the outward normal. Filled cells stand at `hi`, empty ones at `lo`, and the whole slab is closed by a
+   bottom at `yb` — buried inside the host, which is what makes the patch a closed body of its own that
+   merely interpenetrates its host instead of sharing its skin.
+
+   Both the axis-aligned label plate and the phone stand's raked back panel come through here. That is the
+   point: a raked surface is not a special case of anything, it is this patch with a different frame, and
+   the alternative — a second copy of the same grid walk «but rotated» — is the shape of bug that gets
+   found on a printed part rather than in a test. */
+function reliefSlabTris(mask, N, M, U, V, hi, lo, yb, fr){
+  const P = (uu,vv,out) => [fr.o[0] + fr.u[0]*uu + fr.v[0]*vv + fr.n[0]*out,
+                            fr.o[1] + fr.u[1]*uu + fr.v[1]*vv + fr.n[1]*out,
+                            fr.o[2] + fr.u[2]*uu + fr.v[2]*vv + fr.n[2]*out];
+  const hOf = (i,j) => (i<0||j<0||i>=N||j>=M) ? null : (mask[j*N+i] ? hi : lo);
+  const nOut = fr.n, nIn = [-fr.n[0], -fr.n[1], -fr.n[2]];
   const out=[];
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
     const h=hOf(i,j), ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
@@ -3658,18 +3677,36 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
     // there is no neighbour and the wall runs all the way down to the buried bottom.
     const sides=[[1,0,ub,va,ub,vb],[-1,0,ua,vb,ua,va],[0,1,ub,vb,ua,vb],[0,-1,ua,va,ub,va]];
     for(const [di,dj,pu,pv,qu,qv] of sides){
-      const hn = hOf(i+di, j+dj), lo = (hn===null) ? yb : hn;
-      if (!(h > lo)) continue;
-      const wref=[0,0,0]; wref[uAx]=di; wref[vAx]=dj;
-      out.push(orient([P(pu,pv,lo),P(qu,qv,lo),P(qu,qv,h)], wref),
-               orient([P(pu,pv,lo),P(qu,qv,h),P(pu,pv,h)], wref));
+      const hn = hOf(i+di, j+dj), low = (hn===null) ? yb : hn;
+      if (!(h > low)) continue;
+      const wref=[fr.u[0]*di + fr.v[0]*dj, fr.u[1]*di + fr.v[1]*dj, fr.u[2]*di + fr.v[2]*dj];
+      // The seam rule, the same one the keycap insert needed: a wall's side edge is shared with everything
+      // meeting that vertical line, so EVERY wall touching it must cut it in the same places. A border
+      // wall runs the full yb→h in one piece while its neighbour along the border stops at the field
+      // height, and the interior wall between them starts there — three segments, two cut lines, one of
+      // them missing. Splitting every wall at `lo` puts the cut in all of them.
+      //
+      // Nothing hit this before because the label plate always sizes its patch to the artwork's own
+      // extent, so the transparent margin kept the border clear. Clamp the patch smaller than the logo —
+      // which a stand's 14 mm front lip does — and the slab opens along the edge.
+      // Both heights are cut lines, not just the field one: an ENGRAVED logo puts the field ABOVE the
+      // glyph (the plaque case, lo > hi), and then the line every wall has to be cut at is the other one.
+      const cuts = [Math.min(hi,lo), Math.max(hi,lo)].filter(c => c > low + 1e-9 && c < h - 1e-9);
+      let a = low;
+      for(const c of cuts.concat([h])){
+        out.push(orient([P(pu,pv,a),P(qu,qv,a),P(qu,qv,c)], wref),
+                 orient([P(pu,pv,a),P(qu,qv,c),P(pu,pv,c)], wref));
+        a = c;
+      }
     }
   }
   return out;
 }
 // Which base shapes get their labels as a plate. The cube family displaces its own vertices, dice
 // and keycaps have their own face/legend machinery, and the 3D-logo model IS the artwork.
-const LOGO_PLATE_MODES = new Set(['sheet','thread','hinge','gear','mount','hook','wallorg','pbox','stand','funnel']);
+// The stand is NOT here: its surfaces are raked or are strips inside the bounding box, so it names them
+// itself (standLogoFrame) instead of having outermostFlatPlaneAt fail to find them.
+const LOGO_PLATE_MODES = new Set(['sheet','thread','hinge','gear','mount','hook','wallorg','pbox','funnel']);
 
 // Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
 // (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
@@ -4383,6 +4420,8 @@ const SHAPE_PARAMS = {
     {group:'Подставка (телефон / планшет)', key:'psRest', label:'Подставка: длина спинки', min:20, max:200, step:1, default:70, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psLip', label:'Подставка: высота переднего упора', min:4, max:60, step:1, default:14, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psT', label:'Подставка: толщина', min:2, max:15, step:0.5, default:4, unit:'мм'},
+    {group:'Подставка (телефон / планшет)', key:'psLogoOn', label:'Подставка: логотип на', type:'select', default:'floor',
+      options:[{v:'floor',t:'дне (снизу)'},{v:'back',t:'спинке (снаружи)'},{v:'lip',t:'переднем борте'}]},
     {group:'Подставка (телефон / планшет)', key:'psSlot', label:'Подставка: ширина выреза под кабель (0 = без)', min:0, max:80, step:1, default:18, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Скругление углов', key:'filletSeg', label:'Сегменты скругления', min:1, max:12, step:1, default:4, unit:'', int:true},
@@ -5597,7 +5636,7 @@ const MODEL_HELP = {
                'Одноцветный подстаканник ничего этого не требует: карман просто останется углублением.',
              ],
              mat:['pla','petg']},
-  stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель.', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой.', mat:['petg','pla']},
+  stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель. Логотип можно класть на дно, на спинку снаружи или на передний борт — «Подставка: логотип на».', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой. Рельеф на спинке печатается по её наклону и поддержек не требует; на переднем борте — вертикальной стенкой, там он выходит чётче всего.', mat:['petg','pla']},
   funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режим дозатора.', how:'Носиком вверх — конус тогда сам себе поддержка. Печатать вазовым режимом можно, если стенка равна одному проходу.', mat:['petg','pla']},
   baseplate:{what:'База Gridfinity: сетка гнёзд под стандартные корзины 42 × 42 мм.', how:'Плашмя, гнёздами вверх. Скос гнезда печатается навесом и поддержек не требует.', mat:['pla','petg']},
   logo3d:   {what:'Логотип, текст или QR отдельной моделью — не рельефом на детали, а самостоятельным телом с подложкой.', how:'Подложкой на стол. Мелкий рельеф выходит чище соплом 0,25 мм.', mat:['pla','petg']},
@@ -11391,6 +11430,104 @@ function coasterGridSlab(mask, want, nG, at, y0, y1){
    them convex (the support is a parallelogram, the gusset a triangle) and avoids rotating boxes. Because the
    raked support leans BACK over the base, its underside is a self-supporting slope for any angle ≤ 60° from
    vertical, so the stand prints on its base without supports. */
+/* Where a logo goes on the stand, as a FRAME on the surface it is meant to lie on.
+
+   The plate machinery every other base shape uses (buildLogoPlateTris → outermostFlatPlaneAt) can only
+   find a face that is perpendicular to an axis and spans the whole footprint. The stand has neither: its
+   back panel is RAKED to whatever angle was asked for, and its front lip is perpendicular to Z but is a
+   14 mm strip inside a 85 mm bounding box, so a label centred on the box would hang in the air in front of
+   it. That is the whole reason a logo could only ever land on the underside — the one surface that happens
+   to satisfy both conditions, and the one nobody looks at.
+
+   So the surfaces are named here instead of searched for. Each is a frame: a point on it, the two in-plane
+   axes, and the outward normal — everything `reliefSlabTris` needs and nothing more. The offsets on the
+   logo card move the artwork within the frame's own u/v, so «сдвиг» keeps meaning the same thing.
+
+   The back panel's OUTER face is the one offered: the inner one is what the phone leans against, and a
+   relief there is a rocking device and an invisible logo. */
+const STAND_LOGO_SURFACES = ['floor', 'back', 'lip'];
+function standLogoFrame(p, which){
+  const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
+  const D    = Math.max(30, p.psDepth||85);
+  const ang  = Math.max(30, Math.min(80, p.psAngle||62)) * Math.PI/180;
+  const lipH = Math.max(4, p.psLip||14);
+  const restL= Math.max(20, p.psRest||70);
+  const zF = -D/2, zB = D/2;
+  const dy=Math.sin(ang), dz=-Math.cos(ang), px=Math.cos(ang), pz=Math.sin(ang);
+  const bY=t-0.5, bZ=zB-t*0.6;
+  // buildPhoneStand re-centres the whole part on its bounding box at the end, so every frame here is
+  // quoted in ITS coordinates and shifted by the same amount. Computed from the same numbers, not
+  // measured off the mesh: a frame that drifts from the surface it names is a label welded into a wall.
+  const top = bY + t*px + restL*dy;
+  const loY = 0, hiY = Math.max(t + lipH, top);
+  const loZ = Math.min(zF, bZ + t*pz + restL*dz), hiZ = Math.max(zB, bZ + t*pz);
+  const shift = [0, -(loY + hiY)/2, -(loZ + hiZ)/2];
+  const mv = q => [q[0] + shift[0], q[1] + shift[1], q[2] + shift[2]];
+  if (which === 'back'){
+    // Outer face of the raked panel: from S[1] up to S[2], normal along the panel's own perpendicular.
+    const oY = bY + t*px, oZ = bZ + t*pz;
+    return { o: mv([0, oY + (restL/2)*dy, oZ + (restL/2)*dz]),
+             u: [1,0,0], v: [0, dy, dz], n: [0, px, pz],
+             halfU: (W - 0.8)/2 - 1.2, halfV: restL/2 - 1.2, name:'спинка' };
+  }
+  if (which === 'lip'){
+    // Front face of the lip, seen head-on from the front of the desk.
+    return { o: mv([0, (t - 0.5 + t + lipH)/2, zF + 0.2]),
+             u: [1,0,0], v: [0,1,0], n: [0,0,-1],
+             halfU: (W - 0.6)/2 - 1.2, halfV: (lipH + 0.5)/2 - 0.8, name:'передний борт' };
+  }
+  return { o: mv([0, 0, (zF + zB)/2]), u: [1,0,0], v: [0,0,1], n: [0,-1,0],
+           halfU: W/2 - 1.2, halfV: D/2 - 1.2, name:'дно' };
+}
+// The relief of every logo card, laid on the chosen surface of the stand. Each patch is a closed body that
+// interpenetrates the stand — the doctrine used everywhere else — so nothing here can open the host.
+function standLogoTris(p, res){
+  if (typeof logos === 'undefined' || !logos.length) return [];
+  const which = STAND_LOGO_SURFACES.indexOf(p.psLogoOn) >= 0 ? p.psLogoOn : 'floor';
+  const fr = standLogoFrame(p, which);
+  if (!(fr.halfU > 2) || !(fr.halfV > 2)) return [];
+  const out = [];
+  for (const lg of logos){
+    if (!lg.heightmap) continue;
+    const depth = lg.depth || 0;
+    if (!depth) continue;
+    let plate = Math.max(0, p.logoPlate || 0);
+    if (depth < 0) plate = Math.max(plate, -depth + 0.6);   // engraved: sink it into a plaque
+    const ext = rotatedHalfExtents(lg.w, lg.h, lg.rotation);
+    const halfU = Math.min(ext.halfX, fr.halfU), halfV = Math.min(ext.halfY, fr.halfV);
+    if (!(halfU > 0.5) || !(halfV > 0.5)) continue;
+    const u0 = Math.max(-(fr.halfU - halfU), Math.min(fr.halfU - halfU, lg.u0 || 0));
+    const v0 = Math.max(-(fr.halfV - halfV), Math.min(fr.halfV - halfV, lg.v0 || 0));
+    const want = Math.max(8, Math.min(220, res || 120));
+    const cell = Math.max(0.1, Math.min(halfU, halfV) * 2 / want);
+    const N = Math.max(4, Math.min(400, Math.ceil(2*halfU/cell)));
+    const M = Math.max(4, Math.min(400, Math.ceil(2*halfV/cell)));
+    const rad = (lg.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
+    const mask = new Uint8Array(N*M);
+    let any = false;
+    for(let j=0;j<M;j++) for(let i=0;i<N;i++){
+      const su = (i+0.5)/N*2*halfU - halfU, sv = (j+0.5)/M*2*halfV - halfV;
+      const lu = su*cosR - sv*sinR, lv = su*sinR + sv*cosR;
+      if (Math.abs(lu) > lg.w/2 || Math.abs(lv) > lg.h/2) continue;
+      let val = sampleHeightmap(lg.heightmap, (lu + lg.w/2)/lg.w, 1 - (lv + lg.h/2)/lg.h);
+      if (lg.invert) val = 1 - val;
+      if (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) { mask[j*N+i]=1; any=true; }
+    }
+    if (!any && plate <= 0) continue;
+    // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
+    for (let changed=true; changed; ){ changed=false;
+      for(let j=0;j+1<M;j++) for(let i=0;i+1<N;i++){
+        const a=mask[j*N+i], b=mask[j*N+i+1], c=mask[(j+1)*N+i], d=mask[(j+1)*N+i+1];
+        if(a&&d&&!b&&!c){ mask[j*N+i+1]=1; changed=true; }
+        else if(b&&c&&!a&&!d){ mask[j*N+i]=1; changed=true; } } }
+    const base = plate > 0 ? plate : -0.15;
+    const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
+    // Not `push(...arr)`: a patch across the full width of a stand is tens of thousands of triangles and
+    // the spread passes every one as an argument, which overflows the stack rather than being slow.
+    for (const T of reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr)) out.push(T);
+  }
+  return out;
+}
 function buildPhoneStand(p){
   const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
   const D    = Math.max(30, p.psDepth||85);
@@ -14003,7 +14140,8 @@ function buildTrisForShapeCore(shape, p) {
       return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
     }
     if (p.psOn) {
-      return snapWeldTris(buildPhoneStand(p));
+      return snapWeldTris(buildPhoneStand(p).concat(
+        standLogoTris(p, typeof logoResolution !== 'undefined' ? logoResolution : 120)));
     }
     if (p.fnOn) {
       return snapWeldTris(buildFunnel(p));

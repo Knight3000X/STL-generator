@@ -874,6 +874,7 @@
         <button class="base-btn" data-base="wallorg" title="Настенный органайзер: французская планка / перфопанель + крючок/полка">Органайзер</button>
         <button class="base-btn" data-base="pbox" title="Электрокорпус (project box): лоток + крышка + стойки под винты и PCB">Корпус</button>
         <button class="base-btn" data-base="funnel" title="Воронка: конус со сливным носиком, оболочка постоянной толщины">Воронка</button>
+        <button class="base-btn" data-base="coaster" title="Подстаканник: круг или квадрат со скруглёнными углами, логотип внизу, двухцветная печать через AMS">Подстаканник</button>
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">Подставка</button>
       </div>
     </div>
@@ -1041,7 +1042,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v188';
+const APP_VERSION = 'v189';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4363,6 +4364,16 @@ const SHAPE_PARAMS = {
     {group:'Воронка', key:'fnSpoutLen', label:'Воронка: длина носика', min:2, max:200, step:1, default:25, unit:'мм'},
     {group:'Воронка', key:'fnConeH', label:'Воронка: высота конуса', min:4, max:300, step:1, default:45, unit:'мм'},
     {group:'Воронка', key:'fnWall', label:'Воронка: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
+    {group:'Подстаканник', key:'csMode', label:'Подстаканник', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'round',t:'круглый'},{v:'square',t:'квадратный (скруглённые углы)'}]},
+    {group:'Подстаканник', key:'csPart', label:'Что печатаем', type:'select', default:'body',
+      options:[{v:'body',t:'подстаканник'},{v:'inlay',t:'AMS: вставка-логотип'}]},
+    {group:'Подстаканник', key:'csD', label:'Подстаканник: диаметр / сторона', min:40, max:220, step:1, default:90, unit:'мм'},
+    {group:'Подстаканник', key:'csCorner', label:'Подстаканник: радиус углов', min:0, max:60, step:1, default:10, unit:'мм', only:{csMode:['square']}},
+    {group:'Подстаканник', key:'csT', label:'Подстаканник: толщина', min:2, max:15, step:0.5, default:6, unit:'мм'},
+    {group:'Подстаканник', key:'csRim', label:'Подстаканник: высота борта (0 = плоский)', min:0, max:8, step:0.5, default:2, unit:'мм'},
+    {group:'Подстаканник', key:'csRimW', label:'Подстаканник: ширина борта', min:1.5, max:20, step:0.5, default:4, unit:'мм', needs:{csRim:0}},
+    {group:'Подстаканник', key:'csInlay', label:'Подстаканник: глубина кармана под логотип', min:0.4, max:3, step:0.1, default:0.8, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psOn', label:'Подставка (перекрывает всё)', type:'bool', default:false},
     {group:'Подставка (телефон / планшет)', key:'psW', label:'Подставка: ширина', min:30, max:300, step:1, default:80, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psDepth', label:'Подставка: глубина основания', min:30, max:250, step:1, default:85, unit:'мм'},
@@ -4683,6 +4694,13 @@ function assemblyMate(p){
   // most pairs is right — a nut has no business wearing the bolt's logo — but for these two it is the whole
   // point: the insert IS the legend. Without it the insert came out a bare 1.6 mm slab lying at the bottom
   // of the cavity, which looks exactly like «вставка встала слишком низко» and is really «вставки нет».
+  // AMS coaster: the body and the inlay are the same coaster built twice, and they go in the same place —
+  // the plugs fill the body's own pocket, so the seat is the active model's origin. `logos` carries the
+  // artwork across, without which the inlay is an empty list and comes out as nothing at all.
+  if (p.csMode && p.csMode !== 'none' && p.csPart !== 'inlay') return { name:'Вставка-логотип (AMS)',
+    over:{csPart:'inlay'}, logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+  if (p.csMode && p.csMode !== 'none' && p.csPart === 'inlay') return { name:'Подстаканник (AMS)',
+    over:{csPart:'body'}, logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
     logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (p.keycapMode === 'core') return { name:'Внешняя оболочка (AMS)', over:{keycapMode:'shell'},
@@ -5165,6 +5183,7 @@ function dominantMode(p){
   if (p.logo3d) return 'logo3d';
   if (p.woBack && p.woBack !== 'none') return 'wallorg';
   if (p.pbPart && p.pbPart !== 'none') return 'pbox';
+  if (p.csMode && p.csMode !== 'none') return 'coaster';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
@@ -5239,6 +5258,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Крючок': return mode==='hook';
     case 'Настенный органайзер': return mode==='wallorg';
     case 'Корпус (электроника)': return mode==='pbox';
+    case 'Подстаканник': return mode==='coaster';
     case 'Подставка (телефон / планшет)': return mode==='stand';
     case 'Воронка': return mode==='funnel';
     // Every base shape can carry a label now: the cube family by displacing its own vertices, the
@@ -5256,6 +5276,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='logo3d')    return key==='Размеры';
   if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='pbox')      return key==='Корпус (электроника)';
+  if (mode==='coaster')   return key==='Подстаканник';
   if (mode==='stand')     return key==='Подставка (телефон / планшет)';
   if (mode==='funnel')    return key==='Воронка';
   if (mode==='hook')      return key==='Крючок';
@@ -5283,13 +5304,13 @@ const GROUP_KIND = {
   'Кейкап':'keycap', 'Лист / панель':'sheet', 'Резьба (крышка / штуцер)':'thread',
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
-  'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel',
+  'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
 const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
-  funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма',
+  funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
 };
 // Every parameter whose label matches, with the group it lives in and whether that group is reachable
 // from the CURRENT base shape. Pure — no DOM — so the tests drive it directly.
@@ -5552,6 +5573,19 @@ const MODEL_HELP = {
   hook:     {what:'Крючок на стену или на трубу: с защёлкой под любой Ø и полукруглым концом, чтобы не резать ремень.', how:'Спинкой на стол, крючок вверх — слои тогда лежат поперёк отрыва, а не вдоль.', mat:['petg','abs']},
   wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
   pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
+  coaster:  {what:'Подстаканник: круг или квадрат со скруглёнными углами, с бортом против конденсата. Логотип лежит в кармане на НИЖНЕЙ стороне.',
+             how:'Логотипом ВНИЗ, на стол — карман печатается первым слоем. Это не прихоть: первый слой — самая гладкая поверхность, какую даёт принтер, и логотип на нём выходит зеркальной вставкой, а тот же логотип сверху — рельефом со следами слоёв.',
+             stepsTitle:'Двухцветный логотип через AMS',
+             steps:[
+               'Загрузите картинку или текст в «Логотипы» — карман в дне повторит её форму. Один логотип, первая карточка.',
+               'Оставьте «Что печатаем» → «подстаканник» и нажмите «+ Вставка-логотип (AMS)»: рядом появится вторая модель — те самые пробки, ровно по карману.',
+               'Сохраните в 3MF, а не в STL: только в 3MF каждая модель уходит отдельным объектом, и только это позволяет слайсеру дать им разные катушки.',
+               'В слайсере назначьте объектам разные филаменты и печатайте вместе — обе стоят на своих местах.',
+               'Высоту первого слоя возьмите 0,2 мм и кратной глубине кармана: тогда смена цвета попадает ровно на границу кармана и не размазывается по следующему слою.',
+               'Продувочная башня обязательна — смена филамента идёт в первых слоях, и без неё остатки прошлого цвета уйдут прямо в логотип.',
+               'Одноцветный подстаканник ничего этого не требует: карман просто останется углублением.',
+             ],
+             mat:['pla','petg']},
   stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель.', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой.', mat:['petg','pla']},
   funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режим дозатора.', how:'Носиком вверх — конус тогда сам себе поддержка. Печатать вазовым режимом можно, если стенка равна одному проходу.', mat:['petg','pla']},
   baseplate:{what:'База Gridfinity: сетка гнёзд под стандартные корзины 42 × 42 мм.', how:'Плашмя, гнёздами вверх. Скос гнезда печатается навесом и поддержек не требует.', mat:['pla','petg']},
@@ -5712,6 +5746,7 @@ function setBaseShape(kind){
   setSel('hookMount',  kind==='hook'   ? 'wall'   : 'none');
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
+  setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
   setSel('fnOn',       kind==='funnel' ? true     : false);
   // Refresh explicitly: the last activator touched may not have been the one that decides the mode, so we
@@ -11150,6 +11185,150 @@ function buildWallOrg(p){
   let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9]; for(const T of tris)for(const v of T)for(let k=0;k<3;k++){if(v[k]<lo[k])lo[k]=v[k];if(v[k]>hi[k])hi[k]=v[k];}
   return tris.map(T=>T.map(v=>[v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
 }
+/* ---- Coaster (подстаканник) ---------------------------------------------------------------------
+   A disc or a rounded square, printed LOGO DOWN — the artwork sits in a pocket in the bottom face, so the
+   side that carries it is the side that was pressed against the build plate. That is the whole reason the
+   part is shaped this way: a printer's smoothest surface is the first layer, and a logo on top is a relief
+   with visible layer lines, while the same logo on the bottom is a flat inlay with a glass finish.
+
+   TWO-COLOUR VIA AMS is the same trick as the keycap's shell/core pair, and it obeys the same rule: the
+   two parts must TOUCH and never share a cubic millimetre, because a slicer given overlapping bodies with
+   different filaments prints both. So the pocket is exactly `inlay` deep and the plugs are exactly `inlay`
+   tall — no clearance at all. A gap would be right if the plug were dropped into a finished coaster; it is
+   wrong here, because the plug is simply the first layers of the same print in another colour, and a glyph
+   with a closed counter (an «о», a «8») becomes an ISLAND that would float over that gap.
+
+   The body is assembled from bodies that INTERPENETRATE in volume and never share a face — the doctrine
+   used everywhere else in this file — so no CSG is needed and every piece is closed on its own:
+
+     • the slab above the inlay layer, a plain prism of the outline;
+     • the rim ring, overlapping that slab from below (same filament, so overlap is free);
+     • around the logo window, a smooth ring from the outline to a rectangle — `extrudePolyYTris` takes
+       the window as a HOLE, which is what keeps the coaster's visible outer edge a real circle instead of
+       a staircase of grid cells;
+     • inside the window, the cell grid: the logo's complement for the body, the logo itself for the inlay.
+
+   The window ring and the grid overlap by 0.5 mm rather than meeting on the rectangle, for the same reason
+   as everywhere else: two closed bodies that share a face get welded into one that is closed nowhere. */
+const COASTER_GRID_LAP = 0.5;    // how far the cell grid runs under the smooth ring around it
+const COASTER_BODY_LAP = 0.6;    // how far same-filament bodies interpenetrate
+function coasterLoop(shape, half, cornerR, seg){
+  const P = [];
+  if (shape === 'square'){
+    const r = Math.max(0, Math.min(cornerR, half - 0.01));
+    if (r < 1e-6){ return [[-half,-half],[half,-half],[half,half],[-half,half]]; }
+    const k = Math.max(2, Math.round(seg/4)), a = half - r;
+    for(const [cx,cz,a0] of [[a,a,0],[-a,a,Math.PI/2],[-a,-a,Math.PI],[a,-a,-Math.PI/2]])
+      for(let s=0;s<=k;s++){ const t=a0+(Math.PI/2)*s/k; P.push([cx+r*Math.cos(t), cz+r*Math.sin(t)]); }
+    return P;
+  }
+  for(let s=0;s<seg;s++){ const t=2*Math.PI*s/seg; P.push([half*Math.cos(t), half*Math.sin(t)]); }
+  return P;
+}
+// Everything the coaster is, as numbers — so the tests, the warnings and the help all read one source.
+function coasterSpec(p){
+  p = p || {};
+  const cl = (v, lo, hi, d) => { const n = (v==null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); };
+  const shape = (p.csMode === 'square') ? 'square' : 'round';
+  const part  = (p.csPart === 'inlay') ? 'inlay' : 'body';
+  const size  = cl(p.csD, 40, 220, 90);          // диаметр круга / сторона квадрата
+  const half  = size/2;
+  const t     = cl(p.csT, 2, 15, 6);
+  // The pocket cannot eat the whole coaster, and it cannot be thinner than a couple of layers or the
+  // second colour prints as a smear. Both ends are clamped rather than warned about.
+  const inlay = Math.min(cl(p.csInlay, 0.4, 3, 0.8), Math.max(0.4, t/2));
+  const rim   = Math.min(cl(p.csRim, 0, 8, 2), Math.max(0, t - inlay - 0.8));
+  const rimW  = Math.min(cl(p.csRimW, 1.5, 20, 4), Math.max(1.5, half*0.4));
+  const cornerR = shape === 'square' ? cl(p.csCorner, 0, 60, 10) : half;
+  const seg   = shape === 'round' ? Math.max(48, Math.min(360, Math.round(size*2.2))) : 48;
+  // The logo window: a rectangle strictly inside the outline, so the ring around it is a real ring. On a
+  // circle the usable inscribed square is half*√2 a side; 0.62 of the size leaves a comfortable margin.
+  const winHalf = Math.max(4, (shape === 'round' ? half*0.66 : half - Math.max(3, rimW)) - 1);
+  return {shape, part, size, half, t, inlay, rim, rimW, cornerR, seg, winHalf,
+          // where the logo may reach: the window, less the lap the grid runs under the ring
+          artHalf: Math.max(2, winHalf - COASTER_GRID_LAP - 0.5),
+          topFlat: t - rim,                        // the recessed middle of the top face
+          innerHalf: Math.max(1, half - rimW)};
+}
+function buildCoaster(p, res){
+  const g = coasterSpec(p);
+  const out = [];
+  const outer = coasterLoop(g.shape, g.half, g.cornerR, g.seg);
+  const win = [[-g.winHalf,-g.winHalf],[g.winHalf,-g.winHalf],[g.winHalf,g.winHalf],[-g.winHalf,g.winHalf]];
+
+  // The legend comes from the first logo card, exactly as the keycap's does — one artwork pipeline for
+  // images, text and QR alike. With no logo at all there is no pocket and the coaster is a plain disc.
+  const lg = (typeof logos !== 'undefined' && logos.length && logos[0].heightmap) ? logos[0] : null;
+  const nG = Math.max(24, Math.min(400, Math.round(res || 120)));
+  const cellAt = (i) => -g.winHalf - COASTER_GRID_LAP + (i/nG)*2*(g.winHalf + COASTER_GRID_LAP);
+  const mask = new Uint8Array(nG*nG);
+  let anyArt = false;
+  if (lg){
+    const rot=(lg.rotation||0)*Math.PI/180, cR=Math.cos(-rot), sR=Math.sin(-rot);
+    const w=Math.max(2, lg.w||10), h=Math.max(2, lg.h||10);
+    // The pocket is in the −Y face, and how artwork lands on −Y is already decided — LOGO_FACE_MAP and
+    // the sampling in buildLogoPlateTris. Read through THAT rather than deriving a mirroring of one's
+    // own: the same logo card on the same face has to land the same way round whichever base shape is
+    // chosen, and the reason «читается снизу, значит зеркально» sounds convincing enough to be wrong
+    // twice. The map is the app's single answer to which way −Y reads; test_logo_mirror.js pins it.
+    const fm = LOGO_FACE_MAP['-Y'];
+    for(let j=0;j<nG;j++) for(let i=0;i<nG;i++){
+      const su=(cellAt(i)+cellAt(i+1))/2-(lg.u0||0), sv=(cellAt(j)+cellAt(j+1))/2-(lg.v0||0);
+      if (Math.abs(su) > g.artHalf || Math.abs(sv) > g.artHalf) continue;   // never under the ring
+      const x = fm[0]*su + fm[1]*sv, z = fm[2]*su + fm[3]*sv;
+      const lu=x*cR-z*sR, lv=x*sR+z*cR;
+      if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) continue;
+      let val = sampleHeightmap(lg.heightmap, (lu+w/2)/w, 1-(lv+h/2)/h);
+      if (lg.invert) val = 1 - val;
+      if (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) { mask[j*nG+i]=1; anyArt=true; }
+    }
+    // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
+    for(let changed=true; changed; ){ changed=false;
+      for(let j=0;j+1<nG;j++) for(let i=0;i+1<nG;i++){
+        const a=mask[j*nG+i], b=mask[j*nG+i+1], c=mask[(j+1)*nG+i], d=mask[(j+1)*nG+i+1];
+        if(a&&d&&!b&&!c){ mask[j*nG+i+1]=1; changed=true; }
+        else if(b&&c&&!a&&!d){ mask[j*nG+i]=1; changed=true; } } }
+  }
+
+  // The inlay part is ONLY the plugs — nothing else, or the second filament would print a whole coaster.
+  if (g.part === 'inlay'){
+    if (!anyArt) return [];
+    return coasterGridSlab(mask, 1, nG, cellAt, 0, g.inlay);
+  }
+
+  if (!anyArt){
+    // No artwork: one plain prism from the plate to the top, plus the rim.
+    out.push(...extrudePolyYTris([outer], 0, g.topFlat));
+  } else {
+    out.push(...extrudePolyYTris([outer], g.inlay, g.topFlat));          // everything above the pocket
+    out.push(...extrudePolyYTris([outer, win], 0, g.inlay + COASTER_BODY_LAP));   // smooth ring, real edge
+    out.push(...coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP));  // field between glyphs
+  }
+  if (g.rim > 0){
+    const inner = coasterLoop(g.shape, g.innerHalf, Math.max(0, g.cornerR - g.rimW), g.seg);
+    out.push(...extrudePolyYTris([outer, inner], Math.max(0, g.topFlat - COASTER_BODY_LAP), g.t));
+  }
+  return out;
+}
+// One layer of the cell grid: every cell whose mask equals `want`, as a closed height-field slab. Walls go
+// on filled↔empty boundaries and around the border, so the piece is closed on its own.
+function coasterGridSlab(mask, want, nG, at, y0, y1){
+  const out = [], on = (i,j) => (i<0||j<0||i>=nG||j>=nG) ? false : (mask[j*nG+i] === want);
+  for(let j=0;j<nG;j++) for(let i=0;i<nG;i++){
+    if(!on(i,j)) continue;
+    const xa=at(i), xb=at(i+1), za=at(j), zb=at(j+1);
+    out.push(orient([[xa,y1,za],[xb,y1,za],[xb,y1,zb]],[0,1,0]), orient([[xa,y1,za],[xb,y1,zb],[xa,y1,zb]],[0,1,0]));
+    out.push(orient([[xa,y0,za],[xb,y0,za],[xb,y0,zb]],[0,-1,0]), orient([[xa,y0,za],[xb,y0,zb],[xa,y0,zb]],[0,-1,0]));
+    const sides=[[1,0,xb,za,xb,zb],[-1,0,xa,zb,xa,za],[0,1,xb,zb,xa,zb],[0,-1,xa,za,xb,za]];
+    for(const [di,dj,pu,pv,qu,qv] of sides){
+      if(on(i+di,j+dj)) continue;
+      const ref=[di,0,dj];
+      out.push(orient([[pu,y0,pv],[qu,y0,qv],[qu,y1,qv]], ref), orient([[pu,y0,pv],[qu,y1,qv],[pu,y1,pv]], ref));
+    }
+  }
+  return out;
+}
+
 /* ---- Phone / tablet stand (подставка) -----------------------------------------------------------
    A leaning cradle: a base that sits on the desk, a front lip the device rests its bottom edge against,
    a back support raked to the chosen angle, and two side gussets bracing the two together. Every piece is
@@ -13767,6 +13946,9 @@ function buildTrisForShapeCore(shape, p) {
     if (p.pbPart && p.pbPart !== 'none') {
       return snapWeldTris(buildProjectBox(p));
     }
+    if (p.csMode && p.csMode !== 'none') {
+      return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
+    }
     if (p.psOn) {
       return snapWeldTris(buildPhoneStand(p));
     }
@@ -14121,7 +14303,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -15222,6 +15404,9 @@ function activeShapeLabel() {
   if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
   if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
+  if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
+    return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +
+           (g.part==='inlay' ? ' — вставка' : ''); }
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? ((p.vaseFloor===false ? 'абажур' : 'ваза') + ' (H' + Math.round(p.vaseH||120) + ')')
@@ -15575,6 +15760,17 @@ function collectPrintWarnings(p){
   // to clear the driver's own hub, and the slot bottom has to stop short of the cross's bore.
   // A gauge is only worth printing if the printer can hold the tolerance it is cut to; saying so is the
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
+  // The coaster clips the artwork into its window, and clipping is silent: the logo card still says 60 mm
+  // and the pocket is 44. Say it here rather than let someone discover it on a printed part.
+  if (p.csMode && p.csMode !== 'none' && typeof logos !== 'undefined' && logos.length){
+    const g = coasterSpec(p), lg = logos[0];
+    const need = Math.max(lg.w||0, lg.h||0);
+    if (need > 2*g.artHalf + 1e-6)
+      w.push('логотип ' + need.toFixed(0) + ' мм шире окна ' + (2*g.artHalf).toFixed(0) +
+             ' мм — края срежутся (уменьшите логотип или возьмите подстаканник побольше)');
+    if (g.part === 'inlay' && !(logos.length && logos[0].heightmap))
+      w.push('вставка без логотипа — печатать нечего');
+  }
   if (p.mntMode === 'transition'){
     const g = transitionSpec(p);
     if (g.steep) w.push('стенка отклоняется на ' + g.lean.toFixed(0) + '° от вертикали — печатать придётся с поддержками или выше');

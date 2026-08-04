@@ -165,12 +165,17 @@ console.log('=== поиск предлагает переключить разн
 
 
 console.log('=== порядок действий там, где он нужен ===');
-// Some models are not printed in one go, and for those the help carries a procedure. Exactly one does
-// today — the two-colour keycap — and saying so out loud is what keeps a half-written `steps` from
-// slipping in unnoticed.
+// Some models are not printed in one go, and those carry a procedure in their help. The roster below is
+// explicit — a half-written `steps` must not slip in unnoticed — but membership is not merely asserted:
+// what makes an entry legitimate is that the model really HAS a second part to print, so each one is
+// checked against its own assemblyMate, and the steps have to name that mate's button and the one file
+// format that can carry two objects. An entry with no mate is a procedure for a part that is printed in
+// one go, which is a procedure for nothing.
 {
+  const STEPPED = { keycap: {keycapMode:'shell'}, coaster: {csMode:'round'} };
   const withSteps = Object.keys(MODEL_HELP).filter(k => (MODEL_HELP[k].steps || []).length);
-  chk('порядок действий есть только у кейкапа', withSteps.join() === 'keycap', withSteps);
+  chk('порядок действий ровно у тех, кто печатается в два захода',
+      withSteps.slice().sort().join() === Object.keys(STEPPED).sort().join(), withSteps);
   for(const k of withSteps){
     const h = MODEL_HELP[k];
     chk(k+': у порядка есть заголовок', !!h.stepsTitle && h.stepsTitle.length > 5, h.stepsTitle);
@@ -179,26 +184,31 @@ console.log('=== порядок действий там, где он нужен 
       chk(k+' шаг '+(i+1)+': не пуст', h.steps[i].length > 25, h.steps[i]);
       chk(k+' шаг '+(i+1)+': законченная фраза', /[.!?]$/.test(h.steps[i].trim()), h.steps[i]);
     }
+    // the procedure exists because there is a second part — and it names the button that makes it
+    const on = STEPPED[k];
+    chk(k+': у модели правда есть вторая деталь', !!on, k);
+    const spec = on && assemblyMate(Object.assign({}, DEF, on));
+    chk(k+': пара находится', !!spec, spec && spec.name);
+    chk(k+': её кнопка названа в шагах',
+        !!spec && h.steps.some(x => x.indexOf(spec.name) >= 0), spec && spec.name);
+    chk(k+': пара несёт логотип', !!spec && spec.logos === true, spec && spec.logos);
+    chk(k+': и садится на то же место',
+        !!spec && JSON.stringify(spec.seat({minY:0,maxY:9},{minY:0,maxY:9},{px:3,py:1,pz:-2}))
+                 === JSON.stringify({px:3,py:1,pz:-2}));
+    // the format that can carry two objects, and the one that cannot
+    chk(k+': шаги называют 3MF', h.steps.some(x => /3MF/.test(x)));
+    chk(k+': шаги предупреждают про STL', h.steps.some(x => /STL/.test(x)));
+    // and the help travels: modelHelp must hand the whole procedure on, not just the prose
+    const got = modelHelp(Object.assign({}, DEF, on));
+    chk(k+': справка несёт порядок дальше', got.steps.length === h.steps.length, got.steps.length);
+    chk(k+': и заголовок к нему', got.stepsTitle === h.stepsTitle, got.stepsTitle);
   }
-  const h = modelHelp(Object.assign({}, DEF, {keycapMode:'single'}));
-  chk('справка по кейкапу несёт порядок дальше', h.steps.length === MODEL_HELP.keycap.steps.length, h.steps.length);
-  chk('и заголовок к нему', h.stepsTitle === MODEL_HELP.keycap.stepsTitle, h.stepsTitle);
   chk('у куба порядка нет', modelHelp(DEF).steps.length === 0);
-  // ...and the instruction names the button it tells you to press, so it cannot drift from the panel
-  const spec = assemblyMate(Object.assign({}, DEF, {keycapMode:'shell'}));
-  chk('оболочке есть пара', !!spec && spec.over.keycapMode === 'core', spec && spec.over);
-  chk('и её имя названо в шагах',
-      MODEL_HELP.keycap.steps.some(x => x.indexOf(spec.name) >= 0), spec.name);
+  chk('у одноцветного колпачка пары нет', !assemblyMate(Object.assign({}, DEF, {keycapMode:'single'})));
   const back = assemblyMate(Object.assign({}, DEF, {keycapMode:'core'}));
-  chk('и обратная пара тоже есть', !!back && back.over.keycapMode === 'shell', back && back.over);
-  chk('у одноцветного пары нет', !assemblyMate(Object.assign({}, DEF, {keycapMode:'single'})));
-  // the two halves sit in the SAME place: the core drops into the shell's own cavity
-  const seat = spec.seat({minY:0,maxY:9}, {minY:0,maxY:9}, {px:3, py:1, pz:-2});
-  chk('вставка встаёт ровно на место оболочки',
-      seat.px === 3 && seat.py === 1 && seat.pz === -2, seat);
-  // the format the steps insist on is the one that can carry two objects
-  chk('шаги называют 3MF', MODEL_HELP.keycap.steps.some(x => /3MF/.test(x)));
-  chk('шаги предупреждают про STL', MODEL_HELP.keycap.steps.some(x => /STL/.test(x)));
+  chk('и обратная пара у кейкапа тоже есть', !!back && back.over.keycapMode === 'shell', back && back.over);
+  const cback = assemblyMate(Object.assign({}, DEF, {csMode:'round', csPart:'inlay'}));
+  chk('и у подстаканника', !!cback && cback.over.csPart === 'body', cback && cback.over);
 }
 
 console.log('=== общей справки снизу больше нет ===');

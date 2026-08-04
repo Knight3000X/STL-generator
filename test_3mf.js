@@ -238,6 +238,46 @@ console.log('\n=== AMS colour parts are PARTS, not objects ===');
   check('part names survive', parts[1].name === 'Цвет 1 (AMS)', parts.map(p=>p.name));
 }
 
+console.log('\n=== two parts of one body are never one filament ===');
+{
+  // Colours are shared ACROSS bodies on purpose — two coasters in the same three tones are three AMS
+  // slots, not six. Within ONE body sharing is a contradiction: a body has several parts precisely
+  // because they are separate colours. A two-colour keycap is born with both halves at the default
+  // grey, and collapsing them by colour is how it reached the slicer on one filament and printed as a
+  // blank cap with no legend at all.
+  models.length = 0; activeModelId = null; nextModelId = 1;
+  const tris = buildTrisForShape('box', Object.assign(defaultBoxParams(), {width:18, height:9, depth:18}));
+  const mk = (name, over, color, px) => {
+    const rec = makeModelRecord(name, Object.assign(defaultBoxParams(), over));
+    rec.rawTris = tris; rec.color = color; rec.px = px || 0; models.push(rec); return rec;
+  };
+  mk('Оболочка',  {keycapMode:'shell'}, '#B9C5CD', 0);     // both at the default, as the app makes them
+  mk('Сердечник', {keycapMode:'core'},  '#B9C5CD', 0);
+  mk('Сосед',     {},                   '#B9C5CD', 60);    // a body of its own, same colour
+  const entries = readZip(new Uint8Array(await assemblyTo3MF().arrayBuffer()));
+  const cfg = new TextDecoder().decode(entries['Metadata/model_settings.config'].data);
+  const xml = new TextDecoder().decode(entries['3D/3dmodel.model'].data);
+  const parts = parseParts(cfg);
+  check('the pair gets two filaments even in one colour',
+        parts[0].extruder !== parts[1].extruder, parts.map(p=>p.extruder));
+  check('and there are two materials to point at',
+        (xml.match(/<base /g)||[]).length === 2, (xml.match(/<base /g)||[]).length);
+  check('a separate body still shares the first slot', parts[2].extruder === parts[0].extruder,
+        parts.map(p=>p.extruder));
+  // and the app does not hand the pair the same colour in the first place
+  logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {keycapMode:'shell'});
+  const plan = assemblyMate(paramState.box);
+  check('the mate button names the insert', plan && /Вставка/.test(plan.name), plan && plan.name);
+  check('and gives it a colour of its own', plan && /^#[0-9a-fA-F]{6}$/.test(plan.color || ''), plan && plan.color);
+  check('darker than the default body', plan && plan.color.toUpperCase() !== '#B9C5CD', plan && plan.color);
+  // when the artwork knows its tones, the legend is printed in the artwork's own ink
+  logos.push({ heightmap: new Float32Array(4), levels: 3, tones: ['#101010', '#404040', '#BB1828'] });
+  check('the legend takes the artwork\'s top tone',
+        (assemblyMate(paramState.box) || {}).color === '#BB1828', (assemblyMate(paramState.box)||{}).color);
+  logos.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
 }

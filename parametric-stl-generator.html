@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.4.2';
+const APP_VERSION = 'v16.4.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3074,22 +3074,32 @@ function assemblyTo3MF(){
     if (key) byKey.set(key, body);
   }
   const mats = [], inkOf = new Map();
-  const inkIndex = (m) => {
+  const newInk = (col, name) => {
+    mats.push('<base name="' + esc(name || ('Филамент ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
+    return mats.length - 1;
+  };
+  /* One filament per distinct colour — but never one filament for two parts of the SAME body. Sharing
+     across bodies is right: two coasters printed in the same three tones are three AMS slots, not six.
+     Sharing WITHIN a body is a contradiction: a body has several parts precisely because they are
+     separate colours, and putting them on one filament prints the thing the parts were splitting up.
+     It is not a hypothetical — a two-colour keycap is born with both halves at the default grey, so
+     colour alone collapsed the pair onto filament 1 and the cap came out of the slicer blank. */
+  const inkIndex = (m, used) => {
     const col = /^#[0-9a-fA-F]{6}$/.test(m.color || '') ? m.color.toUpperCase() : '#B9C5CD';
-    if (!inkOf.has(col)){
-      inkOf.set(col, mats.length);
-      mats.push('<base name="' + esc(m.name || ('Филамент ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
-    }
-    return inkOf.get(col);
+    let i = inkOf.has(col) ? inkOf.get(col) : -1;
+    if (i < 0){ i = newInk(col, m.name); inkOf.set(col, i); }
+    else if (used.has(i)) i = newInk(col, m.name);
+    used.add(i);
+    return i;
   };
   const objects = [], items = [], cfg = [];
   let id = MAT_ID + 1;
   for (const body of bodies){
-    const comps = [], parts = [];
+    const comps = [], parts = [], used = new Set();
     for (const m of body.parts){
       let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
       if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
-      const ink = inkIndex(m);
+      const ink = inkIndex(m, used);
       objects.push(tris3MFObject(id, tris, MAT_ID, ink));
       comps.push('<component objectid="' + id + '" transform="' + MF_IDENT3 + '"/>');
       parts.push('<part id="' + id + '" subtype="normal_part">' +
@@ -4999,10 +5009,18 @@ function assemblyMate(p){
                     color:(inks.colors || [])[next-1] }
                 : { name:'Подстаканник (AMS)', over:{csPart:'body'}, logos:true, seat };
   }
+  // The insert IS the legend, so it is shown — and printed — in the legend's own colour: the artwork's
+  // top tone when the picture knows it, a dark ink when it does not. Two identical grey caps are a puzzle
+  // about which one is which, and since filaments are numbered by colour, leaving both at the default is
+  // also how a two-colour cap arrived in the slicer as one filament and printed as a blank cap.
+  const legendInk = () => {
+    const t = (typeof logos !== 'undefined' && logos.length && logos[0].tones) || [];
+    return t.length ? t[t.length - 1] : '#20242a';
+  };
   if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
-    logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+    logos:true, color:legendInk(), seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (p.keycapMode === 'core') return { name:'Внешняя оболочка (AMS)', over:{keycapMode:'shell'},
-    logos:true, seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+    logos:true, color:'#b9c5cd', seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
     seat:(A,B,S)=>({px:S.px + m*Z, py:S.py, pz:S.pz}) };
   // Worm drive: the axes cross at a right angle, so the newcomer is laid on its side and set out

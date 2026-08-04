@@ -1035,7 +1035,7 @@
         <button id="btn-add-texture" title="Процедурная текстура рельефом: размер логотипа задаёт шаг узора">+ Текстура</button>
       </div>
       <div id="logo-cards"></div>
-      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё больше одного тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». <b>«Ступеней»</b> — на сколько уровней режется рельеф. 2 — как раньше: один порог, одна ступень, видна ровно одна граница. Настоящая эмблема нарисована в три-четыре плоских цвета, и двумя уровнями из трёх границ показать можно только одну — остальное сливается. При 3–6 порога нет вовсе: приложение само находит тона картинки (кластеризацией, а не делением диапазона поровну — иначе тон может лечь ровно на разрез) и делает каждый своей высотой; прозрачный фон остаётся заподлицо. Число реальных тонов может оказаться меньше запрошенного — лишних ступеней не выдумывается. При загрузке картинки ступени и глубина ставятся сами: 0,2 мм на КАЖДУЮ ступень, потому что ступень тоньше слоя не пропечатается (об этом же скажут предупреждения). До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх).</div></details>
+      <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note" id="logo-note">Логотип — из картинки («+ Добавить логотип»), текста («+ Текст»), QR-кода («+ QR»: встроенный энкодер, до ~100 символов, тёмные модули выпуклые) или процедурной текстуры («+ Текстура»: рифление, точки, треугольные соты — размер логотипа задаёт шаг узора). Все источники рисуются в один и тот же heightmap и ведут себя одинаково: любая грань, поворот, порог/инверсия, все режимы, сохраняются в JSON-конфиг. <b>«Рельеф читать по»</b> — из какого канала картинки берётся рисунок; рельеф всегда двоичный (выше порога — выпуклость, ниже — плоскость), поэтому канал решает, что вообще попадёт на модель. <b>Силуэт</b> — форма там, где картинка непрозрачна: годится для текста и одноцветного значка на прозрачном фоне. <b>Яркость</b> — форма там, где картинка светлая: для рисунка вообще без прозрачности. <b>Детали</b> — непрозрачно И светло: для ЦВЕТНОГО значка на прозрачном фоне, который два других канала сплющивают (силуэт видит одно пятно и теряет все линии внутри, яркость считает прозрачный фон чёрным и склеивает его с тёмными частями значка). «Авто» смотрит на саму картинку: есть прозрачность и внутри неё больше одного тона — «детали», есть только прозрачность — «силуэт», нет прозрачности — «яркость». <b>«Ступеней»</b> — на сколько уровней режется рельеф. 2 — как раньше: один порог, одна ступень, видна ровно одна граница. Настоящая эмблема нарисована в три-четыре плоских цвета, и двумя уровнями из трёх границ показать можно только одну — остальное сливается. При 3–6 порога нет вовсе: приложение само находит тона картинки (кластеризацией, а не делением диапазона поровну — иначе тон может лечь ровно на разрез) и делает каждый своей высотой; прозрачный фон остаётся заподлицо. Число реальных тонов может оказаться меньше запрошенного — лишних ступеней не выдумывается. При загрузке картинки ступени и глубина ставятся сами: 0,2 мм на КАЖДУЮ ступень, потому что ступень тоньше слоя не пропечатается (об этом же скажут предупреждения). До 18 логотипов; несколько на одну грань (при перекрытии приоритет у добавленного раньше). Галочка «Связать Ш/В» держит пропорции исходника. Кнопка «3D» на карточке делает из силуэта (по порогу яркости) ОТДЕЛЬНУЮ экструдированную модель сборки — Ширина/Глубина задают габарит, Высота — толщину. Сетка сгущается зонально вокруг каждого логотипа, поэтому «Детализацию логотипов» (до 500) можно поднимать без взрыва числа треугольников. Наклон стенок не искажает рисунок (рельеф идёт перпендикулярно поверхности). На полом контейнере рельеф работает снаружи на стенках и дне и изнутри на дне полости (грань «−Y изнутри» — видна через открытый верх). <b>«Цветная печать логотипа (AMS)»</b> — то же, что у подстаканника, но на ЛЮБОЙ форме: тон логотипа становится отдельной деталью со своей катушкой. Поставьте «тело (карман под логотип)» — рисунок уйдёт в карман одной глубины, — и нажимайте «+ Цвет N (AMS)» столько раз, сколько у логотипа тонов: каждая новая модель это пробки одного цвета, ровно по карману, и кнопка сама возвращается к телу, когда цвета набраны. Цвета читаются с самой картинки. Сохранять только в 3MF: тело и все его цвета уходят частями ОДНОГО объекта, каждая со своим номером филамента, и в слайсере должно быть заряжено столько филаментов, сколько цветов. Оговорки, которые лучше знать заранее: при включённой цветной печати рисунок кладётся ПЛИТОЙ-бляшкой поверх грани (чуть выступает) даже на кубе, где обычный логотип вдавливается в саму стенку — иначе карман и пробки резались бы двумя разными сетками и не совпали бы; кость и другие формы без плоской грани под рисунком цвета не получают; а на выпуклом логотипе пробкой становится сама надпись, и карман не нужен.</div></details>
     </details>
     </div>
 
@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.4.3';
+const APP_VERSION = 'v16.5.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3033,6 +3033,7 @@ function mfBodyKey(m){
   const p = m.params || {};
   const r3 = v => Math.round((v || 0) * 1000) / 1000;
   const at = '@' + [m.px, m.py, m.pz, m.rx, m.ry, m.rz].map(r3).join(',');
+  if (p.logoAms && p.logoAms !== 'none') return 'logo' + at;
   if (p.csMode && p.csMode !== 'none') return 'coaster' + at;
   if (p.keycapMode === 'shell' || p.keycapMode === 'core') return 'keycap' + at;
   return null;
@@ -3829,13 +3830,67 @@ function outermostFlatPlaneAt(tris, nAx, sgn, uAx, vAx, samples){
   }
   return best;
 }
-function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
-  if (!logo || !logo.heightmap) return [];
+/* Corner touches, resolved per COLOUR. Each plug is its own closed body and shares edges only with
+   itself, so a colour meeting itself at a cell corner puts four wall quads on one vertical edge and stops
+   being a solid — exactly the defect the silhouette pass removes for the artwork as a whole.
+
+   Cells only ever change COLOUR here, never membership: the union is left exactly as it came in, so the
+   body's pocket is not touched by any of this.
+
+   Growing the colour is not always available — the cell in the way may belong to a colour that is already
+   settled, and taking it back would only move the defect. So there are two moves, and which one applies is
+   decided by which colour is LATER in the list:
+
+     — the blocker is a later colour  → take its cell (the earlier colour wins the tie);
+     — the blocker is an earlier one  → hand one of our own two cells over to it instead.
+
+   Both strictly increase (n₁, n₂, …, n_K) read as a lexicographic number, so the sweep cannot cycle. That
+   is the whole reason for the rule rather than «always take»: fixing each colour to its own fixpoint in
+   turn, the way the coaster does it, is not guaranteed to settle at all — colour 1 takes a cell from
+   colour 2 and colour 2 takes it back. The cap is a belt on top of that argument, not the argument. */
+function resolveInkCorners(mask, N, M, K){
+  for (let sweep = 0, changed = true; changed && sweep < 64; sweep++){
+    changed = false;
+    for (let k = 1; k <= K; k++)
+      for(let j=0;j+1<M;j++) for(let i=0;i+1<N;i++){
+        const A=j*N+i, B=j*N+i+1, C=(j+1)*N+i, D=(j+1)*N+i+1;
+        let mine = -1, pair = null;
+        if (mask[A]===k && mask[D]===k && mask[B]!==k && mask[C]!==k) { mine = A; pair = [B, C]; }
+        else if (mask[B]===k && mask[C]===k && mask[A]!==k && mask[D]!==k) { mine = B; pair = [A, D]; }
+        if (!pair) continue;
+        // EITHER of the two cells in the way will do, and only one of them need be part of the artwork at
+        // all: the silhouette pass fills one of the pair, not both. Looking only at the first is how this
+        // quietly did nothing wherever a colour ran diagonally along the artwork's own edge.
+        const tgt = mask[pair[0]] ? pair[0] : (mask[pair[1]] ? pair[1] : -1);
+        if (tgt < 0) continue;                        // nothing there: the silhouette pass owns that cell
+        if (mask[tgt] > k) mask[tgt] = k; else mask[mine] = mask[tgt];
+        changed = true;
+      }
+  }
+  return mask;
+}
+/* The PLAN of a label patch: where it sits, how finely it is sampled, and which COLOUR of the artwork each
+   cell belongs to (0 = not in the artwork at all).
+
+   Both halves of a colour label read this one function — the body, which sinks the whole footprint into a
+   pocket, and each colour, which fills its own cells of that same pocket. They have to agree about every
+   cell boundary, or a plug stands proud of the pocket wall it was cut to fit; the way to make two things
+   agree is to have one of them.
+
+   The colour index is layered ON TOP of the footprint the plate has always used, never underneath it: the
+   union of the colours is exactly the binary mask the plate used to build, cell for cell, so a one-colour
+   label comes out of here unchanged. That is also why the background level is dropped even where the
+   coaster keeps it — a label's patch is the artwork, not a square, so «transparent» is not a colour here.
+
+   Returns null when there is nothing to put a label on: no artwork, no depth, a face too small, or no flat
+   surface under the footprint. */
+function logoPatchPlan(logo, bb, plateParam, res, hostTris){
+  if (!logo || !logo.heightmap) return null;
   const spec = PLATE_FACE_AXES[logo.face === '-Y-inner' ? '-Y' : logo.face];
-  if (!spec) return [];
+  if (!spec) return null;
   const [nAx, sgn, uAx, vAx] = spec;
   const depth = logo.depth || 0;
-  if (!depth) return [];
+  if (!depth) return null;
   let plate = Math.max(0, plateParam || 0);
   if (depth < 0) plate = Math.max(plate, -depth + 0.6);
 
@@ -3849,7 +3904,7 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   const MARGIN = 0.6;
   const halfU = Math.min(ext.halfX, Math.max(0, faceHalfU - MARGIN));
   const halfV = Math.min(ext.halfY, Math.max(0, faceHalfV - MARGIN));
-  if (!(halfU > 0.5) || !(halfV > 0.5)) return [];
+  if (!(halfU > 0.5) || !(halfV > 0.5)) return null;
   const u0 = cU + Math.max(-(faceHalfU-halfU), Math.min(faceHalfU-halfU, logo.u0||0));
   const v0 = cV + Math.max(-(faceHalfV-halfV), Math.min(faceHalfV-halfV, logo.v0||0));
 
@@ -3859,6 +3914,8 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   const M = Math.max(4, Math.min(400, Math.ceil(2*halfV/cell)));
   const rad = (logo.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
   const fm = logoFaceMap(logo);                       // see LOGO_FACE_MAP
+  const inks = logoInks(logo);
+  const stepped = logoStepped(logo);
   const mask = new Uint8Array(N*M);
   let any=false;
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
@@ -3869,16 +3926,29 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
     let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);
     if (logo.invert) val = 1 - val;
     // A second-colour insert is one material, so it takes the whole footprint of a stepped relief.
-    if (logoStepped(logo) ? val > 1e-4 : val > logo.threshold) { mask[j*N+i]=1; any=true; }
+    if (!(stepped ? val > 1e-4 : val > logo.threshold)) continue;
+    any = true;
+    // Which colour: the tone this cell's height belongs to. A logo cut at ONE threshold has exactly one,
+    // and then this is the mask it has always been. Interpolation between two tones lands between the
+    // list's entries and gets the nearest — a heightmap sampled off-grid has no exact level to match.
+    let k = 1;
+    if (stepped && inks.levels.length){
+      let bd = Infinity;
+      inks.levels.forEach((v, q) => { const d = Math.abs(v - val); if (d < bd){ bd = d; k = q+1; } });
+    }
+    mask[j*N+i] = k;
   }
-  if (!any && plate <= 0) return [];
+  if (!any && plate <= 0) return null;
   // Cells touching only at a CORNER would put four wall quads on one vertical edge — non-manifold.
   // Fill one of the two empty diagonal neighbours until none are left (each pass only ADDS cells).
+  // The filler takes the colour of the pair it is closing, so the union grows exactly as it always did
+  // and the new cell belongs to somebody rather than to colour 1 by default.
   for (let changed=true; changed; ){ changed=false;
     for(let j=0;j+1<M;j++) for(let i=0;i+1<N;i++){
       const a=mask[j*N+i], b=mask[j*N+i+1], c=mask[(j+1)*N+i], d=mask[(j+1)*N+i+1];
-      if(a&&d&&!b&&!c){ mask[j*N+i+1]=1; changed=true; }
-      else if(b&&c&&!a&&!d){ mask[j*N+i]=1; changed=true; } } }
+      if(a&&d&&!b&&!c){ mask[j*N+i+1]=a; changed=true; }
+      else if(b&&c&&!a&&!d){ mask[j*N+i]=b; changed=true; } } }
+  resolveInkCorners(mask, N, M, Math.max(1, inks.levels.length));
 
   // Probe OUTSIDE the footprint (×1.06), not just inside it: the surface has to extend past the label
   // on all four sides. A label that exactly fills its face puts its walls in the host's own border,
@@ -3888,7 +3958,7 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
                  [u0+halfU*K, v0+halfV*K], [u0-halfU*K, v0+halfV*K]];
   const plane = hostTris ? outermostFlatPlaneAt(hostTris, nAx, sgn, uAx, vAx, probe)
                         : (sgn > 0 ? bb.hi[nAx] : bb.lo[nAx]);
-  if (plane === null) return [];      // nothing flat to sit on — no label rather than a broken one
+  if (plane === null) return null;    // nothing flat to sit on — no label rather than a broken one
   const base  = plate > 0 ? plate : -0.15;     // field between glyphs: the plaque, or just under the skin
   // An axis-aligned face is a frame like any other: origin on the plane, the two face axes, and the
   // outward normal. Writing it that way is what lets a RAKED surface use the same emitter — see
@@ -3897,7 +3967,39 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   const o = [0,0,0]; o[nAx] = plane;
   const frame = {o, u:e(uAx), v:e(vAx), n:(sgn>0 ? e(nAx) : e(nAx).map(c=>-c))};
   const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
-  return reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, frame);
+  return {mask, N, M, U, V, frame, inks, plate, depth, base, any, hi: plate + depth};
+}
+const LOGO_AMS_LAP = 0.4;      // how far a plug reaches past its own pocket, so the two interpenetrate
+function logoAmsIndex(v){ const m = /^ink([1-9])$/.exec(String(v||'')); return m ? +m[1] : 0; }
+function logoAmsOn(p){ return !!(p && p.logoAms && p.logoAms !== 'none'); }
+/* Colour k of every label on the model, as its own closed body — and NOTHING else, or that filament would
+   print a whole container.
+
+   The plug fills its own cells of the patch the body already cut: flush with the surface it is set into,
+   and reaching LAP past the far side so it interpenetrates the body rather than sharing a plane with it.
+   Which way «past» points depends on the label: an ENGRAVED one leaves a pocket and the plug drops into
+   it, a RAISED one stands the glyph proud and the plug IS that glyph in its own colour. Both are the same
+   two numbers — the field and the artwork — in the other order.
+
+   Every colour lives at ONE depth, side by side. They tile a surface; they are not stacked by height. */
+function buildLogoAmsInkTris(p, hostTris, res, k){
+  const bb = bboxOfTris(hostTris), out = [];
+  for (const lg of logos){
+    const pl = logoPatchPlan(lg, bb, p.logoPlate || 0, res, hostTris);
+    if (!pl || !pl.any || k > Math.max(1, pl.inks.levels.length)) continue;
+    const outer = Math.max(pl.base, pl.hi), inner = Math.min(pl.base, pl.hi) - LOGO_AMS_LAP;
+    for (const T of maskedSlabTris(pl.mask, k, pl.N, pl.M, pl.U, pl.V, outer, inner, pl.frame)) out.push(T);
+  }
+  return out;
+}
+function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
+  const pl = logoPatchPlan(logo, bb, plateParam, res, hostTris);
+  if (!pl) return [];
+  // The body wants the artwork's SILHOUETTE, not its colours: one pocket at one depth, which every colour
+  // then shares. `mask` carries colour indices, and every non-zero one is inside that silhouette.
+  const bin = new Uint8Array(pl.N * pl.M);
+  for (let q = 0; q < bin.length; q++) bin[q] = pl.mask[q] ? 1 : 0;
+  return reliefSlabTris(bin, pl.N, pl.M, pl.U, pl.V, pl.hi, pl.base, -LOGO_PLATE_EMBED, pl.frame);
 }
 /* The emission half of a relief patch, in a FRAME rather than along an axis: origin, two in-plane axes and
    the outward normal. Filled cells stand at `hi`, empty ones at `lo`, and the whole slab is closed by a
@@ -4733,6 +4835,10 @@ const SHAPE_PARAMS = {
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
     {group:'Логотипы (рельеф на гранях)', key:'logoPlate', label:'Этикетка: подложка под надпись (0 = без подложки)', min:0, max:6, step:0.2, default:0, unit:'мм'},
+    {group:'Логотипы (рельеф на гранях)', key:'logoAms', label:'Цветная печать логотипа (AMS)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'body',t:'тело (карман под логотип)'},
+               {v:'ink1',t:'AMS: цвет 1'},{v:'ink2',t:'AMS: цвет 2'},{v:'ink3',t:'AMS: цвет 3'},
+               {v:'ink4',t:'AMS: цвет 4'},{v:'ink5',t:'AMS: цвет 5'},{v:'ink6',t:'AMS: цвет 6'}]},
     {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
@@ -4944,6 +5050,20 @@ function threadNeckSpec(p){
 // `seat(A, B, p)` places B — A and B are the two ROTATED bounding boxes, A already carrying the active
 // model's own position, so the answer is an absolute px/py/pz for the newcomer.
 function assemblyMate(p){
+  /* A colour label, on whatever shape it was put on: the same chain the coaster walks, one part per tone.
+     It goes FIRST because it is asked for explicitly — a jar with a colour logo has both a cap and a set
+     of inks to offer, and the one the person just switched on is the one they mean. Switch colour
+     printing back off and the cap is offered again. */
+  if (logoAmsOn(p) && typeof logos !== 'undefined' && logos.length){
+    const inks = logoInks(logos[0]);
+    const n = inks.levels.length;
+    const at = logoAmsIndex(p.logoAms);
+    const next = (n && at < n) ? at + 1 : 0;
+    const seat = (A,B,S)=>({px:S.px, py:S.py, pz:S.pz});
+    return next ? { name:'Цвет ' + next + ' (AMS)', over:{logoAms:'ink'+next}, logos:true, seat,
+                    color:(inks.colors || [])[next-1] }
+                : { name:'Тело с логотипом (AMS)', over:{logoAms:'body'}, logos:true, seat };
+  }
   const th = p.threadMode || 'none', gr = p.gearMode || 'none';
   const pb = (p.pbPart && p.pbPart !== 'none') ? p.pbPart : 'none';   // 'both' already holds the pair
   const m  = Math.max(0.3, p.gearModule || 2), Z = Math.max(6, Math.round(p.gearTeeth || 20));
@@ -6333,6 +6453,11 @@ function mergeZones(a,b){
 function buildCombinedLogoDispFns(taperFn) {
   const p = paramState.box;
   const fnsByFace = {};
+  // A colour label is a PATCH, not a dent in the host's own skin. The cube can displace its own vertices
+  // and does so beautifully, but the plugs that fill the pocket are cut on the patch's grid, and a pocket
+  // cut on the cube's mesh has different walls — the two would not meet. So when colour printing is on,
+  // every shape goes through the one patch builder, cube included, and the colours fit by construction.
+  if (logoAmsOn(p)) return {};
   for (const logo of logos) {
     const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
     const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
@@ -11659,6 +11784,19 @@ function coasterInks(lg){
   const cut = keep.slice(0, COASTER_MAX_INKS);
   return {levels: cut, bg, colors: cut.map((v, i) => tones[i] || '#b9c5cd')};
 }
+/* The same colours, for a LABEL rather than a pocket floor. A coaster's pocket is a square and the picture
+   is paved across all of it, so a dark background is one of the colours paving it. A label's patch is the
+   artwork itself — everything below the first tone is simply not part of the label — so the zero level is
+   dropped here even where the coaster keeps it, and the colours are dropped with it so the two lists stay
+   lined up. (Taking `colors` by position after filtering `levels` alone is the off-by-one that once gave
+   every part its neighbour's colour.) */
+function logoInks(lg){
+  const inks = coasterInks(lg);
+  if (inks.bg || !inks.levels.length) return inks;
+  const levels = [], colors = [];
+  inks.levels.forEach((v, i) => { if (v > 1e-4){ levels.push(v); colors.push((inks.colors||[])[i]); } });
+  return {levels, bg: true, colors};
+}
 // Which part `csPart` names: the coaster itself, or accent colour k (1-based).
 function coasterInkIndex(csPart){
   const m = /^ink([1-9])$/.exec(String(csPart||''));
@@ -11779,23 +11917,38 @@ function buildCoaster(p, res){
   }
   return out;
 }
-// One layer of the cell grid: every cell whose mask equals `want`, as a closed height-field slab. Walls go
-// on filled↔empty boundaries and around the border, so the piece is closed on its own.
-function coasterGridSlab(mask, want, nG, at, y0, y1){
-  const out = [], on = (i,j) => (i<0||j<0||i>=nG||j>=nG) ? false : (mask[j*nG+i] === want);
-  for(let j=0;j<nG;j++) for(let i=0;i<nG;i++){
+// One layer of the cell grid: every cell whose mask equals `want`, as a closed slab between two offsets
+// along the frame's normal. Walls go on belongs↔does-not boundaries and around the border, so the piece is
+// closed on its own — one colour of a mosaic, lifted out of the grid without touching the others.
+//
+// A FRAME rather than an axis, for the same reason reliefSlabTris takes one: the coaster's pocket lies in
+// the XZ plane and a label's lies on whatever face it was put on, and «the same walk but rotated» is the
+// shape of bug that gets found on a printed part rather than in a test.
+function maskedSlabTris(mask, want, N, M, U, V, hi, lo, fr){
+  const P = (uu,vv,out) => [fr.o[0] + fr.u[0]*uu + fr.v[0]*vv + fr.n[0]*out,
+                            fr.o[1] + fr.u[1]*uu + fr.v[1]*vv + fr.n[1]*out,
+                            fr.o[2] + fr.u[2]*uu + fr.v[2]*vv + fr.n[2]*out];
+  const on = (i,j) => (i<0||j<0||i>=N||j>=M) ? false : (mask[j*N+i] === want);
+  const nOut = fr.n, nIn = [-fr.n[0], -fr.n[1], -fr.n[2]];
+  const out = [];
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){
     if(!on(i,j)) continue;
-    const xa=at(i), xb=at(i+1), za=at(j), zb=at(j+1);
-    out.push(orient([[xa,y1,za],[xb,y1,za],[xb,y1,zb]],[0,1,0]), orient([[xa,y1,za],[xb,y1,zb],[xa,y1,zb]],[0,1,0]));
-    out.push(orient([[xa,y0,za],[xb,y0,za],[xb,y0,zb]],[0,-1,0]), orient([[xa,y0,za],[xb,y0,zb],[xa,y0,zb]],[0,-1,0]));
-    const sides=[[1,0,xb,za,xb,zb],[-1,0,xa,zb,xa,za],[0,1,xb,zb,xa,zb],[0,-1,xa,za,xb,za]];
+    const ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
+    out.push(orient([P(ua,va,hi),P(ub,va,hi),P(ub,vb,hi)], nOut), orient([P(ua,va,hi),P(ub,vb,hi),P(ua,vb,hi)], nOut));
+    out.push(orient([P(ua,va,lo),P(ub,va,lo),P(ub,vb,lo)], nIn),  orient([P(ua,va,lo),P(ub,vb,lo),P(ua,vb,lo)], nIn));
+    const sides=[[1,0,ub,va,ub,vb],[-1,0,ua,vb,ua,va],[0,1,ub,vb,ua,vb],[0,-1,ua,va,ub,va]];
     for(const [di,dj,pu,pv,qu,qv] of sides){
       if(on(i+di,j+dj)) continue;
-      const ref=[di,0,dj];
-      out.push(orient([[pu,y0,pv],[qu,y0,qv],[qu,y1,qv]], ref), orient([[pu,y0,pv],[qu,y1,qv],[pu,y1,pv]], ref));
+      const wref=[fr.u[0]*di + fr.v[0]*dj, fr.u[1]*di + fr.v[1]*dj, fr.u[2]*di + fr.v[2]*dj];
+      out.push(orient([P(pu,pv,lo),P(qu,qv,lo),P(qu,qv,hi)], wref), orient([P(pu,pv,lo),P(qu,qv,hi),P(pu,pv,hi)], wref));
     }
   }
   return out;
+}
+// The coaster's pocket in the app's own axes: X across, Z along, +Y out of the face that lies on the bed.
+function coasterGridSlab(mask, want, nG, at, y0, y1){
+  return maskedSlabTris(mask, want, nG, nG, at, at, y1, y0,
+                        {o:[0,0,0], u:[1,0,0], v:[0,0,1], n:[0,1,0]});
 }
 
 /* ---- Phone / tablet stand (подставка) -----------------------------------------------------------
@@ -14478,10 +14631,15 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildFingerGrip(p));
   // Labels on a shape with no tessellated face to displace — see buildLogoPlateTris. Measured off
   // the finished mesh's bounding box, so it works the same whatever the shape turned out to be.
-  if (shape === 'box' && logos.length > 0 && LOGO_PLATE_MODES.has(dominantMode(p))) {
+  if (shape === 'box' && logos.length > 0 && (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
     const bb = bboxOfTris(tris);
     const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;
     const host = tris;
+    // A colour part is ONLY its own plugs. The body it drops into is the same model with the same label,
+    // built with «тело» selected — the two are one printed object, so what this filament must not do is
+    // print a second container underneath its own logo.
+    const amsK = logoAmsIndex(p.logoAms);
+    if (amsK) return snapWeldTris(buildLogoAmsInkTris(p, host, res, amsK));
     for (const lg of logos) tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
   }
   // The edge bevel goes LAST, on the finished union — see bevelledMesh. Welding first is required,

@@ -153,6 +153,24 @@
     line-height:1.15;
     color:var(--ink);
   }
+  /* «STL» as a hollow extruded wordmark. Hollow means the paper shows through the letters, so the
+     extrusion cannot simply sit behind them — it is masked away under the face (see #wm-cut). Two depths
+     of offset: a near stack in the accent colour that reads as the side of the letter, and one far copy
+     in the redline that reads as its shadow. */
+  /* Sat on the text baseline rather than centred: an inline-block's baseline is its bottom margin edge,
+     so the negative bottom margin lifts the box until the drawn baseline (y=35 in a viewBox spanning
+     8..45) lands on the line's own. Centring looked close and was wrong by a couple of pixels, which on
+     two words sharing one line is exactly the thing the eye picks up. */
+  .wordmark{ display:inline-block; vertical-align:baseline; height:2em; width:auto; overflow:visible;
+    /* viewBox 8..47 with the baseline drawn at y=35: it sits (35-8)/39 = 69.2 % down the box, so at a
+       displayed height of 2em the baseline is 0.6154em up from the bottom edge. Change the viewBox and
+       this number changes with it — it is that fraction, not a value found by nudging. */
+    margin:0 1px -0.6154em 0; }
+  .wm-t{ font-family:'IBM Plex Sans', sans-serif; font-size:34px; font-weight:700; letter-spacing:-0.5px; }
+  .wm-near text{ fill:var(--accent); }
+  .wm-far  text{ fill:var(--redline); }
+  .wm-face{ fill:none; stroke:var(--ink); stroke-width:2.1; stroke-linejoin:round; paint-order:stroke; }
+  .wm-rest{ letter-spacing:0.02em; }
   .titleblock .sub{
     margin-top:3px;
     font-size:11px;
@@ -887,7 +905,32 @@
     <div class="titleblock">
       <button id="btn-theme" class="theme-toggle" title="Светлая / тёмная тема" aria-label="Переключить тему">🌙</button>
       <span class="tag">ЛИСТ 1 ИЗ 1</span>
-      <h1>STL-ГЕНЕРАТОР <span id="app-version" class="ver"></span></h1>
+      <h1><svg class="wordmark" viewBox="1 8 71 39" role="img" aria-label="STL"><defs>
+        <!-- The extrusion is drawn everywhere EXCEPT under the letter face. Without this mask the offset
+             copies show through the hollow letters and they stop being hollow — which is the whole ask. -->
+        <mask id="wm-cut" maskUnits="userSpaceOnUse" x="-12" y="-12" width="142" height="68">
+          <rect x="-12" y="-12" width="142" height="68" fill="#fff"/>
+          <text x="3" y="35" class="wm-t">STL</text>
+        </mask>
+      </defs>
+      <g mask="url(#wm-cut)">
+        <g class="wm-far"><text x="3" y="35" class="wm-t" transform="translate(9,9)">STL</text></g>
+        <g class="wm-near">
+          <text x="3" y="35" class="wm-t" transform="translate(5.5,5.5)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(5.0,5.0)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(4.5,4.5)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(4.0,4.0)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(3.5,3.5)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(3.0,3.0)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(2.5,2.5)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(2.0,2.0)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(1.5,1.5)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(1.0,1.0)">STL</text>
+          <text x="3" y="35" class="wm-t" transform="translate(0.5,0.5)">STL</text>
+        </g>
+      </g>
+      <text x="3" y="35" class="wm-t wm-face">STL</text>
+      </svg><span class="wm-rest">-ГЕНЕРАТОР</span> <span id="app-version" class="ver"></span></h1>
       <div class="sub">параметрические тела → экспорт STL / 3MF · форма: <span id="active-shape-name" class="mono">—</span></div>
     </div>
 
@@ -1115,7 +1158,14 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v193';
+/* Версия — v<мажор>.<минор>.<патч>, и она не пишется здесь руками: она СЧИТАЕТСЯ из VERSION.md, где
+   каждый коммит проекта разнесён по разрядам, и переносится сюда. Правило разрядов:
+     мажорный — новая БАЗОВАЯ ФОРМА (подстаканник, воронка, шестерня);
+     минорный — новая разновидность формы или отдельная возможность;
+     патч     — доработки и исправления.
+   Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
+   сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
+const APP_VERSION = 'v16.3.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */

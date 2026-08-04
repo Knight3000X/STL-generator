@@ -1172,7 +1172,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.3.4';
+const APP_VERSION = 'v16.3.5';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -11471,6 +11471,25 @@ const COASTER_GRID_LAP = 0.5;    // how far the cell grid runs under the smooth 
 const COASTER_BODY_LAP = 0.6;    // how far same-filament bodies interpenetrate
 const COASTER_MAX_INKS = 6;      // as many accent parts as a filament changer plausibly has slots
 
+/* How fine the pocket grid is — in MILLIMETRES, not in «cells across the window».
+   The pocket's edges are the entire point of this part, and what limits them is the nozzle: a 0.4 mm one
+   cannot place a feature finer than about a third of a millimetre, so cells below that buy nothing and
+   cost the SQUARE of themselves in triangles.
+
+   It used to take the cube's «Детализация логотипов» slider as a cell COUNT across the window, and that
+   slider defaults to 50. On a 90 mm coaster the window is 58 mm, so the cell was 1.17 mm — a staircase
+   visible across the room, and exactly the difference between what this printed and the reference it was
+   asked to match. A number that means «cells across a face» cannot also mean «edge quality»: the same 50
+   is 0.8 mm on a 40 mm cube and 1.17 mm here. The slider is a quality MULTIPLIER now; the size is set in
+   millimetres, where the nozzle is. */
+const COASTER_CELL_MM = 0.35;
+const COASTER_MAX_CELLS = 260;   // past this the set runs to ~300k triangles and the preview stops being live
+function coasterGridN(g, res){
+  const span = 2*(g.winHalf + COASTER_GRID_LAP);
+  const quality = Math.max(0.4, Math.min(2.5, (res || 50)/50));
+  return Math.max(48, Math.min(COASTER_MAX_CELLS, Math.ceil(span/(COASTER_CELL_MM/quality))));
+}
+
 /* How many COLOURS the artwork asks for, and which height belongs to each.
    Two was never a property of the coaster — it was a property of a relief cut at one threshold. Since the
    logo can be read into as many levels as the picture has tones (v188), the coaster can hand each tone its
@@ -11546,7 +11565,7 @@ function buildCoaster(p, res){
   // The legend comes from the first logo card, exactly as the keycap's does — one artwork pipeline for
   // images, text and QR alike. With no logo at all there is no pocket and the coaster is a plain disc.
   const lg = (typeof logos !== 'undefined' && logos.length && logos[0].heightmap) ? logos[0] : null;
-  const nG = Math.max(24, Math.min(400, Math.round(res || 120)));
+  const nG = coasterGridN(g, res);
   const cellAt = (i) => -g.winHalf - COASTER_GRID_LAP + (i/nG)*2*(g.winHalf + COASTER_GRID_LAP);
   const mask = new Uint8Array(nG*nG);
   const inks = coasterInks(lg);
@@ -11595,17 +11614,21 @@ function buildCoaster(p, res){
     return coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay);
   }
 
+  // `out.push(...arr)` passes every triangle as an ARGUMENT, and a 180 mm coaster's field slab is tens of
+  // thousands of them — that overflows the stack rather than being slow. The same spread had to go from
+  // the stand's relief for the same reason; it is the shape of bug that only shows on the big sizes.
+  const add = (arr) => { for (const T of arr) out.push(T); };
   if (!anyArt){
     // No artwork: one plain prism from the plate to the top, plus the rim.
-    out.push(...extrudePolyYTris([outer], 0, g.topFlat));
+    add(extrudePolyYTris([outer], 0, g.topFlat));
   } else {
-    out.push(...extrudePolyYTris([outer], g.inlay, g.topFlat));          // everything above the pocket
-    out.push(...extrudePolyYTris([outer, win], 0, g.inlay + COASTER_BODY_LAP));   // smooth ring, real edge
-    out.push(...coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP));  // field between glyphs
+    add(extrudePolyYTris([outer], g.inlay, g.topFlat));                 // everything above the pocket
+    add(extrudePolyYTris([outer, win], 0, g.inlay + COASTER_BODY_LAP)); // smooth ring, real edge
+    add(coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP));  // field between glyphs
   }
   if (g.rim > 0){
     const inner = coasterLoop(g.shape, g.innerHalf, Math.max(0, g.cornerR - g.rimW), g.seg);
-    out.push(...extrudePolyYTris([outer, inner], Math.max(0, g.topFlat - COASTER_BODY_LAP), g.t));
+    add(extrudePolyYTris([outer, inner], Math.max(0, g.topFlat - COASTER_BODY_LAP), g.t));
   }
   return out;
 }

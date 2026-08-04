@@ -402,6 +402,70 @@ console.log('=== цветов столько, сколько тонов в ло�
   logos.length = 0;
 }
 
+console.log('=== плотность кармана задана в миллиметрах, а не числом ячеек ===');
+{
+  // The pocket's edges are the whole point of the part, and the thing that limits them is the NOZZLE.
+  // «Детализация логотипов» used to be read here as a cell COUNT across the window, and it defaults to
+  // 50: on a 90 mm coaster that is a 1.17 mm cell — a staircase you can see across the room. The same 50
+  // is 0.8 mm on a 40 mm cube, so one number cannot mean both «cells across a face» and «edge quality».
+  const cell = (csD, res) => { const g = coasterSpec({csMode:'round', csD});
+    return 2*(g.winHalf + 0.5) / coasterGridN(g, res); };
+
+  for(const csD of [45, 90, 140])
+    chk('Ø'+csD+' при умолчании слайдера: ячейка около 0.35 мм',
+        Math.abs(cell(csD, 50) - 0.35) < 0.03, +cell(csD, 50).toFixed(3));
+  chk('это втрое мельче прежнего (окно / 50)',
+      cell(90, 50) < (2*(coasterSpec({csMode:'round', csD:90}).winHalf + 0.5) / 50) / 3,
+      {теперь:+cell(90,50).toFixed(3), было:+(2*(coasterSpec({csMode:'round',csD:90}).winHalf+0.5)/50).toFixed(3)});
+  chk('и мельче сопла 0.4', cell(90, 50) < 0.4, +cell(90,50).toFixed(3));
+
+  // The slider is a QUALITY MULTIPLIER now: raising it makes the cell finer, it does not set the count.
+  chk('слайдер выше — ячейка мельче', cell(90, 160) < cell(90, 50), [cell(90,50), cell(90,160)]);
+  chk('слайдер ниже — крупнее', cell(90, 20) > cell(90, 50), [cell(90,20), cell(90,50)]);
+  chk('но не бесконечно: есть потолок по числу ячеек',
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000) <= 260,
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000));
+  chk('и пол, чтобы мелкий подстаканник не стал плоским пятном',
+      coasterGridN(coasterSpec({csMode:'round', csD:40}), 1) >= 48,
+      coasterGridN(coasterSpec({csMode:'round', csD:40}), 1));
+  chk('мусор вместо слайдера не роняет',
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), undefined) > 48 &&
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), NaN) > 48);
+
+  // Bigger coaster, more cells — the cell size is what stays put, not the count.
+  chk('на большем подстаканнике ячеек больше',
+      coasterGridN(coasterSpec({csMode:'round', csD:140}), 50) >
+      coasterGridN(coasterSpec({csMode:'round', csD:55}), 50));
+
+  // ...and all of the above is about a helper. What ships is the MESH, so the cell is measured off it:
+  // the grid's vertices sit on cell boundaries, so the smallest gap between distinct x coordinates IS the
+  // cell. Checking the helper alone let the build quietly go on using the old number — the first mutation
+  // I tried (call site reverted, helper untouched) passed every check above.
+  const meshCell = (csD) => {
+    const t = build({csD, csPart:'ink1'});
+    const xs = [...new Set(t.flat().map(v => +v[0].toFixed(4)))].sort((a,b)=>a-b);
+    let min = Infinity;
+    for(let i=1;i<xs.length;i++){ const d = xs[i]-xs[i-1]; if(d > 1e-3 && d < min) min = d; }
+    return min;
+  };
+  const mc = meshCell(90);
+  chk('в построенном меше шаг сетки тоже около 0.35 мм', Math.abs(mc - 0.35) < 0.03, +mc.toFixed(4));
+  chk('и он совпадает с тем, что обещает coasterGridN',
+      Math.abs(mc - cell(90, 50)) < 1e-3, {меш:+mc.toFixed(4), помощник:+cell(90,50).toFixed(4)});
+  chk('на меньшем подстаканнике шаг тот же, а не мельче',
+      Math.abs(meshCell(55) - mc) < 0.03, +meshCell(55).toFixed(4));
+
+  // The big sizes are where a spread argument list overflows the stack — `push(...arr)` passes every
+  // triangle as an argument, and the field slab of a 220 mm coaster is tens of thousands of them. It
+  // crashed here before, on exactly the size someone would try after liking a small one.
+  for(const csD of [180, 220]){
+    let threw = false, t = [];
+    try { t = build({csD, csPart:'body'}); } catch(e){ threw = true; }
+    chk('Ø'+csD+' строится, а не роняет стек', !threw && t.length > 1000, threw ? 'исключение' : t.length);
+    chk('Ø'+csD+' герметичен', !threw && manifoldCheck(t, 4).watertight);
+  }
+}
+
 console.log('=== о срезанном логотипе говорят вслух ===');
 {
   // Clipping is silent by nature — the card still says 60 mm while the pocket is 44 — so the only place

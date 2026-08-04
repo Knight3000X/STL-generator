@@ -467,7 +467,10 @@
      the per-group notes buried inside it. */
   #model-help{ margin:-2px 0 12px; }
   #model-help .export-note{ font-size:11px; }
-  .logo-src-row{ grid-column:1 / -1; }
+  .light-row{ display:grid; grid-template-columns:1fr 1.6fr auto; align-items:center; gap:8px; margin:6px 0; }
+.light-row input[type=range]{ width:100%; }
+.light-val{ min-width:3.4em; text-align:right; opacity:.75; font-size:12px; }
+.logo-src-row{ grid-column:1 / -1; }
   .logo-src-row select{ width:100%; }
   ul.help-mats, ol.help-steps{ margin:2px 0 8px; padding-left:18px; }
   ul.help-mats li, ol.help-steps li{ margin-bottom:4px; }
@@ -992,6 +995,10 @@
     </div>
     <label class="toggle-row"><input type="checkbox" id="toggle-wire"><span>Каркас (рёбра)</span></label>
     <label class="toggle-row"><input type="checkbox" id="toggle-dims" checked><span>Размерные линии</span></label>
+    <label class="toggle-row"><input type="checkbox" id="light-follow" checked><span>Свет за камерой (видно то, на что смотришь)</span></label>
+    <div class="light-row"><label for="light-azim">Свет: поворот</label><input type="range" id="light-azim" min="0" max="360" step="5" value="45"><span class="light-val mono" id="light-azim-v">45°</span></div>
+    <div class="light-row"><label for="light-elev">Свет: высота</label><input type="range" id="light-elev" min="-85" max="85" step="5" value="45"><span class="light-val mono" id="light-elev-v">45°</span></div>
+    <div class="light-row"><label for="light-power">Свет: яркость</label><input type="range" id="light-power" min="30" max="220" step="5" value="100"><span class="light-val mono" id="light-power-v">100%</span></div>
     <div class="color-row">
       <input type="color" id="color-picker" value="#b9c5cd">
       <label for="color-picker">Цвет модели (только превью)</label>
@@ -1042,7 +1049,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v191';
+const APP_VERSION = 'v192';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5359,6 +5366,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
+  logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
 // Every parameter whose label matches, with the group it lives in and whether that group is reachable
 // from the CURRENT base shape. Pure — no DOM — so the tests drive it directly.
@@ -5708,6 +5716,76 @@ const MODEL_HELP = {
 // tests read it directly. Falls back to the shape's own entry rather than to nothing — a sub-model without
 // its own text is still a part of something, and the census in test_help.js is what keeps that from
 // becoming the normal case.
+/* Настройки печати для тех, кто ставит первую деталь.
+
+   Not a per-model table: seventy entries maintained by hand would drift from the models within a version,
+   and «какие настройки» is not seventy different answers — it is four, chosen by what the part has to do.
+   A keycap and a coaster want the same thing (small features, so a thin layer and a slow perimeter); a
+   gear and a bracket want the same other thing (load, so more walls and more infill). So the profile is
+   derived from the model KIND and named once here.
+
+   Two lines are COMPUTED instead, because they depend on numbers the person just typed and a printed table
+   would be wrong about: how many walls their wall thickness actually buys at a 0.4 nozzle, and — on the
+   coaster — the first-layer height that makes the colour change land exactly on the pocket floor rather
+   than smear across the layer above it. */
+const PRINT_PROFILES = {
+  detail: {n:'мелкий рельеф',
+    rows:[['Высота слоя','0,12–0,16 мм — рельеф мельче слоя не пропечатается'],
+          ['Сопло','0,4 мм; 0,25 мм заметно чётче на мелких буквах'],
+          ['Периметры','3'],
+          ['Заполнение','15 %'],
+          ['Скорость периметра','до 40 мм/с — быстрее скругляет углы букв']]},
+  general:{n:'обычная деталь',
+    rows:[['Высота слоя','0,2 мм'],
+          ['Сопло','0,4 мм'],
+          ['Периметры','3'],
+          ['Заполнение','15–20 %'],
+          ['Скорость','60–100 мм/с']]},
+  strong: {n:'нагруженная деталь',
+    rows:[['Высота слоя','0,2 мм — тоньше не прочнее, только дольше'],
+          ['Сопло','0,4 мм; 0,6 мм ещё прочнее, если есть'],
+          ['Периметры','4–5 — прочность даёт стенка, а не заполнение'],
+          ['Заполнение','40 % кубическое или гироид'],
+          ['Скорость','до 60 мм/с, обдув убавить: слои должны свариваться']]},
+  flex:   {n:'гибкая деталь',
+    rows:[['Высота слоя','0,2 мм'],
+          ['Сопло','0,4 мм, прямой привод'],
+          ['Периметры','2'],
+          ['Заполнение','5–10 % гироид'],
+          ['Скорость','15–25 мм/с — TPU не терпит спешки'],
+          ['Откат','минимальный или выключить']]},
+};
+// Which profile a kind of part wants. Anything not named here is an ordinary part.
+const KIND_PRINT = {
+  keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail',
+  gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
+  wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
+};
+// The two lines that depend on what was typed rather than on what kind of part it is.
+function printSettingsFor(p){
+  const mode = dominantMode(p || {});
+  const prof = PRINT_PROFILES[KIND_PRINT[mode] || 'general'];
+  const rows = prof.rows.slice();
+  if ((p || {}).hollow || (p || {}).rim){
+    const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness || 2);
+    const n = Math.max(1, Math.round(t / 0.4));
+    rows.push(['Стенка ' + t.toFixed(1) + ' мм', 'это ' + n + ' прохода сопла 0,4 — периметров ставьте не больше']);
+  }
+  if (mode === 'coaster'){
+    const g = coasterSpec(p);
+    // The colour change happens at the pocket floor. If that height is not a whole number of layers the
+    // slicer puts the boundary mid-layer and the accent colour bleeds a layer up into the coaster.
+    // The list always has an answer and there is no «ни одна не подходит» branch, because there cannot be
+    // one: the pocket depth moves in steps of 0.1 mm and is clamped against half the thickness, which
+    // moves in steps of 0.25 — every reachable depth is a whole number of 0.1 mm or of 0.25 mm layers,
+    // and both are on the list. A branch that cannot be reached is worse than no branch; the invariant is
+    // checked across the whole reachable range in test_light_settings.js instead.
+    const best = [0.1, 0.12, 0.15, 0.16, 0.2, 0.25].filter(h => Math.abs(g.inlay/h - Math.round(g.inlay/h)) < 1e-6);
+    rows.push(['Высота слоя под карман ' + g.inlay.toFixed(2) + ' мм',
+               best.join(' / ') + ' мм — граница цвета попадёт ровно на дно кармана, а не размажется по слою выше']);
+  }
+  return {profile: prof.n, rows};
+}
 function modelHelp(p){
   const mode = dominantMode(p || {}), mk = subModelKey(mode);
   const sub = mk ? String((p || {})[mk]) : null;
@@ -5720,15 +5798,18 @@ function modelHelp(p){
     mats.push({key:m, name:M.n, desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && PRINT_MATERIALS[s].n).filter(Boolean)});
   }
   return {key, title: t ? (KIND_LABEL[mode] + ' — ' + t.label) : (KIND_LABEL[mode] || mode),
-          what:h.what, how:h.how, mats,
+          what:h.what, how:h.how, mats, print: printSettingsFor(p || {}),
           stepsTitle: h.stepsTitle || '', steps: (h.steps || []).slice()};
 }
 function updateModelHelp(){
   const box = document.getElementById('model-help'); if (!box || !paramState || !paramState.box) return;
   const h = modelHelp(paramState.box);
   if (!h){ box.style.display = 'none'; return; }
-  if (box.dataset.key === h.key) return;                 // same model — nothing moved, do not rebuild
-  box.dataset.key = h.key; box.style.display = '';
+  // The print rows carry typed numbers (wall thickness, pocket depth), so the key has to include them —
+  // keyed on the model alone the table would freeze at whatever it said when the model was chosen.
+  const sig = h.key + '|' + h.print.rows.map(r => r[0] + r[1]).join('|');
+  if (box.dataset.key === sig) return;                   // nothing moved, do not rebuild
+  box.dataset.key = sig; box.style.display = '';
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const mats = h.mats.map(m => '<li><b>' + esc(m.name) + '</b> — ' + esc(m.desc) +
       (m.sub.length ? ' <i>Взамен: ' + m.sub.map(esc).join(', ') + '.</i>' : '') + '</li>').join('');
@@ -5739,6 +5820,9 @@ function updateModelHelp(){
     (h.how ? '<p><b>Как печатать.</b> ' + esc(h.how) + '</p>' : '') +
     (steps ? '<p><b>' + esc(h.stepsTitle || 'По шагам') + '</b></p><ol class="help-steps">' + steps + '</ol>' : '') +
     (mats.length ? '<p><b>Чем печатать</b> (первый — рекомендуемый):</p><ul class="help-mats">' + mats + '</ul>' : '') +
+    '<p><b>Настройки слайсера</b> — с чего начать (' + esc(h.print.profile) + '):</p>' +
+    '<ul class="help-mats">' + h.print.rows.map(r =>
+      '<li><b>' + esc(r[0]) + '</b> — ' + esc(r[1]) + '</li>').join('') + '</ul>' +
     '</div>';
 }
 function updateSubModelPicker(){
@@ -14685,6 +14769,35 @@ function attachEventListeners() {
     dimLines.visible = dimsVisible;
     for (const k in dimLabelEls) dimLabelEls[k].style.display = dimsVisible ? '' : 'none';
   });
+  // Lighting: three sliders and a follow toggle. The read-outs are updated from the same place that
+  // applies the value, so a slider and its label cannot disagree.
+  const lightUI = () => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('light-azim-v', Math.round(lightState.azim) + '°');
+    set('light-elev-v', Math.round(lightState.elev) + '°');
+    set('light-power-v', Math.round(lightState.power*100) + '%');
+    for (const [id, on] of [['light-azim', !lightState.follow], ['light-elev', !lightState.follow]]){
+      const el = document.getElementById(id); if (el) el.disabled = !on;
+    }
+    applyLighting(); saveLightState();
+  };
+  const bindLight = (id, key, scale) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.value = String(key === 'power' ? lightState.power*100 : lightState[key]);
+    el.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value); if (Number.isNaN(v)) return;
+      lightState[key] = v * (scale || 1); lightUI();
+    });
+  };
+  bindLight('light-azim', 'azim');
+  bindLight('light-elev', 'elev');
+  bindLight('light-power', 'power', 0.01);
+  const follow = document.getElementById('light-follow');
+  if (follow){
+    follow.checked = !!lightState.follow;
+    follow.addEventListener('change', (e) => { lightState.follow = e.target.checked; lightUI(); });
+  }
+  lightUI();
   document.getElementById('color-picker').addEventListener('input', (e) => {
     const m = getActiveModel(); if (m) m.color = e.target.value;
     if (scene3DReady && mesh) mesh.material.color.set(e.target.value);
@@ -16670,8 +16783,52 @@ function navSnapTo(i){
   const f = NAV_FACES[i]; if(!f || !controls) return;
   controls.theta = f.theta; controls.phi = f.phi; controls.update();
 }
+/* Where the light comes from. The preview used to have it bolted to one spot above and behind the camera's
+   starting position, which is fine until the thing worth looking at is on the UNDERSIDE — a coaster's
+   inlay, a stand's floor logo, any relief printed face-down. Then it is lit by nothing and reads as a flat
+   grey disc, and «не видно» is indistinguishable from «не получилось».
+
+   Azimuth and elevation are in DEGREES about the part, not a direction vector, because that is what a
+   person can aim: «ниже» is a smaller number, not a sign flip in the second component. Elevation goes
+   NEGATIVE — a light from under the build plate is exactly what a bottom face needs and exactly what no
+   real desk lamp can do, which is the point of it being a preview.
+
+   «За камерой» is the default because it needs no aiming at all: whatever is turned toward the viewer is
+   lit. The two sliders stay live under it for the case where a raking light shows a shallow relief that
+   head-on light flattens — which is most reliefs. */
+let keyLight = null, fillLight = null, hemiLight = null;
+const lightState = { follow: true, azim: 45, elev: 45, power: 1.0 };
+function saveLightState(){ try { localStorage.setItem('stl-light', JSON.stringify(lightState)); } catch(e) {} }
+function loadLightState(){
+  try { const j = JSON.parse(localStorage.getItem('stl-light') || 'null');
+        if (j && typeof j === 'object') Object.assign(lightState, j); } catch(e) {}
+}
+// Unit direction the key light shines FROM, given azimuth/elevation in degrees.
+function lightDirection(azim, elev){
+  const a = azim * Math.PI/180, e = elev * Math.PI/180, c = Math.cos(e);
+  return [Math.cos(a)*c, Math.sin(e), Math.sin(a)*c];
+}
+function applyLighting(){
+  if (!keyLight) return;
+  const p = Math.max(0.3, Math.min(2.2, lightState.power));
+  if (lightState.follow && camera){
+    // Behind the viewer's shoulder, lifted a little so the part still has a shaded side to read shape by.
+    const d = camera.position.clone().normalize();
+    keyLight.position.set(d.x*140 + 20, d.y*140 + 60, d.z*140 + 20);
+    fillLight.position.set(-d.x*120, -d.y*120 + 30, -d.z*120);
+  } else {
+    const d = lightDirection(lightState.azim, lightState.elev);
+    keyLight.position.set(d[0]*160, d[1]*160, d[2]*160);
+    const b = lightDirection(lightState.azim + 150, -lightState.elev * 0.4);
+    fillLight.position.set(b[0]*140, b[1]*140, b[2]*140);
+  }
+  keyLight.intensity = 0.85 * p;
+  fillLight.intensity = 0.25 * p;
+  hemiLight.intensity = 0.75 * Math.min(1.4, p);
+}
 function animate() {
   requestAnimationFrame(animate);
+  if (lightState.follow) applyLighting();
   renderer.render(scene, camera);
   renderNavCube();
   if (dimsVisible) {
@@ -16813,6 +16970,7 @@ function init() {
   // so parameter editing and STL export keep working even if the 3D preview can't start.
   buildAllParamUI();
   { const v = document.getElementById('app-version'); if (v) v.textContent = APP_VERSION; }
+  loadLightState();          // before the listeners, so the sliders start where they were left
   attachEventListeners();
   attachLogoEventListeners();
   attachHoleEventListeners();
@@ -16869,13 +17027,13 @@ function initScene3D() {
   renderer.setClearColor(new THREE.Color(currentClearColor()), 1); // theme-driven (see applyTheme)
   wrap.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0x9fd0ea, 0x0a2238, 0.75));
-  const key = new THREE.DirectionalLight(0xffffff, 0.85);
-  key.position.set(60, 90, 60);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0x6fb7db, 0.25);
-  fill.position.set(-80, 30, -60);
-  scene.add(fill);
+  hemiLight = new THREE.HemisphereLight(0x9fd0ea, 0x0a2238, 0.75);
+  scene.add(hemiLight);
+  keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  scene.add(keyLight);
+  fillLight = new THREE.DirectionalLight(0x6fb7db, 0.25);
+  scene.add(fillLight);
+  applyLighting();
 
   gridHelper = new THREE.GridHelper(500, 50, 0x6fb7db, 0x1d4f74);
   gridHelper.material.transparent = true;

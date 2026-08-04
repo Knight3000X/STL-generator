@@ -467,8 +467,8 @@
      the per-group notes buried inside it. */
   #model-help{ margin:-2px 0 12px; }
   #model-help .export-note{ font-size:11px; }
-  ul.help-mats{ margin:2px 0 0; padding-left:16px; }
-  ul.help-mats li{ margin-bottom:4px; }
+  ul.help-mats, ol.help-steps{ margin:2px 0 8px; padding-left:18px; }
+  ul.help-mats li, ol.help-steps li{ margin-bottom:4px; }
 
   /* ---------- logo / relief cards ---------- */
   #btn-add-model, #btn-add-lid, #btn-add-mate{
@@ -886,7 +886,8 @@
     <details class="panel-fold param-wrap" open data-tab="form cavity export" data-fold="Параметры"><summary class="section-label">Параметры</summary>
 
     <div id="params-box" class="param-group" data-shape="box"></div>
-    <div class="param-group" data-shape="box" data-tab="form cavity"><details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">«Полый контейнер» вычищает внутренность, оставляя стенки и дно заданной толщины; открытый верх. «Глубина полости» — 0 даёт полную полость до дна, значение больше 0 превращает куб в лоток: сплошное тело с неглубоким карманом заданной глубины сверху (бывший режим «борт»). Наклон стенок работает во всех режимах (полости наклон передаётся вместе с внешней оболочкой). Логотипы работают во всех режимах: снаружи на стенках и дне, а также изнутри на дне полости/кармана (грань «−Y изнутри», видна через открытый верх). «Скругление стенок» — отдельная от скругления углов настройка: каждая из 6 граней может выгибаться наружу (+, «бочка») или внутрь (−, «подушка») куполом, сходящим в 0 к рёбрам, поэтому меш остаётся замкнутым; совместимо с логотипами, наклоном и скруглением углов. На полом контейнере внутренняя полость повторяет выгиб (толщина стенки сохраняется). Детализация купола задаётся настройкой «Детализация логотипов».</div></details></div>
+    <!-- Общая справка снизу убрана: с v175 то же самое говорит справка ПО МОДЕЛИ вверху панели, рядом с
+         выбором, а две справки об одном — это вопрос «а они одинаковые?» на пустом месте. -->
     </details>
 
     <div id="logo-section" class="param-group" data-shape="box" data-tab="finish" data-relkey="Логотипы (рельеф на гранях)">
@@ -1038,7 +1039,7 @@
 <script>
 // Build version, shown next to the STL-ГЕНЕРАТОР header so a stale PWA cache is visible at a glance.
 // BUMP TOGETHER with sw.js CACHE_VERSION on every release.
-const APP_VERSION = 'v183';
+const APP_VERSION = 'v184';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4509,6 +4510,14 @@ function assemblyMate(p){
     seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
+  // AMS keycap: the shell and the core are the same cap built twice, and they go in the same place — the
+  // core drops into the shell's own cavity, so the seat is simply the active model's origin. Being a pair
+  // at all is what puts them in the 3MF as two objects, which is what lets the slicer give each its own
+  // filament. Without this the two-colour cap is five manual steps and a chance to mistype a parameter.
+  if (p.keycapMode === 'shell') return { name:'Вставка с легендой (AMS)', over:{keycapMode:'core'},
+    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+  if (p.keycapMode === 'core') return { name:'Внешняя оболочка (AMS)', over:{keycapMode:'shell'},
+    seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
   if (gr === 'spur') return { name:'Ответная шестерня', over:{}, ry: (Z % 2 === 0) ? 180/Z : 0,
     seat:(A,B,S)=>({px:S.px + m*Z, py:S.py, pz:S.pz}) };
   // Worm drive: the axes cross at a right angle, so the newcomer is laid on its side and set out
@@ -5351,12 +5360,25 @@ const PRINT_MATERIALS = {
   pc:     {n:'PC (поликарбонат)', d:'самый прочный из доступных: ~110 °C и вязкость, которой нет ни у чего выше. Сильно коробится, нужна камера и сухой пруток.', sub:['abs','pacf']},
   cf:     {n:'PLA-CF / PETG-CF', d:'наполненные углем версии обычных пластиков: жёстче, стабильнее по размеру, матовая поверхность. Абразивны — закалённое сопло обязательно; на подвижных парах хуже, чем чистый пластик.', sub:['pla','petg']},
 };
-// what — что это и зачем; how — как класть и чего ждать при печати; mat — первый в списке рекомендуемый.
+// what — что это и зачем; how — как класть и чего ждать при печати; mat — первый в списке рекомендуемый;
+// steps — порядок действий, если модель печатается не в один заход (пока это только двухцветный кейкап).
 const MODEL_HELP = {
   box:      {what:'Прямоугольная коробка или призма: сплошная, полая (контейнер) или с неглубоким карманом (лоток). Отсюда же растут Gridfinity, перегородки, крышка на защёлках и рельеф на любой грани.', how:'Дном на стол — так и задумано. Полость печатается без поддержек, если верх открыт.', mat:['pla','petg']},
   die:      {what:'Игральная кость или правильный многогранник, D4–D100, с утопленными или выпуклыми числами.', how:'Гранью на стол. Для честной кости важна равномерность заполнения — печатать со 100 % или с одинаковой стенкой.', mat:['pla','petg']},
   sheet:    {what:'Плоский лист или панель: прямоугольник, круг, N-угольник или контур из SVG. Основа для табличек, накладок, грип-падов и панелей приборов.', how:'Плашмя. Первый слой решает всё: тонкий лист поведёт, если стол не выровнен.', mat:['petg','pla']},
-  keycap:   {what:'Колпачок клавиши под крестовину Cherry MX или Kailh Choc: цельный, оболочка или сердечник под двухцветную печать. Восемнадцать стандартных профилей — от SA и MT3 до DSA и G20, — у каждого своя высота, своя скульптура по рядам R1…R5 и своя чаша: у одних жёлоб поперёк клавиши, у других сферическая. Есть отдельный ряд для пробела: верх ровный, жёлоб вдоль.', how:'Юбкой вниз, куполом вверх — иначе поддержки внутри крестовины. Сопло 0,4 мм и слой 0,12 мм: тоньше не нужно, толще смажет крест. Высокие профили (SA, CSA) печатать помедленнее — юбка длинная и её ведёт.', mat:['abs','pla']},
+  keycap:   {what:'Колпачок клавиши под крестовину Cherry MX или Kailh Choc: цельный, оболочка или сердечник под двухцветную печать. Восемнадцать стандартных профилей — от SA и MT3 до DSA и G20, — у каждого своя высота, своя скульптура по рядам R1…R5 и своя чаша: у одних жёлоб поперёк клавиши, у других сферическая. Есть отдельный ряд для пробела: верх ровный, жёлоб вдоль.',
+             how:'Юбкой вниз, куполом вверх — иначе поддержки внутри крестовины. Сопло 0,4 мм и слой 0,12 мм: тоньше не нужно, толще смажет крест. Высокие профили (SA, CSA) печатать помедленнее — юбка длинная и её ведёт.',
+             stepsTitle:'Двухцветная легенда через AMS',
+             steps:[
+               'Добавьте логотип или текст — легенда берётся из ПЕРВОЙ карточки логотипа. Без неё делить нечего.',
+               'Поставьте «Кейкап» → «AMS: внешний (легенда насквозь)». Легенда станет сквозным отверстием в верхней площадке.',
+               'Нажмите «+ Вставка с легендой (AMS)» — рядом появится вторая модель, та же во всём, кроме режима: это сердечник, чьи буквы поднимаются вровень с верхом оболочки. Она встаёт ровно на место первой.',
+               'Сохраните в 3MF, а не в STL: в 3MF каждая модель уходит отдельным объектом, и это единственное, что позволяет слайсеру дать им разные катушки. В STL обе склеятся в одну деталь.',
+               'В слайсере назначьте объектам разные филаменты — тёмный оболочке, светлый вставке (или наоборот) — и печатайте вместе, обе стоят на своих местах.',
+               'Продувочная башня обязательна: смена филамента идёт на каждом слое, где есть буквы, и без башни первые миллиметры нового цвета уйдут прямо в легенду.',
+               'Одноцветный колпачок ничего этого не требует — режим «кейкап (один цвет)» просто вдавливает или выдавливает легенду на той же площадке.',
+             ],
+             mat:['abs','pla']},
   hook:     {what:'Крючок на стену или на трубу: с защёлкой под любой Ø и полукруглым концом, чтобы не резать ремень.', how:'Спинкой на стол, крючок вверх — слои тогда лежат поперёк отрыва, а не вдоль.', mat:['petg','abs']},
   wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
   pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
@@ -5444,7 +5466,8 @@ function modelHelp(p){
     mats.push({key:m, name:M.n, desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && PRINT_MATERIALS[s].n).filter(Boolean)});
   }
   return {key, title: t ? (KIND_LABEL[mode] + ' — ' + t.label) : (KIND_LABEL[mode] || mode),
-          what:h.what, how:h.how, mats};
+          what:h.what, how:h.how, mats,
+          stepsTitle: h.stepsTitle || '', steps: (h.steps || []).slice()};
 }
 function updateModelHelp(){
   const box = document.getElementById('model-help'); if (!box || !paramState || !paramState.box) return;
@@ -5455,10 +5478,12 @@ function updateModelHelp(){
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const mats = h.mats.map(m => '<li><b>' + esc(m.name) + '</b> — ' + esc(m.desc) +
       (m.sub.length ? ' <i>Взамен: ' + m.sub.map(esc).join(', ') + '.</i>' : '') + '</li>').join('');
+  const steps = h.steps.map(x => '<li>' + esc(x) + '</li>').join('');
   box.innerHTML =
     '<summary>ⓘ справка — ' + esc(h.title) + '</summary>' +
     '<div class="export-note"><p>' + esc(h.what) + '</p>' +
     (h.how ? '<p><b>Как печатать.</b> ' + esc(h.how) + '</p>' : '') +
+    (steps ? '<p><b>' + esc(h.stepsTitle || 'По шагам') + '</b></p><ol class="help-steps">' + steps + '</ol>' : '') +
     (mats.length ? '<p><b>Чем печатать</b> (первый — рекомендуемый):</p><ul class="help-mats">' + mats + '</ul>' : '') +
     '</div>';
 }

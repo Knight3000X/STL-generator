@@ -163,5 +163,55 @@ console.log('=== поиск предлагает переключить разн
   }
 }
 
+
+console.log('=== порядок действий там, где он нужен ===');
+// Some models are not printed in one go, and for those the help carries a procedure. Exactly one does
+// today — the two-colour keycap — and saying so out loud is what keeps a half-written `steps` from
+// slipping in unnoticed.
+{
+  const withSteps = Object.keys(MODEL_HELP).filter(k => (MODEL_HELP[k].steps || []).length);
+  chk('порядок действий есть только у кейкапа', withSteps.join() === 'keycap', withSteps);
+  for(const k of withSteps){
+    const h = MODEL_HELP[k];
+    chk(k+': у порядка есть заголовок', !!h.stepsTitle && h.stepsTitle.length > 5, h.stepsTitle);
+    chk(k+': шагов достаточно, чтобы это был порядок', h.steps.length >= 4, h.steps.length);
+    for(let i=0;i<h.steps.length;i++){
+      chk(k+' шаг '+(i+1)+': не пуст', h.steps[i].length > 25, h.steps[i]);
+      chk(k+' шаг '+(i+1)+': законченная фраза', /[.!?]$/.test(h.steps[i].trim()), h.steps[i]);
+    }
+  }
+  const h = modelHelp(Object.assign({}, DEF, {keycapMode:'single'}));
+  chk('справка по кейкапу несёт порядок дальше', h.steps.length === MODEL_HELP.keycap.steps.length, h.steps.length);
+  chk('и заголовок к нему', h.stepsTitle === MODEL_HELP.keycap.stepsTitle, h.stepsTitle);
+  chk('у куба порядка нет', modelHelp(DEF).steps.length === 0);
+  // ...and the instruction names the button it tells you to press, so it cannot drift from the panel
+  const spec = assemblyMate(Object.assign({}, DEF, {keycapMode:'shell'}));
+  chk('оболочке есть пара', !!spec && spec.over.keycapMode === 'core', spec && spec.over);
+  chk('и её имя названо в шагах',
+      MODEL_HELP.keycap.steps.some(x => x.indexOf(spec.name) >= 0), spec.name);
+  const back = assemblyMate(Object.assign({}, DEF, {keycapMode:'core'}));
+  chk('и обратная пара тоже есть', !!back && back.over.keycapMode === 'shell', back && back.over);
+  chk('у одноцветного пары нет', !assemblyMate(Object.assign({}, DEF, {keycapMode:'single'})));
+  // the two halves sit in the SAME place: the core drops into the shell's own cavity
+  const seat = spec.seat({minY:0,maxY:9}, {minY:0,maxY:9}, {px:3, py:1, pz:-2});
+  chk('вставка встаёт ровно на место оболочки',
+      seat.px === 3 && seat.py === 1 && seat.pz === -2, seat);
+  // the format the steps insist on is the one that can carry two objects
+  chk('шаги называют 3MF', MODEL_HELP.keycap.steps.some(x => /3MF/.test(x)));
+  chk('шаги предупреждают про STL', MODEL_HELP.keycap.steps.some(x => /STL/.test(x)));
+}
+
+console.log('=== общей справки снизу больше нет ===');
+// It said the same thing as the per-model help now sitting at the top of the panel, and two notes about
+// one thing are a question ("are these the same?") asked for nothing.
+{
+  chk('справка по модели на месте', !!modelHelp(DEF) && modelHelp(DEF).what.length > 40);
+  chk('и она про куб', modelHelp(DEF).key === 'box', modelHelp(DEF).key);
+  // what the removed note used to explain has to be somewhere: the box's own entry
+  const w = modelHelp(DEF).what + ' ' + modelHelp(DEF).how;
+  for(const word of ['полая', 'карман'])
+    chk('справка куба говорит про «'+word+'»', w.toLowerCase().indexOf(word) >= 0, w);
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

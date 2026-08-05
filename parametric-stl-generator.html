@@ -1178,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.4';
+const APP_VERSION = 'v16.5.5';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -11381,8 +11381,15 @@ function buildGear(p){
       // per-layer radial offset taken from the enveloping field. Everything below the field's floor stays
       // solid, so the loft is still a closed ring around the bore and the usual end annuli close it.
       const rBlank=rp+m, rFloor=Math.max(rB+1.2, rp-1.35*m);
-      const per=Math.max(10, Math.min(28, Math.round(2*Math.PI*rBlank/Z/0.55)));
-      const Nc=per*Z, M=Math.max(12, Math.min(64, Math.round(th/0.7)));
+      /* How finely the cut is sampled. Both numbers are chord targets in millimetres, and the AXIAL one is
+         the one that was wrong: 0.7 mm gave a 10 mm wheel fourteen layers, and the tooth's shape changes
+         fastest along that axis — the throat is a curve in it — so those fourteen bands were the faceting
+         visible on the flanks. The tooth is what this part is FOR; the rim between teeth is not.
+         Cost is per×M evaluations of the envelope, each of them a march plus a bisection, so this is the
+         one place in the app where the numbers are set by what the preview can carry rather than by what
+         the geometry deserves. */
+      const per=Math.max(10, Math.min(40, Math.round(2*Math.PI*rBlank/Z/0.38)));
+      const Nc=per*Z, M=Math.max(16, Math.min(120, Math.round(th/0.30)));
       const F=wormEnvelopeField(p, rBlank, rFloor, th, Nc, M);
       const circ=[]; for(let i=0;i<Nc;i++){ const a=2*Math.PI*i/Nc; circ.push([rBlank*Math.cos(a), rBlank*Math.sin(a)]); }
       envRim={ P:circ, M, grow:(u,i)=>F[Math.round(u*M)*Nc+i] - rBlank };
@@ -12074,7 +12081,9 @@ function buildCoaster(p, res){
   const cellAt = (i) => -g.winHalf - COASTER_GRID_LAP + (i/nG)*2*(g.winHalf + COASTER_GRID_LAP);
   const mask = new Uint8Array(nG*nG);
   const inks = coasterInks(lg);
-  let anyArt = false;
+  const NK = inks.levels.length + 1;                 // colours plus the coaster's own field
+  const cov = new Float32Array(nG*nG*NK);            // what fraction of each cell belongs to each colour
+  let anyArt = false, warp = null;
   if (lg){
     const rot=(lg.rotation||0)*Math.PI/180, cR=Math.cos(-rot), sR=Math.sin(-rot);
     const w=Math.max(2, lg.w||10), h=Math.max(2, lg.h||10);
@@ -12084,31 +12093,43 @@ function buildCoaster(p, res){
     // chosen, and the reason «читается снизу, значит зеркально» sounds convincing enough to be wrong
     // twice. The map is the app's single answer to which way −Y reads; test_logo_mirror.js pins it.
     const fm = LOGO_FACE_MAP['-Y'];
-    for(let j=0;j<nG;j++) for(let i=0;i<nG;i++){
-      const su=(cellAt(i)+cellAt(i+1))/2-(lg.u0||0), sv=(cellAt(j)+cellAt(j+1))/2-(lg.v0||0);
-      if (Math.abs(su) > g.artHalf || Math.abs(sv) > g.artHalf) continue;   // never under the ring
+    /* Each cell is read over its AREA, not at its centre. A hard-edged raster sampled at one point says
+       only which side of the edge that point is on; sampled over the cell it says how much of the cell is
+       on each side, which is exactly what tells the grid's vertices where to slide (mosaicWarp). SS×SS is
+       enough: half a sub-cell is 0.06 mm on the standard grid, well under a nozzle.
+       The cell's own colour is then the one holding the most of it — which for an edge running through
+       the middle is the same answer the centre sample gave, and for a thin feature is a better one. */
+    const SS = 3, inv = !!lg.invert;
+    const label = (su, sv) => {
+      if (Math.abs(su) > g.artHalf || Math.abs(sv) > g.artHalf) return 0;   // never under the ring
       const x = fm[0]*su + fm[1]*sv, z = fm[2]*su + fm[3]*sv;
-      const lu=x*cR-z*sR, lv=x*sR+z*cR;
-      if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) continue;
+      const lu = x*cR - z*sR, lv = x*sR + z*cR;
+      if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) return 0;
       let val = sampleHeightmap(lg.heightmap, (lu+w/2)/w, 1-(lv+h/2)/h);
-      if (lg.invert) val = 1 - val;
+      if (inv) val = 1 - val;
       // Not a silhouette but an INK MAP: 0 is the coaster's own colour, k is accent colour k. A logo cut
       // at one threshold has exactly one accent, and this reduces to the mask it used to be.
-      const k = logoStepped(lg)
-        ? (inks.levels.findIndex(v => Math.abs(v - val) < 5e-4) + 1)
+      return logoStepped(lg)
+        ? Math.max(0, inks.levels.findIndex(v => Math.abs(v - val) < 5e-4) + 1)
         : (val > (lg.threshold!=null?lg.threshold:0.5) ? 1 : 0);
-      if (k > 0) { mask[j*nG+i]=k; anyArt=true; }
+    };
+    for(let j=0;j<nG;j++) for(let i=0;i<nG;i++){
+      const u0 = cellAt(i), u1 = cellAt(i+1), v0 = cellAt(j), v1 = cellAt(j+1);
+      const base = (j*nG+i)*NK;
+      for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
+        const su = u0 + (u1-u0)*(si+0.5)/SS - (lg.u0||0), sv = v0 + (v1-v0)*(sj+0.5)/SS - (lg.v0||0);
+        const k = label(su, sv);
+        if (k < NK) cov[base+k] += 1/(SS*SS);
+      }
+      let best = 0, bestC = cov[base];
+      for(let k=1;k<NK;k++) if(cov[base+k] > bestC){ bestC = cov[base+k]; best = k; }
+      if (best > 0){ mask[j*nG+i] = best; anyArt = true; }
     }
-    // Cells of ONE colour meeting only at a corner would put four wall quads on one vertical edge. Run the
-    // fix per colour — each accent part is its own closed body and shares edges only with itself — and
-    // then once more for the coaster's own field, which is a body like any other. The filler always takes
-    // the colour being fixed, so a cell never changes hands twice.
-    for(const k of inks.levels.map((_,q)=>q+1).concat([0]))
-      for(let changed=true; changed; ){ changed=false;
-        for(let j=0;j+1<nG;j++) for(let i=0;i+1<nG;i++){
-          const a=mask[j*nG+i]===k, b=mask[j*nG+i+1]===k, c=mask[(j+1)*nG+i]===k, d=mask[(j+1)*nG+i+1]===k;
-          if(a&&d&&!b&&!c){ mask[j*nG+i+1]=k; changed=true; }
-          else if(b&&c&&!a&&!d){ mask[j*nG+i]=k; changed=true; } } }
+    /* The grid's vertices, slid onto the artwork's own boundary. The mosaic keeps its cells and its
+       topology; only the corners move, and every part moves them the same way, so the colours still tile
+       the pocket exactly. Without it the edge of a logo is a staircase of 0.35 mm steps whatever the
+       artwork says — the cell can only turn at its own corner. */
+    warp = mosaicWarp(mask, cov, inks.levels.length, nG, nG);
   }
 
   // An accent part is ONLY its own plugs — nothing else, or that filament would print a whole coaster.
@@ -12116,7 +12137,7 @@ function buildCoaster(p, res){
   // they are not stacked by height.
   if (g.ink){
     if (!anyArt || g.ink > inks.levels.length) return [];
-    return coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay);
+    return coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay, warp);
   }
 
   // `out.push(...arr)` passes every triangle as an ARGUMENT, and a 180 mm coaster's field slab is tens of
@@ -12129,7 +12150,7 @@ function buildCoaster(p, res){
   } else {
     add(extrudePolyYTris([outer], g.inlay, g.topFlat));                 // everything above the pocket
     add(extrudePolyYTris([outer, win], 0, g.inlay + COASTER_BODY_LAP)); // smooth ring, real edge
-    add(coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP));  // field between glyphs
+    add(coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP, warp));  // field between glyphs
   }
   if (g.rim > 0){
     const inner = coasterLoop(g.shape, g.innerHalf, Math.max(0, g.cornerR - g.rimW), g.seg);
@@ -12144,31 +12165,103 @@ function buildCoaster(p, res){
 // A FRAME rather than an axis, for the same reason reliefSlabTris takes one: the coaster's pocket lies in
 // the XZ plane and a label's lies on whatever face it was put on, and «the same walk but rotated» is the
 // shape of bug that gets found on a printed part rather than in a test.
-function maskedSlabTris(mask, want, N, M, U, V, hi, lo, fr){
+/* Where the boundary between two colours REALLY runs, instead of where the cell grid put it.
+
+   A mosaic assembled out of square cells has a staircase for an edge, by construction: the boundary can
+   only turn at a cell corner. Making the cells smaller makes the steps smaller and never makes the edge
+   follow the drawing — a rasterised circle's outline is 8r long however fine the raster is, against the
+   6.28r it should be. So the answer is not a finer grid but a MOVED grid.
+
+   The topology stays exactly as it was: every cell is still one quad, every part is still the union of
+   its own cells. What moves is the grid's VERTICES. A vertex whose four surrounding cells are all one
+   colour has nothing to do with any boundary and stays put. A vertex where the colour changes across it
+   slides onto the place where the two colours' coverage is equal.
+
+   COVERAGE, not the value at the cell's centre, is what carries the sub-cell information. The artwork is
+   a hard-edged raster: sampled at a centre it reads 0 or 1 and says nothing about where inside the cell
+   the edge fell. Sampled over the cell's AREA it says exactly that — which is antialiasing, arrived at
+   from the other end. `cov` holds, per cell, the fraction of it belonging to each colour.
+
+   Two things make this safe rather than clever. Every part reads the SAME warp, so parts that tiled the
+   plane before still tile it after — a mosaic that stopped tiling would print gaps or print twice. And
+   the displacement is clamped to under half a cell, so no quad can fold through itself.
+
+   Junctions where three or more colours meet, and diagonal checkers where the reading is ambiguous, are
+   left alone: there is no single crossing to slide onto, and inventing one moves the vertex somewhere the
+   drawing does not say.
+
+   Returns (du,dv) per VERTEX in cell units, indexed (N+1)×(M+1). */
+function mosaicWarp(mask, cov, K, N, M){
+  const W = new Float32Array((N+1)*(M+1)*2);
+  if (!cov) return W;
+  const LIM = 0.45, ST = K + 1;
+  const at = (i,j) => mask[j*N+i];
+  // how much more of cell (i,j) belongs to colour p than to colour q — zero exactly on the boundary
+  const f = (i,j,p,q) => cov[(j*N+i)*ST + p] - cov[(j*N+i)*ST + q];
+  const cross = (fA, fB) => {
+    const d = fA - fB;
+    if (!(Math.abs(d) > 1e-9)) return 0.5;
+    return Math.max(0.05, Math.min(0.95, fA / d));
+  };
+  for (let j = 1; j < M; j++) for (let i = 1; i < N; i++){
+    const a = at(i-1,j-1), b = at(i,j-1), c = at(i-1,j), d = at(i,j);
+    if (a === b && b === c && c === d) continue;
+    if (new Set([a,b,c,d]).size !== 2) continue;        // 3+ colours meet here — no single crossing
+    let du = 0, dv = 0;
+    if (a === c && b === d){                            // the boundary runs up the vertex: slide across
+      du = cross((f(i-1,j-1,a,b) + f(i-1,j,a,b))/2, (f(i,j-1,a,b) + f(i,j,a,b))/2) - 0.5;
+    } else if (a === b && c === d){                     // …runs along it: slide up or down
+      dv = cross((f(i-1,j-1,a,c) + f(i,j-1,a,c))/2, (f(i-1,j,a,c) + f(i,j,a,c))/2) - 0.5;
+    } else if (a === d && b === c){                     // a checker: which way the edge goes is a guess
+      continue;
+    } else {                                            // one cell differs — the boundary turns a corner
+      const odd = (a !== b && a !== c) ? [i-1,j-1] : (b !== a && b !== d) ? [i,j-1]
+                : (c !== a && c !== d) ? [i-1,j]  : [i,j];
+      const opp = [(odd[0] === i-1) ? i : i-1, (odd[1] === j-1) ? j : j-1];
+      const po = at(opp[0], opp[1]), pd = at(odd[0], odd[1]);
+      const t = cross(f(opp[0],opp[1],po,pd), f(odd[0],odd[1],po,pd));
+      const sx = (odd[0] === i) ? 1 : -1, sy = (odd[1] === j) ? 1 : -1;
+      du = (t - 0.5) * sx; dv = (t - 0.5) * sy;
+    }
+    const q = (j*(N+1) + i) * 2;
+    W[q]   = Math.max(-LIM, Math.min(LIM, du));
+    W[q+1] = Math.max(-LIM, Math.min(LIM, dv));
+  }
+  return W;
+}
+function maskedSlabTris(mask, want, N, M, U, V, hi, lo, fr, warp){
   const P = (uu,vv,out) => [fr.o[0] + fr.u[0]*uu + fr.v[0]*vv + fr.n[0]*out,
                             fr.o[1] + fr.u[1]*uu + fr.v[1]*vv + fr.n[1]*out,
                             fr.o[2] + fr.u[2]*uu + fr.v[2]*vv + fr.n[2]*out];
   const on = (i,j) => (i<0||j<0||i>=N||j>=M) ? false : (mask[j*N+i] === want);
+  // A grid VERTEX, moved onto the artwork's own boundary — see mosaicWarp. Every part reads the same
+  // warp, so parts that tiled the plane before still tile it.
+  const cw = U(1)-U(0), ch = V(1)-V(0);
+  const WU = (i,j) => warp ? U(i) + warp[(j*(N+1)+i)*2]*cw : U(i);
+  const WV = (i,j) => warp ? V(j) + warp[(j*(N+1)+i)*2+1]*ch : V(j);
   const nOut = fr.n, nIn = [-fr.n[0], -fr.n[1], -fr.n[2]];
   const out = [];
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
     if(!on(i,j)) continue;
+    const q00=[WU(i,j),WV(i,j)], q10=[WU(i+1,j),WV(i+1,j)],
+          q11=[WU(i+1,j+1),WV(i+1,j+1)], q01=[WU(i,j+1),WV(i,j+1)];
     const ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
-    out.push(orient([P(ua,va,hi),P(ub,va,hi),P(ub,vb,hi)], nOut), orient([P(ua,va,hi),P(ub,vb,hi),P(ua,vb,hi)], nOut));
-    out.push(orient([P(ua,va,lo),P(ub,va,lo),P(ub,vb,lo)], nIn),  orient([P(ua,va,lo),P(ub,vb,lo),P(ua,vb,lo)], nIn));
-    const sides=[[1,0,ub,va,ub,vb],[-1,0,ua,vb,ua,va],[0,1,ub,vb,ua,vb],[0,-1,ua,va,ub,va]];
-    for(const [di,dj,pu,pv,qu,qv] of sides){
+    const G=(c,o)=>P(c[0],c[1],o);
+    out.push(orient([G(q00,hi),G(q10,hi),G(q11,hi)], nOut), orient([G(q00,hi),G(q11,hi),G(q01,hi)], nOut));
+    out.push(orient([G(q00,lo),G(q10,lo),G(q11,lo)], nIn),  orient([G(q00,lo),G(q11,lo),G(q01,lo)], nIn));
+    const sides=[[1,0,q10,q11],[-1,0,q01,q00],[0,1,q11,q01],[0,-1,q00,q10]];
+    for(const [di,dj,pq,qq] of sides){
       if(on(i+di,j+dj)) continue;
       const wref=[fr.u[0]*di + fr.v[0]*dj, fr.u[1]*di + fr.v[1]*dj, fr.u[2]*di + fr.v[2]*dj];
-      out.push(orient([P(pu,pv,lo),P(qu,qv,lo),P(qu,qv,hi)], wref), orient([P(pu,pv,lo),P(qu,qv,hi),P(pu,pv,hi)], wref));
+      out.push(orient([G(pq,lo),G(qq,lo),G(qq,hi)], wref), orient([G(pq,lo),G(qq,hi),G(pq,hi)], wref));
     }
   }
   return out;
 }
 // The coaster's pocket in the app's own axes: X across, Z along, +Y out of the face that lies on the bed.
-function coasterGridSlab(mask, want, nG, at, y0, y1){
+function coasterGridSlab(mask, want, nG, at, y0, y1, warp){
   return maskedSlabTris(mask, want, nG, nG, at, at, y1, y0,
-                        {o:[0,0,0], u:[1,0,0], v:[0,0,1], n:[0,1,0]});
+                        {o:[0,0,0], u:[1,0,0], v:[0,0,1], n:[0,1,0]}, warp);
 }
 
 /* ---- Phone / tablet stand (подставка) -----------------------------------------------------------

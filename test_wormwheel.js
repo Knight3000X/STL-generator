@@ -187,17 +187,35 @@ for(const ov of [{gearBore:8},{gearKeyW:3,gearKeyD:1.5},{gearStarts:4},{gearHub:
   const hi=Math.max(...prof.filter(v=>v>0)), lo=Math.min(...prof.filter(v=>v>0));
   chk('и это настоящий зуб, а не круг', hi-lo > 1.5, {hi:+hi.toFixed(2), lo:+lo.toFixed(2)});
 }
-{ // The tooth is HELICAL, and the hand follows the worm's. A right-hand worm lays the wheel's tooth trace
-  // one way across the face, a left-hand worm the other — measured as the angular drift of the deepest
-  // point of one root from the wheel's back face to its front.
+{ /* The tooth is HELICAL, and the hand follows the worm's. A right-hand worm lays the wheel's tooth trace
+     one way across the face, a left-hand worm the other — measured as the angular drift of one FLANK from
+     the wheel's back face to its front.
+
+     A flank, not the deepest point of the root. The root bottoms out on the field's floor over a wide span
+     of angle, so «the deepest point» is a plateau and which vertex wins it is arbitrary — with a fine
+     enough grid the same vertex wins at both faces and the drift reads zero on a tooth that is perfectly
+     helical. A flank is a level CROSSING, and a crossing has one answer. */
   const drift=hand=>{ const t=base({gearWheelRim:'envelope', gearHand:hand, gearThick:12, gearTeeth:30});
-    const at=y=>{ let best=1e9, ang=0;
-      for(const T of t) for(const v of T){ if(Math.abs(v[1]-y)>0.35) continue;
+    const at=y=>{
+      const pts=[];
+      for(const T of t) for(const v of T){ if(Math.abs(v[1]-y)>0.20) continue;
         const d=Math.hypot(v[0],v[2]); if(d<24) continue;   // rim only, not the bore
-        const a=Math.atan2(v[2],v[0]); if(Math.abs(a)>Math.PI/30) continue;   // one tooth pitch around θ=0
-        if(d<best){ best=d; ang=a; } }
-      return ang; };
-    return at(4.5)-at(-4.5); };
+        const a=Math.atan2(v[2],v[0]); if(Math.abs(a)>Math.PI/15) continue;   // one tooth pitch around θ=0
+        pts.push([a,d]); }
+      pts.sort((u,v2)=>u[0]-v2[0]);
+      if(pts.length < 8) return null;
+      const lo=Math.min(...pts.map(q=>q[1])), hi=Math.max(...pts.map(q=>q[1])), mid=(lo+hi)/2;
+      if(!(hi-lo > 0.5)) return null;                       // nothing to cross
+      let bestA=null;
+      for(let i=1;i<pts.length;i++){
+        const A=pts[i-1], B=pts[i];
+        if((A[1]-mid)*(B[1]-mid) > 0) continue;             // no crossing between these two
+        const t2=(mid-A[1])/((B[1]-A[1])||1), a=A[0]+(B[0]-A[0])*t2;
+        if(bestA===null || Math.abs(a) < Math.abs(bestA)) bestA=a;
+      }
+      return bestA; };
+    const a1=at(4.5), a2=at(-4.5);
+    return (a1===null||a2===null) ? 0 : a1-a2; };
   const dR=drift('right'), dL=drift('left');
   chk('зуб винтовой, и рука следует за червяком', Math.sign(dR) === -Math.sign(dL) && Math.abs(dR)>0.005,
       {right:+dR.toFixed(4), left:+dL.toFixed(4)});

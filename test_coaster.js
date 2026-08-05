@@ -442,16 +442,36 @@ console.log('=== плотность кармана задана в миллим�
       coasterGridN(coasterSpec({csMode:'round', csD:140}), 50) >
       coasterGridN(coasterSpec({csMode:'round', csD:55}), 50));
 
-  // ...and all of the above is about a helper. What ships is the MESH, so the cell is measured off it:
-  // the grid's vertices sit on cell boundaries, so the smallest gap between distinct x coordinates IS the
-  // cell. Checking the helper alone let the build quietly go on using the old number — the first mutation
-  // I tried (call site reverted, helper untouched) passed every check above.
+  // ...and all of the above is about a helper. What ships is the MESH, so the cell is measured off it.
+  // Checking the helper alone let the build quietly go on using the old number — the first mutation I
+  // tried (call site reverted, helper untouched) passed every check above.
+  //
+  // The measure has to look at the LATTICE, and the lattice is no longer every x in the mesh: the
+  // mosaic's vertices are slid onto the artwork's own boundary (mosaicWarp), so a vertex near an edge
+  // sits anywhere within half a cell of it. A vertex away from any boundary does not move at all, and a
+  // whole column of them shares one x — so an x that occurs MANY times is a lattice line, and one that
+  // occurs a handful of times is a slid vertex. The cell is the commonest gap between lattice lines.
+  // …measured on a SOLID disc rather than on the ring-and-cross above: a shape that is mostly boundary
+  // has few unwarped vertices to read the lattice off, and the artwork is not what is under test here.
+  const SOLID = analyzeLogoImageData(img((x,y)=>Math.hypot(x-0.5,y-0.5) < 0.4 ? [240,240,240,255] : [0,0,0,0]), S).heightmap;
   const meshCell = (csD) => {
-    const t = build({csD, csPart:'ink1'});
-    const xs = [...new Set(t.flat().map(v => +v[0].toFixed(4)))].sort((a,b)=>a-b);
-    let min = Infinity;
-    for(let i=1;i<xs.length;i++){ const d = xs[i]-xs[i-1]; if(d > 1e-3 && d < min) min = d; }
-    return min;
+    logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', logoResolution:120, csD, csPart:'ink1'});
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w:40, h:40, depth:-0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:SOLID, levels:2});
+    const t = buildTrisForShape('box', paramState.box);
+    const seen = new Map();
+    for(const T of t) for(const v of T){ const x = +v[0].toFixed(4); seen.set(x, (seen.get(x)||0)+1); }
+    // A lattice line carries a whole column of unwarped vertices and turns up over a thousand times; a
+    // slid vertex turns up a handful. The cut is relative, so it does not depend on the grid's size.
+    const top = Math.max(...[...seen.values()]);
+    const lattice = [...seen].filter(([,n]) => n >= top*0.25).map(([x]) => x).sort((a,b)=>a-b);
+    const tally = new Map();
+    for(let i=1;i<lattice.length;i++){ const d = +(lattice[i]-lattice[i-1]).toFixed(3);
+      if(d > 1e-3) tally.set(d, (tally.get(d)||0)+1); }
+    let best = 0, bestN = 0;
+    for(const [d,n] of tally) if(n > bestN){ bestN = n; best = d; }
+    return best;
   };
   const mc = meshCell(90);
   chk('в построенном меше шаг сетки тоже около 0.35 мм', Math.abs(mc - 0.35) < 0.03, +mc.toFixed(4));
@@ -584,6 +604,45 @@ console.log('=== справка объясняет, почему логотип�
   chk('в нём есть 3MF', h.steps.some(s => /3MF/.test(s)));
   chk('и продувочная башня', h.steps.some(s => /башн/i.test(s)));
   chk('материал предложен', Array.isArray(h.mat) && h.mat.length > 0, h.mat);
+}
+
+console.log('=== край мозаики идёт по рисунку, а не по клеткам ===');
+{
+  /* A mosaic of square cells has a staircase for an edge by construction, and the length of that edge is
+     the measure of it: a rasterised circle's outline is 8r long however fine the raster, against the
+     2πr ≈ 6.28r it should be — 27 % too long, and every bit of that excess is a visible step.
+
+     So the test is a DISC, whose perimeter is known exactly, and the question is how close the mosaic's
+     own outline comes to it. Not «does it look smoother».  */
+  const RAD = 0.4, W = 40;
+  const DISC = analyzeLogoImageData(img((x,y)=>Math.hypot(x-0.5,y-0.5) < RAD ? [240,240,240,255] : [0,0,0,0]), S).heightmap;
+  logos.length = 0; boxHoles.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:70, csT:6, csRim:0, csInlay:0.8, csPart:'ink1'});
+  logos.push({id:1, face:'-Y', u0:0, v0:0, w:W, h:W, depth:-0.8, threshold:0.5,
+              invert:false, rotation:0, heightmap:DISC, levels:2});
+  const t = buildTrisForShape('box', paramState.box);
+  const g = coasterSpec(paramState.box);
+  // the outline of the plug's top face: edges belonging to exactly ONE top-facing triangle
+  const key = (A,B) => { const a2=A.map(v=>v.toFixed(4)).join(','), b2=B.map(v=>v.toFixed(4)).join(',');
+    return a2 < b2 ? a2+'|'+b2 : b2+'|'+a2; };
+  const cnt = new Map();
+  for (const T of t){
+    const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]], v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+    const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+    if (L < 1e-12 || c[1]/L < 0.999) continue;                       // top-facing only
+    if (Math.abs(T[0][1] - g.inlay) > 1e-6) continue;
+    for (let e=0;e<3;e++){ const k = key(T[e], T[(e+1)%3]); cnt.set(k, (cnt.get(k)||0)+1); }
+  }
+  let peri = 0;
+  for (const [k,n] of cnt) if (n === 1){ const [a2,b2] = k.split('|').map(q=>q.split(',').map(Number));
+    peri += Math.hypot(a2[0]-b2[0], a2[1]-b2[1], a2[2]-b2[2]); }
+  const truth = 2*Math.PI*(RAD*W);
+  const ratio = peri / truth;
+  chk('контур пробки нашёлся', peri > truth*0.5, +peri.toFixed(2));
+  chk('и он идёт по окружности, а не лесенкой (лесенка это 1.27)', ratio < 1.10,
+      {периметр:+peri.toFixed(2), истинный:+truth.toFixed(2), отношение:+ratio.toFixed(3)});
+  chk('и не короче истинного — срезать углы тоже нельзя', ratio > 0.97, +ratio.toFixed(3));
+  logos.length = 0;
 }
 
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

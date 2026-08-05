@@ -422,9 +422,14 @@ console.log('=== плотность кармана задана в миллим�
   // The slider is a QUALITY MULTIPLIER now: raising it makes the cell finer, it does not set the count.
   chk('слайдер выше — ячейка мельче', cell(90, 160) < cell(90, 50), [cell(90,50), cell(90,160)]);
   chk('слайдер ниже — крупнее', cell(90, 20) > cell(90, 50), [cell(90,20), cell(90,50)]);
+  // The ceiling is a real number, not a shrug: past it the set runs into the high hundreds of thousands of
+  // triangles and the preview stops being live. It is named once, in the source, and read here.
   chk('но не бесконечно: есть потолок по числу ячеек',
-      coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000) <= 260,
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000) <= COASTER_MAX_CELLS,
       coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000));
+  chk('и потолок достижим не на первом же щелчке слайдера',
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), 100) < COASTER_MAX_CELLS,
+      coasterGridN(coasterSpec({csMode:'round', csD:90}), 100));
   chk('и пол, чтобы мелкий подстаканник не стал плоским пятном',
       coasterGridN(coasterSpec({csMode:'round', csD:40}), 1) >= 48,
       coasterGridN(coasterSpec({csMode:'round', csD:40}), 1));

@@ -335,5 +335,81 @@ for(const [Zs,Zp,N,m] of [[20,16,3,2],[24,18,3,2],[16,16,4,2],[12,11,4,1],[30,15
   }
 }
 
+console.log('=== червяк лежит на своей же аналитической поверхности ===');
+{
+  /* The wheel is CUT for the analytic worm — the envelope calls threadProfile, not the mesh — so how far
+     the worm's own facets stray from that surface comes straight out of the pair's working clearance,
+     which is 0.16 mm. Rows of circles across a helix cannot stay on it: each row that straddles a corner
+     of the trapezoid cuts it. Rows at the corners themselves can, because between corners the surface is
+     a straight ruled run.
+
+     Both directions are measured. Sag (mesh inside the true surface) opens the backlash; bulge (mesh
+     outside it) closes the gap the wheel was cut to leave — that one is what binds. */
+  const dev = (ov) => {
+    const p = Object.assign({gearMode:'worm', gearModule:2, gearWormD:16, gearWormLen:30,
+                             gearStarts:1, gearHand:'right', gearWormJournal:6}, ov);
+    const t = base(p);
+    const m = Math.max(0.3, p.gearModule), P = Math.PI*m, S = Math.max(1, Math.round(p.gearStarts));
+    const hand = (p.gearHand === 'left') ? -1 : 1;
+    const R = wormOuterR(p), h = Math.min(R*0.6, 2.25*m*0.5), minorR = Math.max(0.6, R-h);
+    const flat = Math.max(0, Math.min(0.24, p.gearFlat != null ? p.gearFlat : 0.14));
+    const len = Math.max(P, p.gearWormLen);
+    // buildWorm lays the screw from 0 to len and recentres on the bbox of everything, journals included,
+    // so the body ends up on ±len/2. Measuring the phase off the mesh's own minimum instead would shift
+    // it by a journal and report a phase error as a facet error.
+    const rAn = (y0, a) => minorR + h*threadProfile(y0/P - hand*S*a/(2*Math.PI), flat);
+    let sag = 0, bulge = 0;
+    for (const T of t) for (let e = 0; e < 3; e++){
+      const A = T[e], B = T[(e+1)%3];
+      const M = [(A[0]+B[0])/2, (A[1]+B[1])/2, (A[2]+B[2])/2];
+      const r = Math.hypot(M[0], M[2]);
+      if (r < minorR - 0.01 || r > R + 0.01) continue;       // journal shaft and end fans
+      const d = rAn(M[1] + len/2, Math.atan2(M[2], M[0])) - r;
+      if (d > sag) sag = d; else if (-d > bulge) bulge = -d;
+    }
+    return {sag:+sag.toFixed(4), bulge:+bulge.toFixed(4)};
+  };
+  const CLR = 0.16;                                          // what the enveloping cutter leaves
+  for (const ov of [{}, {gearModule:1}, {gearModule:3}, {gearStarts:2}, {gearStarts:4},
+                    {gearWormD:30}, {gearHand:'left'}, {gearWormLen:60}, {gearFlat:0.05}, {gearFlat:0.22}]){
+    const d = dev(ov);
+    chk('червяк '+(JSON.stringify(ov)||'{}')+': отклонение от аналитики < четверти зазора пары',
+        Math.max(d.sag, d.bulge) < CLR/4, Object.assign({limit:+(CLR/4).toFixed(3)}, d));
+  }
+  // The ring seam is the thing that used to tear: the shear advances S pitches over one turn, so closing
+  // the last column onto a column computed at shift 0 joins two points a whole lead apart. It showed as a
+  // single 5.3 mm edge running along the root straight through a crest — 2.25 mm of missing thread. The
+  // deviation check above catches it, and this states the invariant directly.
+  {
+    const p = {gearMode:'worm', gearModule:2, gearWormD:16, gearWormLen:30, gearStarts:1, gearWormJournal:6};
+    const t = base(p);
+    const R = wormOuterR(p), h = Math.min(R*0.6, 2.25), minorR = R - h;
+    let longest = 0;
+    for (const T of t) for (let e = 0; e < 3; e++){
+      const A = T[e], B = T[(e+1)%3];
+      const ra = Math.hypot(A[0], A[2]), rb = Math.hypot(B[0], B[2]);
+      if (ra < minorR - 0.01 || rb < minorR - 0.01) continue;   // not on the thread
+      if (Math.abs(ra - rb) > 0.02) continue;                   // only edges at a CONSTANT radius
+      longest = Math.max(longest, Math.abs(A[1] - B[1]));
+    }
+    // a run at constant radius is a flat of the trapezoid, and the widest of those is 2·f of a pitch
+    const widestFlat = 2*0.14*Math.PI*2;
+    chk('шва нет: ни одно ребро постоянного радиуса не длиннее самой широкой полки профиля',
+        longest < widestFlat + 0.05, {longest:+longest.toFixed(3), limit:+widestFlat.toFixed(3)});
+  }
+  // …and what it costs. The rows dropped from 115 circles to 80 phases, so on the standard 0.14 flat the
+  // whole screw is HALF the triangles it was for six times the accuracy. On a steep profile the extra
+  // columns take that back and a little more — an honest trade, and worth stating as a number rather than
+  // as «it is not paid for».
+  {
+    const t14 = base({gearMode:'worm', gearModule:2, gearWormD:16, gearWormLen:30, gearStarts:1,
+                      gearWormJournal:6, gearFlat:0.14});
+    chk('на стандартной полке 0.14 сетка вдвое дешевле прежней', t14.length < 21208*0.65, t14.length);
+    const tSteep = base({gearMode:'worm', gearModule:2, gearWormD:16, gearWormLen:30, gearStarts:1,
+                         gearWormJournal:6, gearFlat:0.22});
+    chk('и даже на самой крутой полке — того же порядка', tSteep.length < 21208*2.2, tSteep.length);
+  }
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

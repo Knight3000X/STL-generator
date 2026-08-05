@@ -1178,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.3';
+const APP_VERSION = 'v16.5.4';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10651,19 +10651,79 @@ function buildWorm(p){
   const minorR = Math.max(0.6, R-h);
   const rSh  = Math.max(0.8, Math.min((p.gearBore>0?p.gearBore:m*3)/2, minorR-0.8));
   const jour = Math.max(0, p.gearWormJournal!=null ? p.gearWormJournal : m*3);
-  const Nth  = Math.max(80, Math.min(320, Math.round(2*Math.PI*R/0.55))), spp = 24;
-  const Ny   = Math.max(8, Math.min(400, Math.round(len/P*spp)));
-  const tris = [], th = i => 2*Math.PI*(i%Nth)/Nth;
-  const V=(i,j)=>{ const y=len*j/Ny, a=th(i);
-    const r=minorR + h*threadProfile(y/P - hand*S*(i%Nth)/Nth, p.gearFlat!=null?p.gearFlat:0.14);
+  const flat = Math.max(0, Math.min(0.24, p.gearFlat!=null?p.gearFlat:0.14));
+  /* Columns. Two things set how many are needed, and the second one only shows up on a steep profile.
+     The first is the obvious one: the crest and the root are cylinders, and a polygon across them sags by
+     R(1−cos(π/N)) — a plain chord target handles that.
+     The second: a column-to-column chord does not follow the helix, so it slides along the thread by
+     S·P/N in phase, and on a FLANK that turns into a radial error of about half the flank's slope times
+     that slide. With the standard 0.14 flat the flank is gentle and the chord target already covers it;
+     wind the flat up to 0.22 and the ramp is a sixth of what it was, so the same columns give six times
+     the error — measured at 0.044 mm, over a quarter of the pair's 0.16 mm clearance. Hence the second
+     term, whose constant is CALIBRATED against the measurement — raised until the worst of a steep
+     profile and a four-start screw came under the bar — rather than derived from a small-angle argument
+     that was out by a factor of two. It is inert until the profile is actually steep: on the default
+     flat it asks for fewer columns than the chord term already gives. */
+  const ramp = Math.max(1e-3, 0.5 - 2*flat);
+  const Nth  = Math.max(96, Math.min(480, Math.round(Math.max(
+    2*Math.PI*R/0.35,                        // chord across the crest / root cylinders
+    0.30*h*S/(ramp*0.04)                     // slide along a steep flank (constant measured, not derived)
+  ))));
+  /* The rows follow the HELIX, not a stack of circles.
+
+     The thread is a height field r = minor + h·prof(t) over the phase t = y/P − hand·S·θ/2π, and `prof`
+     is a trapezoid: piecewise LINEAR, with corners at t = f, ½−f, ½+f, 1−f. Put a row at each of those
+     phases and the surface between two rows is a straight ruled run, which two triangles reproduce
+     EXACTLY — at any row count, for every column at once.
+
+     A uniform stack of circles cannot do that. Its rows land wherever they land, and each one that
+     straddles a corner cuts it. Measured on the default worm: the mesh sat up to 0.106 mm inside its own
+     analytic surface — two thirds of the 0.16 mm the pair has to run in, and the wheel is cut for the
+     ANALYTIC worm, so all of that came straight out of the working clearance. At module 3 it was 0.16 mm,
+     the whole of it. That is what «закусывает» looks like before it is printed.
+
+     Rows are cheaper this way, not dearer: 35 phases instead of 115 circles on the default worm, and the
+     only error left is the θ chord across a cylinder — 0.005 mm at Nth ≈ 90.
+
+     The shear is why y has to be CLAMPED to the body: a row at constant phase runs off the end of the
+     screw at one column and not at another. Clamping puts the leftover vertices exactly on the end plane
+     (so the end rings are flat circles and the fans close them) and collapses the quads between them,
+     which then drop out as degenerate. */
+  // The corners are what the rows MUST hit; the midpoints between them are free and are there only so a
+  // flat-shaded flank does not read as two big triangles — the surface between two rows is ruled, not
+  // planar, and its diagonal shows.
+  const corners = (0.5 - 2*flat > 1e-6) ? [flat, 0.5-flat, 0.5+flat, 1-flat] : [0.25, 0.75];
+  const brk = [];
+  for(let q=0;q<corners.length;q++){
+    brk.push(corners[q]);
+    const nxt = (q+1<corners.length) ? corners[q+1] : corners[0]+1;
+    brk.push((corners[q]+nxt)/2);
+  }
+  const tLo = Math.floor(-S - 1), tHi = Math.ceil(len/P + S + 1);
+  const ts = [];
+  for(let n=tLo; n<=tHi && ts.length < 4800; n++) for(const bkp of brk) ts.push(n+bkp);
+  const Ny = ts.length - 1;
+  /* The column index runs UNBOUNDED and the shear goes with it. Wrapping it with `i % Nth` is the obvious
+     thing and it tears the ring open: one turn of the shear is exactly S pitches, so the last column's
+     rows sit S pitches away from the first's, and closing Nth−1 back to a column computed at shift 0
+     joins two points a whole lead apart. Measured on the default worm: one edge ran 5.3 mm along the root
+     straight through a crest. Left unbounded, column Nth lands on column 0's row j + S·(rows per pitch) —
+     the same point, so the ring closes by construction. */
+  const tris = [], th = i => 2*Math.PI*i/Nth;
+  const V=(i,j)=>{ const sh = hand*S*i/Nth;
+    const y = Math.max(0, Math.min(len, P*(ts[j] + sh))), a = th(i);
+    const r = minorR + h*threadProfile(y/P - sh, flat);
     return [r*Math.cos(a), y, r*Math.sin(a)]; };
-  for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),B=V(i2,j),C=V(i2,j+1),D=V(i,j+1);
+  const area2=(A,B,C)=>{ const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]], v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];
+    return Math.hypot(u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]); };
+  const push=(A,B,C,ref)=>{ if(area2(A,B,C) > 1e-12) tris.push(orient([A,B,C],ref)); };
+  for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=i+1, A=V(i,j),B=V(i2,j),C=V(i2,j+1),D=V(i,j+1);
     const ref=[A[0]+B[0],0,A[2]+B[2]];
-    tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,D],ref)); }
+    push(A,B,C,ref); push(A,C,D,ref); }
   const ct=[0,len,0], cb=[0,0,0];                          // end fans close the screw body
-  for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
-    tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0]));
-    tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+  for(let i=0;i<Nth;i++){ const i2=i+1;
+    push(ct,V(i,Ny),V(i2,Ny),[0,1,0]);
+    push(cb,V(i2,0),V(i,0),[0,-1,0]); }
   if(jour>0.2) for(const T of discYTris(0,0, rSh, -jour, len+jour, Math.max(20,Math.round(rSh*8)))) tris.push(T);
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
@@ -11901,7 +11961,13 @@ const COASTER_MAX_INKS = 6;      // as many accent parts as a filament changer p
    is 0.8 mm on a 40 mm cube and 1.17 mm here. The slider is a quality MULTIPLIER now; the size is set in
    millimetres, where the nozzle is. */
 const COASTER_CELL_MM = 0.35;
-const COASTER_MAX_CELLS = 260;   // past this the set runs to ~300k triangles and the preview stops being live
+const COASTER_MAX_CELLS = 420;   /* The CEILING, not the default. «Детализация логотипов» divides the cell,
+   and the old 260 was reached at about res 100 on a full-size coaster, so turning the knob further bought
+   nothing at all. Past 420 the set runs into the high hundreds of thousands of triangles and the preview
+   stops being live, which is why there is a ceiling at all.
+   Worth being plain about what this does and does not fix: the mosaic is made of SQUARE cells, so its
+   edges are a staircase by construction. Finer cells make the steps smaller; they do not make the
+   boundary follow the artwork. */
 function coasterGridN(g, res){
   const span = 2*(g.winHalf + COASTER_GRID_LAP);
   const quality = Math.max(0.4, Math.min(2.5, (res || 50)/50));

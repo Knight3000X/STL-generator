@@ -156,8 +156,7 @@ console.log('\n=== вентрешётка в стенке ===');
   }
   // щель не может стать тоньше того, что пропечатается: толщина перемычки зажимается тем, что осталось
   {
-    const g = pboxVentSpec({pbVent:'-Z', pbVentN:24, pbVentBar:6, pbVentW:40, pbVentH:16},
-                           77, 57, 30, 2.4, 2.4, 1.0);
+    const g = pboxVentSpec({pbVent:'-Z', pbVentN:24, pbVentBar:6, pbVentW:40, pbVentH:16});
     chk('щель не тоньше 0.8 мм даже при 24 щелях и толстой перемычке', g.slot >= 0.8 - 1e-9, g.slot);
     chk('и перемычка при этом ужалась, а не окно', g.bar < 6, g.bar);
     const t = base({pbVent:'-Z', pbVentN:24, pbVentBar:6});
@@ -196,6 +195,28 @@ console.log('\n=== вентрешётка в стенке ===');
     base({pbVent:'none'});
     chk('и без решётки молчит тоже',
         collectPrintWarnings(paramState.box).every(x => !/вентрешётк/.test(x)));
+  }
+  /* Решётка живёт в стенке ЛОТКА; у крышки стенок нет. Раньше на крышке она молча не строилась и
+     предупреждений при этом не было — включил, ничего не изменилось, никто не сказал. */
+  {
+    const lidNo = base({pbPart:'lid', pbVent:'none'}), lidYes = base({pbPart:'lid', pbVent:'-Z'});
+    chk('на крышке решётки нет', lidYes.length === lidNo.length, {no:lidNo.length, yes:lidYes.length});
+    base({pbPart:'lid', pbVent:'-Z'});
+    chk('и про это сказано вслух',
+        collectPrintWarnings(paramState.box).some(x => /только на лотке/.test(x)),
+        collectPrintWarnings(paramState.box));
+    chk('спека на крышке пуста', pboxVentSpec({pbPart:'lid', pbVent:'-Z'}) === null);
+  }
+  /* Размеры корпуса считаются в ОДНОМ месте. Раньше построитель брал min(W,D)/4, а предупреждение
+     пересчитывало по вставленным Ww/Dw, и на маленьком корпусе с толстой стенкой выходило 5 против 4,25:
+     предупреждение говорило про деталь, которой не строилось. Проверяется на той самой настройке. */
+  {
+    const p3 = {pbW:20, pbD:20, pbH:30, pbWall:8, pbFlange:1.5};
+    const d = pboxDims(p3);
+    chk('толщина стенки зажата по НАРУЖНОМУ габариту', Math.abs(d.wall - 5) < 1e-9, d.wall);
+    chk('и пролёт стенки считается от него же', Math.abs(d.Ww - 17) < 1e-9 && Math.abs(d.Dw - 17) < 1e-9, [d.Ww, d.Dw]);
+    const t = base(Object.assign({pbPart:'tray', pbVent:'-Z'}, p3));
+    chk('и корпус на этой настройке строится герметичным', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
   }
   chk('по умолчанию решётки нет', base({}).length === none.length);
   chk('строка есть и она про стенки',

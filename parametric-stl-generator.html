@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.1.1';
+const APP_VERSION = 'v17.1.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4913,8 +4913,10 @@ const SHAPE_PARAMS = {
     {group:'Разрезка на фрагменты', key:'fragPinClear', label:'Штифт: зазор в гнезде (на сторону)', min:0, max:1, step:0.05, default:0.2, unit:'мм'},
     {group:'Штабелируемость', key:'stackFeet', label:'Ножки-фиксаторы снизу (боксы складываются без смещения)', type:'bool', default:false},
     {group:'Штабелируемость', key:'stackFootH', label:'Высота ножек', min:0.5, max:5, step:0.1, default:1.6, unit:'мм'},
-    {group:'Логотипы (рельеф на гранях)', key:'logoPlate', label:'Этикетка: подложка под надпись (0 = без подложки)', min:0, max:6, step:0.2, default:0, unit:'мм'},
-    {group:'Логотипы (рельеф на гранях)', key:'logoAms', label:'Цветная печать логотипа (AMS)', type:'select', default:'none',
+    {group:'Логотипы (рельеф на гранях)', key:'logoPlate', label:'Этикетка: подложка под надпись (0 = без подложки)', min:0, max:6, step:0.2, default:0, unit:'мм', only:{ltMode:['none']}},
+    // Литофания — сама себе рисунок: ни бляшки под этикетку, ни разбора на цвета у неё нет, и строка,
+    // на которую ничего не отзывается, хуже отсутствующей.
+    {group:'Логотипы (рельеф на гранях)', key:'logoAms', label:'Цветная печать логотипа (AMS)', type:'select', default:'none', only:{ltMode:['none']},
       options:[{v:'none',t:'нет'},{v:'body',t:'тело (карман под логотип)'},
                {v:'ink1',t:'AMS: цвет 1'},{v:'ink2',t:'AMS: цвет 2'},{v:'ink3',t:'AMS: цвет 3'},
                {v:'ink4',t:'AMS: цвет 4'},{v:'ink5',t:'AMS: цвет 5'},{v:'ink6',t:'AMS: цвет 6'}]},
@@ -6096,7 +6098,7 @@ const MODEL_HELP = {
   wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
   pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны. Вентрешётку в стенке печатать вертикальными щелями (так и стоит по умолчанию): стенка идёт вверх ребром, вертикальная щель это два отдельных островка в каждом слое, а горизонтальная требует моста над собой.', mat:['petg','abs']},
   litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
-             how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов», первой карточкой; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа.',
+             how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов» — берётся ПЕРВАЯ карточка с изображением, остальные литофания не читает; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа.',
              mat:['pla']},
   coaster:  {what:'Подстаканник: круг или квадрат со скруглёнными углами, с бортом против конденсата. Логотип лежит в кармане на НИЖНЕЙ стороне.',
              how:'Логотипом ВНИЗ, на стол — карман печатается первым слоем. Это не прихоть: первый слой — самая гладкая поверхность, какую даёт принтер, и логотип на нём выходит зеркальной вставкой, а тот же логотип сверху — рельефом со следами слоёв.',
@@ -12227,8 +12229,7 @@ function lithoSpec(p){
   const res = Math.max(60, Math.min(500, Math.round(p.ltRes || 260)));
   const N = Math.max(8, Math.round(res*(W >= H ? 1 : W/H)));
   const M = Math.max(8, Math.round(res*(H >= W ? 1 : H/W)));
-  return {mode, W, H, tMin, tMax, frame, arcDeg, arc, R, N, M, res, closed: mode === 'cylinder',
-          cell: W/N, tris: 4*N*M + (mode === 'cylinder' ? 4*N : 4*(N + M))};
+  return {mode, W, H, tMin, tMax, frame, arcDeg, arc, R, N, M, closed: mode === 'cylinder'};
 }
 function buildLithophane(p, lg){
   const g = lithoSpec(p);
@@ -13545,13 +13546,30 @@ const PCB_BOARDS = {
 
    Щели по умолчанию вертикальные. Стенка печатается стоя, и вертикальная щель — это два отдельных
    островка в каждом слое; горизонтальная требует мостов над собой. */
-function pboxVentSpec(p, W, D, H, wall, floorT, emb){
+/* Размеры корпуса числами — ОДИН источник. Раньше построитель считал их у себя, а предупреждение о
+   решётке пересчитывало заново, и на маленьком корпусе с толстой стенкой два расчёта расходились
+   (min(W,D)/4 против min(Ww,Dw)/4 — 5 мм против 4,25): предупреждение говорило про деталь, которой не
+   строилось. Считается здесь, читается обоими. */
+function pboxDims(p){
+  p = p || {};
+  const W = Math.max(20, p.pbW||80), D = Math.max(20, p.pbD||60), H = Math.max(8, p.pbH||30);
+  const wall = Math.max(1.2, Math.min(Math.min(W,D)/4, p.pbWall||2.4));
+  const floorT = Math.max(1.0, p.pbFloor||2.4), lidT = Math.max(1.0, p.pbLidT||2.4);
+  const flange = Math.max(0.6, Math.min(6, p.pbFlange!=null ? p.pbFlange : 1.5));
+  const emb = Math.min(floorT*0.6, 1.0);
+  return {W, D, H, wall, floorT, lidT, flange, emb, Ww: W-2*flange, Dw: D-2*flange};
+}
+function pboxVentSpec(p){
   const face = ['-Z','+Z','-X','+X'].indexOf(String(p.pbVent)) >= 0 ? String(p.pbVent) : null;
   if (!face) return null;
+  // Решётка живёт в стенке лотка. У крышки стенок нет — есть борт, и резать его нечем; поэтому на
+  // крышке решётки не будет, и приложение говорит это вслух, а не молчит.
+  if ((p.pbPart || 'tray') === 'lid') return null;
+  const {H, wall, floorT, emb, Ww, Dw} = pboxDims(p);
   const acrossZ = (face === '-X' || face === '+X');      // ±X стенки смотрят вдоль X, их «ширина» это Z
   // Свободное поле стенки: по горизонтали её собственный пролёт, по вертикали от дна до верха, с полем
   // 2 мм по кругу — рамка окна должна остаться и не съесть углы, где стоят стойки.
-  const spanU = (acrossZ ? D : W) - 2*Math.max(1.5, wall) - 4;
+  const spanU = (acrossZ ? Dw : Ww) - 2*Math.max(1.5, wall) - 4;
   const wy0 = floorT - emb, spanV = (H - wy0) - 4;
   if (!(spanU > 4) || !(spanV > 3)) return null;
   const u = Math.max(4, Math.min(spanU, p.pbVentW || 40));
@@ -13568,14 +13586,9 @@ function pboxVentSpec(p, W, D, H, wall, floorT, emb){
 }
 function buildProjectBox(p){
   const part  = p.pbPart || 'tray';
-  const W = Math.max(20, p.pbW||80), D = Math.max(20, p.pbD||60), H = Math.max(8, p.pbH||30);
-  const wall  = Math.max(1.2, Math.min(Math.min(W,D)/4, p.pbWall||2.4));
-  const floorT= Math.max(1.0, p.pbFloor||2.4), lidT = Math.max(1.0, p.pbLidT||2.4);
-  const flange= Math.max(0.6, Math.min(6, p.pbFlange!=null ? p.pbFlange : 1.5));   // base lip past the walls
+  const {W, D, H, wall, floorT, lidT, flange, emb, Ww, Dw} = pboxDims(p);   // см. pboxDims — один источник
   const clr   = Math.max(0.1, Math.min(1.0, fitTuned(p, p.pbClear!=null ? p.pbClear : 0.35)));   // lid↔cavity fit clearance
   const screwD= Math.max(2, p.pbScrewD||3), postD = Math.max(screwD+3, p.pbPostD||(screwD+5));
-  const emb   = Math.min(floorT*0.6, 1.0);
-  const Ww = W-2*flange, Dw = D-2*flange;             // wall (frame) outer footprint (inset by the flange)
   const Wi = Math.max(6, Ww-2*wall), Di = Math.max(6, Dw-2*wall);   // inner cavity footprint
   const lipWall = Math.max(1.0, wall-0.6);            // lid centring rib thickness
   // The corner posts must leave a channel for the lid's rib to pass BETWEEN the wall and the post — otherwise
@@ -13618,7 +13631,7 @@ function buildProjectBox(p){
     /* Вентрешётка: ОКНО уходит в набор вырезов той стенки, на которой она стоит, — тем же путём, что и
        разъёмы, — а перемычки приписываются после стенок отдельными телами. Окно кладётся первым, потому
        что slabInto читает userHoles в момент постройки плиты. */
-    const vent = pboxVentSpec(p, Ww, Dw, H, wall, floorT, emb);
+    const vent = pboxVentSpec(p);
     /* HOLE_AXIS_PQ[0] = [Y, Z], а HOLE_AXIS_PQ[2] = [X, Y]: у ±X стенки первая ось окна ВЕРТИКАЛЬНАЯ, у
        ±Z — горизонтальная. Перепутать их легко и незаметно — окно тогда просто не режется, а деталь
        остаётся герметичной; поймано разницей объёмов, а не глазами. */
@@ -17162,12 +17175,10 @@ function collectPrintWarnings(p){
   }
   if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
   if (p.pbPart && p.pbPart !== 'none' && p.pbVent && p.pbVent !== 'none') {
-    const fl = Math.max(0.6, Math.min(6, p.pbFlange!=null?p.pbFlange:1.5));
-    const Ww = Math.max(20, p.pbW||80) - 2*fl, Dw = Math.max(20, p.pbD||60) - 2*fl;
-    const wall = Math.max(1.2, Math.min(Math.min(Ww,Dw)/4, p.pbWall||2.4));
-    const floorT = Math.max(1.0, p.pbFloor||2.4);
-    const g = pboxVentSpec(p, Ww, Dw, Math.max(8, p.pbH||30), wall, floorT, Math.min(floorT*0.6, 1.0));
-    if (!g) w.push('вентрешётка: на этой стенке для неё не осталось места');
+    const g = pboxVentSpec(p);
+    if (!g && (p.pbPart === 'lid'))
+      w.push('вентрешётка: у крышки стенок нет — решётка бывает только на лотке');
+    else if (!g) w.push('вентрешётка: на этой стенке для неё не осталось места');
     else {
       if (g.bar < (p.pbVentBar || 1.6) - 1e-6)
         w.push('вентрешётка: перемычка ужата до ' + g.bar.toFixed(1) + ' мм — столько щелей в это окно иначе не помещается');

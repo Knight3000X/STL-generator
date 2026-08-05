@@ -187,6 +187,15 @@ console.log('\n=== панель есть в панели: строка, кноп
   chk('и справка', !!h && !!h.what && !!h.how, h);
   chk('справка говорит, как ставить на стол', /стоя|вертикал|ребр/i.test(h.how), h.how);
   chk('профиль печати — мелкий рельеф', KIND_PRINT.litho === 'detail', KIND_PRINT.litho);
+  /* Строки, на которые литофания не отзывается, не должны показываться: она сама себе рисунок, ни
+     бляшки под этикетку, ни разбора на цвета у неё нет. Молчаливый холостой ход хуже отсутствия. */
+  for (const key of ['logoAms', 'logoPlate']){
+    const row = SHAPE_PARAMS.box.find(r => r.key === key);
+    chk('«'+key+'» скрыта на литофании',
+        !paramRowRelevant(row, Object.assign({}, defaultBoxParams(), {ltMode:'flat'})), key);
+    chk('…и видна без неё',
+        paramRowRelevant(row, Object.assign({}, defaultBoxParams(), {ltMode:'none'})), key);
+  }
   chk('группа лежит на вкладке «Форма»', GROUP_TAB['Литофания'] === 'form', GROUP_TAB['Литофания']);
   chk('и знает свою форму', GROUP_KIND['Литофания'] === 'litho', GROUP_KIND['Литофания']);
 }

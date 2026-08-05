@@ -105,6 +105,47 @@ console.log('=== мажорный разряд — это счётчик баз�
   }
 }
 
+console.log('=== реестр не разошёлся с историей репозитория ===');
+{
+  /* Реестр объявляет, что каждая его строка — выпуск, и что выпусков ровно столько, сколько коммитов,
+     кроме поимённо названных исключений. Проверить это можно только у git, поэтому тест сюда и ходит:
+     без такой сверки строка теряется молча — ровно так и потерялся `2b0b1e9`, и заметили это через
+     двенадцать сборок, вручную.
+
+     Хеши сверяются ПО ПОРЯДКУ: реестр — это последовательность, и строка, уехавшая на другое место,
+     врёт не меньше, чем пропавшая. */
+  const EXCEPT = ['2b0b1e9'];      // коммиты без строки, с причиной — см. «Чего реестр НЕ обещает»
+  let hist = null;
+  try {
+    hist = require('child_process')
+      .execSync('git log --reverse --format=%h HEAD', {cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore','pipe','ignore']})
+      .trim().split('\n').filter(Boolean);
+  } catch (e) { hist = null; }
+  if (!hist) {
+    chk('история репозитория доступна (без неё эту проверку делать нечем)', false, 'git недоступен');
+  } else {
+    const led = rows.map(r => r.hash).filter(h => h.indexOf('эта сборка') < 0);
+    const short = hist.map(h => h.slice(0, 7));
+    chk('все хеши реестра есть в истории',
+        led.every(h => short.includes(h.slice(0, 7))),
+        led.filter(h => !short.includes(h.slice(0, 7))).slice(0, 3));
+    // порядок: позиции строк в истории обязаны строго возрастать
+    const pos = led.map(h => short.indexOf(h.slice(0, 7)));
+    chk('и идут в том же порядке, что в истории',
+        pos.every((v, i) => i === 0 || v > pos[i-1]),
+        pos.findIndex((v, i) => i > 0 && v <= pos[i-1]));
+    // и наоборот: коммит без строки обязан быть назван исключением
+    const ls = new Set(led.map(h => h.slice(0, 7)));
+    const last = short[short.length - 1];               // последний — это «эта сборка», строки у него ещё нет
+    const orphan = short.filter(h => !ls.has(h) && h !== last && EXCEPT.indexOf(h) < 0);
+    chk('коммитов без строки, кроме названных исключений, нет', orphan.length === 0, orphan.slice(0, 5));
+    chk('и названные исключения правда есть в истории',
+        EXCEPT.every(h => short.includes(h)), EXCEPT.filter(h => !short.includes(h)));
+    chk('исключение объяснено в самом реестре',
+        EXCEPT.every(h => LEDGER.indexOf(h) >= 0), EXCEPT.filter(h => LEDGER.indexOf(h) < 0));
+  }
+}
+
 console.log('=== правило записано там, где его прочтут ===');
 {
   // The rule lives in one place and everything else points at it. If the wording goes, the next person

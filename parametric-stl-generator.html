@@ -1026,6 +1026,8 @@
         <label class="param-label">Детализация логотипов</label>
         <div class="num-field"><input type="number" class="param-number" id="logo-resolution" min="10" max="500" step="1" value="50"><span class="num-unit"></span></div>
       </div>
+      <!-- Строки группы «Логотипы» приезжают СЮДА, а не в собственный аккордеон: см. data-hostgroup. -->
+      <div id="logo-param-rows" data-hostgroup="Логотипы (рельеф на гранях)"></div>
       <button id="btn-add-logo">+ Добавить логотип</button>
       <input type="file" id="logo-file-input" accept="image/*" style="display:none">
       <input type="file" id="svg-hole-input" accept=".svg,image/svg+xml" style="display:none">
@@ -1179,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.3.1';
+const APP_VERSION = 'v17.3.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -15915,6 +15917,20 @@ function clampParam(param, val) {
 // Which parameter groups start EXPANDED. Everything else starts collapsed (progressive disclosure) so the
 // panel is a short scannable list of section headers instead of one endless wall of fields — the user opens
 // only what they need, and each group's open/closed choice is then remembered.
+/* Куда положить строки группы параметров: в УЖЕ ГОТОВОЕ место на странице, если такое объявлено, иначе
+   в собственный аккордеон, который построитель заведёт сам.
+
+   Готовое место бывает у групп, часть которых написана разметкой: у «Логотипов» там карточки, кнопки
+   загрузки и справка. Без этого правила генератор заводил ВТОРОЙ раздел с тем же самым заголовком —
+   свёрнутый, — и складывал строки в него. Кончается это ровно тем, о чём сообщили: переключатель
+   «Цветная печать логотипа (AMS)» лежал во втором разделе, человек открывал первый, не находил и делал
+   единственный возможный вывод — что цветной печати на подставке нет. Она была; не было способа найти.
+
+   Правило вынесено сюда, а не оставлено внутри обхода DOM, чтобы его можно было проверить без браузера:
+   батарея умеет спросить функцию, но не умеет построить панель. */
+function paramGroupHostName(groupName, hostNames){
+  return (hostNames || []).indexOf(groupName) >= 0 ? groupName : null;
+}
 const CAT_DEFAULT_OPEN = new Set();   // every group starts collapsed; the user's open/closed choice is remembered
 let CAT_STATE = {};
 try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(e) {}
@@ -15936,6 +15952,16 @@ function buildAllParamUI() {
     for (const param of SHAPE_PARAMS[shapeKey]) {
       const groupName = param.group || 'Параметры';
       let body = groups.get(groupName);
+      if (!body) {
+        const hosts = Array.prototype.map.call(document.querySelectorAll('[data-hostgroup]'),
+                                               h => h.dataset.hostgroup);
+        const name = paramGroupHostName(groupName, hosts);
+        if (name){
+          body = Array.prototype.find.call(document.querySelectorAll('[data-hostgroup]'),
+                                           h => h.dataset.hostgroup === name);
+          if (body) groups.set(groupName, body);
+        }
+      }
       if (!body) {
         const det = document.createElement('details');
         det.className = 'param-cat';

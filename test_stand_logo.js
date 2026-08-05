@@ -287,6 +287,121 @@ console.log('=== поверхность берётся с КАРТОЧКИ ло�
   logos.length = 0;
 }
 
+console.log('=== цветная печать (AMS) на подставке ===');
+{
+  /* «+ Цвет N (AMS)» на подставке до v17.1.4 давал модель из НУЛЯ треугольников — молча. Общий блок
+     цветной наклейки перехватывал управление и искал плоскость, перпендикулярную оси; у спинки такой
+     нет, поиск возвращал пусто, и пусто уходило в модель. Теперь подставка разбирает свой логотип на
+     цвета сама, своими же названными рамками.
+
+     Меряется не «непусто ли»: цвета обязаны ЗАМОСТИТЬ карман — их лица в сумме дают ровно площадь
+     рисунка, и ни одно не лежит на другом. Рисунок поэтому диск: его площадь известна точно. */
+  const RAD = 0.42;
+  const three = (() => { const h = new Float32Array(S*S);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){
+      const x=(i+0.5)/S-0.5, y=(j+0.5)/S-0.5, r=Math.hypot(x,y);
+      h[j*S+i] = r<0.18 ? 1 : (r<0.30 ? 0.66 : (r<RAD ? 0.33 : 0)); }
+    return h; })();
+  const putAms = (face, WLOG) => { logos.length = 0; boxHoles.length = 0;
+    logos.push({id:1, face, u0:0, v0:0, w:WLOG, h:WLOG, depth:-0.6, threshold:0.5, invert:false,
+                rotation:0, heightmap:three, levels:4, chan:'detail',
+                tones:['#101010','#404040','#BB1828']}); };
+  const P = ov => Object.assign({}, defaultBoxParams(), {psOn:true}, ov);
+  // площадь граней, смотрящих по нормали рамки и лежащих на заданном от неё отступе
+  const faceArea = (t, n, at) => { let a = 0;
+    for(const T of t){
+      const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]];
+      const v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+      const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+      if(L<1e-12 || (c[0]*n[0]+c[1]*n[1]+c[2]*n[2])/L < 0.999) continue;
+      if(Math.abs(T[0][0]*n[0]+T[0][1]*n[1]+T[0][2]*n[2] - at) > 1e-5) continue;
+      a += L/2; }
+    return a; };
+  for (const face of STAND_LOGO_SURFACES){
+    /* Размер рисунка — под саму поверхность. Передний борт это полоска 14 мм высотой, и логотип 30 мм
+       на нём ОБРЕЗАЕТСЯ рамкой; это правильно, но тогда диск перестаёт быть диском, и сверять его
+       площадь с π r² уже нечестно. Поэтому на каждой поверхности берётся то, что на ней помещается. */
+    const fr0 = standLogoFrame(P({}), face);
+    const WLOG = Math.min(fr0.halfU, fr0.halfV)*2*0.9;
+    putAms(face, WLOG);
+    const inks = logoInks(logos[0]);
+    chk(face+': тонов у рисунка три', inks.levels.length === 3, inks.levels.length);
+    const body = buildTrisForShape('box', P({logoAms:'body'}));
+    chk(face+': тело с карманом герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    const parts = [];
+    for (let k = 1; k <= inks.levels.length; k++) parts.push(buildTrisForShape('box', P({logoAms:'ink'+k})));
+    chk(face+': ни один цвет не пуст', parts.every(t => t.length > 0), parts.map(t=>t.length));
+    chk(face+': каждый цвет — замкнутое тело', parts.every(t => manifoldCheck(t,4).watertight),
+        parts.map(t => manifoldCheck(t,4).openEdges));
+    /* Цветная деталь — ТОЛЬКО пробки. Считать треугольники тут нельзя: у мелкой поверхности подставка
+       дешевле сетки пробки. Меряется ГАБАРИТ — пробки обязаны уместиться в пятно логотипа, а не
+       раскинуться на всю подставку. */
+    const bb = t => { const lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9];
+      for(const T of t) for(const q of T) for(let a=0;a<3;a++){ lo[a]=Math.min(lo[a],q[a]); hi[a]=Math.max(hi[a],q[a]); }
+      return Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]); };
+    const bodySpan = bb(body);
+    chk(face+': цвет не тащит за собой подставку',
+        parts.every(t => bb(t) < Math.max(WLOG*1.6, bodySpan*0.5)),
+        {цвета:parts.map(t=>+bb(t).toFixed(1)), подставка:+bodySpan.toFixed(1), рисунок:+WLOG.toFixed(1)});
+    // и вместе они дают ровно площадь рисунка — ни нахлёста, ни щелей
+    const fr = standLogoFrame(P({}), face);
+    const at = fr.o[0]*fr.n[0] + fr.o[1]*fr.n[1] + fr.o[2]*fr.n[2];
+    const sum = parts.reduce((a,t) => a + faceArea(t, fr.n, at + 1.2), 0);
+    const truth = Math.PI*(RAD*WLOG)*(RAD*WLOG);
+    chk(face+': цвета замостили рисунок целиком', Math.abs(sum/truth - 1) < 0.03,
+        {сумма:+sum.toFixed(1), рисунок:+truth.toFixed(1)});
+    // …и ровно тот же ответ со стороны ТЕЛА: дно его кармана и лица пробок — одна площадь
+    chk(face+': и это ровно дно кармана в теле',
+        Math.abs(sum - faceArea(body, fr.n, at + 0.6)) < Math.max(1, sum*0.03),
+        {пробки:+sum.toFixed(1), карман:+faceArea(body, fr.n, at + 0.6).toFixed(1)});
+    // цвета, которого у рисунка нет, не существует — а не «есть, но пустой»
+    chk(face+': четвёртого цвета нет', buildTrisForShape('box', P({logoAms:'ink4'})).length === 0);
+  }
+  /* Пробка обязана ЗАЙТИ за дно кармана, а не упереться в него: касание по грани — это не объединение,
+     между телами ноль материала, и слайсер получает щель ровно по контуру рисунка. */
+  {
+    putAms('back', 30);
+    const fr = standLogoFrame(P({}), 'back');
+    const at = fr.o[0]*fr.n[0] + fr.o[1]*fr.n[1] + fr.o[2]*fr.n[2];
+    const t = buildTrisForShape('box', P({logoAms:'ink1'}));
+    let deep = Infinity;
+    for(const T of t) for(const q of T) deep = Math.min(deep, q[0]*fr.n[0]+q[1]*fr.n[1]+q[2]*fr.n[2]);
+    chk('пробка уходит за дно кармана, а не упирается в него', deep < at + 0.6 - 0.1,
+        {дно:+(at+0.6).toFixed(2), пробка:+deep.toFixed(2)});
+  }
+  /* ВЫПУКЛЫЙ логотип с цветом: у приложения на этот случай своё правило — бляшка не нужна, пробкой
+     становится сама надпись. Подставка обязана вести себя так же, а не заводить своё. */
+  {
+    logos.length = 0;
+    logos.push({id:1, face:'back', u0:0, v0:0, w:30, h:30, depth:0.8, threshold:0.5, invert:false,
+                rotation:0, heightmap:three, levels:4, chan:'detail', tones:['#101010','#404040','#BB1828']});
+    const body = buildTrisForShape('box', P({logoAms:'body'}));
+    const p1 = buildTrisForShape('box', P({logoAms:'ink1'}));
+    chk('выпуклый + цвет: тело герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    chk('выпуклый + цвет: пробка есть и замкнута',
+        p1.length > 0 && manifoldCheck(p1,4).watertight, [p1.length, manifoldCheck(p1,4)]);
+    // и она стоит НАД поверхностью, а не в кармане — это и есть «пробкой становится сама надпись»
+    const fr = standLogoFrame(P({}), 'back');
+    const at = fr.o[0]*fr.n[0] + fr.o[1]*fr.n[1] + fr.o[2]*fr.n[2];
+    let high = -Infinity;
+    for(const T of p1) for(const q of T) high = Math.max(high, q[0]*fr.n[0]+q[1]*fr.n[1]+q[2]*fr.n[2]);
+    /* И стоит ровно на СВОЮ глубину над поверхностью. «Выше нуля» тут мало: бляшка, поднятая под неё,
+       тоже дала бы «выше», просто вместе с плитой вокруг — а её-то на выпуклом логотипе и не должно
+       быть. Меряется точное превышение. */
+    chk('и стоит ровно на свою высоту над поверхностью, без бляшки под ней',
+        Math.abs((high - at) - 0.8) < 0.05, +(high-at).toFixed(2));
+  }
+
+  // цепочка «+ Цвет N» и группировка в 3MF подставку знают
+  putAms('back', 30);
+  const chain = ['body','ink1','ink2','ink3'].map(a => { const sp = assemblyMate(Object.assign({}, defaultBoxParams(), {psOn:true, logoAms:a})); return sp && sp.name; });
+  chk('кнопка ведёт по цепочке цветов', chain[0] && chain[1] && chain[2] && chain[3], chain);
+  chk('тело и цвет уходят в 3MF одним объектом',
+      mfBodyKey({params:Object.assign({}, defaultBoxParams(), {psOn:true, logoAms:'body'}), px:0,py:0,pz:0,rx:0,ry:0,rz:0}) ===
+      mfBodyKey({params:Object.assign({}, defaultBoxParams(), {psOn:true, logoAms:'ink1'}), px:0,py:0,pz:0,rx:0,ry:0,rz:0}));
+  logos.length = 0;
+}
+
 console.log('=== край рельефа идёт по рисунку, а не по клеткам ===');
 {
   /* Тот же замер, что у подстаканника и у наклейки: у РАСТРОВОГО круга контур равен 8r при любой мелкости

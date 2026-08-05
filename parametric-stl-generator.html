@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.1.3';
+const APP_VERSION = 'v17.2.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12600,8 +12600,20 @@ function standLogoSurface(lg, p){
   if (lg && STAND_LOGO_SURFACES.indexOf(lg.face) >= 0) return lg.face;
   return STAND_LOGO_SURFACES.indexOf(p && p.psLogoOn) >= 0 ? p.psLogoOn : 'floor';
 }
-function standLogoTris(p, res){
+/* Логотип на подставке, с разбором на ЦВЕТА. Устроено ровно так же, как у наклейки на любой другой форме
+   (`logoPatchPlan` + `buildLogoAmsInkTris`) и у подстаканника: тело получает карман одной глубины, а
+   каждый тон рисунка становится отдельной деталью — пробками ровно по этому карману. Разница только в
+   том, откуда берётся плоскость: подставка её не ищет, а НАЗЫВАЕТ, потому что у спинки нет оси, которой
+   она перпендикулярна.
+
+   `amsK` = 0 — само тело; 1…6 — только пробки цвета k, и ничего кроме них: иначе этот филамент напечатал
+   бы вторую подставку под собственным логотипом. */
+function standLogoTris(p, res, amsK){
   if (typeof logos === 'undefined' || !logos.length) return [];
+  /* Имя тут НЕ `want`: строчкой ниже в цикле уже живёт свой `want` — густота сетки, — и он бы это
+     затенил. Первая версия так и сделала: тело уходило в ветку пробок (густота всегда истинна), а там
+     отсеивалось как «цвета столько нет», и патч выходил пустым при любых настройках. */
+  const inkWant = Math.max(0, amsK|0);
   const out = [];
   for (const lg of logos){
     if (!lg.heightmap) continue;
@@ -12611,6 +12623,12 @@ function standLogoTris(p, res){
     if (!depth) continue;
     let plate = Math.max(0, p.logoPlate || 0);
     if (depth < 0) plate = Math.max(plate, -depth + 0.6);   // engraved: sink it into a plaque
+    /* Тона рисунка. Правило бляшки для цветной печати тут НЕ своё: оно ровно такое же, как у наклейки на
+       любой другой форме (`logoPatchPlan`) — утопленный рисунок садится в бляшку, выпуклый обходится без
+       неё, и тогда пробкой становится сама надпись. Первая версия поднимала бляшку и на выпуклом «чтобы
+       карман точно был»; мутация это пережила, и разбор показал почему: строка не чинила ничего, зато
+       заводила у подставки СВОЁ правило там, где у приложения есть общее. */
+    const inks = logoInks(lg);
     const ext = rotatedHalfExtents(lg.w, lg.h, lg.rotation);
     const halfU = Math.min(ext.halfX, fr.halfU), halfV = Math.min(ext.halfY, fr.halfV);
     if (!(halfU > 0.5) || !(halfV > 0.5)) continue;
@@ -12627,35 +12645,61 @@ function standLogoTris(p, res){
     // WHERE inside the cell its edge fell, and that is what mosaicWarp needs to slide the grid's vertices
     // onto it. A centre sample knows only which side of the edge the centre is on, so the outline can
     // only turn at a cell corner — a staircase, whatever the artwork says.
-    const SS = 3, cov = new Float32Array(N*M*2);
-    const inArt = (su, sv) => {
+    const SS = 3, NK = Math.max(2, inks.levels.length + 1);
+    const cov = new Float32Array(N*M*NK);
+    // Какой цвет в этой точке: 0 — не рисунок вовсе, k — тон k. Один порог даёт ровно один тон, и тогда
+    // это та же двоичная маска, что была здесь всегда.
+    const colourAt = (su, sv) => {
       const lu = su*cosR - sv*sinR, lv = su*sinR + sv*cosR;
       if (Math.abs(lu) > lg.w/2 || Math.abs(lv) > lg.h/2) return 0;
       let val = sampleHeightmap(lg.heightmap, (lu + lg.w/2)/lg.w, 1 - (lv + lg.h/2)/lg.h);
       if (lg.invert) val = 1 - val;
-      return (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) ? 1 : 0;
+      if (!(logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5))) return 0;
+      let k = 1;
+      if (logoStepped(lg) && inks.levels.length){
+        let bd = Infinity;
+        inks.levels.forEach((v, q) => { const d = Math.abs(v - val); if (d < bd){ bd = d; k = q+1; } });
+      }
+      return Math.min(k, NK-1);
     };
     for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-      const base2 = (j*N+i)*2;
+      const base2 = (j*N+i)*NK;
       for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
         const su = (i + (si+0.5)/SS)/N*2*halfU - halfU, sv = (j + (sj+0.5)/SS)/M*2*halfV - halfV;
-        cov[base2 + inArt(su, sv)] += 1/(SS*SS);
+        cov[base2 + colourAt(su, sv)] += 1/(SS*SS);
       }
-      if (cov[base2+1] > cov[base2]) { mask[j*N+i]=1; any=true; }
+      let best = 0, bestC = cov[base2];
+      for(let k=1;k<NK;k++) if(cov[base2+k] > bestC){ bestC = cov[base2+k]; best = k; }
+      if (best > 0){ mask[j*N+i] = best; any = true; }
     }
     if (!any && plate <= 0) continue;
     // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
-    for (let changed=true; changed; ){ changed=false;
+    // Ячейки одного ЦВЕТА, сходящиеся углом, — та же беда у пробки, поэтому углы разводятся по цветам.
+    if (NK > 2) resolveInkCorners(mask, N, M, NK-1);
+    else for (let changed=true; changed; ){ changed=false;
       for(let j=0;j+1<M;j++) for(let i=0;i+1<N;i++){
         const a=mask[j*N+i], b=mask[j*N+i+1], c=mask[(j+1)*N+i], d=mask[(j+1)*N+i+1];
         if(a&&d&&!b&&!c){ mask[j*N+i+1]=1; changed=true; }
         else if(b&&c&&!a&&!d){ mask[j*N+i]=1; changed=true; } } }
     const base = plate > 0 ? plate : -0.15;
     const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
+    const warp = mosaicWarp(mask, cov, NK-1, N, M);
+    if (inkWant){
+      // Пробка цвета k: от лица кармана внутрь, с заходом за его дно — проникновение объёмом, не касание.
+      if (inkWant > inks.levels.length) continue;
+      const outer = Math.max(base, plate + depth), inner = Math.min(base, plate + depth) - LOGO_AMS_LAP;
+      for (const T of maskedSlabTris(mask, inkWant, N, M, U, V, outer, inner, fr, warp)) out.push(T);
+      continue;
+    }
     // Not `push(...arr)`: a patch across the full width of a stand is tens of thousands of triangles and
     // the spread passes every one as an argument, which overflows the stack rather than being slow.
-    const warp = mosaicWarp(mask, cov, 1, N, M);
-    for (const T of reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr, warp)) out.push(T);
+    /* Тело кладёт СИЛУЭТ — объединение цветов: карман один, а на сколько тонов он потом делится, телу
+       безразлично. Копия здесь — заявление о намерении, а не механизм: `reliefSlabTris` смотрит на
+       ячейку как на «пусто / не пусто», и любой ненулевой индекс для него одно и то же. Оставлена
+       потому, что ровно так же поступает `buildLogoPlateTris`, и читать их рядом должно быть одинаково. */
+    const bin = new Uint8Array(N*M);
+    for (let q = 0; q < bin.length; q++) bin[q] = mask[q] ? 1 : 0;
+    for (const T of reliefSlabTris(bin, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr, warp)) out.push(T);
   }
   return out;
 }
@@ -15311,7 +15355,11 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildFingerGrip(p));
   // Labels on a shape with no tessellated face to displace — see buildLogoPlateTris. Measured off
   // the finished mesh's bounding box, so it works the same whatever the shape turned out to be.
-  if (shape === 'box' && logos.length > 0 && !dieShape(p) &&
+  /* Подставка (как и кость) разбирает свой логотип на цвета САМА: у её спинки нет оси, которой она
+     перпендикулярна, и общий поиск плоскости под наклейку там ничего не находит. Раньше этот блок всё
+     равно перехватывал управление и возвращал ПУСТО — «+ Цвет N (AMS)» на подставке давал модель из нуля
+     треугольников, молча. */
+  if (shape === 'box' && logos.length > 0 && !dieShape(p) && !p.psOn &&
       (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
     const bb = bboxOfTris(tris);
     const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;
@@ -15356,8 +15404,11 @@ function buildTrisForShapeCore(shape, p) {
       return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
     }
     if (p.psOn) {
-      return snapWeldTris(buildPhoneStand(p).concat(
-        standLogoTris(p, typeof logoResolution !== 'undefined' ? logoResolution : 120)));
+      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
+      // Цветная деталь — это ТОЛЬКО её пробки: подставку под ними печатает тело, а не этот филамент.
+      const amsK = logoAmsIndex(p.logoAms);
+      if (amsK) return snapWeldTris(standLogoTris(p, lres, amsK));
+      return snapWeldTris(buildPhoneStand(p).concat(standLogoTris(p, lres)));
     }
     if (p.fnOn) {
       return snapWeldTris(buildFunnel(p));

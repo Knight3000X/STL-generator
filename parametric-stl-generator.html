@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.2.0';
+const APP_VERSION = 'v17.3.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10294,6 +10294,75 @@ function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
     out.push(orient([[x0,u[0],u[1]],[x1,v[0],v[1]],[x1,u[0],u[1]]],ref)); }
   return out;
 }
+/* Призма вдоль X, у которой ОДНА боковая грань строится СЕТКОЙ и может быть промята внутрь.
+
+   Зачем: объединение замкнутых оболочек умеет только добавлять материал, поэтому «вдавить» рисунок в
+   готовую панель нельзя — можно лишь положить сверху бляшку и утопить рисунок в неё. Настоящая выемка
+   получается единственным способом: панель должна СТРОИТЬСЯ с ней, как строится стенка куба, у которой
+   смещаются собственные вершины.
+
+   Подразбивается не только сама грань. Её край при j=0 и j=M — это линия вдоль X, общая с соседней
+   боковой гранью, а края при i=0 и i=N лежат на торцах. Если добавить вершины только на грани рельефа,
+   на всех четырёх её краях получатся T-стыки: ребро, у которого с одной стороны один треугольник, а с
+   другой два. Оболочка перестаёт быть замкнутой, и `manifoldCheck` это видит как открытые рёбра.
+   Поэтому две соседние боковые грани режутся на N частей вдоль X, а торцевые многоугольники получают
+   подразбитое ребро и разворачиваются веером из вершины, на этом ребре не лежащей.
+
+   `disp(i,j)` — смещение вершины НАРУЖУ по нормали грани (отрицательное = внутрь материала). На кромке
+   (i = 0 или N, j = 0 или M) оно обязано быть нулём: там вершины общие с торцами и соседями. */
+function prismXReliefTris(poly, x0, x1, edgeIdx, N, M, disp){
+  const n = poly.length, out = [];
+  const cy = poly.reduce((s,q)=>s+q[0],0)/n, cz = poly.reduce((s,q)=>s+q[1],0)/n;
+  const e = ((edgeIdx % n) + n) % n, e0 = poly[e], e1 = poly[(e+1)%n];
+  let ny = e1[1]-e0[1], nz = -(e1[0]-e0[0]);
+  const L = Math.hypot(ny, nz) || 1; ny /= L; nz /= L;
+  if (ny*((e0[0]+e1[0])/2 - cy) + nz*((e0[1]+e1[1])/2 - cz) < 0){ ny = -ny; nz = -nz; }   // наружу
+  const X = i => x0 + (x1-x0)*i/N;
+  const EY = t => e0[0] + (e1[0]-e0[0])*t, EZ = t => e0[1] + (e1[1]-e0[1])*t;
+  const G = (i,j) => { const t = j/M, d = disp ? (disp(i,j) || 0) : 0;
+    return [X(i), EY(t) + ny*d, EZ(t) + nz*d]; };
+  const nOut = [0, ny, nz];
+  for(let i=0;i<N;i++) for(let j=0;j<M;j++){
+    out.push(orient([G(i,j),G(i+1,j),G(i+1,j+1)], nOut));
+    out.push(orient([G(i,j),G(i+1,j+1),G(i,j+1)], nOut));
+  }
+  // Торцы: контур многоугольника с подразбитым ребром рельефа, веером из первой вершины ЗА этим ребром.
+  const ring = [];
+  for(let k=0;k<n;k++){
+    ring.push(poly[(e+k)%n]);
+    if(k===0) for(let j=1;j<M;j++) ring.push([EY(j/M), EZ(j/M)]);
+  }
+  const fan = M + 1;                       // индекс poly[e+1] это M, значит первая «свободная» — M+1
+  for(let k=1;k+1<ring.length;k++){
+    const a=ring[fan], b=ring[(fan+k)%ring.length], c=ring[(fan+k+1)%ring.length];
+    out.push(orient([[x0,a[0],a[1]],[x0,b[0],b[1]],[x0,c[0],c[1]]], [-1,0,0]));
+    out.push(orient([[x1,a[0],a[1]],[x1,b[0],b[1]],[x1,c[0],c[1]]], [ 1,0,0]));
+  }
+  /* Боковые грани. У двух соседних с рельефом ОДНА сторона общая с его кромкой и потому подразбита на
+     N, а противоположная граничит с гранью, которая не подразбита вовсе. Резать такую грань на N
+     четырёхугольников нельзя: лишние вершины появятся и на дальней стороне, и T-стык просто переедет
+     туда (первая версия так и сделала — 16 открытых рёбер при нулевом смещении, объём при этом сходился
+     до знака, потому что тело-то верное). Поэтому она разворачивается ВЕЕРОМ из дальнего угла: у ближней
+     стороны N отрезков, у дальней — один. */
+  for(let k=0;k<n;k++){
+    if(k === e) continue;
+    const u = poly[k], v = poly[(k+1)%n];
+    const ref = [0, (u[0]+v[0])/2 - cy, (u[1]+v[1])/2 - cz];
+    const nearAtV = (k === (e+n-1)%n);           // подразбита сторона при poly[k+1]
+    const nearAtU = (k === (e+1)%n);             // …или при poly[k]
+    if(!nearAtU && !nearAtV){
+      out.push(orient([[x0,u[0],u[1]],[x0,v[0],v[1]],[x1,v[0],v[1]]], ref));
+      out.push(orient([[x0,u[0],u[1]],[x1,v[0],v[1]],[x1,u[0],u[1]]], ref));
+      continue;
+    }
+    const near = nearAtU ? u : v, far = nearAtU ? v : u;
+    const A = [x0, far[0], far[1]], B = [x1, far[0], far[1]];
+    const Pk = i => [X(i), near[0], near[1]];
+    for(let i=0;i<N;i++) out.push(orient([A, Pk(i), Pk(i+1)], ref));
+    out.push(orient([A, Pk(N), B], ref));
+  }
+  return out;
+}
 // Convex 2D polygon extruded along Z (fan caps + side walls). Used for rack teeth.
 function convexPrismZTris(poly, z0, z1){ const out=[], n=poly.length;
   const cx=poly.reduce((s,q)=>s+q[0],0)/n, cy=poly.reduce((s,q)=>s+q[1],0)/n;
@@ -12608,8 +12677,64 @@ function standLogoSurface(lg, p){
 
    `amsK` = 0 — само тело; 1…6 — только пробки цвета k, и ничего кроме них: иначе этот филамент напечатал
    бы вторую подставку под собственным логотипом. */
+/* Поле смещения для ПОВЕРХНОСТИ подставки: сколько материала снять (или добавить) в каждом узле её
+   сетки. Это и есть настоящая выемка: панель строится промятой, а не получает бляшку сверху.
+
+   Стенка мнётся ровно так же, как у куба, — смещением собственных вершин, — и с тем же следствием:
+   стенка выемки идёт скатом в одну ячейку, а не отвесно. Отвесную стенку даёт только отдельная плита с
+   раздвоенными вершинами на кромке, а у неё, в свою очередь, есть площадка. Одно из двух; выбрана
+   выемка, потому что просили её.
+
+   Сетка кладётся на ВСЮ грань, а не на пятно логотипа: у грани общие с торцами и соседями края, и
+   подразбивать её кусками нельзя. По краю смещение принудительно ноль — там вершины общие. */
+function standSurfaceDisp(p, which, res, spanU, spanV){
+  if (typeof logos === 'undefined' || !logos.length) return null;
+  const mine = logos.filter(lg => lg.heightmap && (lg.depth||0) && standLogoSurface(lg, p) === which);
+  if (!mine.length) return null;
+  const fr = standLogoFrame(p, which);
+  if (!(fr.halfU > 2) || !(fr.halfV > 2)) return null;
+  // Каждый логотип со своими зажатыми размерами и положением — теми же, что считает standLogoTris.
+  const items = mine.map(lg => {
+    const ext = rotatedHalfExtents(lg.w, lg.h, lg.rotation);
+    const halfU = Math.min(ext.halfX, fr.halfU), halfV = Math.min(ext.halfY, fr.halfV);
+    const u0 = Math.max(-(fr.halfU - halfU), Math.min(fr.halfU - halfU, lg.u0 || 0));
+    const v0 = Math.max(-(fr.halfV - halfV), Math.min(fr.halfV - halfV, lg.v0 || 0));
+    const rad = (lg.rotation||0)*Math.PI/180;
+    return {lg, u0, v0, cosR: Math.cos(-rad), sinR: Math.sin(-rad), depth: lg.depth||0,
+            small: Math.min(halfU, halfV)*2};
+  });
+  /* Густота — от РИСУНКА, а не от грани. Передний борт это полоска 14 мм высотой при 80 мм ширины, и
+     ячейка, посчитанная от его узкой стороны, растянула бы сетку на 600 столбцов ради логотипа в 26 мм.
+     Мельче рисунка сетка не нужна, крупнее — рисунок посыплется. */
+  const want = Math.max(8, Math.min(220, res || 120));
+  const cell = Math.max(0.12, Math.min(...items.map(it => it.small)) / want);
+  const N = Math.max(4, Math.min(600, Math.round(spanU / cell)));
+  const M = Math.max(4, Math.min(600, Math.round(spanV / cell)));
+  const at = (u, v) => {
+    for (const it of items){            // при перекрытии выигрывает добавленный раньше — как и везде
+      const su = u - it.u0, sv = v - it.v0;
+      const lu = su*it.cosR - sv*it.sinR, lv = su*it.sinR + sv*it.cosR;
+      const lg = it.lg;
+      if (Math.abs(lu) > lg.w/2 || Math.abs(lv) > lg.h/2) continue;
+      let val = sampleHeightmap(lg.heightmap, (lu + lg.w/2)/lg.w, 1 - (lv + lg.h/2)/lg.h);
+      if (lg.invert) val = 1 - val;
+      if (!(logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5))) continue;
+      return it.depth;
+    }
+    return 0;
+  };
+  const disp = (i, j) => {
+    if (i <= 0 || i >= N || j <= 0 || j >= M) return 0;       // кромка общая с торцами и соседями
+    return at(spanU*(i/N - 0.5), spanV*(j/M - 0.5));
+  };
+  return {N, M, disp};
+}
+/* Плита-накладка с рисунком. Нужна теперь только ЦВЕТНОЙ печати: там карман и пробки обязаны резаться
+   одной сеткой, а промятая панель и отдельные пробки — это две разные сетки, которые не совпадут.
+   Обычный логотип панель мнёт сама (см. standSurfaceDisp), и накладка ему больше не нужна. */
 function standLogoTris(p, res, amsK){
   if (typeof logos === 'undefined' || !logos.length) return [];
+  if (!logoAmsOn(p)) return [];
   /* Имя тут НЕ `want`: строчкой ниже в цикле уже живёт свой `want` — густота сетки, — и он бы это
      затенил. Первая версия так и сделала: тело уходило в ветку пробок (густота всегда истинна), а там
      отсеивалось как «цвета столько нет», и патч выходил пустым при любых настройках. */
@@ -12712,16 +12837,36 @@ function buildPhoneStand(p){
   // `|| 18` would have turned the "0 = none" the label promises back into the default width.
   const slotW= Math.max(0, Math.min(p.psSlot!=null ? p.psSlot : 18, W-2*t-4));   // cable pass-through, 0 = none
   const zF = -D/2, zB = D/2, tris = [];
+  const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
+  /* Поверхность, на которой лежит логотип, строится СЕТКОЙ и мнётся — см. prismXReliefTris. Без логотипа
+     всё остаётся ровно тем, чем было: та же плита, тот же борт, та же призма спинки. */
+  const fdisp = slotW > 1 ? null : standSurfaceDisp(p, 'floor', lres, W, D);
   // Base plate, with the charging-cable slot just behind the lip so a plugged-in cable clears the desk.
   const holes = slotW>1 ? [{axis:1, cp:0, cq: zF + lipH + slotW*0.7, ap:slotW/2, aq:Math.min(slotW,D*0.25)/2, rc:Math.min(3, slotW/2-0.4)}] : [];
-  for(const T of buildBoxWithHoles(W, t, D, holes)) tris.push(T.map(v=>[v[0], v[1]+t/2, v[2]]));
+  if (fdisp) {
+    // Дно как призма вдоль X: сечение (y,z), рельеф на ребре y = 0 (низ), идущем вдоль +z.
+    for(const T of prismXReliefTris([[0,zF],[0,zB],[t,zB],[t,zF]], -W/2, W/2, 0, fdisp.N, fdisp.M, fdisp.disp))
+      tris.push(T);
+  } else {
+    for(const T of buildBoxWithHoles(W, t, D, holes)) tris.push(T.map(v=>[v[0], v[1]+t/2, v[2]]));
+  }
   // Front lip: the device's bottom edge leans into this. Sunk 0.5 into the base so no face is shared.
-  for(const T of boxSpanTris(-W/2+0.3, W/2-0.3, t-0.5, t+lipH, zF+0.2, zF+0.2+t)) tris.push(T);
+  const ldisp = standSurfaceDisp(p, 'lip', lres, W - 0.6, lipH + 0.5);
+  if (ldisp) {
+    // Борт как призма вдоль X: рельеф на переднем ребре z = zF+0.2, идущем вдоль +y.
+    for(const T of prismXReliefTris([[t-0.5, zF+0.2],[t+lipH, zF+0.2],[t+lipH, zF+0.2+t],[t-0.5, zF+0.2+t]],
+                                    -W/2+0.3, W/2-0.3, 0, ldisp.N, ldisp.M, ldisp.disp)) tris.push(T);
+  } else {
+    for(const T of boxSpanTris(-W/2+0.3, W/2-0.3, t-0.5, t+lipH, zF+0.2, zF+0.2+t)) tris.push(T);
+  }
   // Raked back support: a parallelogram of thickness t, rising from the back of the base toward the front.
   const dy=Math.sin(ang), dz=-Math.cos(ang), px=Math.cos(ang), pz=Math.sin(ang);   // direction + its perpendicular
   const bY=t-0.5, bZ=zB-t*0.6;
   const S=[[bY,bZ],[bY+t*px,bZ+t*pz],[bY+t*px+restL*dy,bZ+t*pz+restL*dz],[bY+restL*dy,bZ+restL*dz]];
-  for(const T of convexPrismXTris(S, -W/2+0.4, W/2-0.4)) tris.push(T);
+  // Наружная грань спинки — ребро S[1]→S[2], идущее вдоль наклона на длину restL.
+  const bdisp = standSurfaceDisp(p, 'back', lres, W - 0.8, restL);
+  if (bdisp) for(const T of prismXReliefTris(S, -W/2+0.4, W/2-0.4, 1, bdisp.N, bdisp.M, bdisp.disp)) tris.push(T);
+  else for(const T of convexPrismXTris(S, -W/2+0.4, W/2-0.4)) tris.push(T);
   // Side gussets brace the support against the base — without them the whole load levers on one glued seam.
   const gL=Math.min(restL*0.55, D*0.6);
   const tri=[[bY, bZ], [bY+gL*dy, bZ+gL*dz], [bY, bZ-gL*0.9]];
@@ -17251,6 +17396,10 @@ function collectPrintWarnings(p){
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
   }
   if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  if (p.psOn && typeof logos !== 'undefined' && logos.some(l => l.heightmap && (l.depth||0)) &&
+      Math.max(0, p.psSlot != null ? p.psSlot : 18) > 1 &&
+      logos.some(l => l.heightmap && (l.depth||0) && standLogoSurface(l, p) === 'floor'))
+    w.push('логотип на дне: вырез под кабель и вдавленный рисунок не уживаются — дно останется ровным, поставьте вырез в 0 или перенесите логотип');
   if (p.pbPart && p.pbPart !== 'none' && p.pbVent && p.pbVent !== 'none') {
     const g = pboxVentSpec(p);
     if (!g && (p.pbPart === 'lid'))

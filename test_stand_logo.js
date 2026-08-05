@@ -223,38 +223,60 @@ console.log('=== подставка ушла из общей плиты, и эт
       sectionRelevant('Подставка (телефон / планшет)', 'stand', false) === true);
 }
 
-console.log('=== поверхность берётся с КАРТОЧКИ логотипа, а не одна на всех ===');
+console.log('=== поверхность берётся с КАРТОЧКИ, и рисунок ВДАВЛЕН в саму панель ===');
 {
-  /* До v17.1.3 подставка читала только `psLogoOn`, а поле грани на карточке не читала вовсе: список
-     менялся, перерисовка шла, рельеф оставался на дне. Проверяется не «поменялась ли сетка» — она
-     поменялась бы и от сдвига на миллиметр, — а ГДЕ оказался патч: его центр обязан лечь на начало
-     координат той рамки, которую подставка называет этим именем. */
+  /* С v17.3.0 логотип не кладётся накладкой поверх грани, а мнёт саму панель: дно, спинка и борт
+     строятся сеткой, и их собственные вершины уходят внутрь материала. Поэтому мерить надо не «есть ли
+     патч» — патча нет, — а есть ли ВМЯТИНА и на той ли она поверхности.
+
+     Вмятина: вершины, ушедшие от плоскости рамки внутрь примерно на глубину рисунка. Считаются только
+     те, что лежат в пределах самой рамки, иначе в счёт попала бы геометрия с другой стороны детали. */
   const d3b = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-  const centre = t => { const c=[0,0,0]; let n=0;
-    for(const T of t) for(const q of T){ c[0]+=q[0]; c[1]+=q[1]; c[2]+=q[2]; n++; }
-    return [c[0]/n, c[1]/n, c[2]/n]; };
-  const p = Object.assign({}, defaultBoxParams(), {psOn:true, psLogoOn:'floor'});
-  const put = face => { logos.length = 0;
-    logos.push({id:1, face, u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5,
+  const sunk = (tris, fr, depth) => { let n = 0;
+    for(const T of tris) for(const q of T){
+      const r = [q[0]-fr.o[0], q[1]-fr.o[1], q[2]-fr.o[2]];
+      if(Math.abs(d3b(r, fr.n) - depth) > 0.02) continue;
+      if(Math.abs(d3b(r, fr.u)) > fr.halfU || Math.abs(d3b(r, fr.v)) > fr.halfV) continue;
+      n++; }
+    return n; };
+  const vol = t => { let v=0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
+    v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; } return v; };
+  const p = Object.assign({}, defaultBoxParams(), {psOn:true, psLogoOn:'floor', psSlot:0});
+  const put = (face, depth) => { logos.length = 0;
+    logos.push({id:1, face, u0:0, v0:0, w:26, h:26, depth:(depth==null?-0.6:depth), threshold:0.5,
                 invert:false, rotation:0, heightmap:HM, levels:2}); };
-  const seen = [];
   for (const which of STAND_LOGO_SURFACES){
     put(which);
-    const t = standLogoTris(p, 120);
-    chk('на «'+which+'» патч построился', t.length > 0, t.length);
-    const fr = standLogoFrame(p, which), c = centre(t);
-    // расстояние от центра патча до ПЛОСКОСТИ рамки вдоль её нормали — рельеф лежит на ней, а не где-то
-    const off = Math.abs(d3b([c[0]-fr.o[0], c[1]-fr.o[1], c[2]-fr.o[2]], fr.n));
-    chk('и лёг на поверхность «'+fr.name+'», а не рядом', off < 2.5, +off.toFixed(2));
-    chk('и он герметичен', manifoldCheck(t,4).watertight);
-    seen.push(c);
+    const t = buildTrisForShape('box', p);
+    chk('«'+which+'»: подставка с вдавленным рисунком герметична', manifoldCheck(t,4).watertight,
+        manifoldCheck(t,4));
+    chk('«'+which+'»: рисунок вдавлен в саму панель', sunk(t, standLogoFrame(p, which), -0.6) > 50,
+        sunk(t, standLogoFrame(p, which), -0.6));
+    for (const other of STAND_LOGO_SURFACES){
+      if (other === which) continue;
+      chk('«'+which+'»: на «'+other+'» ничего не вдавлено', sunk(t, standLogoFrame(p, other), -0.6) === 0,
+          sunk(t, standLogoFrame(p, other), -0.6));
+    }
   }
-  // три поверхности — три РАЗНЫХ места: иначе проверка выше прошла бы и на одной-единственной
-  for (let i=0;i<seen.length;i++) for (let j=i+1;j<seen.length;j++)
-    chk('«'+STAND_LOGO_SURFACES[i]+'» и «'+STAND_LOGO_SURFACES[j]+'» — разные места',
-        Math.hypot(seen[i][0]-seen[j][0], seen[i][1]-seen[j][1], seen[i][2]-seen[j][2]) > 5,
-        [seen[i].map(v=>+v.toFixed(1)), seen[j].map(v=>+v.toFixed(1))]);
-  // карточка, сохранённая до v17.1.3, несёт ОСЬ — она обязана вести себя ровно как раньше
+  {
+    put('back', 0.8);
+    const t = buildTrisForShape('box', p);
+    chk('выпуклый рисунок выходит наружу тем же механизмом',
+        sunk(t, standLogoFrame(p, 'back'), 0.8) > 50, sunk(t, standLogoFrame(p, 'back'), 0.8));
+    chk('и деталь остаётся замкнутой', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  }
+  /* Главное следствие: выемка СНИМАЕТ материал. Накладка его только добавляла — это и было «на
+     площадке», и никакой герметичностью такое не отличишь. Меряется объёмом. */
+  {
+    logos.length = 0;
+    const vBare = vol(buildTrisForShape('box', p));
+    put('back', -0.6);
+    const vIn = vol(buildTrisForShape('box', p));
+    chk('утопленный рисунок УБАВЛЯЕТ материал, а не добавляет', vIn < vBare - 50, +(vIn - vBare).toFixed(1));
+    put('back', 0.8);
+    const vOut = vol(buildTrisForShape('box', p));
+    chk('а выпуклый — прибавляет', vOut > vBare + 50, +(vOut - vBare).toFixed(1));
+  }
   for (const axis of ['-Z','+X','+Y']){
     put(axis);
     chk('старая карточка с осью «'+axis+'» падает на psLogoOn',
@@ -262,27 +284,49 @@ console.log('=== поверхность берётся с КАРТОЧКИ ло�
     chk('и на «спинку», если так стоит по умолчанию',
         standLogoSurface(logos[0], Object.assign({}, p, {psLogoOn:'back'})) === 'back');
   }
-  // два логотипа — две поверхности сразу, чего одна общая настройка не позволяла в принципе
   {
     logos.length = 0;
-    logos.push({id:1, face:'floor', u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
-    logos.push({id:2, face:'back',  u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
-    const t = standLogoTris(p, 120);
-    chk('два логотипа на разных поверхностях строятся вместе', t.length > 0);
-    chk('и вместе они герметичны', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
-    const whole = buildTrisForShape('box', Object.assign({}, p));
-    chk('и вся подставка с ними тоже', manifoldCheck(whole,4).watertight, manifoldCheck(whole,4));
+    logos.push({id:1, face:'floor', u0:0, v0:0, w:26, h:26, depth:-0.6, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
+    logos.push({id:2, face:'back',  u0:0, v0:0, w:26, h:26, depth:-0.6, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
+    const t = buildTrisForShape('box', p);
+    chk('два логотипа мнут две поверхности сразу',
+        sunk(t, standLogoFrame(p,'floor'), -0.6) > 50 && sunk(t, standLogoFrame(p,'back'), -0.6) > 50,
+        [sunk(t, standLogoFrame(p,'floor'), -0.6), sunk(t, standLogoFrame(p,'back'), -0.6)]);
+    chk('и деталь при этом замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
   }
-  // и карточка предлагает ровно то, на что построитель отзывается
+  /* Вырез под кабель и выемка на дне не уживаются: дно с вырезом строится другой машинкой. Приложение в
+     этом случае оставляет дно ровным — и обязано сказать это вслух, а не промолчать. */
+  {
+    put('floor');
+    const withSlot = Object.assign({}, p, {psSlot:24});
+    chk('дно с вырезом под кабель остаётся замкнутым',
+        manifoldCheck(buildTrisForShape('box', withSlot),4).watertight);
+    chk('и про несовместимость сказано',
+        collectPrintWarnings(withSlot).some(x => /вырез под кабель/.test(x)),
+        collectPrintWarnings(withSlot));
+    /* И вырез при этом НА МЕСТЕ. Ровно это и стоит на кону: снять оговорку — значит построить дно
+       призмой и потерять вырез молча, а деталь при этом останется замкнутой и с виду правильной.
+       Меряется объёмом: с вырезом материала меньше. */
+    logos.length = 0;
+    const vNoSlot = vol(buildTrisForShape('box', Object.assign({}, p, {psSlot:0})));
+    const vSlot   = vol(buildTrisForShape('box', Object.assign({}, p, {psSlot:24})));
+    put('floor');
+    const vSlotLogo = vol(buildTrisForShape('box', withSlot));
+    /* Сверяется с деталью, у которой вырез есть, а логотипа нет: раз дно осталось ровным, объём обязан
+       совпасть с ней ТОЧНО. Сравнивать с деталью без выреза мало — вмятина тоже убавляет материал, и
+       порог «меньше на сотню» прошёл бы в обоих случаях. Мутация это и показала. */
+    chk('вырез под кабель никуда не делся', Math.abs(vSlotLogo - vSlot) < 1e-6,
+        {свырезом:+vSlot.toFixed(1), свырезомилого:+vSlotLogo.toFixed(1), безвыреза:+vNoSlot.toFixed(1)});
+    chk('а без выреза молчит',
+        !collectPrintWarnings(p).some(x => /вырез под кабель/.test(x)));
+  }
   {
     const st = facesForShape(Object.assign({}, defaultBoxParams(), {psOn:true}));
     chk('на подставке карточка предлагает её поверхности', st.join() === STAND_LOGO_SURFACES.join(), st);
-    const box = facesForShape(defaultBoxParams());
-    chk('а на кубе — по-прежнему оси', box.join() === ALL_FACES.join(), box);
+    chk('а на кубе — по-прежнему оси', facesForShape(defaultBoxParams()).join() === ALL_FACES.join());
     chk('у каждой поверхности есть подпись и подписи осей смещения',
         STAND_LOGO_SURFACES.every(f => FACE_LABELS[f] && FACE_LABELS[f].length > 2 &&
-                                       FACE_AXIS_LABELS[f] && FACE_AXIS_LABELS[f].length === 2),
-        STAND_LOGO_SURFACES.map(f => [FACE_LABELS[f], FACE_AXIS_LABELS[f]]));
+                                       FACE_AXIS_LABELS[f] && FACE_AXIS_LABELS[f].length === 2));
   }
   logos.length = 0;
 }
@@ -402,39 +446,48 @@ console.log('=== цветная печать (AMS) на подставке ===')
   logos.length = 0;
 }
 
-console.log('=== край рельефа идёт по рисунку, а не по клеткам ===');
+console.log('=== край мозаики у цветной детали идёт по рисунку, а не по клеткам ===');
 {
-  /* Тот же замер, что у подстаканника и у наклейки: у РАСТРОВОГО круга контур равен 8r при любой мелкости
-     сетки, против положенных 2πr ≈ 6.28r — на 27 % длиннее, и весь избыток и есть ступеньки. Диск взят
-     именно потому, что его периметр известен точно, и вопрос — насколько близко к нему подходит мозаика. */
-  const RAD = 0.4, W = 40;
+  /* Сглаживание края (mosaicWarp) живёт там, где есть МОЗАИКА из ячеек, — то есть у цветных пробок.
+     Обычный логотип с v17.3.0 мнёт саму панель, и его край это край сетки панели, как у стенки куба:
+     скат в одну ячейку, а не отвесная стенка из отдельных четырёхугольников. Мерить там нечего, и этот
+     замер переехал на пробку, где мозаика осталась.
+
+     У РАСТРОВОГО круга контур равен 8r при любой мелкости сетки против положенных 2πr ≈ 6.28r — на 27 %
+     длиннее. Диск взят потому, что его периметр известен точно. */
+  const RAD = 0.4, W = 30;
   const DISC = analyzeLogoImageData(img((x,y)=>Math.hypot(x-0.5,y-0.5) < RAD ? [240,240,240,255] : [0,0,0,0]), S).heightmap;
-  const p = Object.assign({}, defaultBoxParams(), {psOn:true, psLogoOn:'floor'});
   logos.length = 0; boxHoles.length = 0;
-  logos.push({id:1, face:'-Y', u0:0, v0:0, w:W, h:W, depth:0.8, threshold:0.5,
+  const p = Object.assign({}, defaultBoxParams(), {psOn:true, logoAms:'ink1'});
+  logos.push({id:1, face:'back', u0:0, v0:0, w:W, h:W, depth:-0.6, threshold:0.5,
               invert:false, rotation:0, heightmap:DISC, levels:2});
-  const t = standLogoTris(p, 160);
-  // дно смотрит в −Y, значит лицо рельефа — самая нижняя плоскость из тех, что смотрят туда же
+  const t = buildTrisForShape('box', p);
+  chk('пробка построилась', t.length > 0, t.length);
+  const fr = standLogoFrame(p, 'back');
+  const d3c = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
   const nrm = T => { const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]],
                            v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
     const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
     return L<1e-12 ? null : [c[0]/L,c[1]/L,c[2]/L]; };
-  let ymin = 1e9;
-  for(const T of t){ const n=nrm(T); if(!n || n[1] > -0.999) continue; ymin = Math.min(ymin, T[0][1]); }
-  const key=(A,B)=>{const a=A.map(q=>q.toFixed(4)).join(','), b=B.map(q=>q.toFixed(4)).join(',');
-    return a<b ? a+'|'+b : b+'|'+a; };
+  // лицо пробки: наибольший отступ по нормали рамки среди граней, смотрящих туда же
+  let top = -Infinity;
+  for(const T of t){ const n=nrm(T); if(!n || d3c(n,fr.n) < 0.999) continue;
+    top = Math.max(top, d3c([T[0][0]-fr.o[0],T[0][1]-fr.o[1],T[0][2]-fr.o[2]], fr.n)); }
+  const key=(A,B)=>{const x=A.map(q=>q.toFixed(4)).join(','), y=B.map(q=>q.toFixed(4)).join(',');
+    return x<y ? x+'|'+y : y+'|'+x; };
   const cnt = new Map();
-  for(const T of t){ const n=nrm(T); if(!n || n[1] > -0.999 || Math.abs(T[0][1]-ymin) > 1e-6) continue;
+  for(const T of t){ const n=nrm(T); if(!n || d3c(n,fr.n) < 0.999) continue;
+    if(Math.abs(d3c([T[0][0]-fr.o[0],T[0][1]-fr.o[1],T[0][2]-fr.o[2]], fr.n) - top) > 1e-6) continue;
     for(let e=0;e<3;e++){ const k=key(T[e],T[(e+1)%3]); cnt.set(k,(cnt.get(k)||0)+1); } }
   let peri=0;
-  for(const [k,n] of cnt) if(n===1){ const [a,b]=k.split('|').map(q=>q.split(',').map(Number));
-    peri += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+  for(const [k,n] of cnt) if(n===1){ const [x,y]=k.split('|').map(q=>q.split(',').map(Number));
+    peri += Math.hypot(x[0]-y[0], x[1]-y[1], x[2]-y[2]); }
   const truth = 2*Math.PI*RAD*W;
-  chk('контур рельефа нашёлся', peri > truth*0.5, +peri.toFixed(2));
+  chk('контур пробки нашёлся', peri > truth*0.5, +peri.toFixed(2));
   chk('и идёт по окружности, а не лесенкой (лесенка это 1.27)', peri/truth < 1.12,
       {периметр:+peri.toFixed(2), истинный:+truth.toFixed(2), отношение:+(peri/truth).toFixed(3)});
   chk('и не короче истинного — срезать углы тоже нельзя', peri/truth > 0.97, +(peri/truth).toFixed(3));
-  chk('патч остался замкнутым', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  chk('пробка замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
   logos.length = 0;
 }
 

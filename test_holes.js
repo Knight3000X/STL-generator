@@ -70,6 +70,61 @@ base({width:40,height:40,depth:40});
   boxHoles.length=0; boxHoles.push(h);
   chk('clamped oversized hole still watertight', wt(buildTrisForShape('box',paramState.box))); }
 
+console.log('\n=== запас блока — не потолок диаметра на сплошной стенке ===');
+{
+  /* Вокруг отверстия строится БЛОК ячеек сетки, расходящийся от контура на 1.7 радиуса: столько нужно
+     кольцевому стежку от края блока к контуру, чтобы он был собран из нормальных четырёхугольников.
+     Отбраковывался же по этому блоку не стежок, а само отверстие — и на стенке 30 мм это давало потолок
+     ≈Ø16 при том, что построитель режет там Ø27 и остаётся герметичным. holeFaceWithHoles обрезает блок
+     по грани: не хватило запаса — блок становится всей гранью, и стежок идёт от её края прямо к контуру.
+     Влезать обязано отверстие, а не запас вокруг него. */
+  base({width:30,height:30,depth:20});
+  const h={id:31,face:'+Z',u0:0,v0:0,diameter:999}; clampHoleToFace(h);
+  chk('на стенке 30 мм проходит больше Ø24, а не ≈Ø16', h.diameter > 24, h.diameter);
+  chk('и всё-таки меньше самой стенки', h.diameter < 30, h.diameter);
+  boxHoles.length=0; boxHoles.push(h);
+  const t=buildTrisForShape('box',paramState.box);
+  chk('такое отверстие герметично', wt(t)&&!hasNaN(t), manifoldCheck(t,4));
+  chk('и оно правда сквозное', signedVol(t) < signedVol(buildBoxWithHoles(30,30,20,[])) - 8000,
+      {c:signedVol(t)|0, solid:signedVol(buildBoxWithHoles(30,30,20,[]))|0});
+  // …и не только круг: зенковка, цековка и USB-C того же размера тоже режутся
+  for (const [name, hole] of [
+    ['зенковка', {id:32,face:'+Z',u0:0,v0:0,diameter:6,head:'sink',headDiameter:999,headDepth:3}],
+    ['цековка',  {id:33,face:'+Z',u0:0,v0:0,diameter:6,head:'bore',headDiameter:999,headDepth:3}],
+    ['USB-C',    {id:34,face:'+Z',u0:0,v0:0,shape:'rrect',portW:999,portH:8,cornerR:1.6}],
+  ]) {
+    base({width:30,height:30,depth:20});
+    clampHoleToFace(hole); boxHoles.length=0; boxHoles.push(hole);
+    const tt=buildTrisForShape('box',paramState.box);
+    chk(name+' на всю стенку: герметично', wt(tt)&&!hasNaN(tt), manifoldCheck(tt,4));
+  }
+  /* А на ПОЛОЙ стенке запас обязан влезть целиком, и потолок остаётся прежним: там окно режется дважды,
+     снаружи и изнутри, оба реза строятся по одному и тому же 1.7-блоку и обязаны совпасть — обрезать его
+     по грани там нечем. Два числа, а не одно, и это holeBlockRoom. */
+  base({width:30,height:30,depth:20,hollow:true,wallThickness:2});
+  const hh={id:35,face:'+Z',u0:0,v0:0,diameter:999}; clampHoleToFace(hh);
+  chk('на полой стенке потолок прежний', hh.diameter < 17, hh.diameter);
+  chk('и это ровно старое правило', Math.abs(hh.diameter - 30*0.9/1.7) < 1e-6, hh.diameter);
+  boxHoles.length=0; boxHoles.push(hh);
+  chk('и порт в полой стенке герметичен', wt(buildTrisForShape('box',paramState.box)));
+  /* Узор себя полицирует сам: копию, у которой САМО отверстие уходит за край грани, надо выбросить —
+     иначе кольцевой стежок пойдёт по вершинам, которых на грани нет. Проверяется тем, что легко
+     недосмотреть: сетка 3×1 с шагом, при котором крайние копии свисают, оставляет ровно середину. */
+  base({width:60,height:60,depth:20});
+  boxHoles.length=0;
+  boxHoles.push({id:36,face:'+Z',u0:0,v0:0,diameter:20,pattern:'grid',gridNU:3,gridNV:1,gridPU:26,gridPV:10});
+  const kept = expandHolePatterns(paramState.box);
+  chk('свисающие с края копии выброшены, середина осталась', kept.length === 1, kept.length);
+  chk('и осталась именно середина', kept.length === 1 && Math.abs(kept[0].u0) < 1e-9, kept.map(k=>k.u0));
+  chk('и построенное по ним герметично', wt(buildTrisForShape('box',paramState.box)));
+  // …а когда все три влезают, все три и остаются: проверка обязана быть консервативной, а не жадной
+  boxHoles.length=0;
+  boxHoles.push({id:37,face:'+Z',u0:0,v0:0,diameter:8,pattern:'grid',gridNU:3,gridNV:1,gridPU:18,gridPV:10});
+  chk('а влезающие копии все на месте', expandHolePatterns(paramState.box).length === 3,
+      expandHolePatterns(paramState.box).length);
+  base({}); boxHoles.length=0;
+}
+
 console.log('\n=== overlapping holes on the same axis stay watertight (later one dropped) ===');
 // Two holes on the SAME face whose blocks overlap used to share grid cells and open the mesh.
 { const t = buildBoxWithHoles(60,60,60,[{axis:2,cp:-3,cq:0,r:7},{axis:2,cp:4,cq:0,r:7}]);

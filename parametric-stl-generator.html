@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.0.0';
+const APP_VERSION = 'v17.0.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -9165,36 +9165,55 @@ function buildBoxWithHoles(w,h,d, holes){
 // Convert a UI hole to the builder's {axis,cp,cq, …profile}. Circle → {r}; rounded rectangle (USB-C etc.)
 // → {ap,aq,rc}. Through-hole → the sign of the face doesn't matter; (u0,v0) are already in the face's
 // (u,v) = HOLE_AXIS_PQ order (u along p, v along q), so portW maps to ap and portH to aq.
+/* Насколько блок сетки вокруг отверстия расходится от его контура. Запас нужен кольцевому стежку от края
+   блока к контуру: при 1.7 он собран из нормальных четырёхугольников, а не из щепок.
+
+   На СПЛОШНОЙ коробке этот запас не ограничение: holeFaceWithHoles обрезает блок по грани, и если запаса
+   не хватило, блок просто становится всей гранью, а стежок идёт от её края прямо к контуру. У ПОЛОЙ так
+   нельзя: стенка режется дважды, снаружи и изнутри, оба окна строятся по одному и тому же 1.7-блоку и
+   обязаны совпасть, поэтому там запас обязан влезть целиком. Отсюда два числа, а не одно. */
+const HOLE_BLOCK = 1.7;
+function holeBlockRoom(p){ return (p && (p.hollow || p.rim)) ? HOLE_BLOCK : 1; }
 // Expand each UI hole into its PATTERN copies (grid n×m with a pitch / n around a circle), both
 // centred on the hole's own position. Copies whose grid block would leave the face, or would
 // overlap an earlier copy's block on the same face, are dropped — the builders assume disjoint
 // in-face blocks (single holes get this via clampHoleToFace; the pattern must self-police).
 function expandHolePatterns(p){
   const out=[];
-  const blockOf = (H) => { // half-extents of the builder block around a hole copy
+  // Собственные полуразмеры отверстия на грани — без всякого запаса, ровно контур.
+  const extOf = (H) => {
     if (H.shape === 'svg') {
       const s = Math.max(1, H.svgWidth || 20) / 2 / Math.max(0.05, H.svgApU_img || 1);
       const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
       const vert = HOLE_AXIS_PQ[fa[2]][0] === 1;
       const ap = (vert ? H.svgAqU_img : H.svgApU_img) || 1, aq = (vert ? H.svgApU_img : H.svgAqU_img) || 1;
-      return { hu: ap*s*1.7, hv: aq*s*1.7 };
+      return { ap: ap*s, aq: aq*s };
     }
     if (H.shape === 'rrect') {
       const fa = FACE_AXES[H.face] ? FACE_AXES[H.face](p) : [0,1,2,p.depth/2];
-      const { ap, aq } = rrectHalfExtents(fa[2], H.portW||9, H.portH||3.2);
-      return { hu: ap*1.7, hv: aq*1.7 };
+      return rrectHalfExtents(fa[2], H.portW||9, H.portH||3.2);
     }
     const r = ((H.head==='sink'||H.head==='bore') ? Math.max(H.diameter||6, H.headDiameter||0) : (H.diameter||6)) / 2;
-    return { hu: r*1.7, hv: r*1.7 };
+    return { ap: r, aq: r };
   };
   const faceHalf = (H) => {
     const dims = BOX_FACE_DIMS[H.face] ? BOX_FACE_DIMS[H.face](p) : { uLen:p.width, vLen:p.height };
     return { hu: dims.uLen/2, hv: dims.vLen/2 };
   };
+  /* Блок сетки вокруг отверстия — то, что реально сталкивается с соседями. Он НЕ обрезается по грани, в
+     отличие от того же блока в holeFaceWithHoles, и это не рассогласование: обрезка там нужна, чтобы блок
+     не вылез за грань, а здесь блоки сравниваются только друг с другом, и обрезанный вариант дал бы ту же
+     пару кандидатов — отверстие, прошедшее проверку ниже, уже не шире грани, поэтому обрезка сработала бы
+     разве что на одиночном отверстии, у которого и сравнивать не с чем. Лишний множитель, ничего не
+     меняющий ни в одной достижимой настройке, — это строка, которую потом принимают за правило. */
+  const blockOf = (H) => { const e = extOf(H);
+    return { hu: e.ap*HOLE_BLOCK, hv: e.aq*HOLE_BLOCK }; };
+  const room = holeBlockRoom(p);
   const accepted=[]; // kept copies (for the overlap check), per call
   const push = (H) => {
-    const b = blockOf(H), f = faceHalf(H);
-    if (Math.abs(H.u0) + b.hu > f.hu - 0.2 || Math.abs(H.v0) + b.hv > f.hv - 0.2) return; // off the face
+    const e = extOf(H), b = blockOf(H), f = faceHalf(H);
+    // Влезть обязано отверстие (плюс запас, если стенка полая — там блок не обрезается, см. holeBlockRoom)
+    if (Math.abs(H.u0) + e.ap*room > f.hu - 0.2 || Math.abs(H.v0) + e.aq*room > f.hv - 0.2) return;
     for (const A of accepted) {
       if (A.face !== H.face) continue;
       const ab = blockOf(A);
@@ -16132,6 +16151,9 @@ const HOLE_PRESETS = {
 function clampHoleToFace(hole) {
   const p = paramState.box, dims = BOX_FACE_DIMS[hole.face] ? BOX_FACE_DIMS[hole.face](p) : { uLen:p.width, vLen:p.height };
   const hu = dims.uLen/2, hv = dims.vLen/2;
+  // Влезть обязано само отверстие; блок сетки вокруг него обрежется по грани — кроме полой стенки,
+  // где он обязан влезть целиком. Одно правило, holeBlockRoom, а не 1.7, вписанные в семь мест.
+  const room = holeBlockRoom(p);
   if (hole.shape === 'svg') {
     // SVG contour: clamp the requested WIDTH so the shape's block fits the face, then clamp position.
     if (!hole.svgRU) return;
@@ -16140,9 +16162,9 @@ function clampHoleToFace(hole) {
     const apI = Math.max(0.05, hole.svgApU_img || 1), aqI = Math.max(0.05, hole.svgAqU_img || 1);
     const uU = vert ? aqI : apI, vU = vert ? apI : aqI;    // unit extents along the face's u/v
     // width (mm) spans 2*apI*scale; block = extent*1.7 must fit inside 0.9*face
-    const maxW = Math.min((hu*0.9/1.7)/uU, (hv*0.9/1.7)/vU) * 2 * apI;
+    const maxW = Math.min((hu*0.9/room)/uU, (hv*0.9/room)/vU) * 2 * apI;
     hole.svgWidth = Math.max(2, Math.min(hole.svgWidth || 20, maxW));
-    const s = (hole.svgWidth/2) / apI, hsU = uU*s*1.7, hsV = vU*s*1.7;
+    const s = (hole.svgWidth/2) / apI, hsU = uU*s*room, hsV = vU*s*room;
     hole.u0 = Math.max(-(hu-hsU), Math.min(hu-hsU, hole.u0 || 0));
     hole.v0 = Math.max(-(hv-hsV), Math.min(hv-hsV, hole.v0 || 0));
     return;
@@ -16152,17 +16174,17 @@ function clampHoleToFace(hole) {
     // to the face, then map back — so a port keeps its shape and stays inside the face on every wall.
     const axis = FACE_AXES[hole.face] ? FACE_AXES[hole.face](p)[2] : 2;
     const uIsVertical = HOLE_AXIS_PQ[axis][0] === 1;
-    const maxU = Math.max(1, (hu * 0.9 / 1.7) * 2), maxV = Math.max(1, (hv * 0.9 / 1.7) * 2);
+    const maxU = Math.max(1, (hu * 0.9 / room) * 2), maxV = Math.max(1, (hv * 0.9 / room) * 2);
     let uE = Math.max(1, Math.min(uIsVertical ? (hole.portH || 3.2) : (hole.portW || 9), maxU));
     let vE = Math.max(1, Math.min(uIsVertical ? (hole.portW || 9) : (hole.portH || 3.2), maxV));
     if (uIsVertical) { hole.portH = uE; hole.portW = vE; } else { hole.portW = uE; hole.portH = vE; }
     hole.cornerR = Math.max(0, Math.min(hole.cornerR === undefined ? 1.6 : hole.cornerR, Math.min(hole.portW, hole.portH) / 2));
-    const hsU = (uE/2) * 1.7, hsV = (vE/2) * 1.7;
+    const hsU = (uE/2) * room, hsV = (vE/2) * room;
     hole.u0 = Math.max(-(hu-hsU), Math.min(hu-hsU, hole.u0 || 0));
     hole.v0 = Math.max(-(hv-hsV), Math.min(hv-hsV, hole.v0 || 0));
     return;
   }
-  const maxR = Math.max(0.3, Math.min(hu, hv) * 0.9 / 1.7); // block (hs = r*1.7) must fit inside the face
+  const maxR = Math.max(0.3, Math.min(hu, hv) * 0.9 / room);
   hole.diameter = Math.max(0.6, Math.min(hole.diameter || 6, maxR * 2));
   // Countersink / counterbore head: the widened head circle drives the block, so it (not the bore) must fit
   // the face; its depth is capped to most of the box's thickness along the bore axis.
@@ -16172,7 +16194,7 @@ function clampHoleToFace(hole) {
     hole.headDepth = Math.max(0.3, Math.min(hole.headDepth || 3, axisHalf * 1.5));
   }
   const effR = ((hole.head==='sink'||hole.head==='bore') ? Math.max(hole.diameter, hole.headDiameter||0)/2 : hole.diameter/2) + (hole.head ? 0 : (hole.edgeCh||0));
-  const hs = effR * 1.7;
+  const hs = effR * room;
   hole.u0 = Math.max(-(hu-hs), Math.min(hu-hs, hole.u0 || 0));
   hole.v0 = Math.max(-(hv-hs), Math.min(hv-hs, hole.v0 || 0));
 }

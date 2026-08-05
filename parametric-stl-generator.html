@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.3.0';
+const APP_VERSION = 'v17.3.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12687,7 +12687,16 @@ function standLogoSurface(lg, p){
 
    Сетка кладётся на ВСЮ грань, а не на пятно логотипа: у грани общие с торцами и соседями края, и
    подразбивать её кусками нельзя. По краю смещение принудительно ноль — там вершины общие. */
+/* Можно ли промять ЭТУ поверхность. Дно с вырезом под кабель строится другой машинкой (коробкой с
+   отверстием), и сетки под выемку там нет. Раньше в этом случае логотип на дне не появлялся вообще —
+   ни вмятиной, ни накладкой, — то есть возможность просто пропадала; поймано `test_logo_mirror.js`,
+   у которого вырез стоит по умолчанию. Теперь такая поверхность честно возвращается к накладке. */
+function standSurfaceDented(p, which){
+  if (which !== 'floor') return true;
+  return !(Math.max(0, p && p.psSlot != null ? p.psSlot : 18) > 1);
+}
 function standSurfaceDisp(p, which, res, spanU, spanV){
+  if (!standSurfaceDented(p, which)) return null;
   if (typeof logos === 'undefined' || !logos.length) return null;
   const mine = logos.filter(lg => lg.heightmap && (lg.depth||0) && standLogoSurface(lg, p) === which);
   if (!mine.length) return null;
@@ -12734,7 +12743,6 @@ function standSurfaceDisp(p, which, res, spanU, spanV){
    Обычный логотип панель мнёт сама (см. standSurfaceDisp), и накладка ему больше не нужна. */
 function standLogoTris(p, res, amsK){
   if (typeof logos === 'undefined' || !logos.length) return [];
-  if (!logoAmsOn(p)) return [];
   /* Имя тут НЕ `want`: строчкой ниже в цикле уже живёт свой `want` — густота сетки, — и он бы это
      затенил. Первая версия так и сделала: тело уходило в ветку пробок (густота всегда истинна), а там
      отсеивалось как «цвета столько нет», и патч выходил пустым при любых настройках. */
@@ -12742,7 +12750,11 @@ function standLogoTris(p, res, amsK){
   const out = [];
   for (const lg of logos){
     if (!lg.heightmap) continue;
-    const fr = standLogoFrame(p, standLogoSurface(lg, p));
+    const which = standLogoSurface(lg, p);
+    // Накладка нужна там, где панель промять нечем, и цветной печати — у неё карман и пробки обязаны
+    // резаться одной сеткой. Всё остальное панель мнёт сама, и накладывать поверх вмятины нечего.
+    if (!logoAmsOn(p) && standSurfaceDented(p, which)) continue;
+    const fr = standLogoFrame(p, which);
     if (!(fr.halfU > 2) || !(fr.halfV > 2)) continue;
     const depth = lg.depth || 0;
     if (!depth) continue;
@@ -12840,7 +12852,7 @@ function buildPhoneStand(p){
   const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
   /* Поверхность, на которой лежит логотип, строится СЕТКОЙ и мнётся — см. prismXReliefTris. Без логотипа
      всё остаётся ровно тем, чем было: та же плита, тот же борт, та же призма спинки. */
-  const fdisp = slotW > 1 ? null : standSurfaceDisp(p, 'floor', lres, W, D);
+  const fdisp = standSurfaceDisp(p, 'floor', lres, W, D);
   // Base plate, with the charging-cable slot just behind the lip so a plugged-in cable clears the desk.
   const holes = slotW>1 ? [{axis:1, cp:0, cq: zF + lipH + slotW*0.7, ap:slotW/2, aq:Math.min(slotW,D*0.25)/2, rc:Math.min(3, slotW/2-0.4)}] : [];
   if (fdisp) {
@@ -17399,7 +17411,7 @@ function collectPrintWarnings(p){
   if (p.psOn && typeof logos !== 'undefined' && logos.some(l => l.heightmap && (l.depth||0)) &&
       Math.max(0, p.psSlot != null ? p.psSlot : 18) > 1 &&
       logos.some(l => l.heightmap && (l.depth||0) && standLogoSurface(l, p) === 'floor'))
-    w.push('логотип на дне: вырез под кабель и вдавленный рисунок не уживаются — дно останется ровным, поставьте вырез в 0 или перенесите логотип');
+    w.push('логотип на дне: вырез под кабель и вдавленный рисунок не уживаются — рисунок ляжет накладкой поверх дна; поставьте вырез в 0, чтобы он вдавился');
   if (p.pbPart && p.pbPart !== 'none' && p.pbVent && p.pbVent !== 'none') {
     const g = pboxVentSpec(p);
     if (!g && (p.pbPart === 'lid'))

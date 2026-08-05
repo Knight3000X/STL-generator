@@ -223,6 +223,70 @@ console.log('=== подставка ушла из общей плиты, и эт
       sectionRelevant('Подставка (телефон / планшет)', 'stand', false) === true);
 }
 
+console.log('=== поверхность берётся с КАРТОЧКИ логотипа, а не одна на всех ===');
+{
+  /* До v17.1.3 подставка читала только `psLogoOn`, а поле грани на карточке не читала вовсе: список
+     менялся, перерисовка шла, рельеф оставался на дне. Проверяется не «поменялась ли сетка» — она
+     поменялась бы и от сдвига на миллиметр, — а ГДЕ оказался патч: его центр обязан лечь на начало
+     координат той рамки, которую подставка называет этим именем. */
+  const d3b = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const centre = t => { const c=[0,0,0]; let n=0;
+    for(const T of t) for(const q of T){ c[0]+=q[0]; c[1]+=q[1]; c[2]+=q[2]; n++; }
+    return [c[0]/n, c[1]/n, c[2]/n]; };
+  const p = Object.assign({}, defaultBoxParams(), {psOn:true, psLogoOn:'floor'});
+  const put = face => { logos.length = 0;
+    logos.push({id:1, face, u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2}); };
+  const seen = [];
+  for (const which of STAND_LOGO_SURFACES){
+    put(which);
+    const t = standLogoTris(p, 120);
+    chk('на «'+which+'» патч построился', t.length > 0, t.length);
+    const fr = standLogoFrame(p, which), c = centre(t);
+    // расстояние от центра патча до ПЛОСКОСТИ рамки вдоль её нормали — рельеф лежит на ней, а не где-то
+    const off = Math.abs(d3b([c[0]-fr.o[0], c[1]-fr.o[1], c[2]-fr.o[2]], fr.n));
+    chk('и лёг на поверхность «'+fr.name+'», а не рядом', off < 2.5, +off.toFixed(2));
+    chk('и он герметичен', manifoldCheck(t,4).watertight);
+    seen.push(c);
+  }
+  // три поверхности — три РАЗНЫХ места: иначе проверка выше прошла бы и на одной-единственной
+  for (let i=0;i<seen.length;i++) for (let j=i+1;j<seen.length;j++)
+    chk('«'+STAND_LOGO_SURFACES[i]+'» и «'+STAND_LOGO_SURFACES[j]+'» — разные места',
+        Math.hypot(seen[i][0]-seen[j][0], seen[i][1]-seen[j][1], seen[i][2]-seen[j][2]) > 5,
+        [seen[i].map(v=>+v.toFixed(1)), seen[j].map(v=>+v.toFixed(1))]);
+  // карточка, сохранённая до v17.1.3, несёт ОСЬ — она обязана вести себя ровно как раньше
+  for (const axis of ['-Z','+X','+Y']){
+    put(axis);
+    chk('старая карточка с осью «'+axis+'» падает на psLogoOn',
+        standLogoSurface(logos[0], p) === 'floor', standLogoSurface(logos[0], p));
+    chk('и на «спинку», если так стоит по умолчанию',
+        standLogoSurface(logos[0], Object.assign({}, p, {psLogoOn:'back'})) === 'back');
+  }
+  // два логотипа — две поверхности сразу, чего одна общая настройка не позволяла в принципе
+  {
+    logos.length = 0;
+    logos.push({id:1, face:'floor', u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
+    logos.push({id:2, face:'back',  u0:0, v0:0, w:26, h:26, depth:0.8, threshold:0.5, invert:false, rotation:0, heightmap:HM, levels:2});
+    const t = standLogoTris(p, 120);
+    chk('два логотипа на разных поверхностях строятся вместе', t.length > 0);
+    chk('и вместе они герметичны', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    const whole = buildTrisForShape('box', Object.assign({}, p));
+    chk('и вся подставка с ними тоже', manifoldCheck(whole,4).watertight, manifoldCheck(whole,4));
+  }
+  // и карточка предлагает ровно то, на что построитель отзывается
+  {
+    const st = facesForShape(Object.assign({}, defaultBoxParams(), {psOn:true}));
+    chk('на подставке карточка предлагает её поверхности', st.join() === STAND_LOGO_SURFACES.join(), st);
+    const box = facesForShape(defaultBoxParams());
+    chk('а на кубе — по-прежнему оси', box.join() === ALL_FACES.join(), box);
+    chk('у каждой поверхности есть подпись и подписи осей смещения',
+        STAND_LOGO_SURFACES.every(f => FACE_LABELS[f] && FACE_LABELS[f].length > 2 &&
+                                       FACE_AXIS_LABELS[f] && FACE_AXIS_LABELS[f].length === 2),
+        STAND_LOGO_SURFACES.map(f => [FACE_LABELS[f], FACE_AXIS_LABELS[f]]));
+  }
+  logos.length = 0;
+}
+
 console.log('=== край рельефа идёт по рисунку, а не по клеткам ===');
 {
   /* Тот же замер, что у подстаканника и у наклейки: у РАСТРОВОГО круга контур равен 8r при любой мелкости

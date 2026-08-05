@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.1.2';
+const APP_VERSION = 'v17.1.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4857,7 +4857,8 @@ const SHAPE_PARAMS = {
     {group:'Подставка (телефон / планшет)', key:'psRest', label:'Подставка: длина спинки', min:20, max:200, step:1, default:70, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psLip', label:'Подставка: высота переднего упора', min:4, max:60, step:1, default:14, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psT', label:'Подставка: толщина', min:2, max:15, step:0.5, default:4, unit:'мм'},
-    {group:'Подставка (телефон / планшет)', key:'psLogoOn', label:'Подставка: логотип на', type:'select', default:'floor',
+    {group:'Подставка (телефон / планшет)', key:'psLogoOn', label:'Подставка: логотип по умолчанию на', type:'select', default:'floor',
+      hint:'Куда ложится логотип, у которого на карточке не выбрана поверхность подставки. Саму поверхность каждый логотип несёт на своей карточке — там же, где грань у всех остальных форм.',
       options:[{v:'floor',t:'дне (снизу)'},{v:'back',t:'спинке (снаружи)'},{v:'lip',t:'переднем борте'}]},
     {group:'Подставка (телефон / планшет)', key:'psSlot', label:'Подставка: ширина выреза под кабель (0 = без)', min:0, max:80, step:1, default:18, unit:'мм'},
     {group:'Скругление углов', key:'filletRadius', label:'Скругление углов (общее)', min:0, max:150, step:0.5, default:0, unit:'мм'},
@@ -6115,7 +6116,7 @@ const MODEL_HELP = {
                'Одноцветный подстаканник ничего этого не требует: карман просто останется углублением.',
              ],
              mat:['pla','petg']},
-  stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель. Логотип можно класть на дно, на спинку снаружи или на передний борт — «Подставка: логотип на».', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой. Рельеф на спинке печатается по её наклону и поддержек не требует; на переднем борте — вертикальной стенкой, там он выходит чётче всего.', mat:['petg','pla']},
+  stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель. Логотип можно класть на дно, на спинку снаружи или на передний борт — «Подставка: логотип на».', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой. Рельеф на спинке печатается по её наклону и поддержек не требует; на переднем борте — вертикальной стенкой, там он выходит чётче всего. Поверхность под логотип выбирается на его КАРТОЧКЕ (дно, спинка, передний борт) — как грань у остальных форм; двум логотипам можно дать две разные поверхности. Строка «логотип по умолчанию на» в этой группе решает только за карточки, где поверхность не выбрана.', mat:['petg','pla']},
   funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режим дозатора.', how:'Носиком вверх — конус тогда сам себе поддержка. Печатать вазовым режимом можно, если стенка равна одному проходу.', mat:['petg','pla']},
   baseplate:{what:'База Gridfinity: сетка гнёзд под стандартные корзины 42 × 42 мм.', how:'Плашмя, гнёздами вверх. Скос гнезда печатается навесом и поддержек не требует.', mat:['pla','petg']},
   logo3d:   {what:'Логотип, текст или QR отдельной моделью — не рельефом на детали, а самостоятельным телом с подложкой.', how:'Подложкой на стол. Мелкий рельеф выходит чище соплом 0,25 мм.', mat:['pla','petg']},
@@ -12588,14 +12589,24 @@ function standLogoFrame(p, which){
 }
 // The relief of every logo card, laid on the chosen surface of the stand. Each patch is a closed body that
 // interpenetrates the stand — the doctrine used everywhere else — so nothing here can open the host.
+/* На какой поверхности подставки живёт ЭТОТ логотип. Читается с его собственной карточки, как у всякой
+   другой формы; `psLogoOn` остаётся значением по умолчанию — и для карточек, сохранённых до v17.1.3, у
+   которых в поле грани стоит ось («−Z (сзади)»), потому что осей у подставки нет.
+
+   Раньше поверхность бралась ТОЛЬКО из `psLogoOn`, а поле грани на карточке подставка не читала вовсе.
+   Выпадающий список на карточке при этом работал: значение менялось, перерисовка шла, рельеф оставался
+   на дне. Молчаливый холостой ход, причём в самом заметном месте — прямо там, где его и крутят. */
+function standLogoSurface(lg, p){
+  if (lg && STAND_LOGO_SURFACES.indexOf(lg.face) >= 0) return lg.face;
+  return STAND_LOGO_SURFACES.indexOf(p && p.psLogoOn) >= 0 ? p.psLogoOn : 'floor';
+}
 function standLogoTris(p, res){
   if (typeof logos === 'undefined' || !logos.length) return [];
-  const which = STAND_LOGO_SURFACES.indexOf(p.psLogoOn) >= 0 ? p.psLogoOn : 'floor';
-  const fr = standLogoFrame(p, which);
-  if (!(fr.halfU > 2) || !(fr.halfV > 2)) return [];
   const out = [];
   for (const lg of logos){
     if (!lg.heightmap) continue;
+    const fr = standLogoFrame(p, standLogoSurface(lg, p));
+    if (!(fr.halfU > 2) || !(fr.halfV > 2)) continue;
     const depth = lg.depth || 0;
     if (!depth) continue;
     let plate = Math.max(0, p.logoPlate || 0);
@@ -16019,9 +16030,18 @@ function attachSplitHandle() {
   syncMode();
 }
 
-const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (дно полости)'};
-const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'] };
+const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (дно полости)',
+  'floor':'дно (снизу)','back':'спинка (снаружи)','lip':'передний борт'};
+const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'],
+  'floor':['X','Z'], 'back':['X','вдоль'], 'lip':['X','Y'] };
 const ALL_FACES = ['+Z','+X','-X','+Y','-Y','-Y-inner','-Z'];
+/* Куда вообще можно положить логотип на ТЕКУЩЕЙ форме. У подставки нет граней габарита — у неё три
+   названные поверхности (дно, спинка, борт), и спинка вдобавок наклонена, так что ни одна ось ей не
+   перпендикулярна. Предлагать там «+X (справа)» значит предлагать то, на что построитель не отзовётся:
+   до v17.1.3 список осей на карточке подставки честно менялся и не делал ничего. */
+function facesForShape(p){
+  return dominantMode(p || paramState.box) === 'stand' ? STAND_LOGO_SURFACES.slice() : ALL_FACES;
+}
 
 function escapeHtml(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 function renderModelCards() {
@@ -16135,8 +16155,14 @@ function relogoFromPreview(logo, mode, levels, done){
 function renderLogoCards() {
   const container = document.getElementById('logo-cards');
   container.innerHTML = '';
+  /* Какие поверхности предлагает карточка на этой форме, и что у неё выбрано. Логотип, сохранённый на
+     оси, а показываемый на подставке, отображается тем, куда построитель его и положит, — иначе список
+     говорил бы одно, а деталь показывала другое. */
+  const cardFaces = facesForShape(paramState.box);
+  const cardFace = lg => cardFaces.indexOf(lg.face) >= 0 ? lg.face
+                       : (dominantMode(paramState.box) === 'stand' ? standLogoSurface(lg, paramState.box) : lg.face);
   for (const logo of logos) {
-    const axisLabels = FACE_AXIS_LABELS[logo.face];
+    const axisLabels = FACE_AXIS_LABELS[cardFace(logo)] || ['U','V'];
     const card = document.createElement('div');
     card.className = 'logo-card';
     card.dataset.logoId = logo.id;
@@ -16144,7 +16170,7 @@ function renderLogoCards() {
       '<div class="logo-card-head">'+
         '<img class="logo-thumb" src="'+(logo.previewUrl||'')+'" alt="лого">'+
         '<select class="logo-face-select" data-field="face">'+
-          ALL_FACES.map(f=>'<option value="'+f+'" '+(f===logo.face?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('')+
+          cardFaces.map(f=>'<option value="'+f+'" '+(f===cardFace(logo)?'selected':'')+'>'+FACE_LABELS[f]+'</option>').join('')+
         '</select>'+
         '<button class="btn-logo3d" data-action="make3d" title="Экструзия силуэта отдельной 3D-моделью">3D</button>'+
         '<button class="btn-remove-logo" data-action="remove" title="Удалить">✕</button>'+

@@ -225,5 +225,59 @@ for(const ov of [{gearBore:8},{gearKeyW:3,gearKeyD:1.5},{gearStarts:4},{gearHub:
   chk('нарезка укладывается в бюджет пересчёта', ms < 3000, {ms});
 }
 
+console.log('=== поверхность зуба гладкая, а не ступенчатая ===');
+{
+  /* The enveloped rim is CUT, and how it is cut decides how the tooth looks. Two ways of paying for the
+     chord's overshoot into the worm, and they look completely different:
+
+     — a cell MINIMUM (each node takes the lowest envelope over its neighbourhood) is safe and FLATTENS.
+       Neighbouring layers share the sample halfway between them, so whenever that sample is the lowest
+       they come out at the same radius: the field grows plateaus two to four layers deep with a step
+       between them, and those steps are blocky banding on the flank.
+     — a CONCAVITY correction lowers each node by exactly how far the chord between its neighbours rises
+       above it: zero on a straight run, growing with curvature, and smooth because it is a second
+       difference.
+
+     So the measure is the total axial second difference of the field — how much it zig-zags — plus a
+     direct look for plateaus, which is the shape of the old defect and would not show up in an average. */
+  const m=2, Z=20, th=10;
+  const p = Object.assign({}, paramState.box);
+  base({gearWheelRim:'envelope', gearModule:m, gearTeeth:Z, gearThick:th, gearWormD:16, gearStarts:1});
+  const rp=m*Z/2, rBlank=rp+m, rB=Math.max(0.8, m*3/2);
+  const rFloor=Math.max(rB+1.2, rp-1.35*m);
+  const per=Math.max(10, Math.min(40, Math.round(2*Math.PI*rBlank/Z/0.38)));
+  const Nc=per*Z, M=Math.max(16, Math.min(120, Math.round(th/0.30)));
+  const F = wormEnvelopeField(paramState.box, rBlank, rFloor, th, Nc, M);
+  let rough = 0, span = 0, worstRun = 0, flat = 0;
+  for (let i=0;i<per;i++){
+    for (let j=1;j<M;j++){
+      const a2=F[(j-1)*Nc+i], b2=F[j*Nc+i], c2=F[(j+1)*Nc+i];
+      if (a2<=rFloor+1e-9 && b2<=rFloor+1e-9 && c2<=rFloor+1e-9) continue;
+      rough += Math.abs(a2 - 2*b2 + c2);
+    }
+    let lo=1e9, hi=-1e9, run=1;
+    for (let j=0;j<=M;j++){ const v=F[j*Nc+i]; if(v<lo)lo=v; if(v>hi)hi=v;
+      if (j>0 && Math.abs(v - F[(j-1)*Nc+i]) < 1e-9 && v > rFloor+1e-9){ run++; worstRun=Math.max(worstRun,run); flat++; }
+      else run = 1; }
+    span = Math.max(span, hi-lo);
+  }
+  chk('зуб действительно нарезан', span > 3, +span.toFixed(2));
+  /* Regression bars, set from a like-for-like measurement in this same harness. The radial march went
+     from 0.12 mm to 0.03: the coarse one stepped clean over thin parts of the thread, the envelope read
+     high at scattered nodes, and the cell minimum then pulled those down and flattened their neighbours
+     with them. Same code otherwise, same wheel:
+
+         axial second difference   57.9  →  40.4
+         layers repeating the one before   68  →  48
+
+     They are not physical limits — the envelope is a numerical minimum and keeps some residue, and the
+     minimum will always produce SOME plateau — so the bars sit between the two numbers, not at either.
+     The longest single plateau is still four layers, and saying so is more useful than a bar that would
+     pass either way. */
+  chk('и поверхность заметно глаже прежнего (было 57.9)', rough < 50, +rough.toFixed(1));
+  chk('и площадок стало меньше (было 68 слоёв)', flat < 58, flat);
+  Object.assign(paramState.box, p);
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

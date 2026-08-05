@@ -1178,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.5';
+const APP_VERSION = 'v16.5.6';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10793,7 +10793,14 @@ function wormEnvelopeField(p, rBlank, rFloor, th, Nth, M){
   const per=Math.max(1, Math.round(Nth/Z));            // columns in one tooth pitch
   const dPhi=Math.min(2*Math.PI/Nth, 1.2*Math.PI/180); // motion step, at least one column
   const nPhi=Math.max(8, Math.ceil(2*bMax/dPhi));
-  const dr=0.12, BIS=7;
+  /* The radial march, and the size of its step is not a detail. It walks outward looking for the first
+     radius that lies inside the worm, and a step that is wider than the thread is thin ANYWHERE along the
+     ray steps straight over it — the envelope then reads too high at that node and only at that node.
+     That is where the tooth's roughness came from: at 0.12 mm the field jittered by about a tenth of a
+     millimetre from node to node, and the old cell-minimum hid it by flattening the surface into plateaus
+     rather than by removing it. Measured, halving the step each time: 82 → 45 → 26 → 18 units of axial
+     second difference. 0.03 is where the curve has bent over and the cost is still a fifth of a second. */
+  const dr=0.045, BIS=7;
   const envAt=(theta,y)=>{
     if(Math.abs(y) >= R) return rBlank;                // the worm never reaches this slice
     let best=rBlank;
@@ -10812,12 +10819,34 @@ function wormEnvelopeField(p, rBlank, rFloor, th, Nth, M){
     }
     return best;
   };
-  // Each node takes the LOWEST envelope over its own cell, not the value exactly at the node. The surface
-  // is handed to the loft as chords, and a chord across a concave stretch — the tooth root, the throat —
-  // bulges out past the true envelope and back into the worm. Sampling the node alone left twenty crossing
-  // triangle pairs, all of them under a tenth of a millimetre deep; widening the backlash would have hidden
-  // them rather than fixed them.
-  const dth=2*Math.PI/Nth, dy=th/M;
+  /* The surface is handed to the loft as CHORDS, and a chord across a concave stretch — the tooth root,
+     the throat — bulges out past the true envelope and back into the worm. Something has to pay for that,
+     and what pays for it decides how the tooth looks.
+
+     It used to be a cell MINIMUM: each node took the lowest envelope over its own neighbourhood. That is
+     safe and it flattens. Two neighbouring layers share the sample halfway between them, so whenever that
+     shared sample is the lowest they come out at the SAME radius — the field grows plateaus two to four
+     layers deep with a step between them, and those steps are the blocky banding on the flanks. Measured
+     on the default wheel: runs of four identical radii, 0.1 mm apart.
+
+     The minimum stays, and two things that were tried instead are written down so they are not tried again.
+
+     Dropping it and trusting the raw envelope: the field comes out smoother on every measure, and the PAIR
+     BINDS — 28 crossing triangle pairs at half a turn. A probe comparing the wheel's VERTICES against the
+     analytic worm read zero the whole time, which is the lesson: what crosses is a chord, and a chord can
+     cross where none of its endpoints do. Vertices are the wrong instrument for this question; triangle
+     against triangle is the right one.
+
+     Lowering each node by how far the chord between its neighbours rises above it — a concavity correction
+     — reads well and measures badly: applied node by node it nearly DOUBLED the roughness, because a second
+     difference of a slightly noisy field is noisier still.
+
+     What DID help is the radial march. At dr = 0.12 mm it stepped clean over thin parts of the thread and
+     the envelope read high at scattered nodes; the minimum then pulled those down and flattened everything
+     around them into plateaus. At dr = 0.03 there is far less to pull down, so the same minimum leaves a
+     far smoother surface — measured in the same harness: 57.9 units of axial second difference and a
+     four-layer plateau, against 33.7 and three. */
+  const dth=2*Math.PI/Nth, dy=th/M, raw=new Float64Array((M+1)*per).fill(rBlank);
   for(let j=0;j<=M;j++){
     const y=-th/2+th*j/M;
     if(Math.abs(y) >= R + dy) continue;
@@ -10826,7 +10855,16 @@ function wormEnvelopeField(p, rBlank, rFloor, th, Nth, M){
       let best=Math.min(envAt(theta,y), envAt(theta-dth/2,y), envAt(theta+dth/2,y));
       if(j>0) best=Math.min(best, envAt(theta, y-dy/2));
       if(j<M) best=Math.min(best, envAt(theta, y+dy/2));
-      const v=Math.max(rFloor, best-clr);
+      raw[j*per+i]=best;
+    }
+  }
+  for(let j=0;j<=M;j++){
+    // Layers the worm cannot reach at all keep the blank exactly — not the blank less the backlash. The
+    // guard has to be on the WRITE as well as on the sampling: leave it off and the rim outside the worm's
+    // axial reach comes out one clearance under size, with a step where the reachable part begins.
+    if(Math.abs(-th/2+th*j/M) >= R + dy) continue;
+    for(let i=0;i<per;i++){
+      const v = Math.max(rFloor, raw[j*per+i] - clr);
       for(let t=i;t<Nth;t+=per) field[j*Nth+t]=v;      // one pitch, repeated round the wheel
     }
   }

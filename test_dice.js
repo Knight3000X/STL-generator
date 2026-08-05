@@ -175,5 +175,63 @@ console.log('=== валик по рёбрам, а не рамка на гран�
   }
 }
 
+console.log('=== крупная цифра на треугольной грани остаётся чёткой ===');
+{
+  // «Размер %» меряется от ОПИСАННОГО радиуса, а у треугольника он вдвое больше вписанного, поэтому
+  // штатные 55 % на d20 просили патч шире самой грани. Прежде это замечалось постфактум и построение
+  // молча уходило на смещение радиальной сетки — оттуда и рваные, размытые цифры на скриншоте.
+  const wideBar = () => { const N=LOGO_HM_SIZE, h=new Float32Array(N*N);
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){ const fx=x/N-0.5, fy=y/N-0.5;
+      h[y*N+x] = (Math.abs(fx) < 0.46 && Math.abs(fy) < 0.17) ? 1 : 0; } return h; };
+  const setup = (kind) => { base({platonic:kind, width:42, height:42, depth:42}); dieFaces.length=0;
+    dieFaces.push({id:nextDieId++, face:0, src:'text', depth:-0.2, sizeFrac:0.55, rotation:0,
+                   invert:false, threshold:0.5, offU:0, offV:0, heightmap:wideBar()});
+    return buildTrisForShape('box', paramState.box); };
+  const G20 = dieFaceGeometry('d20', 21, 21, 21), f20 = G20.faces[0];
+  const t20 = setup('d20');
+  chk('d20 с крупной цифрой герметична', manifoldCheck(t20,4).watertight, manifoldCheck(t20,4));
+  // The discriminator between the two paths is the WALL of the pocket: a cell patch cuts it perpendicular
+  // to the face, the displaced radial grid can only ramp between neighbouring grid points. Ramps are what
+  // «нечёткость» looks like, so they are what gets counted.
+  const wallsOf = (tris, n) => { let w=0;
+    for(const T of tris){
+      const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]], v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+      const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+      if(L<1e-12) continue;
+      if(Math.abs((c[0]*n[0]+c[1]*n[1]+c[2]*n[2])/L) < 0.02) w++;
+    }
+    return w; };
+  chk('карман нарезан отвесными стенками, а не пандусами', wallsOf(t20, f20.n) > 100, wallsOf(t20, f20.n));
+  // …and the clamp takes only what it must: the glyph keeps most of the size that was asked for.
+  {
+    const nC = dieGlyphCells(G20.faces.length, dieResolution);
+    const to2 = q => [dot(sub(q, f20.c), f20.u), dot(sub(q, f20.c), f20.v)];
+    const fitted = buildDieGlyphPatch(f20, dieFaces[0], nC, false, G20.polys[0].map(to2));
+    const raw    = buildDieGlyphPatch(f20, dieFaces[0], nC, false, null);
+    const spanOf = pch => { const xs = pch.ring.map(q=>q[0]); return Math.max(...xs) - Math.min(...xs); };
+    chk('патч построен в обоих случаях', !!fitted && !!raw);
+    chk('и подрезан, раз без подрезки не влезал', spanOf(fitted) < spanOf(raw),
+        {fitted:+spanOf(fitted).toFixed(2), raw:+spanOf(raw).toFixed(2)});
+    chk('но подрезан по надобности, а не вдвое', spanOf(fitted) > spanOf(raw)*0.85,
+        {fitted:+spanOf(fitted).toFixed(2), raw:+spanOf(raw).toFixed(2)});
+  }
+  // A square face has room for anything ever asked for, so nothing there may change.
+  {
+    const t6 = setup('d6');
+    const G6 = dieFaceGeometry('d6', 21, 21, 21), f6 = G6.faces[0];
+    const nC = dieGlyphCells(G6.faces.length, dieResolution);
+    const to2 = q => [dot(sub(q, f6.c), f6.u), dot(sub(q, f6.c), f6.v)];
+    const fitted = buildDieGlyphPatch(f6, dieFaces[0], nC, false, G6.polys[0].map(to2));
+    const raw    = buildDieGlyphPatch(f6, dieFaces[0], nC, false, null);
+    chk('на квадратной грани подрезка не срабатывает',
+        fitted && raw && fitted.tris.length === raw.tris.length &&
+        Math.abs(fitted.ring[0][0] - raw.ring[0][0]) < 1e-9,
+        {fitted: fitted && fitted.tris.length, raw: raw && raw.tris.length});
+    chk('и куб тоже герметичен', manifoldCheck(t6,4).watertight);
+    chk('и у него тоже отвесные стенки', wallsOf(t6, f6.n) > 100, wallsOf(t6, f6.n));
+  }
+  dieFaces.length=0;
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

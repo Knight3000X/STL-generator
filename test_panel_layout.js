@@ -109,5 +109,32 @@ console.log('=== ширина панели задана один раз и в о
   chk('и её ширина названа', !!bar && !!decl(bar.body, 'width'), bar && decl(bar.body, 'width'));
 }
 
+console.log('=== высота страницы на телефоне ===');
+{
+  /* `100vh` is defined as the viewport with the browser's bars HIDDEN. A phone lays the page out with it
+     while the bars are still on screen, so the body comes out taller than what can be seen — and since
+     the body does not scroll, the bottom of the panel is unreachable until something forces a re-layout.
+     Switching apps and back is such a thing, which is why «сворачивание и разворачивание решают проблему».
+
+     `dvh` is that height as it actually is. Both lines have to be there and IN THAT ORDER: the vh one is
+     the fallback for anything that does not know dvh, and a browser that does know it takes the later
+     declaration. One without the other is either the bug or a blank page on an old browser. */
+  const pairOK = (r, unit) => {
+    if (!r) return false;
+    const hs = [...r.body.matchAll(/height\s*:\s*([^;]+)/g)].map(m => m[1].trim());
+    const iv = hs.findIndex(v => v.endsWith(unit + 'vh'));
+    const id = hs.findIndex(v => v.endsWith(unit + 'dvh'));
+    return iv >= 0 && id > iv;
+  };
+  // the body has two rules — the reset (`html,body{height:100%}`) and its own; the one that names the
+  // viewport height is the one under test
+  const body = R.find(r => /(^|,)\s*body\s*$/.test(r.sel) && /100vh/.test(r.body));
+  chk('высота body объявлена', !!body, body && body.body.slice(0, 60));
+  chk('и это dvh поверх vh, а не один vh', pairOK(body, '100'), body && body.body.slice(0, 120));
+  const vp = R.find(r => /#viewport-wrap/.test(r.sel) && /height\s*:/.test(r.body));
+  chk('высота превью на телефоне объявлена', !!vp, vp && vp.body.slice(0, 60));
+  chk('и она тоже в dvh поверх vh', pairOK(vp, '46'), vp && vp.body.slice(0, 120));
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

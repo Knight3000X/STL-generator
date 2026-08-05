@@ -415,6 +415,41 @@ console.log('\n=== игральная кость: цифры своим цвет
         up.length > 0 && manifoldCheck(up, 4).watertight);
   check('и стоят НАД гранью', bboxOfTris(up).hi[0] > 10 + 1e-6, bboxOfTris(up).hi[0]);
 
+  // …and on a TRIANGULAR face, where the glyph has to be clamped to fit: the plug must be cut for the
+  // pocket the body actually made, not for the size that was asked for.
+  {
+    logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(),
+      {width:42, height:42, depth:42, platonic:'d20', hollow:false});
+    const bar = (() => { const N = LOGO_HM_SIZE, h = new Float32Array(N*N);
+      for (let y=0;y<N;y++) for (let x=0;x<N;x++){ const fx=x/N-0.5, fy=y/N-0.5;
+        h[y*N+x] = (Math.abs(fx) < 0.46 && Math.abs(fy) < 0.17) ? 1 : 0; } return h; })();
+    dieFaces.push({id:1, face:0, src:'text', depth:-0.4, sizeFrac:0.55, rotation:0,
+                   invert:false, threshold:0.5, offU:0, offV:0, heightmap:bar});
+    paramState.box.logoAms = 'body';
+    const dBody = buildTrisForShape('box', paramState.box);
+    paramState.box.logoAms = 'ink1';
+    const dInk = buildTrisForShape('box', paramState.box);
+    check('на d20 цвет строится и замкнут',
+          dInk.length > 0 && manifoldCheck(dInk, 4).watertight, manifoldCheck(dInk, 4));
+    // area of the faces looking along the face normal, at the pocket floor and at the plug's top
+    const G = dieFaceGeometry('d20', 21, 21, 21), fn = G.faces[0].n;
+    const along = q => q[0]*fn[0] + q[1]*fn[1] + q[2]*fn[2];
+    const at = along(G.faces[0].c);
+    const areaAt = (tris, want) => { let A = 0;
+      for (const T of tris){
+        const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]], v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+        const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+        if (L < 1e-12 || (c[0]*fn[0]+c[1]*fn[1]+c[2]*fn[2])/L < 0.999) continue;
+        if (Math.abs(along(T[0]) - want) > 1e-6) continue;
+        A += L/2; }
+      return A; };
+    const floorA = areaAt(dBody, at - 0.4), plugA = areaAt(dInk, at);
+    check('дно кармана на треугольной грани и пробка совпадают по площади',
+          floorA > 1 && Math.abs(plugA - floorA) < 1e-6 * floorA, {floorA, plugA});
+    dieFaces.length = 0;
+  }
+
   die();
   check('цепочка ведёт к цвету', /Цвет 1/.test((assemblyMate(Object.assign({}, p, {logoAms:'body'}))||{}).name));
   check('и возвращает к кости',

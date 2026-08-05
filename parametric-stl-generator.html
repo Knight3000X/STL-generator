@@ -117,7 +117,13 @@
     color:var(--ink);
     display:flex;
     flex-direction:row;
+    /* 100vh on a phone is the viewport with the browser's bars HIDDEN, and the page is laid out with it
+       while the bars are still shown: the body ends up taller than what is on screen, and since it does
+       not scroll, the bottom of the panel is simply unreachable until something forces a re-layout —
+       switching apps and back, which is what «сворачивание и разворачивание решают проблему» was.
+       `dvh` is that height as it actually is at the moment. The vh line stays as the fallback. */
     height:100vh;
+    height:100dvh;
     width:100vw;
   }
   .mono{font-family:'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;}
@@ -877,7 +883,7 @@
       flex:1;
       min-height:0;
     }
-    #viewport-wrap{ order:1; height:46vh; flex:none; }
+    #viewport-wrap{ order:1; height:46vh; height:46dvh; flex:none; }
     #split-handle{
       display:flex; order:2;
       align-items:center; justify-content:center;
@@ -1172,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.2';
+const APP_VERSION = 'v16.5.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7159,27 +7165,69 @@ function buildDieFaceTess(face, poly, dispFn, k, fracs){
    detail), independent of the surrounding face tessellation. The patch is cut to the glyph's mask bbox
    (+pad) and stitched into the flat face by one angular annulus. Supports emboss (+depth) and engrave (−).
    Returns { tris (3D), ring (2D face-plane boundary loop, y=0), center (2D) } or null. */
-function buildDieGlyphPatch(face, asg, nC, wantPlugs){
+function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
   if(!asg || !asg.heightmap) return null;
-  const S=Math.max(1,(asg.sizeFrac||0.55)*face.r*2*0.9);
   let depth=asg.depth||0; const cap=Math.max(0.2, face.r*0.6); depth=Math.max(-cap,Math.min(cap,depth));
   if(Math.abs(depth)<1e-4) return null;
   nC=Math.max(32,Math.min(256,Math.round(nC)));
-  const margin=Math.max(1.0, 4*S/nC), P=S+2*margin, h=P/nC;
   const rot=(asg.rotation||0)*Math.PI/180, cR=Math.cos(rot), sR=Math.sin(rot);
   const thr=(asg.threshold!=null?asg.threshold:0.5), inv=!!asg.invert;
   const cU=(asg.offU||0)*face.r, cV=(asg.offV||0)*face.r;
   const l2f=(lu,lv)=>[cU + lu*cR - lv*sR, cV + lu*sR + lv*cR];   // glyph-local → face-plane
-  // fill mask at cell centres (same sampling + horizontal mirror as dieReliefDispFn)
-  const mask=new Uint8Array(nC*nC);
-  let i0=nC,i1=-1,j0=nC,j1=-1;
-  for(let j=0;j<nC;j++)for(let i=0;i<nC;i++){
-    const lu=-P/2+(i+0.5)*h, lv=-P/2+(j+0.5)*h;
-    if(Math.abs(lu)>S/2||Math.abs(lv)>S/2) continue;
-    let val=sampleHeightmap(asg.heightmap, 1-(lu+S/2)/S, 1-(lv+S/2)/S); if(inv) val=1-val;
-    if(val>thr){ mask[j*nC+i]=1; if(i<i0)i0=i; if(i>i1)i1=i; if(j<j0)j0=j; if(j>j1)j1=j; }
+  /* «Размер %» is read against the face's CIRCUMradius, and on a triangle that is twice its inradius: a
+     55 % number on a d20 asks for a patch wider than the face it stands on. The old answer was to notice
+     that afterwards and fall back to displacing the die's own radial grid — which is exactly where the
+     ragged, blurry numbers on d20 faces came from, and nothing said so.
+
+     Now the size is CLAMPED to the largest one that fits, so the crisp cell patch is what gets built.
+     What is fitted is the glyph's OWN footprint, not the sampling square: «STL» is wide and short, and
+     clamping the square would shrink it by a further 40 % for nothing. Convexity is what makes four
+     corners enough — a convex face contains a rectangle exactly when it contains its corners — and the
+     test is the same point-in-polygon the caller uses to accept the patch, ×1.04 and all, so there is no
+     band where the patch fits by one test and is rejected by the other.
+
+     A square face is unaffected: its inscribed square is wider than any glyph ever asked for. */
+  const S0 = Math.max(1, (asg.sizeFrac||0.55)*face.r*2*0.9);
+  // The mask and everything that follows from it, for a candidate size. Called once when the glyph
+  // already fits, and once per bisection step when it does not.
+  const buildAt = (SS) => {
+    const mg = Math.max(1.0, 4*SS/nC), PP = SS + 2*mg, hh = PP/nC;
+    const mk = new Uint8Array(nC*nC);
+    let a0=nC, a1=-1, b0=nC, b1=-1;
+    for(let j=0;j<nC;j++)for(let i=0;i<nC;i++){
+      const lu=-PP/2+(i+0.5)*hh, lv=-PP/2+(j+0.5)*hh;
+      if(Math.abs(lu)>SS/2||Math.abs(lv)>SS/2) continue;
+      let val=sampleHeightmap(asg.heightmap, 1-(lu+SS/2)/SS, 1-(lv+SS/2)/SS); if(inv) val=1-val;
+      if(val>thr){ mk[j*nC+i]=1; if(i<a0)a0=i; if(i>a1)a1=i; if(j<b0)b0=j; if(j>b1)b1=j; }
+    }
+    if(a1<0) return null;
+    a0=Math.max(0,a0-3); b0=Math.max(0,b0-3); a1=Math.min(nC-1,a1+3); b1=Math.min(nC-1,b1+3);
+    const lxx = q => -PP/2 + q*hh;
+    return {mask:mk, i0:a0, i1:a1, j0:b0, j1:b1, P:PP, h:hh,
+            corners:[[lxx(a0),lxx(b0)],[lxx(a1+1),lxx(b0)],[lxx(a1+1),lxx(b1+1)],[lxx(a0),lxx(b1+1)]]};
+  };
+  const insideFit = fit2D && fit2D.length >= 3
+    ? (pt) => { let w=false, m2=fit2D.length;
+        for(let ii=0,jj=m2-1;ii<m2;jj=ii++){ const A=fit2D[ii],B=fit2D[jj];
+          if(((A[1]>pt[1])!==(B[1]>pt[1])) && (pt[0] < (B[0]-A[0])*(pt[1]-A[1])/(B[1]-A[1])+A[0])) w=!w; }
+        return w; }
+    : null;
+  const fits = (r) => { if(!r) return false; if(!insideFit) return true;
+    for(const c of r.corners){ const q=l2f(c[0], c[1]); if(!insideFit([q[0]*1.04, q[1]*1.04])) return false; }
+    return true; };
+  let built = buildAt(S0);
+  if (built && insideFit && !fits(built)){
+    let lo = 0, hi = 1, best = null;
+    for (let it = 0; it < 22; it++){
+      const mid = (lo+hi)/2, r = buildAt(S0*mid);
+      if (fits(r)) { lo = mid; best = r; } else hi = mid;
+    }
+    built = best;
+    if (!built || S0*lo < 0.5) return null;   // nothing sensible fits — no number rather than a broken one
   }
-  if(i1<0) return null;
+  if (!built) return null;
+  const P = built.P, h = built.h, mask = built.mask;
+  let i0 = built.i0, i1 = built.i1, j0 = built.j0, j1 = built.j1;   // already padded by 3 cells
   for(let ch=true; ch;){ ch=false;   // checkerboard pinch dissolve (corner-touching cells → non-manifold)
     for(let j=0;j+1<nC;j++)for(let i=0;i+1<nC;i++){
       const a=mask[j*nC+i],b=mask[j*nC+i+1],c2=mask[(j+1)*nC+i],d=mask[(j+1)*nC+i+1];
@@ -7203,8 +7251,8 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs){
     return { tris: maskedSlabTris(mask, 1, nC, nC, lxq, lxq, outer, inner, {o:o3, u:uR, v:vR, n:face.n}),
              ring: [], center: null };
   }
-  // emit only the glyph's bbox (+3-cell empty pad) — the annulus stitch covers the rest of the face
-  i0=Math.max(0,i0-3); j0=Math.max(0,j0-3); i1=Math.min(nC-1,i1+3); j1=Math.min(nC-1,j1+3);
+  // the emitted window is the glyph's bbox with its 3-cell pad, decided in buildAt; the annulus stitch
+  // covers the rest of the face
   const C3=face.c,U3=face.u,V3=face.v,N3=face.n;
   const M3=(u,v,y)=>[C3[0]+u*U3[0]+v*V3[0]+y*N3[0], C3[1]+u*U3[1]+v*V3[1]+y*N3[1], C3[2]+u*U3[2]+v*V3[2]+y*N3[2]];
   const lx=q=>-P/2+q*h, at=(i,j)=>(i>=i0&&j>=j0&&i<=i1&&j<=j1)?mask[j*nC+i]:0;
@@ -7346,7 +7394,10 @@ function buildDieInkTris(kind, hw, hh, hd, assignments, res){
   if (!active.length) return [];
   const nC = dieGlyphCells(G.faces.length, res), out = [];
   for (const a of active){
-    const patch = buildDieGlyphPatch(G.faces[a.face|0], a, nC, true);
+    const face = G.faces[a.face|0];
+    const to2f = q => [dot(sub(q, face.c), face.u), dot(sub(q, face.c), face.v)];
+    // the SAME clamp the body used, or the plug is cut for a number the pocket is not
+    const patch = buildDieGlyphPatch(face, a, nC, true, G.polys[a.face|0].map(to2f));
     if (patch) for (const T of patch.tris) out.push(T);
   }
   return out;
@@ -7392,9 +7443,10 @@ function buildDie(kind, hw, hh, hd, assignments, res, beadR){
       // (huge glyphs) or the face carries several reliefs (D4 corner numbers).
       let done=false;
       if(asgs.length===1){
-        const patch=buildDieGlyphPatch(face, asgs[0], nC);
+        const to2f=(p)=>[dot(sub(p,face.c),face.u), dot(sub(p,face.c),face.v)];
+        const patch=buildDieGlyphPatch(face, asgs[0], nC, false, poly.map(to2f));
         if(patch){
-          const m=poly.length, to2=(p)=>[dot(sub(p,face.c),face.u), dot(sub(p,face.c),face.v)];
+          const m=poly.length, to2=to2f;
           const P2=poly.map(to2);
           const inside=(pt)=>{ let w=false; for(let ii=0,jj=m-1;ii<m;jj=ii++){ const A=P2[ii],B=P2[jj];
             if(((A[1]>pt[1])!==(B[1]>pt[1])) && (pt[0] < (B[0]-A[0])*(pt[1]-A[1])/(B[1]-A[1])+A[0])) w=!w; } return w; };
@@ -7427,7 +7479,7 @@ function buildDie(kind, hw, hh, hd, assignments, res, beadR){
           const parts=[];
           let ok=true;
           for(let v=0;v<3 && ok;v++){
-            const patch=buildDieGlyphPatch(face, byV[v], nC);
+            const patch=buildDieGlyphPatch(face, byV[v], nC, false, P2);
             if(!patch){ ok=false; break; }
             const eP=(v+2)%3, eN=v;                       // edges into / out of vertex v
             const quad=[[0,0], ept(eP,h), P2[v], ept(eN,h)];

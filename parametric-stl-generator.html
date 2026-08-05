@@ -1178,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.6';
+const APP_VERSION = 'v16.5.7';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -17188,10 +17188,55 @@ function updateScene3D(tris, bbox) {
   updateDimensionOverlay(bboxT);
 }
 
+/* The other parts of the same printed body, rebuilt with it.
+
+   Only the ACTIVE model is rebuilt on a parameter change; everything else keeps the geometry it was last
+   built with, which is right — a jar does not change because its cap was resized. It is wrong for an AMS
+   set. The colour parts are the SAME artwork cut on the same grid as the body, and they share the logo
+   objects by reference, so resizing the logo on the body changes what the plugs are supposed to be while
+   leaving what they LOOK like untouched: the numbers on their cards move, the preview does not, and the
+   only way out was to select each colour and nudge a field back and forth. (Reported exactly that way.)
+
+   Which models count as «the same body» is the question mfBodyKey already answers — the same one the 3MF
+   writer asks to decide what goes into one object. The active model's key is taken from the LIVE panel
+   rather than from its saved record, because the change being reacted to has not been written back yet.
+
+   The cost is real: an AMS coaster in four colours rebuilds four meshes per edit instead of one. That is
+   what the deferred-preview machinery is for — `lastRegenMs` covers this work too, so a heavy set moves
+   itself onto the «обновить» button rather than freezing the panel. */
+function rebuildBodySiblings() {
+  if (currentShape !== 'box' || models.length < 2) return;
+  const live = { params: paramState.box,
+                 px: positionState.px, py: positionState.py, pz: positionState.pz,
+                 rx: transformState.rx, ry: transformState.ry, rz: transformState.rz };
+  const key = mfBodyKey(live);
+  if (!key) return;
+  const sibs = models.filter(m => m.id !== activeModelId && mfBodyKey(m) === key);
+  if (!sibs.length) return;
+  const keepLogos = logos.slice(), keepHoles = boxHoles.slice(), keepDie = dieFaces.slice();
+  const keepParams = Object.assign({}, paramState.box);
+  const swap = (arr, next) => { arr.length = 0; for (const q of (next || [])) arr.push(q); };
+  try {
+    for (const m of sibs) {
+      swap(logos, m.logos); swap(boxHoles, m.holes); swap(dieFaces, m.dieFaces);
+      Object.assign(paramState.box, m.params);
+      const raw = buildTrisForShape('box', paramState.box);
+      m.rawTris = raw;
+      const rot = rotateTris(raw, m.rx, m.ry, m.rz);
+      m.bbox = computeBBox(rot);
+      if (scene3DReady) { const mm = ensureModelMesh(m); if (mm) setMeshTrisGeometry(mm, rot); }
+    }
+  } finally {
+    swap(logos, keepLogos); swap(boxHoles, keepHoles); swap(dieFaces, keepDie);
+    Object.assign(paramState.box, keepParams);
+  }
+  renderModelCards();          // their triangle counts moved
+}
 function regenerate() {
   const t0 = Date.now();
   const bbox = computeGeometry();
   if (scene3DReady) updateScene3D(currentTris, bbox);
+  rebuildBodySiblings();
   lastRegenMs = Date.now() - t0; // drives the live-vs-deferred preview decision (see markPending)
 }
 

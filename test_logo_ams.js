@@ -466,5 +466,69 @@ console.log('\n=== игральная кость: цифры своим цвет
   logos.length = 0; dieFaces.length = 0;
 }
 
+console.log('\n=== цвета пересобираются вместе с телом ===');
+{
+  /* Only the ACTIVE model is rebuilt on a parameter change, and for most of the app that is right — a jar
+     does not change because its cap was resized. For an AMS set it is wrong: the colour parts are the same
+     artwork cut on the same grid as the body and they share the logo objects BY REFERENCE, so resizing the
+     logo on the body changed what the plugs are supposed to be while leaving what they look like alone.
+     The cards moved, the preview did not, and the only way out was to select each colour and nudge a field.
+
+     Driven through `regenerate()`, not through the helper: what broke was that nothing CALLED it. */
+  logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
+  models.length = 0; activeModelId = null; nextModelId = 1;
+  const lg = putLogo();
+  const p = container();
+  currentShape = 'box';
+  Object.assign(positionState, {px:0, py:0, pz:0});
+  Object.assign(transformState, {rx:0, ry:0, rz:0});
+
+  /* `paramState.box` has to be set to what is being built, not just handed in as an argument: the relief
+     dispatcher reads the LIVE panel to decide whether the cube displaces its own vertices (see
+     buildCombinedLogoDispFns). Build a colour part while the panel still says «none» and its host comes out
+     already dented, the patch finds no flat plane to sit on, and the part is empty. Which is what the
+     rebuild itself does — it assigns the sibling's params to the panel before building. */
+  const mk = (part, px) => { const rec = makeModelRecord('м'+part, Object.assign({}, p, {logoAms:part}));
+    rec.logos = logos.slice(); rec.holes = []; rec.dieFaces = [];
+    rec.px = px || 0; rec.py = rec.pz = rec.rx = rec.ry = rec.rz = 0;
+    Object.assign(paramState.box, rec.params);
+    rec.rawTris = buildTrisForShape('box', paramState.box);
+    models.push(rec); return rec; };
+  const body = mk('body'), ink1 = mk('ink1'), ink2 = mk('ink2');
+  const alone = mk('body', 90);          // same settings, ANOTHER place — a printed body of its own
+  activeModelId = body.id;
+  /* The panel says «body» while the record still says otherwise: that is the state the fix has to read,
+     because the edit being reacted to has not been written back to the record yet. */
+  body.params = Object.assign({}, body.params, {logoAms:'none'});
+  Object.assign(paramState.box, p, {logoAms:'body'});
+
+  const wide = m => { const b2 = bboxOfTris(m.rawTris); return +(b2.hi[0] - b2.lo[0]).toFixed(3); };
+  const was = models.map(wide), refs = models.map(m => m.rawTris);
+  check('заготовка собрана', models.every(m => m.rawTris.length > 0), models.map(m=>m.rawTris.length));
+
+  // the edit: the artwork shrinks. It is the SAME logo object the colour parts hold.
+  lg.w *= 0.55; lg.h *= 0.55;
+  regenerate();
+  const now = models.map(wide);
+  check('цвет 1 стал уже вместе с рисунком', now[1] < was[1] - 1, [was[1], now[1]]);
+  check('цвет 2 тоже', now[2] < was[2] - 1, [was[2], now[2]]);
+  // A model in ANOTHER body must not be rebuilt at all — and «not rebuilt» is array identity, not size:
+  // a rebuild always replaces the array, and this one would come out the same width anyway.
+  check('модель другого тела не тронута вовсе', models[3].rawTris === refs[3]);
+  check('и у пересобранных есть габарит', !!ink1.bbox && !!ink2.bbox);
+  // the globals belong to the model being edited — they have to come back untouched
+  check('логотипы вернулись на место', logos.length === 1 && logos[0] === lg, logos.length);
+  check('и параметры панели тоже', paramState.box.logoAms === 'body', paramState.box.logoAms);
+
+  // …and a model with no printed body of its own asks for nothing
+  activeModelId = alone.id;
+  Object.assign(paramState.box, alone.params, {logoAms:'none'});
+  const refs2 = models.map(m => m.rawTris);
+  rebuildBodySiblings();
+  check('модель без цветной печати никого не пересобирает',
+        models.every((m, i) => m.rawTris === refs2[i]));
+  models.length = 0; activeModelId = null; logos.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

@@ -223,5 +223,41 @@ console.log('=== подставка ушла из общей плиты, и эт
       sectionRelevant('Подставка (телефон / планшет)', 'stand', false) === true);
 }
 
+console.log('=== край рельефа идёт по рисунку, а не по клеткам ===');
+{
+  /* Тот же замер, что у подстаканника и у наклейки: у РАСТРОВОГО круга контур равен 8r при любой мелкости
+     сетки, против положенных 2πr ≈ 6.28r — на 27 % длиннее, и весь избыток и есть ступеньки. Диск взят
+     именно потому, что его периметр известен точно, и вопрос — насколько близко к нему подходит мозаика. */
+  const RAD = 0.4, W = 40;
+  const DISC = analyzeLogoImageData(img((x,y)=>Math.hypot(x-0.5,y-0.5) < RAD ? [240,240,240,255] : [0,0,0,0]), S).heightmap;
+  const p = Object.assign({}, defaultBoxParams(), {psOn:true, psLogoOn:'floor'});
+  logos.length = 0; boxHoles.length = 0;
+  logos.push({id:1, face:'-Y', u0:0, v0:0, w:W, h:W, depth:0.8, threshold:0.5,
+              invert:false, rotation:0, heightmap:DISC, levels:2});
+  const t = standLogoTris(p, 160);
+  // дно смотрит в −Y, значит лицо рельефа — самая нижняя плоскость из тех, что смотрят туда же
+  const nrm = T => { const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]],
+                           v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+    const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+    return L<1e-12 ? null : [c[0]/L,c[1]/L,c[2]/L]; };
+  let ymin = 1e9;
+  for(const T of t){ const n=nrm(T); if(!n || n[1] > -0.999) continue; ymin = Math.min(ymin, T[0][1]); }
+  const key=(A,B)=>{const a=A.map(q=>q.toFixed(4)).join(','), b=B.map(q=>q.toFixed(4)).join(',');
+    return a<b ? a+'|'+b : b+'|'+a; };
+  const cnt = new Map();
+  for(const T of t){ const n=nrm(T); if(!n || n[1] > -0.999 || Math.abs(T[0][1]-ymin) > 1e-6) continue;
+    for(let e=0;e<3;e++){ const k=key(T[e],T[(e+1)%3]); cnt.set(k,(cnt.get(k)||0)+1); } }
+  let peri=0;
+  for(const [k,n] of cnt) if(n===1){ const [a,b]=k.split('|').map(q=>q.split(',').map(Number));
+    peri += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+  const truth = 2*Math.PI*RAD*W;
+  chk('контур рельефа нашёлся', peri > truth*0.5, +peri.toFixed(2));
+  chk('и идёт по окружности, а не лесенкой (лесенка это 1.27)', peri/truth < 1.12,
+      {периметр:+peri.toFixed(2), истинный:+truth.toFixed(2), отношение:+(peri/truth).toFixed(3)});
+  chk('и не короче истинного — срезать углы тоже нельзя', peri/truth > 0.97, +(peri/truth).toFixed(3));
+  chk('патч остался замкнутым', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  logos.length = 0;
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

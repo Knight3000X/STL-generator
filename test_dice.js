@@ -233,5 +233,59 @@ console.log('=== крупная цифра на треугольной гран�
   dieFaces.length=0;
 }
 
+console.log('\n=== край цифры идёт по рисунку, а не по клеткам ===');
+{
+  /* Ячейка размером с пиксель делает край цифры ступенчатым по построению, и ДЛИНА края это меряет: у
+     растрового круга контур равен 8r при любой мелкости сетки, против положенных 2πr ≈ 6.28r — на 27 %
+     длиннее. Отсюда и «нечёткость» на крупных цифрах: не размытость, а лесенка.
+
+     Меряется ОБЕ половины — карман в грани и цветная пробка, которая в него ложится: обе читают один и
+     тот же warp, и если бы читали разный, двухцветная кость печаталась бы со щелью по контуру цифры. */
+  const N=LOGO_HM_SIZE, RAD=0.4;
+  const disc=new Float32Array(N*N);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){ const fx=(x+0.5)/N-0.5, fy=(y+0.5)/N-0.5;
+    disc[y*N+x] = Math.hypot(fx,fy) < RAD ? 1 : 0; }
+  base({platonic:'d6', width:42, height:42, depth:42});
+  const asg = {id:nextDieId++, face:0, src:'text', depth:1.2, sizeFrac:0.5, rotation:0,
+               invert:false, threshold:0.5, offU:0, offV:0, heightmap:disc};
+  dieFaces.push(asg);
+  const G = dieFaceGeometry('d6', 21, 21, 21), f = G.faces[0];
+  const nC = dieGlyphCells(G.faces.length, dieResolution);
+  const d3 = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const nrm = T => { const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]],
+                           v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+    const c=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], L=Math.hypot(c[0],c[1],c[2]);
+    return L<1e-12 ? null : [c[0]/L,c[1]/L,c[2]/L]; };
+  // контур верхней площадки: рёбра ровно с ОДНИМ треугольником, смотрящим по нормали грани, на высоте depth
+  const outline = tris => {
+    const key=(A,B)=>{const a=A.map(q=>q.toFixed(4)).join(','), b=B.map(q=>q.toFixed(4)).join(',');
+      return a<b ? a+'|'+b : b+'|'+a; };
+    const cnt=new Map();
+    for(const T of tris){ const n=nrm(T); if(!n || d3(n,f.n) < 0.999) continue;
+      const off = d3([T[0][0]-f.c[0], T[0][1]-f.c[1], T[0][2]-f.c[2]], f.n);
+      if(Math.abs(off - asg.depth) > 1e-6) continue;
+      for(let e=0;e<3;e++){ const k=key(T[e],T[(e+1)%3]); cnt.set(k,(cnt.get(k)||0)+1); } }
+    let peri=0;
+    for(const [k,c] of cnt) if(c===1){ const [a,b]=k.split('|').map(q=>q.split(',').map(Number));
+      peri += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+    return peri;
+  };
+  const S0 = Math.max(1, (asg.sizeFrac||0.55)*f.r*2*0.9);
+  const truth = 2*Math.PI*RAD*S0;
+  const pocket = buildDieGlyphPatch(f, asg, nC, false, null);
+  const plug   = buildDieGlyphPatch(f, asg, nC, true,  null);
+  chk('патч построен в обеих половинах', !!pocket && !!plug);
+  const pPocket = outline(pocket.tris), pPlug = outline(plug.tris);
+  chk('контур цифры нашёлся', pPocket > truth*0.5, +pPocket.toFixed(2));
+  chk('и идёт по окружности, а не лесенкой (лесенка это 1.27)', pPocket/truth < 1.10,
+      {периметр:+pPocket.toFixed(2), истинный:+truth.toFixed(2), отношение:+(pPocket/truth).toFixed(3)});
+  chk('и не короче истинного — срезать углы тоже нельзя', pPocket/truth > 0.97, +(pPocket/truth).toFixed(3));
+  chk('цветная пробка идёт по той же линии', Math.abs(pPlug - pPocket) < 1e-6,
+      {пробка:+pPlug.toFixed(4), карман:+pPocket.toFixed(4)});
+  const whole = buildTrisForShape('box', paramState.box);
+  chk('кость с такой цифрой герметична', manifoldCheck(whole,4).watertight, manifoldCheck(whole,4));
+  dieFaces.length=0;
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

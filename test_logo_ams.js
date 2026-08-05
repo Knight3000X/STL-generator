@@ -530,5 +530,74 @@ console.log('\n=== цвета пересобираются вместе с те�
   models.length = 0; activeModelId = null; logos.length = 0;
 }
 
+console.log('\n=== край наклейки идёт по рисунку, а не по клеткам ===');
+{
+  /* Мозаика из квадратных ячеек даёт лесенку по построению, и ДЛИНА этого края её и меряет: у
+     растрового круга контур равен 8r при любой мелкости растра, против положенных 2πr ≈ 6.28r — на 27 %
+     длиннее, и весь этот избыток и есть ступеньки, которые видно и щупается ногтем.
+
+     Поэтому рисунок здесь — ДИСК, у которого периметр известен точно, и вопрос в том, насколько близко
+     к нему подходит контур мозаики. Не «стало ли глаже».
+
+     Меряются ОБЕ половины: и пробка своего цвета, и карман в теле, куда она ложится. Они читают один и
+     тот же warp, и если бы читали разный — сходились бы только по клеткам, а печаталось бы со щелью. */
+  const S = LOGO_HM_SIZE, RAD = 0.4, W = 24;
+  const disc = new Float32Array(S*S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++){
+    const dx = (i+0.5)/S - 0.5, dy = (j+0.5)/S - 0.5;
+    disc[j*S+i] = Math.hypot(dx, dy) < RAD ? 1 : 0;
+  }
+  const p = container();
+  const lg = putLogo({w:W, h:W, depth:-0.6, heightmap:disc, levels:2, tones:['#BB1828']});
+  const saved = logos.splice(0, logos.length);
+  const bare = buildTrisForShape('box', Object.assign({}, p, {logoAms:'none'}));
+  for (const l of saved) logos.push(l);
+  const plan = logoPatchPlan(lg, bboxOfTris(bare), p.logoPlate || 0, logoResolution * 2, bare);
+  check('план построен', !!plan && plan.any);
+
+  // Контур: рёбра, у которых ровно ОДИН треугольник, смотрящий по нормали грани и лежащий в заданной
+  // плоскости. У пробки это её лицо, у тела — дно кармана: одна и та же линия с двух сторон.
+  const nrm = T => {
+    const u = [T[1][0]-T[0][0], T[1][1]-T[0][1], T[1][2]-T[0][2]];
+    const v = [T[2][0]-T[0][0], T[2][1]-T[0][1], T[2][2]-T[0][2]];
+    const c = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    const L = Math.hypot(c[0], c[1], c[2]);
+    return L < 1e-12 ? null : [c[0]/L, c[1]/L, c[2]/L];
+  };
+  const outline = (tris, z) => {
+    const key = (A,B) => { const a = A.map(q=>q.toFixed(4)).join(','), b = B.map(q=>q.toFixed(4)).join(',');
+      return a < b ? a+'|'+b : b+'|'+a; };
+    const cnt = new Map();
+    for (const T of tris){
+      const n = nrm(T);
+      if (!n || n[2] < 0.999 || Math.abs(T[0][2] - z) > 1e-6) continue;
+      for (let e = 0; e < 3; e++){ const k = key(T[e], T[(e+1)%3]); cnt.set(k, (cnt.get(k)||0)+1); }
+    }
+    let peri = 0;
+    for (const [k, n] of cnt) if (n === 1){
+      const [a, b] = k.split('|').map(q => q.split(',').map(Number));
+      peri += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+    }
+    return peri;
+  };
+  const zFace = plan.frame.o[2];
+  p.logoAms = 'ink1';
+  const plug = buildTrisForShape('box', p);
+  p.logoAms = 'body';
+  const body = buildTrisForShape('box', p);
+  const truth = 2*Math.PI*RAD*W;
+  const pPlug = outline(plug, zFace + Math.max(plan.base, plan.hi));
+  const pBody = outline(body, zFace + plan.hi);
+  check('контур пробки нашёлся', pPlug > truth*0.5, +pPlug.toFixed(2));
+  check('и идёт по окружности, а не лесенкой (лесенка это 1.27)', pPlug/truth < 1.10,
+        {периметр:+pPlug.toFixed(2), истинный:+truth.toFixed(2), отношение:+(pPlug/truth).toFixed(3)});
+  check('и не короче истинного — срезать углы тоже нельзя', pPlug/truth > 0.97, +(pPlug/truth).toFixed(3));
+  check('дно кармана в теле — та же линия', Math.abs(pBody - pPlug) < 1e-6,
+        {карман:+pBody.toFixed(4), пробка:+pPlug.toFixed(4)});
+  check('и тело, и пробка герметичны',
+        manifoldCheck(body, 4).watertight && manifoldCheck(plug, 4).watertight);
+  logos.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

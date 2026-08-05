@@ -220,9 +220,19 @@ for(const ov of [{gearBore:8},{gearKeyW:3,gearKeyD:1.5},{gearStarts:4},{gearHub:
   chk('зуб винтовой, и рука следует за червяком', Math.sign(dR) === -Math.sign(dL) && Math.abs(dR)>0.005,
       {right:+dR.toFixed(4), left:+dL.toFixed(4)});
 }
-{ // Cheap enough to keep in the interactive path: the field is computed over ONE tooth pitch and copied.
-  const t0=Date.now(); base({gearWheelRim:'envelope', gearTeeth:60, gearThick:16}); const ms=Date.now()-t0;
-  chk('нарезка укладывается в бюджет пересчёта', ms < 3000, {ms});
+{ /* Cheap enough to keep in the interactive path: the field is computed over ONE tooth pitch and copied.
+     Меряется ПРОЦЕССОРНОЕ время, а не настенное. Настенное здесь мерило машины, а не кода: батарея гоняет
+     четыре файла на четырёх ядрах, и на загруженной машине этот же самый расчёт «не укладывается в
+     бюджет», просто дождавшись своей очереди. Ровно так этот тест однажды и упал — на коде, который в
+     одиночку проходит его без замечаний.
+
+     Порог 3600 мс процессорного времени — не то же число, что было настенным, а перемеренное на том же
+     месте: нынешний шаг марша (dr = 0,045) обходится в 3,1–3,2 с процессорного, а отвергнутый в v16.5.6
+     шаг 0,03 — в 4,0–4,1 с. Регрессию, ради которой строка написана, порог по-прежнему ловит, а от
+     загруженности машины больше не зависит. */
+  const c0=process.cpuUsage(); base({gearWheelRim:'envelope', gearTeeth:60, gearThick:16});
+  const c=process.cpuUsage(c0), ms=(c.user+c.system)/1000;
+  chk('нарезка укладывается в бюджет пересчёта', ms < 3600, {ms:+ms.toFixed(0)});
 }
 
 console.log('=== поверхность зуба гладкая, а не ступенчатая ===');

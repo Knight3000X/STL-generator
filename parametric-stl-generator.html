@@ -1178,7 +1178,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.7';
+const APP_VERSION = 'v16.5.8';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3883,10 +3883,12 @@ function resolveInkCorners(mask, N, M, K){
    cell boundary, or a plug stands proud of the pocket wall it was cut to fit; the way to make two things
    agree is to have one of them.
 
-   The colour index is layered ON TOP of the footprint the plate has always used, never underneath it: the
-   union of the colours is exactly the binary mask the plate used to build, cell for cell, so a one-colour
-   label comes out of here unchanged. That is also why the background level is dropped even where the
-   coaster keeps it — a label's patch is the artwork, not a square, so «transparent» is not a colour here.
+   The colour index is layered ON TOP of the footprint, never underneath it: the union of the colours is
+   the plate's own binary mask, cell for cell, so a one-colour label is the same silhouette it always was —
+   read now over each cell's AREA rather than at its centre, which is the finer answer of the two and is
+   what the outline smoothing needs (see the coverage loop below). That is also why the background level is
+   dropped even where the coaster keeps it — a label's patch is the artwork, not a square, so «transparent»
+   is not a colour here.
 
    Returns null when there is nothing to put a label on: no artwork, no depth, a face too small, or no flat
    surface under the footprint. */
@@ -3924,25 +3926,41 @@ function logoPatchPlan(logo, bb, plateParam, res, hostTris){
   const stepped = logoStepped(logo);
   const mask = new Uint8Array(N*M);
   let any=false;
-  for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-    const su = (i+0.5)/N*2*halfU - halfU, sv = (j+0.5)/M*2*halfV - halfV;
+  /* Each cell is read over its AREA, not at its centre — SS×SS sub-samples, and the cell takes the colour
+     holding most of it. That is a better answer on its own (a thin stroke that misses every centre still
+     shows up), but the reason it is here is the grid's VERTICES: a hard-edged raster sampled at one point
+     says only which side of the edge that point is on, and the boundary can then only turn at a cell
+     corner — a staircase, whatever the artwork says. Coverage says WHERE inside the cell the edge fell,
+     which is what lets mosaicWarp slide the vertices onto it. Same machinery the coaster's pocket uses. */
+  const SS = 3, NK = Math.max(2, inks.levels.length + 1);
+  const cov = new Float32Array(N*M*NK);
+  const colourAt = (su, sv) => {
     const du = fm[0]*su + fm[1]*sv, dv = fm[2]*su + fm[3]*sv;
     const lu = du*cosR - dv*sinR, lv = du*sinR + dv*cosR;   // rotate into image space
-    if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) continue;
+    if (Math.abs(lu) > logo.w/2 || Math.abs(lv) > logo.h/2) return 0;
     let val = sampleHeightmap(logo.heightmap, (lu + logo.w/2)/logo.w, 1 - (lv + logo.h/2)/logo.h);
     if (logo.invert) val = 1 - val;
     // A second-colour insert is one material, so it takes the whole footprint of a stepped relief.
-    if (!(stepped ? val > 1e-4 : val > logo.threshold)) continue;
-    any = true;
-    // Which colour: the tone this cell's height belongs to. A logo cut at ONE threshold has exactly one,
-    // and then this is the mask it has always been. Interpolation between two tones lands between the
-    // list's entries and gets the nearest — a heightmap sampled off-grid has no exact level to match.
+    if (!(stepped ? val > 1e-4 : val > logo.threshold)) return 0;
+    // Which colour: the tone this height belongs to. A logo cut at ONE threshold has exactly one, and then
+    // this is the mask it has always been. Interpolation between two tones lands between the list's
+    // entries and gets the nearest — a heightmap sampled off-grid has no exact level to match.
     let k = 1;
     if (stepped && inks.levels.length){
       let bd = Infinity;
       inks.levels.forEach((v, q) => { const d = Math.abs(v - val); if (d < bd){ bd = d; k = q+1; } });
     }
-    mask[j*N+i] = k;
+    return Math.min(k, NK-1);
+  };
+  for(let j=0;j<M;j++) for(let i=0;i<N;i++){
+    const base = (j*N+i)*NK;
+    for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
+      const su = (i + (si+0.5)/SS)/N*2*halfU - halfU, sv = (j + (sj+0.5)/SS)/M*2*halfV - halfV;
+      cov[base + colourAt(su, sv)] += 1/(SS*SS);
+    }
+    let best = 0, bestC = cov[base];
+    for(let k=1;k<NK;k++) if(cov[base+k] > bestC){ bestC = cov[base+k]; best = k; }
+    if (best > 0){ mask[j*N+i] = best; any = true; }
   }
   if (!any && plate <= 0) return null;
   // Cells touching only at a CORNER would put four wall quads on one vertical edge — non-manifold.
@@ -3973,7 +3991,10 @@ function logoPatchPlan(logo, bb, plateParam, res, hostTris){
   const o = [0,0,0]; o[nAx] = plane;
   const frame = {o, u:e(uAx), v:e(vAx), n:(sgn>0 ? e(nAx) : e(nAx).map(c=>-c))};
   const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
-  return {mask, N, M, U, V, frame, inks, plate, depth, base, any, hi: plate + depth};
+  // The vertices, slid onto the artwork's own boundary. Both halves of the label read it — the body's
+  // pocket and every colour that fills it — so they go on matching cell for cell.
+  const warp = mosaicWarp(mask, cov, NK-1, N, M);
+  return {mask, N, M, U, V, frame, inks, plate, depth, base, any, warp, hi: plate + depth};
 }
 const LOGO_AMS_LAP = 0.4;      // how far a plug reaches past its own pocket, so the two interpenetrate
 function logoAmsIndex(v){ const m = /^ink([1-9])$/.exec(String(v||'')); return m ? +m[1] : 0; }
@@ -4012,7 +4033,7 @@ function buildLogoAmsInkTris(p, hostTris, res, k){
     const pl = logoPatchPlan(lg, bb, p.logoPlate || 0, res, hostTris);
     if (!pl || !pl.any || k > Math.max(1, pl.inks.levels.length)) continue;
     const outer = Math.max(pl.base, pl.hi), inner = Math.min(pl.base, pl.hi) - LOGO_AMS_LAP;
-    for (const T of maskedSlabTris(pl.mask, k, pl.N, pl.M, pl.U, pl.V, outer, inner, pl.frame)) out.push(T);
+    for (const T of maskedSlabTris(pl.mask, k, pl.N, pl.M, pl.U, pl.V, outer, inner, pl.frame, pl.warp)) out.push(T);
   }
   return out;
 }
@@ -4023,7 +4044,7 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
   // then shares. `mask` carries colour indices, and every non-zero one is inside that silhouette.
   const bin = new Uint8Array(pl.N * pl.M);
   for (let q = 0; q < bin.length; q++) bin[q] = pl.mask[q] ? 1 : 0;
-  return reliefSlabTris(bin, pl.N, pl.M, pl.U, pl.V, pl.hi, pl.base, -LOGO_PLATE_EMBED, pl.frame);
+  return reliefSlabTris(bin, pl.N, pl.M, pl.U, pl.V, pl.hi, pl.base, -LOGO_PLATE_EMBED, pl.frame, pl.warp);
 }
 /* The emission half of a relief patch, in a FRAME rather than along an axis: origin, two in-plane axes and
    the outward normal. Filled cells stand at `hi`, empty ones at `lo`, and the whole slab is closed by a
@@ -4034,21 +4055,30 @@ function buildLogoPlateTris(logo, bb, plateParam, res, hostTris){
    point: a raked surface is not a special case of anything, it is this patch with a different frame, and
    the alternative — a second copy of the same grid walk «but rotated» — is the shape of bug that gets
    found on a printed part rather than in a test. */
-function reliefSlabTris(mask, N, M, U, V, hi, lo, yb, fr){
+function reliefSlabTris(mask, N, M, U, V, hi, lo, yb, fr, warp){
   const P = (uu,vv,out) => [fr.o[0] + fr.u[0]*uu + fr.v[0]*vv + fr.n[0]*out,
                             fr.o[1] + fr.u[1]*uu + fr.v[1]*vv + fr.n[1]*out,
                             fr.o[2] + fr.u[2]*uu + fr.v[2]*vv + fr.n[2]*out];
   const hOf = (i,j) => (i<0||j<0||i>=N||j>=M) ? null : (mask[j*N+i] ? hi : lo);
+  // Vertices slid onto the artwork's own boundary — see mosaicWarp. The relief and the colour plugs that
+  // fill it read the SAME warp, so the pocket and what goes in it keep matching cell for cell.
+  const cw = U(1)-U(0), ch = V(1)-V(0);
+  const WU = (i,j) => warp ? U(i) + warp[(j*(N+1)+i)*2]*cw : U(i);
+  const WV = (i,j) => warp ? V(j) + warp[(j*(N+1)+i)*2+1]*ch : V(j);
   const nOut = fr.n, nIn = [-fr.n[0], -fr.n[1], -fr.n[2]];
   const out=[];
   for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-    const h=hOf(i,j), ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
-    out.push(orient([P(ua,va,h),P(ub,va,h),P(ub,vb,h)], nOut), orient([P(ua,va,h),P(ub,vb,h),P(ua,vb,h)], nOut));
-    out.push(orient([P(ua,va,yb),P(ub,va,yb),P(ub,vb,yb)], nIn), orient([P(ua,va,yb),P(ub,vb,yb),P(ua,vb,yb)], nIn));
+    const h=hOf(i,j);
+    const q00=[WU(i,j),WV(i,j)], q10=[WU(i+1,j),WV(i+1,j)],
+          q11=[WU(i+1,j+1),WV(i+1,j+1)], q01=[WU(i,j+1),WV(i,j+1)];
+    const G=(c,o)=>P(c[0],c[1],o);
+    out.push(orient([G(q00,h),G(q10,h),G(q11,h)], nOut), orient([G(q00,h),G(q11,h),G(q01,h)], nOut));
+    out.push(orient([G(q00,yb),G(q10,yb),G(q11,yb)], nIn), orient([G(q00,yb),G(q11,yb),G(q01,yb)], nIn));
     // Walls: the TALLER cell owns the step, so each is emitted exactly once; on the patch border
     // there is no neighbour and the wall runs all the way down to the buried bottom.
-    const sides=[[1,0,ub,va,ub,vb],[-1,0,ua,vb,ua,va],[0,1,ub,vb,ua,vb],[0,-1,ua,va,ub,va]];
-    for(const [di,dj,pu,pv,qu,qv] of sides){
+    const sides=[[1,0,q10,q11],[-1,0,q01,q00],[0,1,q11,q01],[0,-1,q00,q10]];
+    for(const [di,dj,PQ,QQ] of sides){
+      const pu=PQ[0], pv=PQ[1], qu=QQ[0], qv=QQ[1];
       const hn = hOf(i+di, j+dj), low = (hn===null) ? yb : hn;
       if (!(h > low)) continue;
       const wref=[fr.u[0]*di + fr.v[0]*dj, fr.u[1]*di + fr.v[1]*dj, fr.u[2]*di + fr.v[2]*dj];
@@ -7190,20 +7220,34 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
   const S0 = Math.max(1, (asg.sizeFrac||0.55)*face.r*2*0.9);
   // The mask and everything that follows from it, for a candidate size. Called once when the glyph
   // already fits, and once per bisection step when it does not.
-  const buildAt = (SS) => {
+  /* `wantCov` reads each cell over its AREA (SUB×SUB sub-samples) instead of at its centre and keeps the
+     filled FRACTION, which is what mosaicWarp needs to know where inside the cell the glyph's edge fell.
+     It costs nine samples per cell, so the fit bisection — which only ever looks at the mask's bounding
+     box — runs without it, and only the size that is actually going to be built pays. */
+  const SUB = 3;
+  const buildAt = (SS, wantCov) => {
     const mg = Math.max(1.0, 4*SS/nC), PP = SS + 2*mg, hh = PP/nC;
     const mk = new Uint8Array(nC*nC);
+    const cv = wantCov ? new Float32Array(nC*nC*2) : null;
+    const hit = (lu, lv) => {
+      if(Math.abs(lu)>SS/2||Math.abs(lv)>SS/2) return 0;
+      let val=sampleHeightmap(asg.heightmap, 1-(lu+SS/2)/SS, 1-(lv+SS/2)/SS); if(inv) val=1-val;
+      return val>thr ? 1 : 0;
+    };
     let a0=nC, a1=-1, b0=nC, b1=-1;
     for(let j=0;j<nC;j++)for(let i=0;i<nC;i++){
-      const lu=-PP/2+(i+0.5)*hh, lv=-PP/2+(j+0.5)*hh;
-      if(Math.abs(lu)>SS/2||Math.abs(lv)>SS/2) continue;
-      let val=sampleHeightmap(asg.heightmap, 1-(lu+SS/2)/SS, 1-(lv+SS/2)/SS); if(inv) val=1-val;
-      if(val>thr){ mk[j*nC+i]=1; if(i<a0)a0=i; if(i>a1)a1=i; if(j<b0)b0=j; if(j>b1)b1=j; }
+      let on;
+      if(cv){ const b2=(j*nC+i)*2;
+        for(let sj=0;sj<SUB;sj++)for(let si=0;si<SUB;si++)
+          cv[b2 + hit(-PP/2+(i+(si+0.5)/SUB)*hh, -PP/2+(j+(sj+0.5)/SUB)*hh)] += 1/(SUB*SUB);
+        on = cv[b2+1] > cv[b2];
+      } else on = !!hit(-PP/2+(i+0.5)*hh, -PP/2+(j+0.5)*hh);
+      if(on){ mk[j*nC+i]=1; if(i<a0)a0=i; if(i>a1)a1=i; if(j<b0)b0=j; if(j>b1)b1=j; }
     }
     if(a1<0) return null;
     a0=Math.max(0,a0-3); b0=Math.max(0,b0-3); a1=Math.min(nC-1,a1+3); b1=Math.min(nC-1,b1+3);
     const lxx = q => -PP/2 + q*hh;
-    return {mask:mk, i0:a0, i1:a1, j0:b0, j1:b1, P:PP, h:hh,
+    return {mask:mk, cov:cv, i0:a0, i1:a1, j0:b0, j1:b1, P:PP, h:hh,
             corners:[[lxx(a0),lxx(b0)],[lxx(a1+1),lxx(b0)],[lxx(a1+1),lxx(b1+1)],[lxx(a0),lxx(b1+1)]]};
   };
   const insideFit = fit2D && fit2D.length >= 3
@@ -7215,15 +7259,20 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
   const fits = (r) => { if(!r) return false; if(!insideFit) return true;
     for(const c of r.corners){ const q=l2f(c[0], c[1]); if(!insideFit([q[0]*1.04, q[1]*1.04])) return false; }
     return true; };
-  let built = buildAt(S0);
+  let built = buildAt(S0, true);
   if (built && insideFit && !fits(built)){
-    let lo = 0, hi = 1, best = null;
+    let lo = 0, hi = 1, best = null, bestS = 0;
     for (let it = 0; it < 22; it++){
-      const mid = (lo+hi)/2, r = buildAt(S0*mid);
-      if (fits(r)) { lo = mid; best = r; } else hi = mid;
+      const mid = (lo+hi)/2, r = buildAt(S0*mid, false);
+      if (fits(r)) { lo = mid; best = r; bestS = S0*mid; } else hi = mid;
     }
     built = best;
     if (!built || S0*lo < 0.5) return null;   // nothing sensible fits — no number rather than a broken one
+    // The winning size, re-read over cell areas. Area and centre can disagree about a cell on the rim, so
+    // the footprint is re-checked: if reading it that way pushes the glyph off the face, keep the
+    // centre-sampled build and go without the smoothing rather than off the edge.
+    const withCov = buildAt(bestS, true);
+    if (withCov && fits(withCov)) built = withCov;
   }
   if (!built) return null;
   const P = built.P, h = built.h, mask = built.mask;
@@ -7232,6 +7281,12 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
     for(let j=0;j+1<nC;j++)for(let i=0;i+1<nC;i++){
       const a=mask[j*nC+i],b=mask[j*nC+i+1],c2=mask[(j+1)*nC+i],d=mask[(j+1)*nC+i+1];
       if(a&&d&&!b&&!c2){mask[j*nC+i+1]=1;ch=true;} else if(b&&c2&&!a&&!d){mask[j*nC+i]=1;ch=true;} } }
+  /* The grid's vertices, slid onto the glyph's own outline — see mosaicWarp. Both halves read it: the
+     pocket cut into the face and the colour plug that fills it, so they still meet cell for cell.
+     The annulus stitch is unaffected: mosaicWarp moves a vertex only where its four cells are not all the
+     same, and the emitted window is the glyph's bbox plus three empty cells, so every vertex on that
+     window's border sits in uniformly empty ground and stays exactly where it was. */
+  const warp = built.cov ? mosaicWarp(mask, built.cov, 1, nC, nC) : null;
   /* The same glyph, as a PLUG rather than as the face it is cut into: colour k of a two-colour die.
      Everything it needs has already been decided above — the mask, the cell size, the glyph's own
      rotation and offset — so the plug cannot come out anywhere but exactly where the pocket is. The
@@ -7248,7 +7303,7 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
     const uR = [cR*face.u[0] + sR*face.v[0], cR*face.u[1] + sR*face.v[1], cR*face.u[2] + sR*face.v[2]];
     const vR = [-sR*face.u[0] + cR*face.v[0], -sR*face.u[1] + cR*face.v[1], -sR*face.u[2] + cR*face.v[2]];
     const outer = Math.max(0, depth), inner = Math.min(0, depth) - LOGO_AMS_LAP;
-    return { tris: maskedSlabTris(mask, 1, nC, nC, lxq, lxq, outer, inner, {o:o3, u:uR, v:vR, n:face.n}),
+    return { tris: maskedSlabTris(mask, 1, nC, nC, lxq, lxq, outer, inner, {o:o3, u:uR, v:vR, n:face.n}, warp),
              ring: [], center: null };
   }
   // the emitted window is the glyph's bbox with its 3-cell pad, decided in buildAt; the annulus stitch
@@ -7257,7 +7312,9 @@ function buildDieGlyphPatch(face, asg, nC, wantPlugs, fit2D){
   const M3=(u,v,y)=>[C3[0]+u*U3[0]+v*V3[0]+y*N3[0], C3[1]+u*U3[1]+v*V3[1]+y*N3[1], C3[2]+u*U3[2]+v*V3[2]+y*N3[2]];
   const lx=q=>-P/2+q*h, at=(i,j)=>(i>=i0&&j>=j0&&i<=i1&&j<=j1)?mask[j*nC+i]:0;
   const tris=[], emit=(A,B,Cc,D,ref)=>{ tris.push(orient([A,B,Cc],ref)); tris.push(orient([A,Cc,D],ref)); };
-  const P3=(i,j,y)=>{ const q=l2f(lx(i),lx(j)); return M3(q[0],q[1],y); };
+  const WX=(i,j)=> warp ? lx(i) + warp[(j*(nC+1)+i)*2]*h   : lx(i);
+  const WY=(i,j)=> warp ? lx(j) + warp[(j*(nC+1)+i)*2+1]*h : lx(j);
+  const P3=(i,j,y)=>{ const q=l2f(WX(i,j),WY(i,j)); return M3(q[0],q[1],y); };
   for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
     const y=at(i,j)?depth:0;
     emit(P3(i,j,y),P3(i+1,j,y),P3(i+1,j+1,y),P3(i,j+1,y), N3);   // cell top/floor plate
@@ -12283,7 +12340,6 @@ function maskedSlabTris(mask, want, N, M, U, V, hi, lo, fr, warp){
     if(!on(i,j)) continue;
     const q00=[WU(i,j),WV(i,j)], q10=[WU(i+1,j),WV(i+1,j)],
           q11=[WU(i+1,j+1),WV(i+1,j+1)], q01=[WU(i,j+1),WV(i,j+1)];
-    const ua=U(i), ub=U(i+1), va=V(j), vb=V(j+1);
     const G=(c,o)=>P(c[0],c[1],o);
     out.push(orient([G(q00,hi),G(q10,hi),G(q11,hi)], nOut), orient([G(q00,hi),G(q11,hi),G(q01,hi)], nOut));
     out.push(orient([G(q00,lo),G(q10,lo),G(q11,lo)], nIn),  orient([G(q00,lo),G(q11,lo),G(q01,lo)], nIn));
@@ -12386,13 +12442,25 @@ function standLogoTris(p, res){
     const rad = (lg.rotation||0)*Math.PI/180, cosR=Math.cos(-rad), sinR=Math.sin(-rad);
     const mask = new Uint8Array(N*M);
     let any = false;
-    for(let j=0;j<M;j++) for(let i=0;i<N;i++){
-      const su = (i+0.5)/N*2*halfU - halfU, sv = (j+0.5)/M*2*halfV - halfV;
+    // Read over the cell's AREA rather than at its centre: the fraction that is inside the artwork says
+    // WHERE inside the cell its edge fell, and that is what mosaicWarp needs to slide the grid's vertices
+    // onto it. A centre sample knows only which side of the edge the centre is on, so the outline can
+    // only turn at a cell corner — a staircase, whatever the artwork says.
+    const SS = 3, cov = new Float32Array(N*M*2);
+    const inArt = (su, sv) => {
       const lu = su*cosR - sv*sinR, lv = su*sinR + sv*cosR;
-      if (Math.abs(lu) > lg.w/2 || Math.abs(lv) > lg.h/2) continue;
+      if (Math.abs(lu) > lg.w/2 || Math.abs(lv) > lg.h/2) return 0;
       let val = sampleHeightmap(lg.heightmap, (lu + lg.w/2)/lg.w, 1 - (lv + lg.h/2)/lg.h);
       if (lg.invert) val = 1 - val;
-      if (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) { mask[j*N+i]=1; any=true; }
+      return (logoStepped(lg) ? val > 1e-4 : val > (lg.threshold!=null?lg.threshold:0.5)) ? 1 : 0;
+    };
+    for(let j=0;j<M;j++) for(let i=0;i<N;i++){
+      const base2 = (j*N+i)*2;
+      for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
+        const su = (i + (si+0.5)/SS)/N*2*halfU - halfU, sv = (j + (sj+0.5)/SS)/M*2*halfV - halfV;
+        cov[base2 + inArt(su, sv)] += 1/(SS*SS);
+      }
+      if (cov[base2+1] > cov[base2]) { mask[j*N+i]=1; any=true; }
     }
     if (!any && plate <= 0) continue;
     // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
@@ -12405,7 +12473,8 @@ function standLogoTris(p, res){
     const U = i => u0 - halfU + (i/N)*2*halfU, V = j => v0 - halfV + (j/M)*2*halfV;
     // Not `push(...arr)`: a patch across the full width of a stand is tens of thousands of triangles and
     // the spread passes every one as an argument, which overflows the stack rather than being slow.
-    for (const T of reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr)) out.push(T);
+    const warp = mosaicWarp(mask, cov, 1, N, M);
+    for (const T of reliefSlabTris(mask, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr, warp)) out.push(T);
   }
   return out;
 }

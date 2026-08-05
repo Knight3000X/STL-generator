@@ -99,5 +99,111 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('pbPart none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+console.log('\n=== вентрешётка в стенке ===');
+{
+  /* Решётка это ОКНО в плите стенки плюс отдельные перемычки, каждая своим замкнутым телом. Проверяется
+     не «строится ли» — герметичной вышла бы и стенка, в которой окно не прорезалось вовсе (ровно такая
+     ошибка тут и случилась: у ±X стенок первая ось окна ВЕРТИКАЛЬНАЯ, у ±Z горизонтальная, и перепутанные
+     местами ap/aq просто не резали ничего). Поэтому меряется ОБЪЁМ и положение перемычек. */
+  const none = base({pbVent:'none'});
+  for (const face of ['-Z','+Z','-X','+X']) for (const dir of ['vert','horiz']) {
+    const t = base({pbVent:face, pbVentDir:dir, pbVentW:40, pbVentH:16, pbVentN:7, pbVentBar:1.6});
+    const mc = manifoldCheck(t,4);
+    chk('решётка '+face+' '+dir+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+    chk('решётка '+face+' '+dir+': стенка правда прорезана', vol(t) < vol(none) - 300,
+        {c:+(vol(t)-vol(none)).toFixed(0)});
+  }
+  // перемычек ровно на одну меньше, чем щелей, и каждая — отдельная коробка в 12 треугольников
+  const t2 = base({pbVent:'-Z', pbVentN:2}), t7 = base({pbVent:'-Z', pbVentN:7});
+  chk('каждая лишняя щель добавляет ровно одну перемычку', t7.length - t2.length === 12*5,
+      {d:t7.length - t2.length});
+  /* Перемычка ТОНЬШЕ стенки и утоплена. Вровень её лицевая грань легла бы в ту же плоскость, что и лицо
+     стенки, и на перекрытии у краёв окна две плоские грани совпали бы ПЛОЩАДЬЮ — это не проникновение, а
+     лишние треугольники на общем ребре, которых manifoldCheck не видит (он сшивает рёбра ненаправленно).
+
+     Меряется набором ПЛОСКОСТЕЙ поперёк стенки в зоне окна: их должно быть ровно четыре — лицо стенки,
+     лицо перемычки, тыл перемычки, тыл стенки, — и обе средние обязаны стоять строго внутри с зазором.
+     Готовый лоток центрируется по габариту, поэтому отсчёт идёт от габарита, а не от сырых координат. */
+  {
+    const t = base({pbVent:'-Z', pbVentW:40, pbVentH:16, pbVentN:7, pbVentBar:1.6});
+    const b = computeBBox(t);
+    const wall = 2.4, Dw = 60 - 2*1.5, zOuter = -Dw/2;
+    const cv = ((2.4 - Math.min(2.4*0.6, 1.0)) + 30)/2 - (b.maxY - b.minY)/2;
+    const zs = new Set();
+    for (const T of t) for (const q of T)
+      if (Math.abs(q[0]) < 16 && Math.abs(q[1] - cv) < 9.5 && q[2] < zOuter + wall + 0.6)
+        zs.add(+q[2].toFixed(4));
+    const arr = [...zs].sort((x,y) => x - y);
+    chk('поперёк стенки в окне ровно четыре плоскости', arr.length === 4, arr);
+    chk('крайние две — это сама стенка',
+        arr.length === 4 && Math.abs(arr[0] - zOuter) < 1e-6 && Math.abs(arr[3] - (zOuter + wall)) < 1e-6, arr);
+    chk('перемычка утоплена с обеих сторон, а не вровень',
+        arr.length === 4 && arr[1] > arr[0] + 0.1 && arr[2] < arr[3] - 0.1,
+        arr.length === 4 ? [+(arr[1]-arr[0]).toFixed(3), +(arr[3]-arr[2]).toFixed(3)] : arr);
+    /* Сколько перемычек НА САМОМ ДЕЛЕ. Разница числа треугольников между двумя настройками этого не
+       говорит: лишняя перемычка, приписанная к обеим, разницу не меняет. Считаются РЁБРА перемычек —
+       различные x на их собственной плоскости: у семи щелей шесть перемычек и двенадцать таких x. */
+    const barZ = arr[1], xs = new Set();
+    for (const T of t) for (const q of T)
+      if (Math.abs(q[2] - barZ) < 1e-6 && Math.abs(q[1] - cv) < 9.5) xs.add(+q[0].toFixed(4));
+    chk('перемычек ровно на одну меньше, чем щелей', xs.size === 2*(7 - 1), {x:xs.size});
+    /* И каждая ЗАХОДИТ в раму окна. Ровно по краю мало: тела тогда лишь касаются, а касание по грани это
+       не объединение, а два тела, между которыми ноль материала. */
+    let along = 0;
+    for (const T of t) for (const q of T)
+      if (Math.abs(q[2] - barZ) < 1e-6 && Math.abs(q[0]) < 16) along = Math.max(along, Math.abs(q[1] - cv));
+    chk('перемычка заходит в раму, а не упирается в край окна', along > 16/2 + 0.2, +along.toFixed(2));
+  }
+  // щель не может стать тоньше того, что пропечатается: толщина перемычки зажимается тем, что осталось
+  {
+    const g = pboxVentSpec({pbVent:'-Z', pbVentN:24, pbVentBar:6, pbVentW:40, pbVentH:16},
+                           77, 57, 30, 2.4, 2.4, 1.0);
+    chk('щель не тоньше 0.8 мм даже при 24 щелях и толстой перемычке', g.slot >= 0.8 - 1e-9, g.slot);
+    chk('и перемычка при этом ужалась, а не окно', g.bar < 6, g.bar);
+    const t = base({pbVent:'-Z', pbVentN:24, pbVentBar:6});
+    chk('и такое всё ещё герметично', manifoldCheck(t,4).watertight);
+  }
+  // окно шире стенки зажимается по стенке, а не вылезает
+  {
+    const t = base({pbVent:'-Z', pbVentW:999, pbVentH:999});
+    chk('окно во всю стенку: герметично', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    chk('и рама всё-таки осталась', vol(t) > 0, vol(t)|0);
+    /* Габарит — вот что ловит окно, не зажатое по стенке: контур, который шире грани, уводит вершины
+       кольцевого стежка ЗА корпус, а герметичность этого не видит (manifoldCheck сшивает рёбра и на
+       вывернутые лоскуты не смотрит). */
+    const bn = computeBBox(none), bv = computeBBox(t);
+    chk('и габарит корпуса от неё не вырос',
+        Math.abs(bv.maxX-bn.maxX)<1e-6 && Math.abs(bv.minX-bn.minX)<1e-6 &&
+        Math.abs(bv.maxZ-bn.maxZ)<1e-6 && Math.abs(bv.minZ-bn.minZ)<1e-6 &&
+        Math.abs(bv.maxY-bn.maxY)<1e-6 && Math.abs(bv.minY-bn.minY)<1e-6,
+        {none:bn, vent:bv});
+    const tiny = base({pbVent:'-Z', pbW:24, pbD:22, pbH:10});
+    chk('крошечный корпус с решёткой: герметичен', manifoldCheck(tiny,4).watertight, manifoldCheck(tiny,4));
+  }
+  // по умолчанию решётки нет, и на крышке её тоже нет
+  // предупреждения говорят то, что иначе замечаешь уже на столе
+  {
+    base({pbVent:'-Z', pbVentN:24, pbVentBar:6});
+    const w1 = collectPrintWarnings(paramState.box);
+    chk('ужатая перемычка — сказано', w1.some(x => /перемычка ужата/.test(x)), w1);
+    base({pbVent:'-Z', pbVentDir:'horiz'});
+    chk('горизонтальные щели — сказано про мосты',
+        collectPrintWarnings(paramState.box).some(x => /мостами/.test(x)));
+    base({pbVent:'-Z', pbVentDir:'vert', pbVentN:7, pbVentBar:1.6});
+    chk('а на разумных настройках решётка молчит',
+        collectPrintWarnings(paramState.box).every(x => !/вентрешётк/.test(x)),
+        collectPrintWarnings(paramState.box));
+    base({pbVent:'none'});
+    chk('и без решётки молчит тоже',
+        collectPrintWarnings(paramState.box).every(x => !/вентрешётк/.test(x)));
+  }
+  chk('по умолчанию решётки нет', base({}).length === none.length);
+  chk('строка есть и она про стенки',
+      SHAPE_PARAMS.box.filter(r => r.key && r.key.indexOf('pbVent') === 0).length >= 6);
+  chk('и настройки решётки видны только когда она включена',
+      SHAPE_PARAMS.box.filter(r => r.key === 'pbVentN')[0].only.pbVent.indexOf('-Z') >= 0);
+  base({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

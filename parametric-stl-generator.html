@@ -1179,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.0.1';
+const APP_VERSION = 'v17.1.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4784,6 +4784,20 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbClear', label:'Корпус: зазор посадки крышки', min:0.1, max:1, step:0.05, default:0.35, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLidT', label:'Крышка: толщина', min:1, max:10, step:0.1, default:2.4, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLipH', label:'Крышка: высота внутреннего борта (заходит в лоток)', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbVent', label:'Корпус: вентрешётка на стенке', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'-Z',t:'задняя стенка'},{v:'+Z',t:'передняя стенка'},
+               {v:'-X',t:'левая стенка'},{v:'+X',t:'правая стенка'}]},
+    {group:'Корпус (электроника)', key:'pbVentDir', label:'Вентрешётка: направление щелей', type:'select', default:'vert',
+      options:[{v:'vert',t:'вертикальные (печатаются без мостов)'},{v:'horiz',t:'горизонтальные'}],
+      only:{pbVent:['-Z','+Z','-X','+X']}},
+    {group:'Корпус (электроника)', key:'pbVentW', label:'Вентрешётка: ширина', min:6, max:280, step:1, default:40, unit:'мм',
+      only:{pbVent:['-Z','+Z','-X','+X']}},
+    {group:'Корпус (электроника)', key:'pbVentH', label:'Вентрешётка: высота', min:4, max:180, step:1, default:16, unit:'мм',
+      only:{pbVent:['-Z','+Z','-X','+X']}},
+    {group:'Корпус (электроника)', key:'pbVentN', label:'Вентрешётка: число щелей', min:2, max:24, step:1, default:7, unit:'', int:true,
+      only:{pbVent:['-Z','+Z','-X','+X']}},
+    {group:'Корпус (электроника)', key:'pbVentBar', label:'Вентрешётка: толщина перемычки', min:0.8, max:6, step:0.1, default:1.6, unit:'мм',
+      only:{pbVent:['-Z','+Z','-X','+X']}},
     {group:'Корпус (электроника)', key:'pbBoard', label:'PCB: пресет платы (перекрывает сетку)', type:'select', default:'none',
       options:[{v:'none',t:'нет (задать сеткой вручную)'},{v:'pi4',t:'Raspberry Pi 4 / 3B+ (85×56)'},{v:'pizero',t:'Raspberry Pi Zero (65×30)'},
                {v:'uno',t:'Arduino Uno / R3 (68.6×53.4)'},{v:'nano',t:'Arduino Nano (43.2×17.8)'},{v:'esp32',t:'ESP32 DevKit V1 (51.4×25.4)'}]},
@@ -6080,7 +6094,7 @@ const MODEL_HELP = {
              mat:['abs','pla']},
   hook:     {what:'Крючок на стену или на трубу: с защёлкой под любой Ø и полукруглым концом, чтобы не резать ремень.', how:'Спинкой на стол, крючок вверх — слои тогда лежат поперёк отрыва, а не вдоль.', mat:['petg','abs']},
   wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
-  pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
+  pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны. Вентрешётку в стенке печатать вертикальными щелями (так и стоит по умолчанию): стенка идёт вверх ребром, вертикальная щель это два отдельных островка в каждом слое, а горизонтальная требует моста над собой.', mat:['petg','abs']},
   litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
              how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов», первой карточкой; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа.',
              mat:['pla']},
@@ -13518,6 +13532,40 @@ const PCB_BOARDS = {
   nano:   { label:'Arduino Nano',         size:[43.2,17.8], screw:1.9, holes:[[-20.32,-7.62],[20.32,-7.62],[20.32,7.62],[-20.32,7.62]] },
   esp32:  { label:'ESP32 DevKit V1',      size:[51.4,25.4], screw:2.7, holes:[[-22.5,-10.2],[22.5,-10.2],[22.5,10.2],[-22.5,10.2]] },
 };
+/* ---- Вентрешётка в стенке электрокорпуса --------------------------------------------------------
+   Решётка здесь — это ОКНО в плите стенки плюс отдельные перемычки, каждая своим замкнутым телом,
+   а не сетка, вырезанная из стенки. Причина ровно та же, по которой во всём приложении нет CSG:
+   вырезать нечем, зато проникающие друг в друга замкнутые оболочки слайсер объединяет сам.
+
+   Перемычка ТОНЬШЕ стенки на 0.3 мм и утоплена по 0.15 с каждой стороны. Это не косметика: сделай её
+   вровень — её лицевая грань легла бы в ту же плоскость, что и лицо стенки, и на перекрытии у краёв
+   окна две плоские грани совпали бы площадью. Совпавшие грани это не проникновение, это лишние
+   треугольники на общем ребре; manifoldCheck их не видит (он сшивает рёбра ненаправленно), а слайсер
+   на них спотыкается. Утопленная перемычка пересекается со стенкой только ОБЪЁМОМ.
+
+   Щели по умолчанию вертикальные. Стенка печатается стоя, и вертикальная щель — это два отдельных
+   островка в каждом слое; горизонтальная требует мостов над собой. */
+function pboxVentSpec(p, W, D, H, wall, floorT, emb){
+  const face = ['-Z','+Z','-X','+X'].indexOf(String(p.pbVent)) >= 0 ? String(p.pbVent) : null;
+  if (!face) return null;
+  const acrossZ = (face === '-X' || face === '+X');      // ±X стенки смотрят вдоль X, их «ширина» это Z
+  // Свободное поле стенки: по горизонтали её собственный пролёт, по вертикали от дна до верха, с полем
+  // 2 мм по кругу — рамка окна должна остаться и не съесть углы, где стоят стойки.
+  const spanU = (acrossZ ? D : W) - 2*Math.max(1.5, wall) - 4;
+  const wy0 = floorT - emb, spanV = (H - wy0) - 4;
+  if (!(spanU > 4) || !(spanV > 3)) return null;
+  const u = Math.max(4, Math.min(spanU, p.pbVentW || 40));
+  const v = Math.max(3, Math.min(spanV, p.pbVentH || 16));
+  const n = Math.max(2, Math.min(24, Math.round(p.pbVentN || 7)));
+  const vert = String(p.pbVentDir || 'vert') !== 'horiz';
+  // Перемычек на одну меньше, чем щелей, и вместе они не могут съесть окно: щель тоньше 0.8 мм не
+  // напечатается, поэтому толщина перемычки зажимается тем, что остаётся.
+  const along = vert ? u : v;                            // размер окна поперёк перемычек
+  const barMax = Math.max(0.4, (along - n*0.8)/Math.max(1, n - 1));
+  const bar = Math.max(0.4, Math.min(barMax, p.pbVentBar || 1.6));
+  const slot = (along - (n - 1)*bar)/n;
+  return {face, acrossZ, vert, u, v, n, bar, slot, cv:(wy0 + H)/2};
+}
 function buildProjectBox(p){
   const part  = p.pbPart || 'tray';
   const W = Math.max(20, p.pbW||80), D = Math.max(20, p.pbD||60), H = Math.max(8, p.pbH||30);
@@ -13567,10 +13615,37 @@ function buildProjectBox(p){
     // sides are inset in Z and dropped 0.15 at the top so no two slabs ever share a face plane (the same
     // offset trick the clamshell uses) — the appended shells stay watertight.
     const wy0 = floorT-emb;
+    /* Вентрешётка: ОКНО уходит в набор вырезов той стенки, на которой она стоит, — тем же путём, что и
+       разъёмы, — а перемычки приписываются после стенок отдельными телами. Окно кладётся первым, потому
+       что slabInto читает userHoles в момент постройки плиты. */
+    const vent = pboxVentSpec(p, Ww, Dw, H, wall, floorT, emb);
+    /* HOLE_AXIS_PQ[0] = [Y, Z], а HOLE_AXIS_PQ[2] = [X, Y]: у ±X стенки первая ось окна ВЕРТИКАЛЬНАЯ, у
+       ±Z — горизонтальная. Перепутать их легко и незаметно — окно тогда просто не режется, а деталь
+       остаётся герметичной; поймано разницей объёмов, а не глазами. */
+    if (vent) userHoles.push(vent.acrossZ
+      ? { face: vent.face, axis: 0, cp: vent.cv, cq: 0, ap: vent.v/2, aq: vent.u/2, rc: Math.min(1.2, vent.v/2 - 0.1) }
+      : { face: vent.face, axis: 2, cp: 0, cq: vent.cv, ap: vent.u/2, aq: vent.v/2, rc: Math.min(1.2, vent.v/2 - 0.1) });
     slabInto(t, -Ww/2,Ww/2, wy0,H, -Dw/2,-Dw/2+wall, ['-Z']);                        // back wall
     slabInto(t, -Ww/2,Ww/2, wy0,H,  Dw/2-wall,Dw/2,  ['+Z']);                        // front wall
     slabInto(t, -Ww/2,-Ww/2+wall, wy0,H-0.15, -Dw/2+0.4,Dw/2-0.4, ['-X']);           // left wall
     slabInto(t,  Ww/2-wall,Ww/2,  wy0,H-0.15, -Dw/2+0.4,Dw/2-0.4, ['+X']);           // right wall
+    if (vent) {
+      const LAP = 0.8;                                    // насколько перемычка заходит в раму окна
+      const sgn = (vent.face === '+X' || vent.face === '+Z') ? 1 : -1;
+      const thru = vent.acrossZ ? [sgn*(Ww/2 - wall) + sgn*0.15, sgn*Ww/2 - sgn*0.15]
+                                : [sgn*(Dw/2 - wall) + sgn*0.15, sgn*Dw/2 - sgn*0.15];
+      const t0 = Math.min(thru[0], thru[1]), t1 = Math.max(thru[0], thru[1]);
+      for (let k = 1; k < vent.n; k++) {
+        // центр k-й перемычки: k щелей и k−½ перемычек от края окна
+        const c = -(vent.vert ? vent.u : vent.v)/2 + k*vent.slot + (k - 0.5)*vent.bar;
+        const du = vent.vert ? vent.bar : vent.u + 2*LAP;   // размер перемычки по горизонтали окна
+        const dv = vent.vert ? vent.v + 2*LAP : vent.bar;   // …и по вертикали
+        const cu = vent.vert ? c : 0, cvv = vent.vert ? vent.cv : vent.cv + c;
+        const box = vent.acrossZ ? plainBoxShellTris(t1 - t0, dv, du) : plainBoxShellTris(du, dv, t1 - t0);
+        const ctr = vent.acrossZ ? [(t0 + t1)/2, cvv, cu] : [cu, cvv, (t0 + t1)/2];
+        for (const T of box) t.push(T.map(q => [q[0] + ctr[0], q[1] + ctr[1], q[2] + ctr[2]]));
+      }
+    }
     const rO=postD/2, rB=Math.max(0.6,screwD*0.42), seg=Math.max(18,Math.round(postD*3));
     for(const [cx,cz] of postPos) for(const T of tubeYTris(cx,cz, rO, rB, floorT-0.6, H, seg)) t.push(T);   // lid-screw posts
     const nX=Math.max(0,Math.round(p.pbBossNX||0)), nZ=Math.max(0,Math.round(p.pbBossNZ||0));
@@ -17086,6 +17161,20 @@ function collectPrintWarnings(p){
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
   }
   if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  if (p.pbPart && p.pbPart !== 'none' && p.pbVent && p.pbVent !== 'none') {
+    const fl = Math.max(0.6, Math.min(6, p.pbFlange!=null?p.pbFlange:1.5));
+    const Ww = Math.max(20, p.pbW||80) - 2*fl, Dw = Math.max(20, p.pbD||60) - 2*fl;
+    const wall = Math.max(1.2, Math.min(Math.min(Ww,Dw)/4, p.pbWall||2.4));
+    const floorT = Math.max(1.0, p.pbFloor||2.4);
+    const g = pboxVentSpec(p, Ww, Dw, Math.max(8, p.pbH||30), wall, floorT, Math.min(floorT*0.6, 1.0));
+    if (!g) w.push('вентрешётка: на этой стенке для неё не осталось места');
+    else {
+      if (g.bar < (p.pbVentBar || 1.6) - 1e-6)
+        w.push('вентрешётка: перемычка ужата до ' + g.bar.toFixed(1) + ' мм — столько щелей в это окно иначе не помещается');
+      if (g.bar < 0.8) w.push('вентрешётка: перемычка ' + g.bar.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4');
+      if (!g.vert) w.push('вентрешётка: горизонтальные щели печатаются мостами — вертикальные надёжнее');
+    }
+  }
   if (lithoOn(p)) {
     const g = lithoSpec(p);
     // Тонкое место — это стенка, и мерить её надо в проходах сопла: при 0,8 мм это ровно два прохода

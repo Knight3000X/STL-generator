@@ -94,7 +94,7 @@ console.log('=== мажорный разряд — это счётчик баз�
                  thread:{threadMode:'cap'}, hinge:{pipMode:'flat'}, gear:{gearMode:'spur'},
                  mount:{mntMode:'lbracket'}, hook:{hookMount:'wall'}, wallorg:{woBack:'cleat'},
                  pbox:{pbPart:'tray'}, stand:{psOn:true}, funnel:{fnOn:true}, coaster:{csMode:'round'},
-                 baseplate:{gfBaseplate:true}, logo3d:{logo3d:true}};
+                 baseplate:{gfBaseplate:true}, logo3d:{logo3d:true}, litho:{ltMode:'flat'}};
   const D = defaultBoxParams();
   for (const k of shapes){
     chk('«'+KIND_LABEL[k]+'» можно выбрать', !!reach[k], k);

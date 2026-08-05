@@ -17,7 +17,7 @@ function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.lo
 
 // Every base shape the picker offers, plus the two that only a parameter can turn on.
 const MODES = ['box','die','sheet','keycap','thread','hinge','gear','mount','hook',
-               'wallorg','pbox','stand','funnel','coaster','baseplate','logo3d'];
+               'wallorg','pbox','stand','funnel','coaster','litho','baseplate','logo3d'];
 const GROUPS = (() => { const seen = new Set(), out = [];
   for(const sk in SHAPE_PARAMS) for(const p of SHAPE_PARAMS[sk]){
     const g = p.group || 'Параметры'; if(!seen.has(g)){ seen.add(g); out.push(g); } }

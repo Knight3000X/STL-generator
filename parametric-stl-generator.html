@@ -1001,6 +1001,7 @@
         <button class="base-btn" data-base="funnel" title="Воронка: конус со сливным носиком, оболочка постоянной толщины">Воронка</button>
         <button class="base-btn" data-base="coaster" title="Подстаканник: круг или квадрат со скруглёнными углами, логотип внизу, двухцветная печать через AMS">Подстаканник</button>
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">Подставка</button>
+        <button class="base-btn" data-base="litho" title="Литофания: фото становится толщиной панели — на просвет проявляется картинка. Плоская, дугой или цилиндром-абажуром">Литофания</button>
       </div>
     </div>
 
@@ -1178,7 +1179,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v16.5.8';
+const APP_VERSION = 'v17.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4825,6 +4826,16 @@ const SHAPE_PARAMS = {
     {group:'Подстаканник', key:'csRim', label:'Подстаканник: высота борта (0 = плоский)', min:0, max:8, step:0.5, default:2, unit:'мм'},
     {group:'Подстаканник', key:'csRimW', label:'Подстаканник: ширина борта', min:1.5, max:20, step:0.5, default:4, unit:'мм', needs:{csRim:0}},
     {group:'Подстаканник', key:'csInlay', label:'Подстаканник: глубина кармана под логотип', min:0.4, max:3, step:0.1, default:0.8, unit:'мм'},
+    {group:'Литофания', key:'ltMode', label:'Литофания', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'flat',t:'плоская панель'},{v:'curved',t:'дуга'},
+               {v:'cylinder',t:'цилиндр (абажур)'}]},
+    {group:'Литофания', key:'ltW', label:'Литофания: ширина (по дуге)', min:20, max:400, step:1, default:100, unit:'мм'},
+    {group:'Литофания', key:'ltH', label:'Литофания: высота', min:20, max:400, step:1, default:70, unit:'мм'},
+    {group:'Литофания', key:'ltArc', label:'Литофания: угол охвата дуги', min:10, max:300, step:5, default:60, unit:'°', only:{ltMode:['curved']}},
+    {group:'Литофания', key:'ltMin', label:'Литофания: толщина в светлом', min:0.2, max:3, step:0.05, default:0.8, unit:'мм'},
+    {group:'Литофания', key:'ltMax', label:'Литофания: толщина в тёмном', min:0.8, max:10, step:0.1, default:3, unit:'мм'},
+    {group:'Литофания', key:'ltFrame', label:'Литофания: рамка по краю (0 = без рамки)', min:0, max:30, step:0.5, default:3, unit:'мм'},
+    {group:'Литофания', key:'ltRes', label:'Литофания: густота сетки (по длинной стороне)', min:60, max:500, step:10, default:260},
     {group:'Подставка (телефон / планшет)', key:'psOn', label:'Подставка (перекрывает всё)', type:'bool', default:false},
     {group:'Подставка (телефон / планшет)', key:'psW', label:'Подставка: ширина', min:30, max:300, step:1, default:80, unit:'мм'},
     {group:'Подставка (телефон / планшет)', key:'psDepth', label:'Подставка: глубина основания', min:30, max:250, step:1, default:85, unit:'мм'},
@@ -5674,6 +5685,7 @@ function dominantMode(p){
   if (p.logo3d) return 'logo3d';
   if (p.woBack && p.woBack !== 'none') return 'wallorg';
   if (p.pbPart && p.pbPart !== 'none') return 'pbox';
+  if (lithoOn(p)) return 'litho';
   if (p.csMode && p.csMode !== 'none') return 'coaster';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
@@ -5750,6 +5762,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Настенный органайзер': return mode==='wallorg';
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подстаканник': return mode==='coaster';
+    case 'Литофания': return mode==='litho';
     case 'Подставка (телефон / планшет)': return mode==='stand';
     case 'Воронка': return mode==='funnel';
     // Every base shape can carry a label now: the cube family by displacing its own vertices, the
@@ -5768,6 +5781,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='pbox')      return key==='Корпус (электроника)';
   if (mode==='coaster')   return key==='Подстаканник';
+  if (mode==='litho')     return key==='Литофания';
   if (mode==='stand')     return key==='Подставка (телефон / планшет)';
   if (mode==='funnel')    return key==='Воронка';
   if (mode==='hook')      return key==='Крючок';
@@ -5796,12 +5810,14 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
+  'Литофания':'litho',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
 const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
+  litho:'Литофания',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
 // Every parameter whose label matches, with the group it lives in and whether that group is reachable
@@ -6065,6 +6081,9 @@ const MODEL_HELP = {
   hook:     {what:'Крючок на стену или на трубу: с защёлкой под любой Ø и полукруглым концом, чтобы не резать ремень.', how:'Спинкой на стол, крючок вверх — слои тогда лежат поперёк отрыва, а не вдоль.', mat:['petg','abs']},
   wallorg:  {what:'Настенный органайзер: французская планка, перфопанель или шестигранная плитка плюс крючок или полка.', how:'Задней плитой на стол. Планку печатать так, чтобы скос 45° висел над столом, а не над воздухом.', mat:['petg','pla']},
   pbox:     {what:'Корпус для электроники: лоток со стойками под винты и PCB плюс крышка с посадочным буртиком.', how:'Обе половины дном на стол. Стойки печатаются вместе с дном — поддержки не нужны.', mat:['petg','abs']},
+  litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
+             how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов», первой карточкой; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа.',
+             mat:['pla']},
   coaster:  {what:'Подстаканник: круг или квадрат со скруглёнными углами, с бортом против конденсата. Логотип лежит в кармане на НИЖНЕЙ стороне.',
              how:'Логотипом ВНИЗ, на стол — карман печатается первым слоем. Это не прихоть: первый слой — самая гладкая поверхность, какую даёт принтер, и логотип на нём выходит зеркальной вставкой, а тот же логотип сверху — рельефом со следами слоёв.',
              stepsTitle:'Цветной логотип через AMS',
@@ -6193,7 +6212,7 @@ const PRINT_PROFILES = {
 };
 // Which profile a kind of part wants. Anything not named here is an ordinary part.
 const KIND_PRINT = {
-  keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail',
+  keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail', litho:'detail',
   gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
   wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
 };
@@ -6317,6 +6336,7 @@ function setBaseShape(kind){
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
+  setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
   setSel('fnOn',       kind==='funnel' ? true     : false);
   // Refresh explicitly: the last activator touched may not have been the one that decides the mode, so we
@@ -12137,6 +12157,122 @@ function coasterLoop(shape, half, cornerR, seg){
   for(let s=0;s<seg;s++){ const t=2*Math.PI*s/seg; P.push([half*Math.cos(t), half*Math.sin(t)]); }
   return P;
 }
+/* ---- Литофания (фото → просвечивающая панель) ----------------------------------------------------
+   Панель, у которой ТОЛЩИНА и есть картинка: где светло — тонко и просвечивает, где темно — толсто и
+   держит свет. Ничего не смещается и ничего не режется: лицевая поверхность гладкая, а ТЫЛЬНАЯ — поле
+   высот, и вдвоём они замкнутая оболочка. Печатать стоя на короткой стороне, без поддержек: слои тогда
+   идут поперёк картинки, и каждый следующий опирается на предыдущий.
+
+   Почему толщина, а не рельеф. Рельеф виден в отражённом свете и пропадает на просвет; литофания живёт
+   ровно наоборот — её смотрят НА свет, и работает не форма поверхности, а сколько материала свет прошёл.
+   Поэтому диапазон толщин здесь важнее густоты сетки: 0,8 мм в самом светлом месте против 3 мм в самом
+   тёмном — тот контраст, который белый PLA даёт на лампе.
+
+   Три формы — плоская, дуга и цилиндр — одна и та же поверхность при разном угле охвата, поэтому и
+   построитель один. Ширина панели W всегда ДЛИНА ДУГИ, поэтому радиус не задаётся отдельно, а следует
+   из угла: R = W/угол. Шов цилиндра закрыт ИНДЕКСОМ, а не совпадением координат: столбец N берётся как
+   столбец 0, и точки на нём те же самые. Считать их «по формуле с другой стороны» нельзя — sin(+π) и
+   sin(−π) в double отличаются на 1e-16, и шов расходится ровно на эту величину, которой достаточно,
+   чтобы оболочка перестала быть замкнутой. */
+const LITHO_MODES = new Set(['flat','curved','cylinder']);
+function lithoOn(p){ return !!(p && p.ltMode && p.ltMode !== 'none'); }
+// Всё, чем панель является, числами — один источник для построителя, тестов, предупреждений и справки.
+function lithoSpec(p){
+  const mode = LITHO_MODES.has(p.ltMode) ? p.ltMode : 'flat';
+  const W = Math.max(10, Math.min(400, p.ltW || 100));
+  const H = Math.max(10, Math.min(400, p.ltH || 70));
+  const tMax = Math.max(0.8, Math.min(10, p.ltMax == null ? 3 : p.ltMax));
+  // Светлое место не может быть толще тёмного, и не может быть тоньше того, что вообще пропечатается.
+  const tMin = Math.max(0.2, Math.min(tMax - 0.2, p.ltMin == null ? 0.8 : p.ltMin));
+  // Рамка ест картинку с каждой стороны, поэтому шире половины меньшей стороны её пускать некуда.
+  const frame = Math.max(0, Math.min(Math.min(W, H)/2 - 2, p.ltFrame || 0));
+  const arcDeg = mode === 'flat' ? 0 : mode === 'cylinder' ? 360 : Math.max(10, Math.min(300, p.ltArc || 60));
+  const arc = arcDeg*Math.PI/180;
+  const R = arc > 0 ? W/arc : 0;
+  // Густота задаётся по ДЛИННОЙ стороне, короткая получает пропорционально — ячейка выходит квадратной,
+  // иначе картинка сыплется ступеньками вдоль одной оси и держится вдоль другой.
+  const res = Math.max(60, Math.min(500, Math.round(p.ltRes || 260)));
+  const N = Math.max(8, Math.round(res*(W >= H ? 1 : W/H)));
+  const M = Math.max(8, Math.round(res*(H >= W ? 1 : H/W)));
+  return {mode, W, H, tMin, tMax, frame, arcDeg, arc, R, N, M, res, closed: mode === 'cylinder',
+          cell: W/N, tris: 4*N*M + (mode === 'cylinder' ? 4*N : 4*(N + M))};
+}
+function buildLithophane(p, lg){
+  const g = lithoSpec(p);
+  const {W, H, tMin, tMax, frame, arc, R, N, M, closed} = g;
+  const hm = lg && lg.heightmap ? lg.heightmap : null;
+  const inv = !!(lg && lg.invert);
+  const fu = frame/W, fv = frame/H, span = tMax - tMin;
+  /* Толщина в узле. Рамка держит максимум — она и есть край, за который панель берут, и заодно то, что
+     не пускает тонкое место на самый обрез. Без картинки панель просто ровная: форма строится, а дальше
+     видно, что на неё положить. */
+  const thick = (u, v) => {
+    if (!hm) return tMax;
+    if (u < fu || u > 1 - fu || v < fv || v > 1 - fv) return tMax;
+    const iu = (u - fu)/Math.max(1e-6, 1 - 2*fu), iv = (v - fv)/Math.max(1e-6, 1 - 2*fv);
+    let val = sampleHeightmap(hm, iu, 1 - iv);
+    if (inv) val = 1 - val;
+    return tMin + span*(1 - Math.max(0, Math.min(1, val)));       // ярко → тонко → светится
+  };
+  const col = i => closed ? ((i % N) + N) % N : i;                 // столбец N цилиндра — это столбец 0
+  const UU = i => col(i)/N, VV = j => j/M;
+  // Точка внешней поверхности, опущенная внутрь на d. У плоской панели «внутрь» это −Z, у дуги — к оси.
+  const P = (i, j, d) => {
+    const y = (VV(j) - 0.5)*H;
+    if (arc <= 0) return [(UU(i) - 0.5)*W, y, tMax/2 - d];
+    const th = (UU(i) - 0.5)*arc, r = R - d;
+    return [r*Math.sin(th), y, r*Math.cos(th)];
+  };
+  // Ориентир наружу для полосы между i и i+1 — по СЕРЕДИНЕ полосы в неразвёрнутых индексах: у замыкающей
+  // полосы цилиндра середина по завёрнутым уехала бы на противоположную сторону оси.
+  const outAt = i => { if (arc <= 0) return [0,0,1];
+    const th = ((i + 0.5)/N - 0.5)*arc; return [Math.sin(th), 0, Math.cos(th)]; };
+  const T = [];
+  /* Копии, а не те же самые массивы. Четырёхугольник делится на два треугольника, у которых две вершины
+     общие, и если положить в оба ОДИН массив, то любая последующая правка координат — например сдвиг
+     дуги по Z ниже — применится к такой вершине дважды. Оболочка расходится по всем швам сразу:
+     41 тысяча треугольников и 81 тысяча открытых рёбер, то есть не сходится вообще ничего. */
+  const cp = q => [q[0], q[1], q[2]];
+  const quad = (A, B, C, D, ref) => {
+    T.push(orient([cp(A), cp(B), cp(C)], ref));
+    T.push(orient([cp(A), cp(C), cp(D)], ref));
+  };
+  const tOf = [];
+  for (let i = 0; i < (closed ? N : N + 1); i++){
+    const u = i/N, c = new Float64Array(M + 1);
+    for (let j = 0; j <= M; j++) c[j] = thick(u, VV(j));
+    tOf.push(c);
+  }
+  const tAt = i => tOf[col(i)];
+  for (let i = 0; i < N; i++){
+    const t0 = tAt(i), t1 = tAt(i + 1), ref = outAt(i), back = [-ref[0], -ref[1], -ref[2]];
+    for (let j = 0; j < M; j++){
+      quad(P(i,j,0), P(i+1,j,0), P(i+1,j+1,0), P(i,j+1,0), ref);                             // лицо
+      quad(P(i,j,t0[j]), P(i,j+1,t0[j+1]), P(i+1,j+1,t1[j+1]), P(i+1,j,t1[j]), back);        // тыл
+    }
+    quad(P(i,0,0), P(i,0,t0[0]), P(i+1,0,t1[0]), P(i+1,0,0), [0,-1,0]);                      // нижний торец
+    quad(P(i,M,0), P(i+1,M,0), P(i+1,M,t1[M]), P(i,M,t0[M]), [0,1,0]);                       // верхний торец
+  }
+  if (!closed){
+    const tL = tAt(0), tR = tAt(N);
+    const refL = arc <= 0 ? [-1,0,0] : [-Math.cos(arc/2), 0, Math.sin(arc/2)];
+    const refR = arc <= 0 ? [1,0,0]  : [ Math.cos(arc/2), 0, -Math.sin(arc/2)];
+    for (let j = 0; j < M; j++){
+      quad(P(0,j,0), P(0,j+1,0), P(0,j+1,tL[j+1]), P(0,j,tL[j]), refL);
+      quad(P(N,j,0), P(N,j,tR[j]), P(N,j+1,tR[j+1]), P(N,j+1,0), refR);
+    }
+  }
+  // Дуга строится вокруг оси Y и потому лежит по Z целиком с одной стороны от неё; сдвигаем на середину
+  // габарита, чтобы модель стояла там же, где стоят все остальные.
+  if (arc > 0){
+    let lo = Infinity, hi = -Infinity;
+    for (const tri of T) for (const q of tri){ if (q[2] < lo) lo = q[2]; if (q[2] > hi) hi = q[2]; }
+    const dz = -(lo + hi)/2;
+    if (Math.abs(dz) > 1e-9) for (const tri of T) for (const q of tri) q[2] += dz;
+  }
+  return polyDropDegen(T);
+}
+
 // Everything the coaster is, as numbers — so the tests, the warnings and the help all read one source.
 function coasterSpec(p){
   p = p || {};
@@ -15024,6 +15160,12 @@ function buildTrisForShape(shape, p) {
   // Through bevelledMesh like everything else. Returning straight from here meant a chamfer on a
   // Gridfinity BASEPLATE was dropped without a word — the one hole left in "either a chamfer or a reason".
   if (shape === 'box' && p.gfBaseplate) return bevelledMesh(snapWeldTris(buildGridfinityBaseplate(p)), p);
+  // Литофания перекрывает всё: картинка здесь не наклейка на форме, она И ЕСТЬ форма. Плита, карманы,
+  // отверстия и полость ей нечего добавить — они и не считаются.
+  if (shape === 'box' && lithoOn(p)) {
+    const lg = (typeof logos !== 'undefined' && logos.length) ? logos.find(l => l.heightmap) : null;
+    return bevelledMesh(snapWeldTris(buildLithophane(p, lg)), p);
+  }
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
   const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
@@ -15453,7 +15595,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -16590,6 +16732,9 @@ function activeShapeLabel() {
   if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
     return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +
            (g.part==='inlay' ? ' — вставка' : ''); }
+  if (lithoOn(p)) { const g = lithoSpec(p);
+    return 'литофания ' + Math.round(g.W) + '×' + Math.round(g.H) +
+           (g.mode==='flat' ? '' : g.mode==='cylinder' ? ' (цилиндр)' : ' (дуга ' + Math.round(g.arcDeg) + '°)'); }
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? ((p.vaseFloor===false ? 'абажур' : 'ваза') + ' (H' + Math.round(p.vaseH||120) + ')')
@@ -16919,6 +17064,16 @@ function collectPrintWarnings(p){
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
   }
   if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  if (lithoOn(p)) {
+    const g = lithoSpec(p);
+    // Тонкое место — это стенка, и мерить её надо в проходах сопла: при 0,8 мм это ровно два прохода
+    // 0,4, а при меньшем между периметрами остаётся щель, и на просвет видно её, а не картинку.
+    if (g.tMin < 0.8) w.push('литофания: в светлом ' + g.tMin.toFixed(2) + ' мм — меньше двух проходов сопла 0,4, свет пойдёт через щель между периметрами');
+    if (g.tMax - g.tMin < 1.2) w.push('литофания: разница толщин ' + (g.tMax - g.tMin).toFixed(1) + ' мм — на просвет картинка выйдет блёклой');
+    if (g.N*g.M > 120000) w.push('литофания: сетка ' + g.N + '×' + g.M + ' — предпросмотр будет медленным');
+    if (typeof logos === 'undefined' || !logos.some(l => l.heightmap))
+      w.push('литофания: картинка не загружена — панель выйдет ровной плитой');
+  }
   if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }

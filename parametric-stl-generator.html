@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.3.2';
+const APP_VERSION = 'v17.3.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12700,7 +12700,12 @@ function standSurfaceDented(p, which){
 function standSurfaceDisp(p, which, res, spanU, spanV){
   if (!standSurfaceDented(p, which)) return null;
   if (typeof logos === 'undefined' || !logos.length) return null;
-  const mine = logos.filter(lg => lg.heightmap && (lg.depth||0) && standLogoSurface(lg, p) === which);
+  /* При ЦВЕТНОЙ печати выпуклый рисунок панель не выдавливает: его и так печатает пробка, а два
+     одинаковых бугра на одном месте — это два тела в одном объёме, а не рельеф. Утопленный, наоборот,
+     мнётся: вмятина и ЕСТЬ карман, в который пробка ложится. */
+  const colour = logoAmsOn(p);
+  const mine = logos.filter(lg => lg.heightmap && (lg.depth||0) && standLogoSurface(lg, p) === which
+                                  && !(colour && lg.depth > 0));
   if (!mine.length) return null;
   const fr = standLogoFrame(p, which);
   if (!(fr.halfU > 2) || !(fr.halfV > 2)) return null;
@@ -12753,15 +12758,25 @@ function standLogoTris(p, res, amsK){
   for (const lg of logos){
     if (!lg.heightmap) continue;
     const which = standLogoSurface(lg, p);
-    // Накладка нужна там, где панель промять нечем, и цветной печати — у неё карман и пробки обязаны
-    // резаться одной сеткой. Всё остальное панель мнёт сама, и накладывать поверх вмятины нечего.
-    if (!logoAmsOn(p) && standSurfaceDented(p, which)) continue;
+    // Накладку кладёт только та поверхность, которую промять нечем: остальные мнутся сами, и класть
+    // поверх вмятины нечего — ни телу, ни телу с цветной печатью.
+    if (!amsK && standSurfaceDented(p, which)) continue;
     const fr = standLogoFrame(p, which);
     if (!(fr.halfU > 2) || !(fr.halfV > 2)) continue;
     const depth = lg.depth || 0;
     if (!depth) continue;
+    const dented = standSurfaceDented(p, which);
     let plate = Math.max(0, p.logoPlate || 0);
-    if (depth < 0) plate = Math.max(plate, -depth + 0.6);   // engraved: sink it into a plaque
+    /* `plate` описывает НАКЛАДКУ, и только её: где панель мнётся, ни одна ветка ниже к нему не
+       обращается — ни пробка (она отсчитывается от самой поверхности), ни тело (оно там вообще ничего не
+       кладёт). Поэтому условия «а если мнётся» здесь нет: оно ничего не меняло бы, а читалось бы как
+       правило. Мутация это и показала — с ним и без него результат совпадал.
+
+       Смысл же в том, что где панель промять можно, карман — это сама вмятина, и поднимать бляшку значит
+       вернуть ровно ту рамку, ради избавления от которой всё и делалось. Сетки у вмятины и у пробки при
+       этом разные — панель мнётся своей, пробка режется своей, — и по контуру они расходятся не более чем
+       на ячейку: на спинке 76,8 мм при детализации 500 это 0,13 мм, меньше ширины сопла. */
+    if (depth < 0) plate = Math.max(plate, -depth + 0.6);
     /* Тона рисунка. Правило бляшки для цветной печати тут НЕ своё: оно ровно такое же, как у наклейки на
        любой другой форме (`logoPatchPlan`) — утопленный рисунок садится в бляшку, выпуклый обходится без
        неё, и тогда пробкой становится сама надпись. Первая версия поднимала бляшку и на выпуклом «чтобы
@@ -12826,7 +12841,10 @@ function standLogoTris(p, res, amsK){
     if (inkWant){
       // Пробка цвета k: от лица кармана внутрь, с заходом за его дно — проникновение объёмом, не касание.
       if (inkWant > inks.levels.length) continue;
-      const outer = Math.max(base, plate + depth), inner = Math.min(base, plate + depth) - LOGO_AMS_LAP;
+      /* Промятая панель: пробка идёт от самой поверхности (0) до дна вмятины и ещё на LAP глубже —
+         проникновение объёмом, а не касание. Непромятая: от лица накладки до дна её кармана. */
+      const outer = dented ? Math.max(0, depth) : Math.max(base, plate + depth);
+      const inner = (dented ? Math.min(0, depth) : Math.min(base, plate + depth)) - LOGO_AMS_LAP;
       for (const T of maskedSlabTris(mask, inkWant, N, M, U, V, outer, inner, fr, warp)) out.push(T);
       continue;
     }

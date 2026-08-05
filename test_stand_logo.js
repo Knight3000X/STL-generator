@@ -353,7 +353,9 @@ console.log('=== цветная печать (AMS) на подставке ===')
     logos.push({id:1, face, u0:0, v0:0, w:WLOG, h:WLOG, depth:-0.6, threshold:0.5, invert:false,
                 rotation:0, heightmap:three, levels:4, chan:'detail',
                 tones:['#101010','#404040','#BB1828']}); };
-  const P = ov => Object.assign({}, defaultBoxParams(), {psOn:true}, ov);
+  /* Вырез под кабель выключен: с ним дно промять нечем, и там остаётся НАКЛАДКА — верное поведение, но
+     другое, и мерить его надо своими плоскостями. Оно проверяется ниже отдельным случаем. */
+  const P = ov => Object.assign({}, defaultBoxParams(), {psOn:true, psSlot:0}, ov);
   // площадь граней, смотрящих по нормали рамки и лежащих на заданном от неё отступе
   const faceArea = (t, n, at) => { let a = 0;
     for(const T of t){
@@ -393,14 +395,21 @@ console.log('=== цветная печать (AMS) на подставке ===')
     // и вместе они дают ровно площадь рисунка — ни нахлёста, ни щелей
     const fr = standLogoFrame(P({}), face);
     const at = fr.o[0]*fr.n[0] + fr.o[1]*fr.n[1] + fr.o[2]*fr.n[2];
-    const sum = parts.reduce((a,t) => a + faceArea(t, fr.n, at + 1.2), 0);
+    /* Лицо пробки теперь ЗАПОДЛИЦО с панелью (0), а не на верху накладки (+1.2): накладки больше нет,
+       карман — это сама вмятина. Дно кармана, соответственно, на глубине рисунка. */
+    const sum = parts.reduce((a,t) => a + faceArea(t, fr.n, at + 0), 0);
     const truth = Math.PI*(RAD*WLOG)*(RAD*WLOG);
     chk(face+': цвета замостили рисунок целиком', Math.abs(sum/truth - 1) < 0.03,
         {сумма:+sum.toFixed(1), рисунок:+truth.toFixed(1)});
     // …и ровно тот же ответ со стороны ТЕЛА: дно его кармана и лица пробок — одна площадь
     chk(face+': и это ровно дно кармана в теле',
-        Math.abs(sum - faceArea(body, fr.n, at + 0.6)) < Math.max(1, sum*0.03),
-        {пробки:+sum.toFixed(1), карман:+faceArea(body, fr.n, at + 0.6).toFixed(1)});
+        Math.abs(sum - faceArea(body, fr.n, at - 0.6)) < Math.max(1, sum*0.06),
+        {пробки:+sum.toFixed(1), карман:+faceArea(body, fr.n, at - 0.6).toFixed(1)});
+    // …и лицо пробки не выступает над панелью: рамки, из-за которой всё затевалось, быть не должно
+    let top = -Infinity;
+    for (const t of parts) for (const T of t) for (const q of T)
+      top = Math.max(top, (q[0]-fr.o[0])*fr.n[0] + (q[1]-fr.o[1])*fr.n[1] + (q[2]-fr.o[2])*fr.n[2]);
+    chk(face+': пробка встаёт заподлицо, а не рамкой', Math.abs(top) < 1e-6, +top.toFixed(3));
     // цвета, которого у рисунка нет, не существует — а не «есть, но пустой»
     chk(face+': четвёртого цвета нет', buildTrisForShape('box', P({logoAms:'ink4'})).length === 0);
   }
@@ -413,8 +422,8 @@ console.log('=== цветная печать (AMS) на подставке ===')
     const t = buildTrisForShape('box', P({logoAms:'ink1'}));
     let deep = Infinity;
     for(const T of t) for(const q of T) deep = Math.min(deep, q[0]*fr.n[0]+q[1]*fr.n[1]+q[2]*fr.n[2]);
-    chk('пробка уходит за дно кармана, а не упирается в него', deep < at + 0.6 - 0.1,
-        {дно:+(at+0.6).toFixed(2), пробка:+deep.toFixed(2)});
+    chk('пробка уходит за дно кармана, а не упирается в него', deep < at - 0.6 - 0.1,
+        {дно:+(at-0.6).toFixed(2), пробка:+deep.toFixed(2)});
   }
   /* ВЫПУКЛЫЙ логотип с цветом: у приложения на этот случай своё правило — бляшка не нужна, пробкой
      становится сама надпись. Подставка обязана вести себя так же, а не заводить своё. */
@@ -425,6 +434,17 @@ console.log('=== цветная печать (AMS) на подставке ===')
     const body = buildTrisForShape('box', P({logoAms:'body'}));
     const p1 = buildTrisForShape('box', P({logoAms:'ink1'}));
     chk('выпуклый + цвет: тело герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    /* И панель при этом НЕ выдавлена: выпуклый рисунок печатает пробка, а два одинаковых бугра на одном
+       месте — это два тела в одном объёме. Меряется объёмом против детали без логотипа. */
+    {
+      const keep = logos.splice(0, logos.length);
+      const bare = buildTrisForShape('box', P({}));
+      for (const l of keep) logos.push(l);
+      const volOf = t => { let v=0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
+        v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; } return v; };
+      chk('выпуклый + цвет: панель не выдавлена — бугор один, и он пробка',
+          Math.abs(volOf(body) - volOf(bare)) < 1e-6, +(volOf(body) - volOf(bare)).toFixed(2));
+    }
     chk('выпуклый + цвет: пробка есть и замкнута',
         p1.length > 0 && manifoldCheck(p1,4).watertight, [p1.length, manifoldCheck(p1,4)]);
     // и она стоит НАД поверхностью, а не в кармане — это и есть «пробкой становится сама надпись»
@@ -437,6 +457,24 @@ console.log('=== цветная печать (AMS) на подставке ===')
        быть. Меряется точное превышение. */
     chk('и стоит ровно на свою высоту над поверхностью, без бляшки под ней',
         Math.abs((high - at) - 0.8) < 0.05, +(high-at).toFixed(2));
+  }
+
+  /* Дно С ВЫРЕЗОМ: промять нечем, работает накладка. Цветная печать обязана работать и там — иначе
+     возможность пропадает ровно у той настройки, что стоит по умолчанию. */
+  {
+    putAms('floor', 30);
+    const Q = ov => Object.assign({}, defaultBoxParams(), {psOn:true, psSlot:24}, ov);
+    const body = buildTrisForShape('box', Q({logoAms:'body'}));
+    const p1 = buildTrisForShape('box', Q({logoAms:'ink1'}));
+    chk('дно с вырезом: тело с накладкой герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    chk('дно с вырезом: цвет построился и замкнут',
+        p1.length > 0 && manifoldCheck(p1,4).watertight, [p1.length, manifoldCheck(p1,4)]);
+    const fr = standLogoFrame(Q({}), 'floor');
+    const at = fr.o[0]*fr.n[0] + fr.o[1]*fr.n[1] + fr.o[2]*fr.n[2];
+    let top = -Infinity;
+    for(const T of p1) for(const q of T)
+      top = Math.max(top, (q[0]-fr.o[0])*fr.n[0] + (q[1]-fr.o[1])*fr.n[1] + (q[2]-fr.o[2])*fr.n[2]);
+    chk('и там пробка стоит на накладке, а не заподлицо — потому что накладка есть', top > 0.5, +top.toFixed(2));
   }
 
   // цепочка «+ Цвет N» и группировка в 3MF подставку знают

@@ -176,20 +176,19 @@ for(const ft of [-0.3,0,0.25,0.5])
 
 
 console.log('=== drywall anchor (дюбель) ===');
-for(const D of [8,14,25]) for(const tip of [0.4,0.7,0.95]) for(const hd of ['right','left']){
-  const t=base({threadMode:'anchor',threadD:D,threadPitch:3,threadTip:tip,threadHand:hd,threadLen:20,threadFlange:3});
+/* Сам дюбель разобран в test_anchor.js — он больше не разновидность крепёжной резьбы, а своя деталь со
+   своими размерами. Здесь остаётся ровно то, за что отвечает ЭТОТ файл: диспетчер buildThread обязан
+   отдавать дюбель своему построителю, а не ветке штуцера, и делать это на любых общих параметрах. */
+for(const hd of ['right','left']) for(const st of [1,2]){
+  const t=base({threadMode:'anchor',threadHand:hd,threadStarts:st});
   const mc=manifoldCheck(t,4);
-  chk('anchor Ø'+D+' tip'+tip+' '+hd+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
+  chk('anchor '+hd+' '+st+'-start watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
 }
-{ // the whole point of an anchor is the taper: it must be narrower at the tip than at the flange, so it bites
-  const t=base({threadMode:'anchor',threadD:20,threadPitch:3,threadTip:0.5,threadLen:20,threadFlange:3});
-  const b=computeBBox(t); let rTip=0,rRoot=0;
-  for(const T of t)for(const v of T){ const r=Math.hypot(v[0],v[2]);
-    if(v[1]>b.maxY-1.5) rTip=Math.max(rTip,r); if(v[1]>b.minY+3.5 && v[1]<b.minY+5.5) rRoot=Math.max(rRoot,r); }
-  chk('anchor tapers toward the tip', rTip < rRoot-1, {tip:+rTip.toFixed(2),root:+rRoot.toFixed(2)}); }
-{ const t=base({threadMode:'anchor',threadD:20,threadTip:0.7});
-  let minR=1e9; for(const T of t)for(const v of T) minR=Math.min(minR,Math.hypot(v[0],v[2]));
-  chk('anchor keeps a clear screw bore', minR>0.5, {minR:+minR.toFixed(2)}); }
+{ /* Общие резьбовые числа дюбелю больше не адресованы, и это ПРОВЕРЯЕТСЯ, а не подразумевается: пока
+     threadD стоял в его строке, дюбель по умолчанию выходил Ø38 — пробкой от бутылки. */
+  const a=base({threadMode:'anchor'}), b2=base({threadMode:'anchor',threadD:60,threadPitch:8,threadLen:50});
+  chk('anchor ignores the generic thread size', a.length===b2.length && Math.abs(vol(a)-vol(b2))<1e-6,
+      {a:a.length, b:b2.length}); }
 
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;

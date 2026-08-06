@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.3.4';
+const APP_VERSION = 'v17.4.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4435,13 +4435,13 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (конусный, под саморез)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland','anchor'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','anchor'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
-    {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','gland','anchor'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','gland'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadClear', w:['cap','nut','wingnut'], label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadLead', w:['cap','jar','stud','bolt','gland','anchor'], label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadDepth', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadLead', w:['cap','jar','stud','bolt','gland'], label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadDepth', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland'], label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadJournal', w:['leadscrew','auger','corkscrew'], label:'Ходовой винт: вылет цапфы с каждой стороны', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadJournalD', w:['leadscrew','auger'], needs:{threadJournal:0}, label:'Ходовой винт: Ø цапфы (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadAugerShaft', w:['auger'], label:'Шнек: Ø вала (0 = 0.35 от Ø витка)', min:0, max:120, step:0.5, default:0, unit:'мм'},
@@ -4451,7 +4451,7 @@ const SHAPE_PARAMS = {
       options:[{v:'barb',t:'вторая ёлочка (соединитель шлангов)'},{v:'flange',t:'фланец (упор)'},{v:'thread',t:'наружная резьба (штуцер)'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWireD', w:['corkscrew'], label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHandleW', w:['corkscrew'], label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlat', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlat', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland'], label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', w:['cap','jar'], label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
@@ -4471,18 +4471,35 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadSeal', w:['cap'], label:'Крышка: уплотнительный бортик (0 = без)', min:0, max:3, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadGrip', w:['cap'], label:'Крышка: число насечек (0 = гладкая)', min:0, max:80, step:1, default:24, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadGripD', w:['cap'], label:'Крышка: глубина насечки', min:0.3, max:2, step:0.1, default:0.9, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlange', w:['stud','gland','anchor'], label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', w:['stud','gland','anchor'], label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlange', w:['stud','gland'], label:'Штуцер: толщина фланца', min:1.5, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlangeR', w:['stud','gland'], label:'Штуцер: радиус фланца (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyShape', w:['jar'], label:'Банка: форма корпуса', type:'select', default:'round',
       options:[{v:'round',t:'круг / эллипс'},{v:'squircle',t:'squircle'},{v:'roundrect',t:'скруглённый прямоугольник'},{v:'rect',t:'прямоугольник'}]},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyD', w:['jar'], label:'Банка: корпус — размер по Z (0 = авто, шире горла)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyW', w:['jar'], label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', w:['jar'], label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', w:['jar'], label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland','anchor'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTip', w:['anchor'], label:'Дюбель: сужение к носку (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.7, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', w:['bolt','nut','wingnut'], label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    /* Дюбель — своя группа со своими размерами, а не набор чисел от крепёжной резьбы. Причина простая:
+       общие threadD/threadPitch/threadLen по умолчанию дают Ø30 с шагом 3, то есть пробку от бутылки, и
+       чтобы получить дюбель, пришлось бы вручную переставить пять ползунков. Теперь он дюбель сразу. */
+    {group:'Дюбель по гипсокартону', key:'anD', w:['anchor'], label:'Дюбель: Ø по виткам', min:8, max:30, step:0.5, default:13, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anCore', w:['anchor'], label:'Дюбель: Ø сердечника (0 = авто)', min:0, max:24, step:0.5, default:0, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anLen', w:['anchor'], label:'Дюбель: длина тела (под лист)', min:10, max:60, step:0.5, default:25, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anPitch', w:['anchor'], label:'Дюбель: шаг витка', min:3, max:15, step:0.5, default:7, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anFlight', w:['anchor'], label:'Дюбель: толщина витка', min:0.8, max:4, step:0.1, default:1.6, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anTaper', w:['anchor'], label:'Дюбель: сужение к носку (доля)', min:0.4, max:1, step:0.02, default:0.72, unit:''},
+    {group:'Дюбель по гипсокартону', key:'anTipLen', w:['anchor'], label:'Дюбель: длина заходного конуса', min:0, max:20, step:0.5, default:6, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anScrew', w:['anchor'], label:'Дюбель: Ø самореза', min:2.5, max:8, step:0.1, default:4, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anHeadD', w:['anchor'], label:'Дюбель: Ø головки (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anHeadThk', w:['anchor'], label:'Дюбель: высота головки', min:1.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Дюбель по гипсокартону', key:'anDrive', w:['anchor'], label:'Дюбель: шлиц под отвёртку', type:'select', default:'pz',
+      options:[{v:'pz',t:'крест (PZ/PH)'},{v:'slot',t:'прямой шлиц'},{v:'hex',t:'шестигранник'},{v:'none',t:'без шлица'}]},
+    {group:'Дюбель по гипсокартону', key:'anDriveD', w:['anchor'], label:'Дюбель: размер шлица (0 = авто)', min:0, max:20, step:0.5, default:0, unit:'мм', only:{anDrive:['pz','slot','hex']}},
+    {group:'Дюбель по гипсокартону', key:'anDriveDepth', w:['anchor'], label:'Дюбель: глубина шлица (0 = авто)', min:0, max:12, step:0.5, default:0, unit:'мм', only:{anDrive:['pz','slot','hex']}},
+    {group:'Дюбель по гипсокартону', key:'anBoard', w:['anchor'], label:'Дюбель: толщина листа (для проверок)', min:6, max:40, step:0.5, default:12.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'},{v:'telescope',t:'телескопическая труба (печать в сборе)'}]},
     {group:'Петля (печать в сборе)', key:'snapLen', w:['snap'], label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
@@ -5109,6 +5126,97 @@ function augerSpec(p){
   const dy=len/rows;
   const ramp=Math.min(Math.max(target, 1.5*dy), (tw-0.2)/2);
   return { rows, dy, ramp, blade:tw, tip:tw-2*ramp, shaftD:2*rSh, flightH:majorR-rSh, len, pitch:P };
+}
+/* ---- Дюбель по гипсокартону (спиральный, тип «Дрива») --------------------------------------------
+   Всё, чем дюбель является, числами — один источник для построителя, тестов, предупреждений и справки.
+
+   Прошлая версия была крепёжной резьбой с фланцем, и это не работало по трём причинам сразу, из которых
+   решающая — третья.
+     1. Профиль. threadProfile заполняет свой шаг: подъём, гребень, спуск. Так устроен КРЕПЁЖ, который
+        держится трением в ответной резьбе. Дюбель держится ПЛОЩАДЬЮ витка, врезанного в гипс, поэтому
+        виток обязан быть тонкой высокой лентой на тонком сердечнике — тем же профилем, что у шнека.
+        Крепёжный профиль на шаге 3 мм гипс не режет, а крошит.
+     2. Размеры. Общие threadD/threadPitch давали Ø30 с шагом 3 — восемнадцать мелких витков на теле,
+        которое должно нести три-четыре крупных.
+     3. Шлиц. Его не было вовсе, а дюбель ВКРУЧИВАЮТ отвёрткой. Деталь без шлица нельзя установить —
+        никакие размеры этого не исправят, и это единственный из трёх пунктов, который делает разницу
+        между «плохо держит» и «пользоваться нельзя».
+
+   Носок сплошной: отверстие под саморез слепое и не доходит до острия, иначе остриё — трубка, которая
+   сминается о лист вместо того, чтобы его проколоть. */
+const AN_DRIVES = new Set(['pz','slot','hex','none']);
+function anchorSpec(p){
+  p = p || {};
+  const D     = Math.max(8, Math.min(30, p.anD || 13));
+  const pitch = Math.max(3, Math.min(15, p.anPitch || 7));
+  const len   = Math.max(10, Math.min(60, p.anLen || 25));
+  const rFl   = D/2;
+  // Сердечник: чем тоньше, тем выше виток и тем больше площадь в гипсе, но тем меньше мяса вокруг
+  // самореза. 0,52 от Ø — середина, на которой оба условия ещё выполняются.
+  const rCore = Math.max(1.6, Math.min(rFl - 0.8, (p.anCore > 0 ? p.anCore : D*0.52)/2));
+  const taper = Math.max(0.4, Math.min(1, p.anTaper == null ? 0.72 : p.anTaper));
+  const tipLen= Math.max(0, Math.min(len*0.6, p.anTipLen == null ? 6 : p.anTipLen));
+  const flight= Math.max(0.8, Math.min(pitch*0.5, p.anFlight || 1.6));
+  const screw = Math.max(2.5, Math.min(8, p.anScrew || 4));
+  /* Отверстие под саморез — это НЕ его наружный Ø. Саморез обязан врезаться резьбой в пластик: дай ему
+     свой размер, и дюбель провернётся в листе, не удержав ничего. Берётся Ø сердечника самореза, около
+     0,7 наружного, и сверху зажимается тем, что осталось от сердечника в самом узком месте. */
+  const wallMin = 0.9;
+  const rBore = Math.max(0.7, Math.min(rCore*taper - wallMin, screw*0.7/2));
+  const headThk = Math.max(1.5, Math.min(8, p.anHeadThk || 3));
+  const rHead   = Math.max(rFl + 0.5, Math.min(20, (p.anHeadD > 0 ? p.anHeadD : D + 3)/2));
+  const drive   = AN_DRIVES.has(p.anDrive) ? p.anDrive : 'pz';
+  /* Шлиц живёт в ГОЛОВКЕ и только в ней. Ниже головки конус сходится к сердечнику, и крест, который
+     туда дотянулся бы, съел бы стенку вокруг самореза досуха. Отсюда и потолок глубины. */
+  const driveD  = drive === 'none' ? 0
+    : Math.max(2, Math.min(2*rHead - 2.4, p.anDriveD > 0 ? p.anDriveD : Math.min(2*rHead*0.62, screw*1.5)));
+  const driveDepth = drive === 'none' ? 0
+    : Math.max(0.6, Math.min(headThk*0.85, p.anDriveDepth > 0 ? p.anDriveDepth : headThk*0.8));
+  const board = Math.max(6, Math.min(40, p.anBoard || 12.5));
+  const starts = Math.max(1, Math.round(p.threadStarts || 1));
+  const cols = Math.max(96, Math.min(288, Math.round(2*Math.PI*rFl/0.4)));
+  /* Виток как доля шага — то же, чем меряется лента шнека: узкий импульс с рампой по обе стороны.
+     А вот плотность станций по высоте считается СВОИМ правилом, и вот каким.
+
+     Кромка витка — винтовая линия: за одну угловую колонку она поднимается на pitch·starts/cols. Пока
+     строки по высоте реже этого подъёма, кромка не может лечь на них наклонно и ложится ступеньками —
+     виток выходит пилой с зубцом во всю строку. Правило шнека («строка от толщины ленты») этого не
+     ловит: оно разрешает ТОЛЩИНУ витка, а пила берётся от его НАКЛОНА. Поэтому шаг строки берётся не
+     больше подъёма кромки за колонку, и тогда каждая колонка получает кромку на своей высоте.
+     Заодно строка не должна быть грубее рампы, иначе фланг снова не разрешён. */
+  const rise   = pitch*starts/cols;
+  const target = Math.min(rise, flight*0.3, 0.4);
+  const rows   = Math.max(48, Math.min(1200, Math.ceil(len/target)));
+  const dy     = len/rows;
+  const rampMM = Math.min(Math.max(1.5*dy, flight*0.2), (flight - 0.4)/2);
+  const duty = flight/pitch;
+  const ramp = rampMM/pitch;
+  const turns = len/pitch;
+  return {D, pitch, len, rFl, rCore, taper, tipLen, flight, screw, rBore, headThk, rHead,
+          drive, driveD, driveDepth, board, duty, ramp, turns, rows, dy, cols, starts, rise,
+          wall: rCore*taper - rBore,                 // стенка вокруг самореза в самом узком месте
+          total: headThk + len,                      // головка + тело
+          grip: Math.max(0, Math.min(len - tipLen, board))};   // сколько витка реально сидит в листе
+}
+// Полярный радиус прямоугольника |x| ≤ b, |z| ≤ a — им задаются все три шлица разом: прямой это один
+// прямоугольник, крест — два накрест (максимум из двух), шестигранник считается своей формулой.
+function rectPolarR(a, b, t){
+  const c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+  return Math.min(c > 1e-9 ? b/c : Infinity, s > 1e-9 ? a/s : Infinity);
+}
+// Полярный радиус правильного n-угольника с описанным радиусом R.
+function ngonPolarR(R, n, t){
+  const step = 2*Math.PI/n, a = ((t % step) + step) % step - step/2;
+  return R*Math.cos(Math.PI/n)/Math.cos(a);
+}
+/* Контур шлица как функция угла. Возвращает радиус, ниже которого материала нет. Отдельной проверки на
+   «без шлица» здесь нет и не нужно: у такого дюбеля driveD равен нулю, и любая из трёх формул даёт ноль
+   сама. Проверка стояла и была мертва — до неё не доходило ни на каких параметрах. */
+function anchorDriveR(g, t){
+  const R = g.driveD/2, w = Math.max(0.5, R*0.32);     // ширина луча креста / прямого шлица
+  if (g.drive === 'hex')  return ngonPolarR(R, 6, t);
+  if (g.drive === 'slot') return rectPolarR(w, R, t);
+  return Math.max(rectPolarR(w, R, t), rectPolarR(R, w, t));   // крест
 }
 // The spigot a neck adapter grows on its top, exactly as buildThread computes it — published so the
 // assembly pair and the tests can size the mating cap without re-deriving the cap's internals.
@@ -5737,6 +5845,9 @@ const FAMILY_MODE = {
   'Крепёж / монтаж': 'mntMode',
   'Шестерня': 'gearMode',
   'Резьба (крышка / штуцер)': 'threadMode',
+  // Дюбель — вторая группа того же семейства, ровно как у петель: строки помечены тем же `w`, и группа
+  // сама сворачивается на остальных разновидностях резьбы.
+  'Дюбель по гипсокартону': 'threadMode',
   // The print-in-place family already splits into groups of its own, so its rows are marked the same way
   // and the groups that end up empty fold themselves away — no second table saying which group is whose.
   'Петля (печать в сборе)': 'pipMode',
@@ -5776,7 +5887,7 @@ function sectionRelevant(key, mode, hollow){
     case '__sub':  return !!subModelKey(mode);                   // ...the sub-model row only where there is one
     case 'Кейкап': return mode==='keycap';                       // its own detail group — the picker turns it on
     case 'Лист / панель': return mode==='sheet';
-    case 'Резьба (крышка / штуцер)': return mode==='thread';
+    case 'Резьба (крышка / штуцер)': case 'Дюбель по гипсокартону': return mode==='thread';
     case 'Шестерня': return mode==='gear';
     case 'Крепёж / монтаж': return mode==='mount';
     case 'Крючок': return mode==='hook';
@@ -5809,7 +5920,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='mount')     return key==='Крепёж / монтаж';
   if (mode==='gear')      return key==='Шестерня';
   if (mode==='hinge')     return PIP_GROUP_SET.has(key);
-  if (mode==='thread')    return key==='Резьба (крышка / штуцер)';
+  if (mode==='thread')    return key==='Резьба (крышка / штуцер)' || key==='Дюбель по гипсокартону';
   if (mode==='sheet')     return key==='Размеры' || key==='Лист / панель' || key==='Наклон стенок';
   if (mode==='keycap')    return key==='Размеры' || key==='Кейкап';
   if (mode==='die')       return key==='Размеры' || key==='Многогранник';
@@ -5828,6 +5939,7 @@ function sectionRelevant(key, mode, hollow){
    «Многогранник» is reachable from the plain cube too, so it is not a foreign group. */
 const GROUP_KIND = {
   'Кейкап':'keycap', 'Лист / панель':'sheet', 'Резьба (крышка / штуцер)':'thread',
+  'Дюбель по гипсокартону':'thread',
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
@@ -6136,7 +6248,9 @@ const MODEL_HELP = {
   'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
   'thread:wingnut':  {what:'Барашковая гайка: та же резьба плюс два крыла под пальцы.', how:'Плашмя. Крылья тонкие в основании — увеличьте их толщину, если гайку будут дёргать часто.', mat:['petg','abs']},
   'thread:gland':    {what:'Кабельный ввод (сальник): корпус с резьбой и внутренним отверстием под кабель.', how:'Фланцем на стол.', mat:['petg','tpu']},
-  'thread:anchor':   {what:'Дюбель под гипсокартон: резьба крупного шага с фланцем и конусным носом.', how:'Фланцем на стол, носом вверх. Материал должен быть жёстким — TPU сомнётся, а не врежется.', mat:['petg','abs']},
+  'thread:anchor':   {what:'Дюбель по гипсокартону, спиральный (тип «Дрива»): крупный режущий виток на тонком сердечнике, потайная головка со шлицем и заходное остриё. Вкручивается прямо в лист отвёрткой — сверлить не нужно, — а держит не трением, а ПЛОЩАДЬЮ витка, врезанного в гипс. Внутри слепое отверстие под саморез: остриё остаётся сплошным, иначе оно смялось бы о лист вместо того, чтобы его проколоть.',
+                      how:'Головкой на стол, остриём вверх — так шлиц печатается открытым отверстием, а не нависанием, и опорная плоскость головки выходит самой гладкой поверхностью, какую даёт принтер. Поддержки не нужны: виток сам себе опора, его наклон к горизонту примерно 10°, и каждый следующий слой ложится на предыдущий с большим перекрытием. Материал обязан быть ЖЁСТКИМ — PETG или ABS; PLA хрупок и виток скалывается при вкручивании, TPU сомнётся и не врежется вовсе. Заполнение 40–60 % и не меньше трёх периметров: тонкая стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке. Слой 0,15–0,2 мм: на 0,3 виток выходит ступенчатым и режет хуже. Вкручивать без нажима, сам затянется; саморез брать на 0,5–1 мм длиннее суммы «толщина листа + то, что вешаете».',
+                      mat:['petg','abs']},
 
   'hinge:flat':     {what:'Плоская двухлистовая петля, печатается в сборе и складывается сразу со стола. Штифт можно сделать несъёмным или заменить прутком (годится кусок филамента 1,75 мм).', how:'Обоими листами на стол, петля раскрыта. Зазор 0,3–0,35 мм: меньше — спечётся, больше — люфт.', mat:['petg','nylon']},
   'hinge:box':      {what:'Контейнер-футляр: две оболочки на общей петле плюс защёлки. Печатается раскрытым и закрывается со стола.', how:'Раскрытым, дном обеих половин на стол.', mat:['petg','pla']},
@@ -7755,6 +7869,112 @@ function augerProfile(t, duty, rampDuty){
 // designs do, so calibrating this once beats hand-editing five separate numbers on every model. Applied where
 // each clearance is read; each site still clamps to its own valid range afterwards.
 function fitTuned(p, v){ return Math.max(0, v + (p.fitTune||0)); }
+/* Дюбель целиком — ОДНА поверхность вращения с винтовым витком, вывернутая наизнанку по полости.
+   Ни одного вычитания: наружная оболочка и полость строятся как два кольцевых столбика станций
+   (y, радиусы по углу), сшитых полосами, и закрываются тремя крышками. Шлиц при этом не «вырезан» в
+   головке — он и ЕСТЬ полость на первых миллиметрах: её радиус просто зависит от угла. Тем же приёмом
+   живёт логотип, вдавленный в подставку: поверхность строится сразу с ямой, потому что объединение
+   умеет только добавлять материал.
+
+   Углы берутся равномерно, поэтому углы креста и грани шестигранника слегка скруглены — на 5-миллиметровом
+   шлице это доли десятой миллиметра, меньше, чем разница между PZ2 и PH2, и отвёртке только на пользу. */
+function buildDrywallAnchor(p){
+  const g = anchorSpec(p);
+  const hand = (p.threadHand === 'left') ? -1 : 1;
+  const S = g.starts, Nth = g.cols;
+  const th = i => 2*Math.PI*(i%Nth)/Nth;
+  const thMid = i => 2*Math.PI*(i+0.5)/Nth;
+  const tris = [];
+  const yHead = g.headThk, yTip0 = yHead + g.len - g.tipLen, yTop = yHead + g.len;
+
+  /* Наружный радиус в точке. Головка — потайной конус от rHead до сердечника; тело — сердечник с
+     витком, оба сужаются к носку; носок — конус, в котором виток тает вместе с сердечником, иначе на
+     границе получился бы кольцевой обрыв во всю высоту витка. */
+  const rOut = (y, i) => {
+    if (y <= yHead){
+      const u = g.headThk > 1e-9 ? y/g.headThk : 1;
+      return g.rHead + (g.rCore - g.rHead)*u;
+    }
+    const t = Math.max(0, Math.min(1, (y - yHead)/Math.max(1e-6, g.len)));
+    const k = 1 - (1 - g.taper)*t;                         // сужение к носку
+    const cone = (g.tipLen > 1e-9 && y > yTip0) ? Math.min(1, (y - yTip0)/(yTop - yTip0)) : 0;
+    const core = g.rCore*k*(1 - cone) + 0.35*cone;
+    const fl   = (g.rFl - g.rCore)*k*(1 - cone);
+    const ph   = y/g.pitch - hand*S*(i%Nth)/Nth;
+    return core + fl*augerProfile(ph, g.duty, g.ramp);
+  };
+  /* Радиус полости. Первые driveDepth мм это шлиц, который к дну поджимается — так сделан и настоящий
+     PZ, и так остаётся стенка между лучами креста и конусом головки. Ниже — круглое отверстие под
+     саморез. Максимум с rBore держит полость МОНОТОННОЙ по включению: узкое место шлица не может
+     оказаться уже отверстия, иначе уступ на дне вывернулся бы наизнанку. */
+  const rIn = (y, i) => {
+    if (g.drive === 'none' || y >= g.driveDepth) return g.rBore;
+    const k = 1 - 0.45*(g.driveDepth > 1e-9 ? y/g.driveDepth : 1);
+    return Math.max(g.rBore, anchorDriveR(g, th(i))*k);
+  };
+  const ring = (y, f) => { const a = []; for (let i = 0; i < Nth; i++) a.push(f(y, i)); return a; };
+  const P = (r, y, i) => [r[i]*Math.cos(th(i)), y, r[i]*Math.sin(th(i))];
+  // Полоса между двумя кольцами. Направление «наружу» задаётся явно: у горизонтального уступа
+  // радиального наружу просто нет, и усреднённая по углу нормаль увела бы его на бок.
+  const band = (rA, yA, rB, yB, dir) => {
+    for (let i = 0; i < Nth; i++){
+      const i2 = (i+1)%Nth, m = thMid(i);
+      const ref = dir === 'out' ? [Math.cos(m),0,Math.sin(m)] : dir === 'in' ? [-Math.cos(m),0,-Math.sin(m)]
+                : dir === 'up' ? [0,1,0] : [0,-1,0];
+      const A = P(rA,yA,i), B = P(rA,yA,i2), C = P(rB,yB,i2), Dv = P(rB,yB,i);
+      tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dv],ref));
+    }
+  };
+  const fan = (r, y, apex, dir) => {
+    for (let i = 0; i < Nth; i++){ const i2 = (i+1)%Nth;
+      tris.push(orient([apex, P(r,y,i), P(r,y,i2)], dir === 'up' ? [0,1,0] : [0,-1,0])); }
+  };
+
+  // Станции наружной оболочки. Головка — редко (конус), тело — часто (виток надо разрешить по флангу),
+  // носок — средне. Границы ДУБЛИРУЮТСЯ: на стыке головки и тела виток начинается вертикальной
+  // ступенькой, и это настоящая грань — та, которой виток упирается в головку.
+  const ysOut = [];
+  const push = (a, b, n) => { for (let j = 1; j <= n; j++) ysOut.push(a + (b-a)*j/n); };
+  ysOut.push(0); push(0, yHead, 4);
+  ysOut.push(yHead);                                        // вторая станция на той же высоте
+  push(yHead, yTip0, Math.max(8, Math.round((yTip0-yHead)/g.dy)));
+  if (g.tipLen > 1e-9) push(yTip0, yTop, Math.max(6, Math.round(g.tipLen/g.dy)));
+  let prev = ring(ysOut[0], (y,i) => g.rHead), prevY = 0;
+  for (let j = 1; j < ysOut.length; j++){
+    const y = ysOut[j];
+    // На дублированной станции нижнее кольцо считается по формуле головки, верхнее — по формуле тела.
+    const cur = ring(y, rOut);
+    band(prev, prevY, cur, y, Math.abs(y - prevY) < 1e-9 ? 'up' : 'out');
+    prev = cur; prevY = y;
+  }
+  fan(prev, prevY, [0, yTop, 0], 'up');                     // остриё
+
+  /* Полость. Отверстие СЛЕПОЕ: оно кончается там, где сердечник ещё толще самореза на стенку. Дальше
+     носок сплошной — тем он и прокалывает лист, а не сминается. */
+  const coreAt = y => g.rCore*(1 - (1 - g.taper)*Math.max(0, Math.min(1, (y - yHead)/Math.max(1e-6, g.len))));
+  let boreTop = yTip0;
+  while (boreTop > g.driveDepth + 1 && coreAt(boreTop) - g.rBore < 0.9) boreTop -= 0.5;
+  boreTop = Math.max(g.driveDepth + 1, Math.min(boreTop, yTop - 1));
+  const ysIn = [];
+  if (g.drive !== 'none' && g.driveDepth > 1e-9){
+    for (let j = 0; j <= 6; j++) ysIn.push(g.driveDepth*j/6);
+    ysIn.push(g.driveDepth);                                // дно шлица: уступ к отверстию
+  } else ysIn.push(0);
+  ysIn.push(boreTop);
+  let pin = ring(ysIn[0], rIn), pinY = ysIn[0];
+  for (let j = 1; j < ysIn.length; j++){
+    const y = ysIn[j];
+    // На дублированной станции нижнее кольцо ещё шлиц, верхнее — уже отверстие: это и есть дно шлица.
+    const cur = (Math.abs(y - pinY) < 1e-9) ? ring(y, () => g.rBore) : ring(y, rIn);
+    band(pin, pinY, cur, y, Math.abs(y - pinY) < 1e-9 ? 'down' : 'in');
+    pin = cur; pinY = y;
+  }
+  fan(pin, pinY, [0, boreTop, 0], 'down');                  // потолок слепого отверстия
+
+  // Торец головки: кольцо между контуром шлица и краем головки, нормалью вниз.
+  band(ring(0, rIn), 0, ring(0, () => g.rHead), 0, 'down');
+  return polyDropDegen(tris);
+}
 function buildThread(p){
   const mode  = p.threadMode;
   const D     = Math.max(4, p.threadD||30);              // male major diameter
@@ -7782,21 +8002,18 @@ function buildThread(p){
   const leadLen = Math.max(0, Math.min(p.threadLead!=null ? p.threadLead : 2, len*0.45));
   const lead = d => leadLen>0 ? Math.max(0, Math.min(1, d/leadLen)) : 1;   // d = distance INTO the thread from the entry
 
-  if (mode === 'stud' || mode === 'gland' || mode === 'anchor'){
+  if (mode === 'anchor') return buildDrywallAnchor(p);      // своя деталь, а не штуцер с конусом
+  if (mode === 'stud' || mode === 'gland'){
     // 'gland' (кабельный ввод) is the stud with a cable bore straight through it: the solid top fan and the
     // solid flange disc become annuli closed by a bore wall. Screw it through an enclosure wall and lock it
     // with a plain `nut` of the same Ø/pitch.
     const flangeThk = Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3);
     const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
-    const bored = mode === 'gland' || mode === 'anchor';
-    // A drywall anchor is the same screw body TAPERED toward the tip, so it bites as it is driven in. The
-    // taper multiplies the whole radius function; the bore stays straight because the screw that goes in is.
-    const tipF = (mode === 'anchor') ? Math.max(0.4, Math.min(0.95, p.threadTip||0.7)) : 1;
-    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*tipF*0.5, minorR*tipF-0.8));
+    const bored = mode === 'gland';
+    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
     const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
-    const taper = y => 1 - (1-tipF)*((y-y0)/Math.max(1e-6,y1-y0));
     const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, a=th(i);
-      const r=(minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat))*taper(y);
+      const r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat);
       return [r*Math.cos(a), y, r*Math.sin(a)]; };   // lead-in fades at the top (engagement end)
     const B=(y,i)=>{ const a=th(i); return [rBore*Math.cos(a), y, rBore*Math.sin(a)]; };
     for(let j=0;j<Ny;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=V(i,j),Bv=V(i2,j),C=V(i2,j+1),Dd=V(i,j+1);
@@ -15976,7 +16193,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -17664,6 +17881,18 @@ function collectPrintWarnings(p){
     const ns = threadNeckSpec(p);
     if (!ns) w.push('переходник: под такой резьбой не остаётся потолка, чтобы открыть в нём канал — крышка вышла глухой');
     else if (ns.wall < 0.8) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше 0.8 мм');
+  }
+  if ((p.threadMode || 'none') === 'anchor'){
+    const a = anchorSpec(p);
+    // Стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке.
+    if (a.wall < 0.9) w.push('дюбель: вокруг самореза остаётся ' + a.wall.toFixed(1) + ' мм — саморез разорвёт дюбель при затяжке; уменьшите его Ø или возьмите сердечник потолще');
+    if (a.flight < 0.8) w.push('дюбель: виток ' + a.flight.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4, в гипсе он смнётся');
+    // Дюбель держится площадью витка В ЛИСТЕ. Тело короче листа — и держать нечем.
+    if (a.grip < 6) w.push('дюбель: в листе ' + a.board.toFixed(1) + ' мм сидит всего ' + a.grip.toFixed(1) + ' мм витка — удлините тело');
+    if (a.turns < 2) w.push('дюбель: витков всего ' + a.turns.toFixed(1) + ' — меньше двух, держать почти нечем; уменьшите шаг или удлините тело');
+    if (a.drive === 'none') w.push('дюбель без шлица — вкрутить его будет нечем');
+    else if (a.driveD < 4) w.push('дюбель: шлиц ' + a.driveD.toFixed(1) + ' мм — под него нужна отвёртка мельче PZ1');
+    if (a.rHead <= a.rFl + 0.6) w.push('дюбель: головка не шире витка — ей не на что опереться на поверхности листа');
   }
   // Set by the last bevelledMesh call — it is the only thing here that cannot be read off the
   // parameters, because whether a chamfer is possible depends on the finished mesh's outline.

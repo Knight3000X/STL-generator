@@ -433,20 +433,37 @@ console.log('\n=== приложение говорит вслух то, чем �
 
 console.log('\n=== дюбель есть в панели: строка, разновидность, справка ===');
 {
-  const rows = SHAPE_PARAMS.box.filter(r => r.group === 'Дюбель по гипсокартону');
-  chk('у дюбеля своя группа параметров', rows.length >= 10, rows.length);
+  const rows = SHAPE_PARAMS.box.filter(r => r.group === 'Дюбель по гипсокартону (спиральный)' || r.group === 'Дюбель по гипсокартону (складной)');
+  chk('у каждой разновидности своя группа параметров', rows.length >= 20, rows.length);
   chk('и у каждой строки человеческое имя', rows.every(r => r.label && r.label.length > 3));
-  chk('вся группа помечена разновидностью «дюбель»', rows.every(r => r.w && r.w.length === 1 && r.w[0] === 'anchor'));
+  /* Группа обслуживает ОБЕ разновидности дюбеля, и каждая строка обязана назвать свою. Строка без
+     пометки показалась бы на обеих и на одной из них была бы холостым ходом. */
+  chk('каждая строка группы названа своей разновидностью',
+      rows.every(r => r.w && r.w.length && r.w.every(v => v === 'anchor' || v === 'anchorfold')),
+      rows.filter(r => !r.w || !r.w.length || r.w.some(v => v !== 'anchor' && v !== 'anchorfold')).map(r => r.key));
+  chk('и у обеих разновидностей есть свои строки',
+      rows.some(r => r.w.indexOf('anchor') >= 0) && rows.some(r => r.w.indexOf('anchorfold') >= 0));
   chk('группа видна на резьбе и только на ней',
-      sectionRelevant('Дюбель по гипсокартону', 'thread', false) === true &&
-      sectionRelevant('Дюбель по гипсокартону', 'box', false) === false);
-  chk('и лежит на вкладке «Форма»', GROUP_TAB['Дюбель по гипсокартону'] === 'form');
-  chk('и знает свою форму', GROUP_KIND['Дюбель по гипсокартону'] === 'thread');
+      sectionRelevant('Дюбель по гипсокартону (спиральный)', 'thread', false) === true &&
+      sectionRelevant('Дюбель по гипсокартону (складной)', 'thread', false) === true &&
+      sectionRelevant('Дюбель по гипсокартону (спиральный)', 'box', false) === false);
+  chk('и лежит на вкладке «Форма»', GROUP_TAB['Дюбель по гипсокартону (спиральный)'] === 'form' && GROUP_TAB['Дюбель по гипсокартону (складной)'] === 'form');
+  chk('и знает свою форму', GROUP_KIND['Дюбель по гипсокартону (спиральный)'] === 'thread' && GROUP_KIND['Дюбель по гипсокартону (складной)'] === 'thread');
   /* Строки группы обязаны показываться на дюбеле и прятаться на остальной резьбе — иначе получится
      второй раздел с параметрами, до которых не дотянуться. Ровно этим был сломан AMS на подставке. */
   for (const r of rows){
-    chk('«' + r.key + '» видна на дюбеле', paramRowRelevant(r, A({})) || !!r.only, r.key);
+    // каждая строка видна на СВОЕЙ разновидности и спрятана на чужой резьбе
+    const own = r.w[0];
+    chk('«' + r.key + '» видна на своей разновидности', paramRowRelevant(r, A({threadMode:own})) || !!r.only, r.key);
     chk('«' + r.key + '» скрыта на крышке', !paramRowRelevant(r, A({threadMode:'cap'})), r.key);
+  }
+  /* Строки одной разновидности не должны показываться на другой: обе живут в ОДНОЙ группе, и стоит
+     забыть пометку — на спиральном дюбеле появятся ползунки складного, которые ни на что не влияют. */
+  for (const r of rows){
+    if (r.w.length !== 1) continue;
+    const other = r.w[0] === 'anchor' ? 'anchorfold' : 'anchor';
+    chk('«' + r.key + '» не показывается на другой разновидности',
+        !paramRowRelevant(r, A({threadMode:other})), {key:r.key, other});
   }
   const size = SHAPE_PARAMS.box.find(x => x.key === 'anD');
   chk('Ø по виткам по умолчанию дюбельный, а не Ø30 от крепёжной резьбы', size.default === 13, size.default);
@@ -468,6 +485,213 @@ console.log('\n=== дюбель есть в панели: строка, разн
   chk('и что PLA здесь не годится', /PLA/.test(h.how), h.how);
   Object.assign(paramState.box, A({}));
   chk('имя детали в сводке — дюбель', /дюбель/i.test(activeShapeLabel()), activeShapeLabel());
+}
+
+console.log('\n=== складной дюбель: замкнут и не вывернут ===');
+function F(over){ return Object.assign({}, defaultBoxParams(), {threadMode:'anchorfold'}, over || {}); }
+for (const [name, over] of [['по умолчанию', {}],
+                            ['узкое отверстие', {afHole:6, afScrew:2.5}],
+                            ['широкое', {afHole:24, afLegW:16, afScrew:8}],
+                            ['тонкая полоса', {afLegT:0.6}], ['толстая полоса', {afLegT:3}],
+                            ['большой выгиб', {afBow:4}], ['малый выгиб', {afBow:0.2}],
+                            ['короткая часть', {afLen:10}], ['длинная', {afLen:60}],
+                            ['толстый фланец', {afHeadThk:8, afHeadD:40}],
+                            ['высокий блок', {afBlock:20}], ['узкий блок', {afBlock:2}]]){
+  const t = buildTrisForShape('box', F(over)), mc = manifoldCheck(t, 4);
+  chk('складной, ' + name + ' — герметичен', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+  chk('складной, ' + name + ' — ни одной вывернутой грани', flippedEdges(t, 4) === 0, flippedEdges(t, 4));
+  chk('складной, ' + name + ' — объём положительный', meshVolume(t) > 0, meshVolume(t));
+}
+
+console.log('\n=== складной: он пролезает в своё отверстие ===');
+{
+  /* Габарит сложенного тела определяется УГЛОМ сечения полосы — он на диагонали, и по одному вылету
+     его не видно. Пока считался вылет, полоса шириной 6 на отверстии Ø10 давала тело Ø11,24: дюбель,
+     который не лезет в собственное отверстие, и при этом безупречно герметичный, с габаритом по X
+     ровно 9,5, как и заказано. Меряется по ГОТОВОЙ сетке, а не по спецификации. */
+  for (const over of [{}, {afHole:6, afScrew:2.5}, {afHole:24, afLegW:16, afScrew:8},
+                      {afLegW:20}, {afBow:4}, {afLegT:0.6}]){
+    const p = F(over), g = anchorFoldSpec(p), t = buildTrisForShape('box', p);
+    let mx = 0;
+    for (const T of t) for (const q of T) if (q[1] > g.headThk + 0.01) mx = Math.max(mx, Math.hypot(q[0], q[2]));
+    /* «Не больше отверстия» мало: тело, равное отверстию впритык, в него не войдёт — нужен ЗАЗОР.
+       Пока проверялось «≤ Ø», снятие зазора проходило незамеченным. Сам зазор объявлен в
+       спецификации и проверяется отдельно ниже; здесь — что деталь строго меньше отверстия. */
+    chk('сложенное тело строго меньше отверстия (' + JSON.stringify(over) + ')',
+        2*mx < g.hole - 0.15, {тело:+(2*mx).toFixed(2), отверстие:g.hole, зазор:+(g.hole-2*mx).toFixed(2)});
+    /* Спецификация обязана быть ВЕРХНЕЙ оценкой, и тесной. Точного равенства тут быть не может:
+       протяжка дискретна, вершина выгиба приходится между станциями, и сетка законно недобирает
+       микроны. Недобор безопасен — деталь выходит чуть меньше заявленного, — а вот перебор означал бы,
+       что предупреждение «пролезет» врёт. */
+    chk('спецификация — тесная верхняя оценка габарита (' + JSON.stringify(over) + ')',
+        2*mx <= g.bodyD + 1e-9 && g.bodyD - 2*mx < 0.01,
+        {сетка:+(2*mx).toFixed(5), спека:+g.bodyD.toFixed(5)});
+  }
+}
+{ /* Посадочный радиус объявлен УЖЕ отверстия на настоящий зазор — иначе деталь «влезает» только на
+     бумаге. Проверяется прямо, а не через габарит: габарит на тесных настройках упирается в саморез,
+     и по нему одному снятие зазора не видно. */
+  for (const over of [{}, {afHole:6, afScrew:2.5}, {afHole:24, afScrew:8}]){
+    const g = anchorFoldSpec(F(over));
+    chk('посадочный радиус уже отверстия на объявленный зазор (' + JSON.stringify(over) + ')',
+        g.clear >= 0.2 && Math.abs(g.rFit - (g.rHole - g.clear)) < 1e-9, {rFit:g.rFit, rHole:g.rHole, clear:g.clear});
+  }
+}
+{ // единственный случай, когда не пролезает, — когда саморезу и полосе вместе не хватает отверстия
+  const p = F({afLegT:3, afHole:10, afScrew:4}), g = anchorFoldSpec(p);
+  chk('когда саморез и полоса не помещаются вместе, это сказано вслух',
+      g.bodyD > g.hole && collectPrintWarnings(p).some(x => /не пролезет/.test(x)), collectPrintWarnings(p));
+}
+
+console.log('\n=== складной: полос две, и они по обе стороны оси ===');
+{
+  /* Одна полоса вместо двух даёт замкнутую деталь с нормальным просветом под саморез и правильным
+     габаритом — и совершенно неработающий механизм: тянуть блок будет не за что, он перекосится.
+     Ни герметичность, ни габарит, ни просвет этого не видят, потому что все они меряют ОДНУ сторону. */
+  for (const over of [{}, {afHole:6, afScrew:2.5}, {afHole:24, afScrew:8}]){
+    const p = F(over), g = anchorFoldSpec(p), t = buildTrisForShape('box', p);
+    const yA = g.headThk + 1, yB = g.headThk + g.len - 1;
+    let left = 0, right = 0;
+    for (const T of t) for (const q of T){
+      if (q[1] < yA || q[1] > yB) continue;
+      if (q[0] < -g.legXmin/2) left++; else if (q[0] > g.legXmin/2) right++;
+    }
+    chk('материал есть по обе стороны оси (' + JSON.stringify(over) + ')',
+        left > 50 && right > 50, {слева:left, справа:right});
+    chk('и поровну — полосы одинаковы (' + JSON.stringify(over) + ')',
+        Math.abs(left - right) <= 2, {слева:left, справа:right});
+  }
+}
+{
+  /* Полосы обязаны ЗАХОДИТЬ во фланец и в блок, а не упираться в них плоскостью. Оболочки этой детали
+     держатся тем, что пересекаются по ОБЪЁМУ; сведи перекрытие к нулю — и они просто соприкоснутся
+     гранями. Проверка герметичности этого не заметит (каждая оболочка замкнута сама по себе), а
+     напечатанная деталь расслоится ровно по этому стыку.
+
+     Меряется лучом: вертикаль сквозь полосу пересекает поверхность в шести местах, и при перекрытии
+     все шесть РАЗНЫЕ. Без перекрытия дно полосы садится ровно на торец фланца, и две высоты
+     совпадают — вот это совпадение и ловится. */
+  const p = F({}), g = anchorFoldSpec(p), t = buildTrisForShape('box', p);
+  const ys = [];
+  /* Луч ведём через СЕРЕДИНУ выгиба и с уводом по z: полоса едет по x, и вертикаль ровно на legX
+     выходит из неё в средней части; а z = 0 попадает точно на радиальное ребро кольца фланца, и
+     строгая проверка попадания внутрь треугольника такую точку отбрасывает — оба раза луч показывал
+     меньше пересечений, чем есть. */
+  const x = g.legX + g.bow/2, z = 0.13;
+  for (const T of t){
+    const [A,B,C] = T;
+    const d = (B[2]-C[2])*(A[0]-C[0]) + (C[0]-B[0])*(A[2]-C[2]);
+    if (Math.abs(d) < 1e-12) continue;
+    const a2 = ((B[2]-C[2])*(x-C[0]) + (C[0]-B[0])*(z-C[2]))/d;
+    const b2 = ((C[2]-A[2])*(x-C[0]) + (A[0]-C[0])*(z-C[2]))/d;
+    const c2 = 1-a2-b2;
+    if (a2 < 1e-9 || b2 < 1e-9 || c2 < 1e-9) continue;
+    ys.push(a2*A[1] + b2*B[1] + c2*C[1]);
+  }
+  ys.sort((u,v)=>u-v);
+  chk('вертикаль сквозь полосу пересекает поверхность шесть раз', ys.length === 6, ys.map(v=>+v.toFixed(2)));
+  let touch = 0;
+  for (let i = 1; i < ys.length; i++) if (Math.abs(ys[i]-ys[i-1]) < 1e-6) touch++;
+  chk('и ни одна пара высот не совпадает — оболочки пересекаются, а не соприкасаются',
+      touch === 0, {совпало:touch, ys:ys.map(v=>+v.toFixed(3))});
+}
+
+console.log('\n=== складной: саморез проходит насквозь ===');
+{
+  /* Саморез идёт от фланца к блоку МЕЖДУ полосами. Уже его просвет — и он упрётся в них, а блок тянуть
+     будет нечем: механизма нет вовсе, а не «держит хуже». Полосы стояли на ±2,28 при толщине 1,2 —
+     просвет 3,4 мм на саморез Ø4, и деталь при этом была безупречно замкнута. */
+  for (const over of [{}, {afHole:6, afScrew:2.5}, {afHole:24, afScrew:8}, {afLegW:20}, {afLegT:3}]){
+    const p = F(over), g = anchorFoldSpec(p), t = buildTrisForShape('box', p);
+    // ближайшая к оси точка полосы, на высоте между фланцем и блоком
+    let inner = Infinity;
+    const yA = g.headThk + 1, yB = g.headThk + g.len - 1;
+    for (const T of t) for (const q of T){
+      if (q[1] < yA || q[1] > yB) continue;
+      inner = Math.min(inner, Math.abs(q[0]));
+    }
+    chk('между полосами проходит саморез (' + JSON.stringify(over) + ')',
+        inner >= g.screw/2 + 0.15, {просвет:+(2*inner).toFixed(2), саморез:g.screw});
+  }
+  const p = F({}), g = anchorFoldSpec(p), t = buildTrisForShape('box', p);
+  // фланец обязан пропускать саморез СВОБОДНО, а блок — держать его резьбой
+  const hole = (y, rMax) => { let r = Infinity;
+    for (const T of t) for (const q of T) if (Math.abs(q[1]-y) < 1e-9){ const d = Math.hypot(q[0], q[2]); if (d < rMax) r = Math.min(r, d); }
+    return r; };
+  chk('фланец пропускает саморез свободно', Math.abs(hole(0, g.rHead) - g.rFree) < 1e-9 && 2*g.rFree > g.screw,
+      {отверстие:2*g.rFree, саморез:g.screw});
+  chk('а блок держит его резьбой — там отверстие УЖЕ самореза',
+      Math.abs(hole(g.headThk + g.len + g.block, g.rBlock) - g.rPilot) < 1e-9 && 2*g.rPilot < g.screw,
+      {пилот:2*g.rPilot, саморез:g.screw});
+}
+
+console.log('\n=== складной: он раскрывается, и полоса это переживает ===');
+{
+  const g = anchorFoldSpec(F({}));
+  chk('лапа перекрывает край отверстия', g.grip > 1, +g.grip.toFixed(2));
+  chk('и раскрывается ЗА листом, а не в его толще', g.behind > 1, +g.behind.toFixed(2));
+  chk('деформация полосы в пределах вязкого пластика', g.strain < 0.04, +(g.strain*100).toFixed(1));
+  chk('ход самореза мал — это доли миллиметра, а не пол-листа', g.stroke < 3, +g.stroke.toFixed(2));
+  /* Вершина дуги стоит на СЕРЕДИНЕ полосы — выгиб задан синусом, максимум у него на половине. Значит
+     после стягивания она лежит между «серединой минус ход» и «серединой»; посчитанная от фланца, она
+     уехала бы вдвое дальше, и все проверки «раскрылась за листом» стали бы врать в безопасную сторону. */
+  const mid = g.headThk + g.len/2;
+  chk('вершина дуги — в середине полосы, а не у её конца',
+      g.apexY <= mid + 1e-9 && g.apexY >= mid - g.stroke, {apexY:+g.apexY.toFixed(2), середина:+mid.toFixed(2)});
+  // и на самой сетке выгиб действительно достигает максимума в середине
+  const t = buildTrisForShape('box', F({}));
+  // только область полос: у фланца кромка на радиусе 8, и «максимум по x» без окна ловит именно её
+  let peakY = 0, peak = 0;
+  for (const T of t) for (const q of T){
+    if (q[1] < g.headThk + 1 || q[1] > g.headThk + g.len - 1) continue;
+    if (q[0] > peak){ peak = q[0]; peakY = q[1]; }
+  }
+  chk('и на построенной детали выгиб тоже наибольший посередине',
+      Math.abs(peakY - (g.headThk + g.len/2)) < g.len*0.05, {peakY:+peakY.toFixed(2), надо:+(g.headThk+g.len/2).toFixed(2)});
+  /* Толще полоса — больше деформация при том же раскрытии: это и есть причина, по которой полоса
+     тонкая. Проверяется зависимостью, а не одним числом: одно число сходится и по случайности. */
+  const thin = anchorFoldSpec(F({afLegT:0.6})), thick = anchorFoldSpec(F({afLegT:2.4}));
+  chk('вдвое толще полоса — заметно больше деформация', thick.strain > thin.strain*1.8,
+      {тонкая:+(thin.strain*100).toFixed(2), толстая:+(thick.strain*100).toFixed(2)});
+  const short = anchorFoldSpec(F({afLen:12})), long = anchorFoldSpec(F({afLen:50}));
+  chk('длиннее складная часть — меньше деформация', long.strain < short.strain*0.5,
+      {короткая:+(short.strain*100).toFixed(2), длинная:+(long.strain*100).toFixed(2)});
+}
+{ // приложение говорит вслух всё, чем складной дюбель плох
+  const W = over => collectPrintWarnings(F(over));
+  chk('на настройках по умолчанию не ругается ни на что', W({}).length === 0, W({}));
+  chk('слишком толстая полоса — предупреждает про излом',
+      W({afLegT:3, afHole:16}).some(x => /треснет/.test(x)), W({afLegT:3, afHole:16}));
+  chk('короткая часть в толстом листе — раскроется внутри листа',
+      W({afLen:12}).some(x => /внутри листа|вплотную/.test(x)), W({afLen:12}));
+  chk('урезанную ширину называет прямо',
+      W({afLegW:20}).some(x => /ширина полосы урезана/.test(x)), W({afLegW:20}));
+  chk('урезанный выгиб — тоже', W({afBow:4}).some(x => /выгиб урезан/.test(x)), W({afBow:4}));
+  /* Про узкий фланец предупреждать нечем и не нужно: он ЗАЖАТ так, что уже отверстия быть не может.
+     Предупреждение на этот счёт стояло и было мертво — до него не доходило ни на каких параметрах.
+     Проверяется поэтому сам зажим, а не сообщение о нарушении, которого не бывает. */
+  for (const d of [0, 1, 11, 40]){
+    const g = anchorFoldSpec(F({afHeadD:d}));
+    chk('фланец всегда шире отверстия минимум на 2 мм (afHeadD=' + d + ')',
+        g.rHead >= g.rHole + 2 - 1e-9, {rHead:g.rHead, rHole:g.rHole});
+  }
+}
+
+console.log('\n=== складной есть в панели: разновидность, строки, справка ===');
+{
+  const opt = SHAPE_PARAMS.box.find(r => r.key === 'threadMode').options;
+  chk('складной есть в списке разновидностей', opt.some(o => o.v === 'anchorfold'));
+  const foldOpt = opt.find(o => o.v === 'anchorfold');
+  chk('и назван по-человечески', !!foldOpt && foldOpt.t.length > 10, foldOpt && foldOpt.t);
+  chk('спиральный при этом никуда не делся', opt.some(o => o.v === 'anchor'));
+  chk('строка формы опознаёт складной', dominantMode(F({})) === 'thread');
+  const h = MODEL_HELP['thread:anchorfold'];
+  chk('справка есть', !!h && !!h.what && !!h.how);
+  chk('и предупреждает про PLA', /PLA/.test(h.how), h.how);
+  chk('и говорит, что отверстие надо сверлить', /сверл/i.test(h.how) || /сверл/i.test(h.what));
+  chk('и честно называет отличие от заводского', /шарнир/.test(h.how), h.how);
+  Object.assign(paramState.box, F({}));
+  chk('имя детали в сводке — складной дюбель', /складной/i.test(activeShapeLabel()), activeShapeLabel());
 }
 
 console.log('\n=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

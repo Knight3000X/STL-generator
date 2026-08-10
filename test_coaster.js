@@ -645,5 +645,42 @@ console.log('=== край мозаики идёт по рисунку, а не �
   logos.length = 0;
 }
 
+console.log('=== цветная печать идёт СВОИМ ключом, а не общим ===');
+{
+  /* Подстаканник — форма со своим переключателем детали (`csPart`), своей цепочкой «+ пара» и своим
+     построителем пробок. Общая машинка цветной печати (`logoAms`) ему не адресована, и пока панель
+     предлагала её рядом, она выигрывала трижды: цепочка «+ Цвет N» ставила logoAms вместо csPart,
+     ядро строило обычное тело, а обёртка поверх возвращала общие пробки — ПУСТЫЕ, потому что искать
+     плоскость под наклейку на уже промятом подстаканнике нечего. На экране это выглядело как четыре
+     модели по нулю треугольников.
+
+     Все проверки этого файла ходили по csPart и мимо дефекта: геометрия была цела, сломан был ПУТЬ. */
+  const row = SHAPE_PARAMS.box.find(r => r.key === 'logoAms');
+  chk('общая строка цветной печати на подстаканнике скрыта',
+      !paramRowRelevant(row, Object.assign({}, defaultBoxParams(), {csMode:'round'})));
+  chk('а на обычном кубе показана', paramRowRelevant(row, Object.assign({}, defaultBoxParams())));
+  const mk = (over) => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90}, over);
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w:40, h:40, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return buildTrisForShape('box', paramState.box); };
+  /* Даже если общий ключ пришёл из старого сохранённого проекта, подстаканник обязан строиться, а не
+     исчезать: свою разновидность он решает своим ключом. */
+  const plain = mk({});
+  chk('подстаканник вообще строится', plain.length > 0, plain.length);
+  for (const v of ['body', 'ink1', 'ink2']){
+    const t = mk({logoAms:v});
+    chk('общий ключ «' + v + '» подстаканник не обнуляет', t.length === plain.length,
+        {было:plain.length, стало:t.length});
+  }
+  chk('а свой ключ даёт настоящие пробки, и это не тело', (() => {
+    const ink = mk({csPart:'ink1'});
+    return ink.length > 0 && ink.length !== plain.length; })());
+  // и цепочка «+ пара» ведёт по csPart даже при выставленном общем ключе
+  const m = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:'body', logoAms:'body'}));
+  chk('цепочка ведёт по своему ключу, а не по общему',
+      !!m && m.over.csPart === 'ink1' && m.over.logoAms === undefined, m && m.over);
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

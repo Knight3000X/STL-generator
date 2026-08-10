@@ -532,5 +532,52 @@ console.log('=== край мозаики у цветной детали идёт
   logos.length = 0;
 }
 
+console.log('=== рамка поверхности правая относительно своей нормали ===');
+{
+  /* Разметка поверхности задаётся тройкой (u, v, n), и она обязана быть ПРАВОЙ: u × v = n. Иначе
+     рисунок раскладывается в одну сторону, а смотрят на него с другой, и надпись читается зеркально —
+     ровно это и было на переднем борте, у которого нормаль (0,0,−1), а ось u стояла +X.
+
+     Проверяется тождеством, а не перечислением осей по одной: перечисление повторило бы код, а
+     тождество спрашивает то, из-за чего дефект и возник. Спинка тем же тождеством подтверждает, что
+     проверка не пустая — у неё оно сходилось всегда. */
+  const p = Object.assign({}, defaultBoxParams(), {psOn:true});
+  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const unit = a => { const L = Math.hypot(a[0],a[1],a[2]) || 1; return [a[0]/L, a[1]/L, a[2]/L]; };
+  for (const which of STAND_LOGO_SURFACES){
+    const fr = standLogoFrame(p, which);
+    const c = unit(cross(unit(fr.u), unit(fr.v))), n = unit(fr.n);
+    const dot = c[0]*n[0] + c[1]*n[1] + c[2]*n[2];
+    chk('«' + fr.name + '»: u × v = n', Math.abs(dot - 1) < 1e-9, {which, dot:+dot.toFixed(4)});
+  }
+}
+{
+  /* Вмятину кладёт prismXReliefTris, и её первая ось — всегда мировой +X. У борта ось U смотрит по −X,
+     и смещение обязано об этом знать: пока эти два решения принимались порознь, накладка ложилась по
+     рамке, а вмятина по +X, и надпись на борте выходила зеркальной. */
+  const mark = (() => { const S = LOGO_HM_SIZE, h = new Float32Array(S*S);
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++){
+      const u = (i+0.5)/S; h[j*S+i] = u < 0.3 ? 1 : 0; }      // чернила у ЛЕВОГО края картинки
+    return h; })();
+  for (const which of ['back', 'lip']){
+    const p = Object.assign({}, defaultBoxParams(), {psOn:true});
+    logos.length = 0;
+    logos.push({id:1, face:which, u0:0, v0:0, w:24, h:8, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:mark, levels:2});
+    const fr = standLogoFrame(p, which);
+    const d = standSurfaceDisp(p, which, 120, 2*fr.halfU, 2*fr.halfV);
+    chk('«' + which + '»: смещение построено', !!d, which);
+    if (!d) continue;
+    let lo = 0, hi = 0;
+    for (let i = 1; i < d.N; i++){ const v = d.disp(i, Math.round(d.M/2));
+      if (v === 0) continue; if (i < d.N/2) lo++; else hi++; }
+    // рамка говорит, куда растёт u в мире; сетка растёт по +X
+    const uPlusX = fr.u[0] > 0;
+    chk('«' + which + '»: чернила ложатся с той стороны, которую называет рамка',
+        uPlusX ? (lo > hi) : (hi > lo), {which, uPlusX, слева:lo, справа:hi});
+  }
+  logos.length = 0;
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

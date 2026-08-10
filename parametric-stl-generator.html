@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.5.2';
+const APP_VERSION = 'v17.5.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3368,10 +3368,40 @@ function loadLogoImageFile(file, cb) {
   reader.readAsDataURL(file);
 }
 
-// Renders text into the same {heightmap, previewUrl, suggestedInvert} shape an uploaded image produces,
-// so text relief reuses the entire logo pipeline. The glyphs are drawn OPAQUE on a TRANSPARENT canvas,
-// so analyzeLogoImageData takes the alpha channel (letters proud, background flat) — no invert guessing.
-// Font size is fitted so the text spans ~88% of the width, capped by height (single line).
+/* Прямоугольник, который занимают ЧЕРНИЛА в квадратном растре: минимальная рамка вокруг всего, что
+   отличается от фона, плюс небольшой отступ. Вынесено в чистую функцию, потому что от неё зависит и
+   геометрия, и подпись пропорций, а спросить её надо уметь без браузера.
+
+   `vals` — по одному числу на пиксель (у текста это альфа), `bg` — значение фона. */
+function inkBoxOfRaster(vals, size, bg, tol){
+  const t = tol == null ? 0.25 : tol;
+  let x0 = size, x1 = -1, y0 = size, y1 = -1;
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++)
+    if (Math.abs(vals[j*size + i] - bg) > t){
+      if (i < x0) x0 = i; if (i > x1) x1 = i;
+      if (j < y0) y0 = j; if (j > y1) y1 = j; }
+  if (x1 < x0 || y1 < y0) return null;                     // пусто: обрезать нечего
+  /* Никакого отступа: рамка чернил И ЕСТЬ рамка. Отступ пробовался дважды и оба раза перекашивал
+     пропорции — ради того он и не нужен. Одинаковое число пикселей на обе стороны на полосе 52 × 8
+     это 8 % по ширине и 50 % по высоте: отношение 6,7 выходило 4,7 — то же сплющивание, только
+     помельче. Доля каждой стороны лучше, но пол в один пиксель на короткой стороне бьёт так же (16
+     пикселей высоты, один пиксель с каждой стороны — 12 %). Без отступа отношение точное, а чернила
+     всё равно целы: рамка включает крайние пиксели. */
+  return {x:x0, y:y0, w:x1-x0+1, h:y1-y0+1, aspect:(x1-x0+1)/(y1-y0+1)};
+}
+/* Renders text into the same {heightmap, previewUrl, suggestedInvert} shape an uploaded image produces,
+   so text relief reuses the entire logo pipeline. The glyphs are drawn OPAQUE on a TRANSPARENT canvas,
+   so analyzeLogoImageData takes the alpha channel (letters proud, background flat) — no invert guessing.
+
+   Растр ОБРЕЗАЕТСЯ по чернилам и растягивается на весь квадрат — по тому же правилу, по которому живёт
+   загруженная картинка («stretch to fit; logo W/H controls handle aspect on the model»). Без этого
+   пропорции применялись ДВАЖДЫ: строка рисовалась в квадрат по своим пропорциям, занимая узкую полосу
+   по высоте, а панель под неё делалась с тем же отношением сторон — и полоса ужималась ещё раз. Замер:
+   «EDORA» на грани куба выходила 32,6 × 1,2 мм, отношение 26,9 при истинных 5,2 — сплющенная ровно в
+   aspect раз. Заметно это на любой грани, а не только там, где первый раз увидели.
+
+   Отношение сторон берётся из ТОГО ЖЕ прямоугольника, что и обрезка, а не из measureText и догадки про
+   высоту прописной: пока источников два, найдётся способ применить их оба. */
 function makeTextLogoResult(text, bold, underline) {
   text = (text || '').trim(); if (!text) return null;
   const size = LOGO_HM_SIZE;
@@ -3392,10 +3422,21 @@ function makeTextLogoResult(text, bold, underline) {
           uh = Math.max(4, Math.round(fs * 0.1)), uy = Math.min(size - uh, Math.round(size / 2 + fs * 0.46));
     ctx.fillRect((size - uw) / 2, uy, uw, uh);
   }
+  // Чернила ищем по альфе: буквы непрозрачны, фон прозрачен, и это ровно то, что потом читает
+  // analyzeLogoImageData. Обрезаем по ним и растягиваем на квадрат — и растр, и предпросмотр разом.
+  const raw = ctx.getImageData(0, 0, size, size).data;
+  const alpha = new Float32Array(size*size);
+  for (let k = 0; k < size*size; k++) alpha[k] = raw[k*4 + 3]/255;
+  const box = inkBoxOfRaster(alpha, size, 0, 0.25);
+  let aspect = (ctx.measureText(text).width || 1) / (Math.round(fs) * 0.72);
+  if (box){
+    const tmp = document.createElement('canvas'); tmp.width = size; tmp.height = size;
+    tmp.getContext('2d').drawImage(canvas, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(tmp, box.x, box.y, box.w, box.h, 0, 0, size, size);
+    aspect = box.aspect;
+  }
   const { heightmap, suggestedInvert, stats } = analyzeLogoImageData(ctx.getImageData(0, 0, size, size).data, size);
-  // Visible aspect of the rendered line: measured width over ~cap height (≈0.72 em) — drives the
-  // proportions lock so "TEXT" defaults to a wide, not square, footprint.
-  const aspect = (ctx.measureText(text).width || 1) / (Math.round(fs) * 0.72);
   return { heightmap, previewUrl: canvas.toDataURL('image/png'), suggestedInvert, aspect, src: stats.chose };
 }
 
@@ -4003,6 +4044,11 @@ const LOGO_AMS_LAP = 0.4;      // how far a plug reaches past its own pocket, so
 function logoAmsIndex(v){ const m = /^ink([1-9])$/.exec(String(v||'')); return m ? +m[1] : 0; }
 function logoAmsOn(p){ return !!(p && p.logoAms && p.logoAms !== 'none'); }
 function dieShape(p){ return !!(p && p.platonic && p.platonic !== 'none'); }
+/* Подстаканник — форма со СВОИМ переключателем детали (`csPart`), своей цепочкой «+ пара» и своим
+   построителем пробок. Общая машинка цветной печати (`logoAms`) ему не адресована вовсе, и там, где
+   развилка идёт по ней, подстаканник надо пропускать — иначе общий путь перехватывает управление у
+   того, кто и так всё умеет. */
+function coasterShape(p){ return !!(p && p.csMode && p.csMode !== 'none'); }
 /* How many colours the artwork on this model has — the one number the assembly chain walks.
 
    A die's numbers are cut at a single threshold, so a die has ONE accent colour however many faces carry
@@ -4938,7 +4984,7 @@ const SHAPE_PARAMS = {
     {group:'Логотипы (рельеф на гранях)', key:'logoPlate', label:'Этикетка: подложка под надпись (0 = без подложки)', min:0, max:6, step:0.2, default:0, unit:'мм', only:{ltMode:['none']}},
     // Литофания — сама себе рисунок: ни бляшки под этикетку, ни разбора на цвета у неё нет, и строка,
     // на которую ничего не отзывается, хуже отсутствующей.
-    {group:'Логотипы (рельеф на гранях)', key:'logoAms', label:'Цветная печать логотипа (AMS)', type:'select', default:'none', only:{ltMode:['none']},
+    {group:'Логотипы (рельеф на гранях)', key:'logoAms', label:'Цветная печать логотипа (AMS)', type:'select', default:'none', only:{ltMode:['none'], csMode:['none']},
       options:[{v:'none',t:'нет'},{v:'body',t:'тело (карман под логотип)'},
                {v:'ink1',t:'AMS: цвет 1'},{v:'ink2',t:'AMS: цвет 2'},{v:'ink3',t:'AMS: цвет 3'},
                {v:'ink4',t:'AMS: цвет 4'},{v:'ink5',t:'AMS: цвет 5'},{v:'ink6',t:'AMS: цвет 6'}]},
@@ -5248,7 +5294,7 @@ function assemblyMate(p){
      It goes FIRST because it is asked for explicitly — a jar with a colour logo has both a cap and a set
      of inks to offer, and the one the person just switched on is the one they mean. Switch colour
      printing back off and the cap is offered again. */
-  if (logoAmsOn(p) && amsInkCount(p) > 0){
+  if (logoAmsOn(p) && amsInkCount(p) > 0 && !coasterShape(p)){
     const n = amsInkCount(p);
     const at = logoAmsIndex(p.logoAms);
     const next = (n && at < n) ? at + 1 : 0;
@@ -12889,9 +12935,15 @@ function standLogoFrame(p, which){
              halfU: (W - 0.8)/2 - 1.2, halfV: restL/2 - 1.2, name:'спинка' };
   }
   if (which === 'lip'){
-    // Front face of the lip, seen head-on from the front of the desk.
+    /* Front face of the lip, seen head-on from the front of the desk.
+
+       Ось U идёт по −X, и это не описка. Рамка поверхности обязана быть ПРАВОЙ относительно своей же
+       нормали: u × v = n. У борта нормаль (0,0,−1), значит при v = +Y ось u может быть только −X.
+       Стояло +X — то есть u × v = −n, — и рисунок раскладывался в одну сторону, а смотрели на него с
+       другой: надпись на борте читалась зеркально. У спинки того же изъяна нет, там u × v = n сходится
+       само собой, поэтому и сравнивать было не с чем. */
     return { o: mv([0, (t - 0.5 + t + lipH)/2, zF + 0.2]),
-             u: [1,0,0], v: [0,1,0], n: [0,0,-1],
+             u: [-1,0,0], v: [0,1,0], n: [0,0,-1],
              halfU: (W - 0.6)/2 - 1.2, halfV: (lipH + 0.5)/2 - 0.8, name:'передний борт' };
   }
   return { o: mv([0, 0, (zF + zB)/2]), u: [1,0,0], v: [0,0,1], n: [0,-1,0],
@@ -12978,9 +13030,15 @@ function standSurfaceDisp(p, which, res, spanU, spanV){
     }
     return 0;
   };
+  /* Сетку вмятины кладёт prismXReliefTris, и её первая ось — ВСЕГДА мировой +X: призма строится вдоль
+     него. У поверхности же своя ось U, и у борта она смотрит по −X (см. standLogoFrame: рамка обязана
+     быть правой относительно нормали). Знак берётся из рамки, а не подразумевается: пока эти два
+     решения принимались порознь, они и разошлись — накладка ложилась по рамке, вмятина по +X, и на
+     борте надпись выходила зеркальной. */
+  const uSign = (fr.u && fr.u[0] < 0) ? -1 : 1;
   const disp = (i, j) => {
     if (i <= 0 || i >= N || j <= 0 || j >= M) return 0;       // кромка общая с торцами и соседями
-    return at(spanU*(i/N - 0.5), spanV*(j/M - 0.5));
+    return at(uSign*spanU*(i/N - 0.5), spanV*(j/M - 0.5));
   };
   return {N, M, disp};
 }
@@ -15775,7 +15833,7 @@ function buildTrisForShape(shape, p) {
      перпендикулярна, и общий поиск плоскости под наклейку там ничего не находит. Раньше этот блок всё
      равно перехватывал управление и возвращал ПУСТО — «+ Цвет N (AMS)» на подставке давал модель из нуля
      треугольников, молча. */
-  if (shape === 'box' && logos.length > 0 && !dieShape(p) && !p.psOn &&
+  if (shape === 'box' && logos.length > 0 && !dieShape(p) && !p.psOn && !coasterShape(p) &&
       (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
     const bb = bboxOfTris(tris);
     const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;

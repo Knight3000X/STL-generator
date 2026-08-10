@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.0';
+const APP_VERSION = 'v17.7.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -9341,14 +9341,13 @@ function holeBlockRing(uPos, vPos, cp, cq, hsU, hsV){
   for(let j=iv1;j>iv0;j--) border.push([iu0,j]);
   return { iu0, iu1, iv0, iv1, border, angs: border.map(([i,j])=>Math.atan2(vPos[j]-cq, uPos[i]-cp)) };
 }
-function holeFaceWithHoles(a, s, half, holes, N) {
+function holeFaceWithHoles(a, s, half, holes, N, dispFn) {
   const [p,q] = HOLE_AXIS_PQ[a];
   const hp=half[p], hq=half[q], ha=half[a];
   const outward=[0,0,0]; outward[a]=s;
   // Per-AXIS grid counts (shared box-wide), so two faces meeting at an edge always agree on how many
   // points sit along that edge — a per-face resolution would mismatch and open the shared edge.
   const Np=N[p], Nq=N[q];
-  const P=(ip,iq)=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=-hp+2*hp*ip/Np; c[q]=-hq+2*hq*iq/Nq; return c; };
   const tris=[];
   const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C], outward)); tris.push(orient([A,C,D], outward)); };
   const blocks = holes.map(h=>{
@@ -9361,6 +9360,25 @@ function holeFaceWithHoles(a, s, half, holes, N) {
     return {h,i0,i1,j0,j1};
   });
   const inBlock=(ci,cj)=>blocks.some(b=> ci>=b.i0&&ci<b.i1&&cj>=b.j0&&cj<b.j1);
+  const flat=(ip,iq)=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=-hp+2*hp*ip/Np; c[q]=-hq+2*hq*iq/Nq; return c; };
+  // RELIEF ON THIS FACE. The vertex slides along the OUTWARD normal by the heightmap value at its own
+  // (u, v) — the same rule buildFaceAsymFromAxis follows, so a dent here and a dent there are the same
+  // dent. P stays a PURE function of (ip, iq), and that is what keeps the relief watertight: every cell
+  // sharing a grid node gets the identical point, so nothing can come apart along a node.
+  //
+  // Two places are held flat whatever the artwork says. The face BORDER, because the four side walls meet
+  // it there and a displaced border edge is an open one. And every hole BLOCK, border ring included,
+  // because the bore is a straight cylinder that has to meet its rim: artwork laid over a screw hole would
+  // otherwise pull the rim off the bore. Held flat, not faded — a step where you covered a hole is honest,
+  // an open mesh is not.
+  const P = !dispFn ? flat : (ip,iq)=>{
+    const c = flat(ip,iq);
+    if(ip<=0 || ip>=Np || iq<=0 || iq>=Nq) return c;
+    if(blocks.some(b=> ip>=b.i0 && ip<=b.i1 && iq>=b.j0 && iq<=b.j1)) return c;
+    const dd = dispFn(c[p], c[q], c);
+    if(dd) c[a] += s*dd;
+    return c;
+  };
   for(let ci=0;ci<Np;ci++)for(let cj=0;cj<Nq;cj++){ if(inBlock(ci,cj)) continue;
     pushQ(P(ci,cj),P(ci+1,cj),P(ci+1,cj+1),P(ci,cj+1)); }
   const rims=[];
@@ -9379,9 +9397,17 @@ function holeFaceWithHoles(a, s, half, holes, N) {
   }
   return {tris, rims};
 }
-function buildBoxWithHoles(w,h,d, holes){
+// A plain box with cutouts, and — optionally — relief pressed into named faces (`{'+Y': fn}`, the same
+// shape buildAsymRoundedBox takes). Both at once is the point: a panel that carries screw holes ALWAYS
+// carries them, so "dent only where there are no cutouts" is no rule for a lid. buildAsymRoundedBox can
+// dent but takes one hole per axis and no countersink, which is how a lid with four sunk screw holes came
+// out with one plain one. This builder already had the holes; it needed the dent.
+//
+// `res` is cells along the LONGEST dimension. The grid is shared per axis, so asking for relief on one
+// face refines the neighbours too — that is what keeps the shared edges matching.
+function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res){
   const half=[w/2,h/2,d/2], tris=[];
-  const gres=Math.max(w,h,d)/24;
+  const gres=Math.max(w,h,d)/Math.max(2, Math.round(res>0 ? res : 24));
   const N=[Math.max(2,Math.round(w/gres)), Math.max(2,Math.round(h/gres)), Math.max(2,Math.round(d/gres))];
   const byAxis={0:[],1:[],2:[]};
   for(const H of holes) byAxis[H.axis].push(H);
@@ -9407,7 +9433,8 @@ function buildBoxWithHoles(w,h,d, holes){
   }
   const faceRims={};
   for(let a=0;a<3;a++){
-    const fp=holeFaceWithHoles(a,+1,half,byAxis[a],N), fm=holeFaceWithHoles(a,-1,half,byAxis[a],N);
+    const nm='XYZ'[a], df=dispFnsByFace||{};
+    const fp=holeFaceWithHoles(a,+1,half,byAxis[a],N,df['+'+nm]), fm=holeFaceWithHoles(a,-1,half,byAxis[a],N,df['-'+nm]);
     for(const t of fp.tris) tris.push(t); for(const t of fm.tris) tris.push(t);
     faceRims[a]=fp.rims; // plus/minus share the same (p,q) circle sampling (P ignores the axis sign there)
   }
@@ -12527,6 +12554,12 @@ function buildWallOrg(p){
    as everywhere else: two closed bodies that share a face get welded into one that is closed nowhere. */
 const COASTER_GRID_LAP = 0.5;    // how far the cell grid runs under the smooth ring around it
 const COASTER_BODY_LAP = 0.6;    // how far same-filament bodies interpenetrate
+/* Сколько тела остаётся снаружи от кармана. Это не стенка: карман — выемка в НИЖНЕЙ грани глубиной inlay,
+   а всё, что над ней, сплошное до самого края, так что снаружи остаётся поясок по нижней кромке. Полмилли-
+   метра — один периметр; меньше слайсер не выложит вовсе, а больше не нужно, потому что нести ему нечего.
+   Отсюда же и предел рисунку: ближе, чем на COASTER_EDGE_WALL + COASTER_GRID_LAP + 0.5 = 1.5 мм к краю,
+   краска не подходит — карман должен успеть закрыться раньше. */
+const COASTER_EDGE_WALL = 0.5;
 const COASTER_MAX_INKS = 6;      // as many accent parts as a filament changer plausibly has slots
 
 /* How fine the pocket grid is — in MILLIMETRES, not in «cells across the window».
@@ -12773,7 +12806,12 @@ function coasterSpec(p){
      Сетка при этом остаётся квадратной: она покрывает описанный вокруг окна квадрат, а клетки за
      контуром просто принадлежат полю. Так и было, изменилась только форма самого контура. */
   const innerHalf = Math.max(1, half - rimW);
-  const maxWin = Math.max(4, innerHalf - 0.6);          // дальше борта карману хода нет
+  /* Предел карману ставит КРАЙ ДЕТАЛИ, а не борт. Борт живёт на ВЕРХНЕЙ грани (topFlat…t) и держит стакан;
+     карман — выемка в НИЖНЕЙ глубиной inlay. Они не встречаются нигде, и то, что до v17.7.1 карман
+     останавливался за ширину борта от края, было не ограничением, а моим допущением: на Ø79 оно уводило
+     карман на 4.6 мм внутрь, кольцо вместе с ним — на 5.6 вместо заказанных 1.5, — и оставляло по краю
+     видимый шов между пояском и полем. */
+  const maxWin = Math.max(4, half - COASTER_EDGE_WALL);
   const maxArt = Math.max(2, maxWin - COASTER_GRID_LAP - 0.5);
   /* Кольцо у края — тем же цветом, что и один из тонов рисунка. Живёт оно в ТОЙ ЖЕ сетке кармана и той
      же маске, поэтому и карман под него, и пробка получаются сами собой: отдельной машинки не нужно, а
@@ -14460,18 +14498,18 @@ function buildProjectBox(p){
     const cx=(x0+x1)/2, cy=(y0+y1)/2, cz=(z0+z1)/2, ctr={0:cx,1:cy,2:cz};
     const hs = userHoles.filter(h=>faces.includes(h.face)).map(h=>{ const [pI,qI]=HOLE_AXIS_PQ[h.axis];
       return Object.assign({}, h, {cp: h.cp-ctr[pI], cq: h.cq-ctr[qI]}); });
-    /* Плита, которую называет логотип, строится ПРОМЯТОЙ — через тот же построитель, которым живёт
-       скруглённый куб: он единственный держит и вырезы, и смещение граней разом, и остаётся при этом
-       герметичным (проверено). Остальные плиты остаются простыми оболочками: гнать их через ту же
-       машинку значило бы платить десятками тысяч треугольников за грань, на которой ничего нет. */
+    /* Плита, которую называет логотип, строится ПРОМЯТОЙ — тем же построителем, который и так режет в ней
+       вырезы. Через скруглённый куб это шло до v17.7.1 и было ошибкой: он держит одно отверстие на ось и
+       не знает зенковки, так что крышка с четырьмя потайными винтами выходила с одним простым отверстием.
+       Остальные плиты остаются простыми оболочками: гнать их через сетку под рельеф значило бы платить
+       десятками тысяч треугольников за грань, на которой ничего нет. */
     const sx = x1-x0, sy = y1-y0, sz = z1-z0;
     let dfn = null;
     for (const f of faces){ dfn = pboxPanelDispFns(p, f, sx, sy, sz); if (dfn) break; }
     let t;
     if (dfn){
-      const R0 = asymRadiiFromGroups(0, 0, 0, sx/2, sy/2, sz/2);
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
-      t = buildAsymRoundedBox(sx, sy, sz, R0, Math.max(24, Math.min(200, lres*2)), 4, dfn, null, lres, undefined, hs);
+      t = buildBoxWithHoles(sx, sy, sz, hs, dfn, Math.max(24, Math.min(200, lres*2)));
     } else {
       t = hs.length ? buildBoxWithHoles(sx, sy, sz, hs) : plainBoxShellTris(sx, sy, sz);
     }
@@ -14552,10 +14590,9 @@ function buildProjectBox(p){
     const ldfn = pboxPanelDispFns(p, '+Y', lidW, lidT, lidD)
               || pboxPanelDispFns(p, '-Y', lidW, lidT, lidD);
     if (ldfn){
-      const R0 = asymRadiiFromGroups(0, 0, 0, lidW/2, lidT/2, lidD/2);
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
-      for(const T of buildAsymRoundedBox(lidW, lidT, lidD, R0, Math.max(24, Math.min(200, lres*2)), 4,
-                                         ldfn, null, lres, undefined, holes)) t.push(T);
+      for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes, ldfn,
+                                       Math.max(24, Math.min(200, lres*2)))) t.push(T);
     } else {
       for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);        // plate (centred)
     }

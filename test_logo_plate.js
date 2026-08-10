@@ -195,6 +195,100 @@ console.log('=== а где панель мнётся, подложка ни на
       {off:+vol(off).toFixed(2), on:+vol(on).toFixed(2)});
   chk('и деталь остаётся герметичной', manifoldCheck(on,4).watertight);
 }
+console.log('=== промятая крышка НЕ теряет свои винтовые отверстия ===');
+{
+  /* v17.6.0 гнала промятую плиту через скруглённый куб, а тот держит ОДНО отверстие на ось и не знает
+     зенковки. Крышка с четырьмя потайными винтами выходила с одним простым: три отверстия молча
+     пропадали, у оставшегося исчезала зенковка. Ни счёт рёбер, ни объём этого не видят — деталь всё это
+     время замкнута. Видит только луч, посланный туда, где отверстие обязано быть. */
+  const runsY = (tris, x, z) => {
+    const hits = [];
+    for(const T of tris){ const [a,b,c] = T;
+      const d1=(b[2]-a[2])*(x-a[0])-(b[0]-a[0])*(z-a[2]);
+      const d2=(c[2]-b[2])*(x-b[0])-(c[0]-b[0])*(z-b[2]);
+      const d3=(a[2]-c[2])*(x-c[0])-(a[0]-c[0])*(z-c[2]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[2]-z)*(c[0]-x)-(b[0]-x)*(c[2]-z))/A, w2=((c[2]-z)*(a[0]-x)-(c[0]-x)*(a[2]-z))/A;
+      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      const ny = e1[2]*e2[0]-e1[0]*e2[2]; if(Math.abs(ny)<1e-12) continue;
+      hits.push([w1*a[1]+w2*b[1]+(1-w1-w2)*c[1], ny<0 ? 1 : -1]); }
+    hits.sort((A,B)=>A[0]-B[0]);
+    const runs=[]; let depth=0, start=null;
+    for(const [t,d] of hits){ const prev=depth; depth+=d;
+      if(prev<=0&&depth>0) start=t; else if(prev>0&&depth<=0){ if(start!==null&&t-start>1e-6) runs.push([start,t]); start=null; } }
+    return runs;
+  };
+  /* Сколько СКВОЗНЫХ колодцев видно сверху. Клетка пустая, если луч вверх не встречает ничего; колодец —
+     связная область таких клеток. Именно связность, а не «сгрудить всё, что ближе восьми миллиметров»:
+     кластеризация по расстоянию до первого попавшегося центра зависит от порядка обхода и одно и то же
+     отверстие считает то одним, то двумя. */
+  const wells = tris => {
+    let lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9];
+    for(const T of tris) for(const v of T) for(let k=0;k<3;k++){ if(v[k]<lo[k])lo[k]=v[k]; if(v[k]>hi[k])hi[k]=v[k]; }
+    const K = 70, empty = new Uint8Array(K*K);
+    for(let i=0;i<K;i++) for(let j=0;j<K;j++){
+      const x=lo[0]+(hi[0]-lo[0])*(i+0.5)/K, z=lo[2]+(hi[2]-lo[2])*(j+0.5)/K;
+      if(!runsY(tris,x,z).length) empty[j*K+i] = 1; }
+    let n = 0;
+    for(let q=0;q<empty.length;q++){ if(empty[q] !== 1) continue;
+      n++; const st=[q];
+      while(st.length){ const c=st.pop(); if(empty[c]!==1) continue; empty[c]=2;
+        const ci=c%K, cj=(c-ci)/K;
+        if(ci>0) st.push(c-1); if(ci<K-1) st.push(c+1);
+        if(cj>0) st.push(c-K); if(cj<K-1) st.push(c+K); } }
+    return n;
+  };
+  setup({pbPart:'lid', width:77, height:57, depth:30});
+  const bare = buildTrisForShape('box', paramState.box);
+  const nBare = wells(bare);
+  logos.push({face:'+Y',u0:0,v0:0,w:20,h:12,rotation:0,depth:-0.6,threshold:0.5,invert:false,heightmap:art()});
+  const dented = buildTrisForShape('box', paramState.box);
+  chk('крышка без надписи — четыре колодца', nBare === 4, nBare);
+  chk('с надписью их столько же', wells(dented) === nBare, {было:nBare, стало:wells(dented)});
+  chk('промятая крышка герметична', manifoldCheck(dented,4).watertight, manifoldCheck(dented,4));
+  chk('и надпись правда промяла её', vol(dented) < vol(bare) - 1,
+      {без:+vol(bare).toFixed(1), с:+vol(dented).toFixed(1)});
+  // ЗЕНКОВКА. У входа колодец шире, чем ниже по своей длине — это и есть потай, и это второе, что
+  // терялось: скруглённый куб точит прямой цилиндр и про головку винта не знает вовсе.
+  const runsX = (tris, y, z) => {
+    const hits = [];
+    for(const T of tris){ const [a,b,c] = T;
+      const d1=(b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]);
+      const d2=(c[1]-b[1])*(z-b[2])-(c[2]-b[2])*(y-b[1]);
+      const d3=(a[1]-c[1])*(z-c[2])-(a[2]-c[2])*(y-c[1]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[1]-y)*(c[2]-z)-(b[2]-z)*(c[1]-y))/A, w2=((c[1]-y)*(a[2]-z)-(c[2]-z)*(a[1]-y))/A;
+      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      const nx = e1[1]*e2[2]-e1[2]*e2[1]; if(Math.abs(nx)<1e-12) continue;
+      hits.push([w1*a[0]+w2*b[0]+(1-w1-w2)*c[0], nx<0 ? 1 : -1]); }
+    hits.sort((A,B)=>A[0]-B[0]);
+    const runs=[]; let depth=0, start=null;
+    for(const [t,d] of hits){ const prev=depth; depth+=d;
+      if(prev<=0&&depth>0) start=t; else if(prev>0&&depth<=0){ if(start!==null&&t-start>1e-6) runs.push([start,t]); start=null; } }
+    return runs;
+  };
+  // Один и тот же колодец у обеих деталей: место ищется на голой крышке и переиспользуется, иначе
+  // сравниваются два разных отверстия и разница ничего не значит.
+  let cx=null, cz=null;
+  outer: for(let i=1;i<160;i++) for(let j=1;j<160;j++){
+    const x=-38.5+77*i/160, z=-28.5+57*j/160;
+    if(runsY(bare,x,z).length===0){ cx=x; cz=z; break outer; } }
+  // Ширина ближайшего к колодцу просвета вдоль X на заданной высоте.
+  const gapAt = (tris, y) => { const r = runsX(tris, y, cz); let best=null, bd=1e9;
+    for(let k=0;k+1<r.length;k++){ const a=r[k][1], b=r[k+1][0], dd=Math.abs((a+b)/2 - cx);
+      if(dd < bd){ bd = dd; best = b-a; } }
+    return best; };
+  const topY = (() => { let hi=-1e9; for(const T of bare) for(const v of T) if(v[1]>hi) hi=v[1]; return hi; })();
+  const sB = {mouth: gapAt(bare, topY-0.1), deep: gapAt(bare, topY-1.6)};
+  const sD = {mouth: gapAt(dented, topY-0.1), deep: gapAt(dented, topY-1.6)};
+  chk('колодец нашёлся', cx !== null && sB.mouth != null && sD.mouth != null, {cx, cz, sB, sD});
+  chk('без надписи у отверстия есть зенковка', sB.mouth > sB.deep + 0.3, sB);
+  chk('с надписью зенковка на месте', sD.mouth > sD.deep + 0.3, sD);
+  chk('и она того же размера, что была', Math.abs(sB.mouth - sD.mouth) < 0.3, {без:sB.mouth, с:sD.mouth});
+  logos.length = 0;
+}
 
 console.log('=== the cube family is untouched (it displaces its own vertices) ===');
 {

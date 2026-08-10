@@ -495,8 +495,10 @@ console.log('=== плотность кармана задана в миллим�
   };
   const mc = meshCell(90);
   chk('в построенном меше шаг сетки тоже около 0.35 мм', Math.abs(mc - 0.35) < 0.03, +mc.toFixed(4));
+  // Допуск в две тысячных, а не в одну: измеренный шаг берётся из решётки координат, округлённой до
+  // тысячных (toFixed(3) выше), так что сам по себе он несёт ошибку в половину этой тысячной.
   chk('и он совпадает с тем, что обещает coasterGridN',
-      Math.abs(mc - cell(90, 50)) < 1e-3, {меш:+mc.toFixed(4), помощник:+cell(90,50).toFixed(4)});
+      Math.abs(mc - cell(90, 50)) < 2e-3, {меш:+mc.toFixed(4), помощник:+cell(90,50).toFixed(4)});
   chk('на меньшем подстаканнике шаг тот же, а не мельче',
       Math.abs(meshCell(55) - mc) < 0.03, +meshCell(55).toFixed(4));
 
@@ -607,11 +609,13 @@ console.log('=== о срезанном логотипе говорят вслу�
     logos.push({id:1, face:'-Y', u0:0, v0:0, w, h:w, depth:-0.8, threshold:0.5,
                 invert:false, rotation:0, heightmap:HM, levels:2});
     return collectPrintWarnings(paramState.box).filter(t => /шире окна/.test(t)); };
-  const big = mk(90, 80), fits = mk(90, 30);
+  // 80 мм на Ø90 ПОМЕЩАЮТСЯ с v17.7.1: карман доходит до самого края, и предел рисунку — 87 мм, а не 70.
+  // Чтобы поймать обрезку, логотип должен быть шире детали.
+  const big = mk(90, 100), fits = mk(90, 80);
   chk('о срезанном логотипе предупреждают', big.length === 1, big);
-  chk('и называют оба размера', big.length === 1 && /80/.test(big[0]) && /мм/.test(big[0]), big);
+  chk('и называют оба размера', big.length === 1 && /100/.test(big[0]) && /мм/.test(big[0]), big);
   chk('о помещающемся — молчат', fits.length === 0, fits);
-  chk('на большем подстаканнике тот же логотип уже помещается', mk(180, 80).length === 0);
+  chk('на большем подстаканнике тот же логотип уже помещается', mk(180, 100).length === 0);
   logos.length = 0;
 }
 
@@ -718,7 +722,7 @@ console.log('=== окно кармана идёт по контуру детал
     logos.push({id:1, face:'+Z', u0:0, v0:0, w, h:w, depth:-0.6, threshold:0.5,
                 invert:false, rotation:0, heightmap:HM, levels:2});
     return coasterSpec(paramState.box); };
-  const small = specFor(30), big = specFor(76);
+  const small = specFor(30), big = specFor(90);
   chk('маленькому рисунку — маленькое окно', small.winHalf < bare.maxArt - 5, small.winHalf);
   chk('большому — до самого предела', Math.abs(big.artHalf - bare.maxArt) < 1.5, {big:big.artHalf, предел:bare.maxArt});
   chk('и клеток у маленького меньше', coasterGridN(small, 50) < coasterGridN(big, 50),
@@ -777,6 +781,43 @@ console.log('=== кольцо у края одним из цветов рису�
       !paramRowRelevant(wRow, Object.assign({}, defaultBoxParams(), {csMode:'round', csRingInk:'0'})));
   chk('и показана, когда есть',
       paramRowRelevant(wRow, Object.assign({}, defaultBoxParams(), {csMode:'round', csRingInk:'2'})));
+}
+
+console.log('=== отступ кольца отсчитывается от КРАЯ ДЕТАЛИ ===');
+{
+  /* До v17.7.1 предел карману ставил борт — деталь верхней грани, — и кольцо уезжало внутрь вместе с
+     карманом: заказанные 1.5 мм от края превращались в 5.6, а по краю оставался видимый шов между
+     пояском и полем. Борт и карман живут на разных гранях и не встречаются нигде. */
+  const spec = over => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:78.8, csT:6, csInlay:0.8}, over||{});
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w:50, h:50, depth:-0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return coasterSpec(paramState.box); };
+  const g = spec({csRingInk:3, csRingW:1.5, csRingGap:1.5});
+  chk('кольцо ровно там, где просили', Math.abs(g.ringEdge - 1.5) < 1e-9, g.ringEdge);
+  chk('и его не пришлось урезать', !g.ringTrimmed, {ringR:g.ringR, want:g.half - g.ringGap - g.ringW/2});
+  chk('ширина борта на это больше не влияет',
+      Math.abs(spec({csRingInk:3, csRingW:1.5, csRingGap:1.5, csRimW:20}).ringR - g.ringR) < 1e-9,
+      {узкий:g.ringR, широкий:spec({csRingInk:3, csRingW:1.5, csRingGap:1.5, csRimW:20}).ringR});
+  chk('и карман доходит до самого края', Math.abs(g.half - g.winHalf - COASTER_EDGE_WALL) < 1e-9,
+      {winHalf:g.winHalf, half:g.half});
+  // Больший отступ двигает кольцо ВНУТРЬ на ту же величину — линейно, без зажимов.
+  const g8 = spec({csRingInk:3, csRingW:1.5, csRingGap:8});
+  chk('отступ 8 мм — это 8 мм', Math.abs(g8.ringEdge - 8) < 1e-9, g8.ringEdge);
+  // Ближе, чем поясок плюс нахлёст, краску не пустить — об этом говорят вслух.
+  const tight = spec({csRingInk:3, csRingW:1.5, csRingGap:0});
+  chk('слишком близко к краю — зажато и сказано', tight.ringTrimmed, tight.ringEdge);
+  chk('и зажато ровно до предела кармана',
+      Math.abs(tight.ringR + tight.ringW/2 - tight.maxArt) < 1e-9, {ringR:tight.ringR, maxArt:tight.maxArt});
+  // Ставим тело и убеждаемся, что карман действительно вышел на край, а кольцо попало в свою пробку.
+  logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:78.8, csT:6, csInlay:0.8,
+    csRingInk:3, csRingW:1.5, csRingGap:1.5, logoResolution:40});
+  logos.push({id:1, face:'-Y', u0:0, v0:0, w:50, h:50, depth:-0.8, threshold:0.5,
+              invert:false, rotation:0, heightmap:HM, levels:2});
+  const body = buildTrisForShape('box', paramState.box);
+  chk('тело с кольцом у края герметично', manifoldCheck(body, 4).watertight, manifoldCheck(body, 4));
+  logos.length = 0;
 }
 
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

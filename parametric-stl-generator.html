@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.6.0';
+const APP_VERSION = 'v17.7.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4695,7 +4695,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'pitchgauge',t:'шаблон шага резьбы (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -4728,13 +4728,18 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntPitchKind', w:['pitchgauge'], label:'Шаблон резьбы: наружная или внутренняя', type:'select', default:'ext',
       options:[{v:'ext',t:'наружная (винт)'},{v:'int',t:'внутренняя (гайка)'},{v:'both',t:'обе на одном инструменте'}]},
     {group:'Крепёж / монтаж', key:'mntPitchR', w:['pitchgauge'], label:'Шаблон резьбы: радиус кромки (0 = плоская)', min:0, max:40, step:0.5, default:4, unit:'мм', hint:'Кромка выгибается поперёк плиты: у наружной гребёнки плечи охватывают винт, у внутреннего пальца середина прилегает к отверстию. Плоская кромка касается резьбы по одной линии и качается.'},
-    {group:'Крепёж / монтаж', key:'mntPitchLean', w:['pitchgauge'], label:'Шаблон резьбы: наклон зубцов (+ правая, − левая)', min:-3, max:3, step:0.1, default:0, unit:'°', hint:'Гребень резьбы — спираль, поэтому с зубом инструмента он встречается под углом. Знак — это направление резьбы: плюс правая, минус левая. Величина — угол подъёма вашей резьбы: atan(шаг · заходов / (π · Ø)); у метрического крепежа это 1.5–3°.'},
+    {group:'Крепёж / монтаж', key:'mntPitchLean', w:['pitchgauge','polygauge'], label:'Шаблон резьбы: наклон зубцов (+ правая, − левая)', min:-3, max:3, step:0.1, default:0, unit:'°', hint:'Гребень резьбы — спираль, поэтому с зубом инструмента он встречается под углом. Знак — это направление резьбы: плюс правая, минус левая. Величина — угол подъёма вашей резьбы: atan(шаг · заходов / (π · Ø)); у метрического крепежа это 1.5–3°.'},
     {group:'Крепёж / монтаж', key:'mntPinN', w:['pingauge'], label:'Шаблон диаметров: число стоек', min:2, max:20, step:1, default:8, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntPinStart', w:['pingauge'], label:'Шаблон диаметров: первый Ø', min:0.8, max:40, step:0.1, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPinStep', w:['pingauge'], label:'Шаблон диаметров: шаг', min:0.1, max:10, step:0.1, default:1, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntPinH', w:['pingauge'], label:'Шаблон диаметров: высота стойки', min:3, max:60, step:0.5, default:12, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPitchMin', w:['pitchgauge'], label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntPitchMax', w:['pitchgauge'], label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPitchMin', w:['pitchgauge','polygauge'], label:'Шаблон резьбы: наименьший шаг', min:0.3, max:3.5, step:0.05, default:0.7, unit:'мм', hint:'Промежуток задаётся в миллиметрах и для дюймовой системы тоже: гребёнка меряет шаг и ничего больше, а более мелкая дюймовая резьба — это больше витков на дюйм и меньше миллиметров.'},
+    {group:'Крепёж / монтаж', key:'mntPitchMax', w:['pitchgauge','polygauge'], label:'Шаблон резьбы: наибольший шаг', min:0.3, max:3.5, step:0.05, default:2, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPolyStd', w:['polygauge'], label:'Шаблон резьб: система размеров', type:'select', default:'metric',
+      options:[{v:'metric',t:'метрическая (шаг в мм)'},{v:'imperial',t:'дюймовая (витков на дюйм)'}],
+      hint:'Из какого ряда берутся грани: стандартные метрические шаги ISO или ряд UN. Подписана каждая грань так, как маркируют её собственный стандарт: 0.8 у метрической, 20 у дюймовой.'},
+    {group:'Крепёж / монтаж', key:'mntPolyH', w:['polygauge'], label:'Шаблон резьб: высота многогранника', min:5, max:60, step:1, default:12, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntPolyBore', w:['polygauge'], label:'Шаблон резьб: Ø отверстия под кольцо (0 = без)', min:0, max:60, step:0.5, default:8, unit:'мм', hint:'Отверстие урезается до того, что осталось внутри подписей, а не раздувает шаблон: вы просили шаблон с дыркой, а не шаблон побольше.'},
     {group:'Крепёж / монтаж', key:'mntCabD', w:['cablecomb'], label:'Гребёнка кабелей: Ø кабеля', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntCabN', w:['cablecomb'], label:'Гребёнка кабелей: число гнёзд', min:1, max:24, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntCabGrip', w:['cablecomb'], label:'Гребёнка кабелей: горловина (доля от Ø)', min:0.4, max:0.95, step:0.05, default:0.75, unit:''},
@@ -6350,6 +6355,7 @@ const MODEL_HELP = {
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
   'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
   'mount:pitchgauge':{what:'Шаблон шага резьбы: пластины со стандартными метрическими шагами, уложенные стопкой — каждая на своём уровне, так что винт ложится на одну и не задевает соседние. Есть вариант для гаек: вместо пластины палец, который входит в отверстие и меряет резьбу изнутри.', how:'Плашмя, зубьями вбок. Просвет между уровнями задайте не меньше Ø самого толстого винта, который будете мерить. Наклон зубцов — со знаком: плюс под правую резьбу, минус под левую. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
+  'mount:polygauge': {what:'Шаблон резьб многогранником: низкая призма, на каждой грани зубцы одного стандартного размера, подпись — на верхней грани над своей же гранью. Крутите в руке, пока грань не сядет на резьбу. Ряд размеров — метрический (шаг в мм) или дюймовый (витков на дюйм). В середине отверстие под кольцо.', how:'Плашмя, гранями вбок — зубцы тогда идут вертикально и печатаются периметром, а не мостом. Наклон зубцов задаёт закрутку призмы: плюс под правую резьбу, минус под левую. Зуб мелкого шага на грани разрешения — смотрите предупреждения.', mat:['pla','petg']},
   'mount:pingauge':  {what:'Шаблон диаметров: ряд гладких стоек с шагом по диаметру, каждая подписана. Надеваешь отверстие — шайбу, кронштейн, готовую деталь — и последняя стойка, которая прошла, и есть его размер.', how:'Плитой на стол, стойками вверх. Стойки цилиндрические намеренно: конус покажет не размер отверстия, а глубину, на которую вы его надвинули.', mat:['pla','petg']},
   'mount:cablecomb': {what:'Гребёнка кабелей: ряд гнёзд с горловиной уже диаметра кабеля — провод защёлкивается и не выпадает.', how:'Спинкой на стол, гнёздами вверх. Горловина работает на разжим, поэтому жёсткий PLA колется.', mat:['petg','tpu']},
   'mount:edgeclip':  {what:'Держатель на кромку: прищепка на рамку монитора или дефлектор с полкой под телефон.', how:'Плашмя, сечением вверх. Стенка тоньше 1,6 мм разожмётся и не вернётся.', mat:['petg','tpu']},
@@ -10490,8 +10496,34 @@ function earClipXZ(P){
     out.push([idx[(best+m-1)%m], idx[best], idx[(best+1)%m]]);
     idx.splice(best,1);
   }
-  if(idx.length === 3 && Math.abs(cross(P[idx[0]],P[idx[1]],P[idx[2]])) > 1e-12) out.push([idx[0],idx[1],idx[2]]);
+  // The last three go out whatever their area, for the same reason the flat-corner clause above emits: the
+  // walls are built from the ORIGINAL loop, so every boundary edge needs a cap triangle to face, and the
+  // third edge of this one is already shared with whatever was clipped before it. Dropping a degenerate
+  // remainder leaves a triangular hole in BOTH caps — six open edges, on a mesh that is otherwise perfect.
+  // It is not a rare case: an outline with runs of collinear points, which is what any toothed profile with
+  // flats in it is, ends on three of them often. A zero-area triangle costs nothing anywhere; a hole does.
+  if(idx.length === 3) out.push([idx[0],idx[1],idx[2]]);
   return out;
+}
+// One cap triangle of a prism, and its opposite number on the other end. The two caps of a prism are ONE
+// triangulation wound opposite ways — a fact about the prism — so the pair is made together and the winding
+// is decided once, from the triangle's turn in the plane.
+//
+// Deciding each cap separately from its own normal is the tempting version and it works until a flat corner
+// turns up. A flat corner has no normal, only rounding noise: the top keeps the ear clipper's order, the
+// bottom flips on the sign of that noise, and the two caps stop being mirrors of each other. What that
+// leaves is a directed edge running the same way as the wall's — invisible to any undirected edge count,
+// because every undirected edge still comes in twos. And flat corners are not exotic: an outline with runs
+// of collinear points, which is what any toothed profile is, produces them by construction.
+// The winding is NOT taken from this triangle's own turn either. earClipXZ emits a CONSISTENT
+// triangulation of a counter-clockwise loop — flat corners included, in loop order — and a flat corner's
+// turn is rounding noise, so reading it per triangle reverses three directed edges that the rest of the fan
+// had already paired. In the (x, z) plane the 3D normal's Y component is MINUS the 2D cross, because
+// x̂ × ẑ = −ŷ: counter-clockwise here faces DOWN. So the top cap is the clipper's order reversed and the
+// bottom is the clipper's order, once, for every triangle alike.
+function capPairXZ(A, B, C, y0, y1){
+  return [[[A[0],y1,A[1]],[C[0],y1,C[1]],[B[0],y1,B[1]]],
+          [[A[0],y0,A[1]],[B[0],y0,B[1]],[C[0],y0,C[1]]]];
 }
 function extrudePolyYTris(loops, y0, y1){
   const clean = loops.map(P=>{ const q=[];
@@ -10502,9 +10534,7 @@ function extrudePolyYTris(loops, y0, y1){
   const L = clean.map((P,i)=>{ const wantCCW = (i===0); const isCCW = loopArea2(P)>=0;
     return wantCCW===isCCW ? P : P.slice().reverse(); });
   const flat = bridgeHolesXZ(L[0], L.slice(1)), out=[];
-  for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
-    out.push(orient([[A[0],y1,A[1]],[B[0],y1,B[1]],[C[0],y1,C[1]]], [0,1,0]));
-    out.push(orient([[A[0],y0,A[1]],[B[0],y0,B[1]],[C[0],y0,C[1]]], [0,-1,0])); }
+  for(const t of earClipXZ(flat)) for(const T of capPairXZ(flat[t[0]], flat[t[1]], flat[t[2]], y0, y1)) out.push(T);
   // Which way a wall faces, ONCE the loops are normalised: (dz, −dx) for every loop, outer and hole
   // alike. The tempting version carries the loop's own winding sign, and it is wrong on holes — for an
   // outer loop the material is INSIDE and the face turns away from it, for a hole the material is
@@ -10557,6 +10587,54 @@ function extrudePolySweptYTris(loops, y0, y1, steps, at){
         out.push(orient([at3(u,j), at3(v,j), at3(v,j+1)], ref));
         out.push(orient([at3(u,j), at3(v,j+1), at3(u,j+1)], ref)); } } }
   return out;
+}
+// The same loops swept along Y while being TURNED about the Y axis — every station is the identical loop
+// rotated by angAt(y). Sibling of extrudePolySweptYTris and built the same way, because the two answer the
+// same question about different motions: that one MOVES the section, this one SPINS it. Neither deforms it,
+// which is what keeps both easy to be sure of — the walls stay ruled quads between corresponding vertices
+// and the caps stay the flat case's own ear-clipping, rigidly placed.
+//
+// A twist is what a lean IS on a round tool. On a flat comb the teeth lean by sliding sideways across the
+// thickness; on a prism the same lean is the section turning as it rises, and every face gets it at once,
+// because a tangential slide of a·Δφ at inradius a is a turn of Δφ. So one angle serves all N faces.
+//
+// The wall's outward reference has to turn WITH the station. Taking it from the untwisted loop leaves each
+// quad oriented by the normal of where its edge started, and past a quarter turn that is the wrong side —
+// watertight, correctly paired edge for edge, and inside out, which no edge count can see.
+function extrudePolyTwistYTris(loops, y0, y1, steps, angAt){
+  const clean = loops.map(P=>{ const q=[];
+    for(const v of P){ const l=q[q.length-1]; if(!l || Math.abs(l[0]-v[0])>1e-9 || Math.abs(l[1]-v[1])>1e-9) q.push(v); }
+    while(q.length>1 && Math.abs(q[0][0]-q[q.length-1][0])<1e-9 && Math.abs(q[0][1]-q[q.length-1][1])<1e-9) q.pop();
+    return q; }).filter(P=>P.length>=3);
+  if(!clean.length) return [];
+  const L = clean.map((P,i)=>{ const wantCCW = (i===0); const isCCW = loopArea2(P)>=0;
+    return wantCCW===isCCW ? P : P.slice().reverse(); });
+  const N = Math.max(1, Math.round(steps)), out = [];
+  const ys = []; for(let j=0;j<=N;j++) ys.push(y0 + (y1-y0)*j/N);
+  const rot = ys.map(y => { const a = angAt(y); return [Math.cos(a), Math.sin(a)]; });
+  const at3 = (u, j) => [u[0]*rot[j][0] - u[1]*rot[j][1], ys[j], u[0]*rot[j][1] + u[1]*rot[j][0]];
+  const flat = bridgeHolesXZ(L[0], L.slice(1));
+  for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
+    // Same rule as capPairXZ, with each end put through its own station's turn: the clipper's order is the
+    // bottom, reversed is the top, and the two caps stay mirrors of each other whatever the turn does.
+    out.push([at3(A,N), at3(C,N), at3(B,N)]);
+    out.push([at3(A,0), at3(B,0), at3(C,0)]); }
+  for(const P of L){
+    for(let i=0;i<P.length;i++){ const k=(i+1)%P.length, u=P[i], v=P[k];
+      const r0=[v[1]-u[1], -(v[0]-u[0])];
+      if(Math.abs(r0[0])<1e-12 && Math.abs(r0[1])<1e-12) continue;
+      for(let j=0;j<N;j++){
+        const am = angAt((ys[j]+ys[j+1])/2), ca = Math.cos(am), sa = Math.sin(am);
+        const ref = [r0[0]*ca - r0[1]*sa, 0, r0[0]*sa + r0[1]*ca];
+        out.push(orient([at3(u,j), at3(v,j), at3(v,j+1)], ref));
+        out.push(orient([at3(u,j), at3(v,j+1), at3(u,j+1)], ref)); } } }
+  return out;
+}
+// Turn a finished triangle list about the Y axis. Same sense as extrudePolyTwistYTris and as the app's own
+// threads: a point at atan2(z, x) = φ comes out at φ + a.
+function rotTrisY(tris, a){
+  const c = Math.cos(a), s = Math.sin(a);
+  return tris.map(T => T.map(v => [v[0]*c - v[2]*s, v[1], v[0]*s + v[2]*c]));
 }
 // Convex 2D polygon (points as [y,z]) extruded along X — fan caps at both ends + one quad per edge.
 function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
@@ -13808,6 +13886,126 @@ function buildPitchGauge(p){
     for(const T of seg7TrisXZ(fmtNum(s.list[k]), 0, s.zAt(k) + s.digit + 0.5, s.digit, s.t/2)) tris.push(T);
   return tris;
 }
+/* ---- Шаблон резьб (многогранник) ------------------------------------------------------------------
+   The same measurement as the comb above, wrapped round instead of stacked: a LOW regular prism with one
+   thread size on each of its faces. You turn it in your hand until a face matches the screw instead of
+   hunting along a stack, nothing is in the way of the face you are using, and the tool is a solid block
+   rather than a fan of 1 mm blades — which is what the stacked comb's blades keep breaking off as.
+   Optional bore through the middle, so it lives on the keyring with the hex keys.
+
+   THE TEETH ARE PART OF THE OUTLINE, not something added to a face. One closed loop is walked all the way
+   round: corner, plain shoulder, this face's tooth run, plain shoulder, next corner. Extruded, that is the
+   whole body in one shell — no union of a prism with N combs, nothing to interpenetrate, nothing to get
+   wrong. The tooth profile is the same ISO one the flat comb uses (root flat P/4, crest flat P/8, 60°
+   flanks, depth 0.5413·P), so a tooth here and a tooth there are the same tooth.
+
+   THE LEAN IS A TWIST. On the flat comb the teeth lean by sliding across the plate's thickness; here the
+   section turns as it rises, which slides every face's teeth tangentially by a·Δφ at once — one angle, all
+   N faces, and the ridges come out as the short helices they should be. Sign follows the app's own thread:
+   `phase = y/P − hand·S·θ/2π` in buildThread makes a right-hand crest climb with θ INCREASING, so a
+   positive lean turns the section the same way.
+
+   METRIC OR IMPERIAL is which list of standard sizes the faces are drawn from — ISO pitches in millimetres,
+   or the UN series' threads per inch. The window that picks them is in millimetres for both, because a comb
+   measures a pitch and nothing else: a finer imperial thread is a higher TPI and a smaller millimetre
+   figure, and one control that means one thing beats two that mean the same thing in two units. Each face
+   is labelled the way its own standard is marked — 0.8 for metric, 20 for imperial.
+
+   One face per SIZE would be a lie where two sizes share a pitch (M14 and M16 are both 2.0; #6-32 and
+   #8-32 are both 32 TPI). Those faces would be the same tooth twice, and the tool cannot tell them apart
+   because the thread cannot: the faces are the distinct sizes of the standard, no more. */
+const UNC_TPI = [48, 44, 40, 36, 32, 28, 24, 20, 18, 16, 14, 13, 12, 11, 10, 9, 8];
+function polyGaugeSpec(p){
+  const imp = p.mntPolyStd === 'imperial';
+  const lo  = Math.max(0.3, p.mntPitchMin>0 ? p.mntPitchMin : 0.7);
+  const hi  = Math.max(lo,  p.mntPitchMax>0 ? p.mntPitchMax : 2);
+  const all = (imp ? UNC_TPI.map(t => ({P: 25.4/t, tag: String(t)}))
+                   : ISO_PITCHES.map(v => ({P: v,  tag: fmtNum(v)}))).sort((a,b) => a.P - b.P);
+  const inRange = all.filter(v => v.P >= lo-1e-9 && v.P <= hi+1e-9);
+  // A prism needs three faces. Plenty of reasonable windows hold fewer than three standard sizes (0.85…0.95
+  // holds none at all), and two faces are not a solid, so the nearest sizes outside the window are taken in
+  // until there are three — and warned about, because the tool then carries a size you did not ask for.
+  const list = inRange.slice(), mid = (lo+hi)/2;
+  const rest = all.filter(v => list.indexOf(v) < 0).sort((a,b) => Math.abs(a.P-mid) - Math.abs(b.P-mid));
+  while (list.length < 3 && rest.length) list.push(rest.shift());
+  list.sort((a,b) => a.P - b.P);
+  const n = list.length, td = P => 0.5413*P;
+  const H = Math.max(5, Math.min(60, p.mntPolyH>0 ? p.mntPolyH : 12));
+  const edge = 2;                                      // plain shoulder at each end of a face
+  const run  = Math.max(12, 6*list[n-1].P);            // six threads of the coarsest, at least
+  const mLab = 1;                                      // label kept in off the outer edge
+  const digit = 4;                                     // seven bars stay readable at four millimetres
+  let wide = 0; for(const v of list) wide = Math.max(wide, seg7Width(v.tag, digit));
+  // Inradius: the widest of what the TEETH need and what the LABELS need. Every face is that wide, because
+  // a regular prism is the only one whose faces all meet at the same angle and so all present themselves
+  // the same way. The label's constraint is the one that is easy to miss: a label lives in its own face's
+  // wedge, the wedge is narrowest at the label's inner edge, and two labels 45° apart on a Ø40 tool have
+  // 12 mm between their centres while a four-glyph label at 4 mm digits is 11 mm wide. Shrinking the digits
+  // to fit is the wrong answer — a gauge you cannot read is not a gauge — so the tool grows instead.
+  const a = Math.max((run + 2*edge)/(2*Math.tan(Math.PI/n)),
+                     (wide + 1)/(2*Math.tan(Math.PI/n)) + mLab + digit);
+  const S = 2*a*Math.tan(Math.PI/n);
+  // The bore is CUT DOWN to what is left inside the labels rather than pushing the tool bigger: you asked
+  // for a gauge with a hole in it, not for a bigger gauge. Under 1.5 mm radius there is no hole worth
+  // printing, so it goes altogether.
+  const boreAsked = Math.max(0, Math.min(60, p.mntPolyBore>0 ? p.mntPolyBore : 0)) / 2;
+  let rb = Math.min(boreAsked, a - digit - 2*mLab - 1);
+  if (rb < 1.5) rb = 0;
+  const lean = Math.max(-3, Math.min(3, p.mntPitchLean != null ? p.mntPitchLean : 0));
+  const rate = Math.tan(lean*Math.PI/180)/a;           // radians of turn per millimetre of height
+  const twist = lean !== 0;
+  return {imp, list, n, H, a, S, edge, run, rb, digit, wide, mLab, lean, rate, twist,
+          angAt: y => y*rate,
+          steps: twist ? Math.max(2, Math.round(H/1.5)) : 1,
+          // The epsilon is not decoration: S is derived from `a`, which is derived from the run, so
+          // (S − 2·edge)/P lands on a whole number and lands on it from below — 5.999999999 teeth.
+          td, nTeeth: P => Math.max(3, Math.floor((S - 2*edge)/P + 1e-9)),
+          d: 2*a/Math.cos(Math.PI/n),                  // across the corners — what a caliper reads
+          empty:   !inRange.length,
+          padded:  inRange.length < 3,
+          boreCut: boreAsked > 0 && rb < boreAsked - 1e-9,
+          fine:    td(list[0].P) < 0.32,
+          thin:    rb > 0 && a - rb < 3};
+}
+function buildPolyGauge(p){
+  const s = polyGaugeSpec(p), tris = [];
+  const outer = [];
+  for(let k=0;k<s.n;k++){
+    const th = 2*Math.PI*k/s.n, nx = Math.cos(th), nz = Math.sin(th), tx = -Math.sin(th), tz = Math.cos(th);
+    // (u, h): u along the face from its middle, h out of the face. The corner at u = −S/2 is emitted by
+    // THIS face only — the previous face's run ends at its own +S/2, which is the same point — so the loop
+    // closes on shared corners instead of repeating them.
+    const at = (u, h) => [nx*(s.a+h) + tx*u, nz*(s.a+h) + tz*u];
+    const P = s.list[k].P, nT = s.nTeeth(P), d = s.td(P);
+    outer.push(at(-s.S/2, 0));
+    // The tooth run starts at u = −nT·P/2, and that point is NOT emitted: it lies on the face plane, as do
+    // the corner just pushed and the first root flat that follows, and three points on one line is what the
+    // ear clipper cannot finish on. A vertex that carries no shape at all is left out rather than tidied up
+    // afterwards.
+    let u = -nT*P/2;
+    for(let i=0;i<nT;i++){                              // root flat P/4, flank, crest flat P/8, flank back
+      outer.push(at(u + P/4, 0));
+      outer.push(at(u + P/4 + 0.3125*P, d));
+      outer.push(at(u + P/4 + 0.3125*P + P/8, d));
+      outer.push(at(u + P, 0));
+      u += P; }
+  }
+  const loops = [outer];
+  if(s.rb > 0){ const m = Math.max(24, Math.round(2*Math.PI*s.rb/0.5)), C = [];
+    for(let i=0;i<m;i++){ const A = 2*Math.PI*i/m; C.push([s.rb*Math.cos(A), s.rb*Math.sin(A)]); }
+    loops.push(C); }
+  const body = s.twist ? extrudePolyTwistYTris(loops, -s.H/2, s.H/2, s.steps, s.angAt)
+                       : extrudePolyYTris(loops, -s.H/2, s.H/2);
+  for(const T of body) tris.push(T);
+  // The size on the top face, turned to stand over its own face. Built at +z and turned by θ − π/2, which
+  // puts the digits out at the face with their tops towards the middle — the way you read a dial by bringing
+  // the mark nearest you. The top station's own turn is added, or the labels sit off their faces.
+  const aTop = s.angAt(s.H/2);
+  for(let k=0;k<s.n;k++)
+    for(const T of rotTrisY(seg7TrisXZ(s.list[k].tag, 0, s.a - s.mLab, s.digit, s.H/2),
+                            2*Math.PI*k/s.n - Math.PI/2 + aTop)) tris.push(T);
+  return tris;
+}
 /* ---- Шаблон диаметров (стойки) --------------------------------------------------------------------
    A row of plain cylindrical posts of stepped diameter on a plate. Push a hole over them — a washer, a
    bracket, a bore in something already made — and the last post that goes through is its size.
@@ -14075,6 +14273,7 @@ function buildMount(p){
   if(p.mntMode==='gauge') return buildGoNoGo(p);
   if(p.mntMode==='radgauge') return buildRadGauge(p);
   if(p.mntMode==='pitchgauge') return buildPitchGauge(p);
+  if(p.mntMode==='polygauge') return buildPolyGauge(p);
   if(p.mntMode==='pingauge') return buildPinGauge(p);
   if(p.mntMode==='cablecomb') return buildCableComb(p);
   if(p.mntMode==='edgeclip') return buildEdgeClip(p);
@@ -17580,6 +17779,10 @@ function activeShapeLabel() {
       ({ext:'(наружной)',int:'(внутренней)',both:'(наружной и внутренней)'}[g.kind]) +
       (g.lean !== 0 ? ', ' + (g.lean < 0 ? 'левой' : 'правой') + ' ' + Math.abs(g.lean).toFixed(1) + '°' : '') +
       ' ' + g.list[0] + '…' + g.list[g.n-1] + ' мм, ' + g.n + ' шт.'; })(),
+    polygauge:(function(){ const g=polyGaugeSpec(p); return 'шаблон резьб ' + g.n + '-гранник Ø' + g.d.toFixed(0) +
+      ' (' + (g.imp ? 'дюймовый, ' + g.list[0].tag + '…' + g.list[g.n-1].tag + ' вит./дюйм'
+                    : 'метрический, ' + g.list[0].tag + '…' + g.list[g.n-1].tag + ' мм') + ')' +
+      (g.lean !== 0 ? ', ' + (g.lean < 0 ? 'левой' : 'правой') + ' ' + Math.abs(g.lean).toFixed(1) + '°' : ''); })(),
     pingauge:(function(){ const g=pinGaugeSpec(p); return 'шаблон диаметров (' + fmtNum(g.d0) + '…' + fmtNum(g.dMax) + ' мм, ' + g.n + ' стоек)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
     edgeclip:(function(){ const g=edgeClipSpec(p); return 'держатель на кромку (' + (+g.T.toFixed(1)) + ' мм)'; })(),
@@ -18015,6 +18218,18 @@ function collectPrintWarnings(p){
              ' мм — при плите ' + g.t.toFixed(1) + ' мм меньший даёт не дугу, а излом');
     if (g.deepArc) w.push('прогиб кромки ' + g.sag.toFixed(2) + ' мм при глубине зуба ' +
                           g.td(g.list[0]).toFixed(2) + ' мм — мелкий зуб дугой съест целиком');
+  }
+  if (p.mntMode === 'polygauge'){
+    const g = polyGaugeSpec(p);
+    const unit = g.imp ? ' вит./дюйм' : ' мм';
+    if (g.empty) w.push('в заданном промежутке нет ни одного стандартного размера — взяты ближайшие');
+    else if (g.padded) w.push('в промежутке всего ' + (g.n - 1) + (g.n === 2 ? ' размер' : ' размера') +
+                              ' — многограннику нужно три, добавлен ближайший');
+    if (g.fine) w.push('зуб ' + g.list[0].tag + unit + ' глубиной ' + g.td(g.list[0].P).toFixed(2) +
+                       ' мм — на грани того, что печатается');
+    if (g.boreCut) w.push('отверстие урезано до Ø' + (2*g.rb).toFixed(1) +
+                          ' мм — больше внутри подписей не помещается');
+    if (g.thin) w.push('стенка между отверстием и гранью ' + (g.a - g.rb).toFixed(1) + ' мм — тонковато');
   }
   if (p.mntMode === 'pingauge'){
     const g = pinGaugeSpec(p);

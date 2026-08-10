@@ -183,7 +183,7 @@ console.log('=== число зубцов и плечи по краям гран�
   }
 }
 
-console.log('=== наклон — это закрутка, и в ту же сторону, что у плоской гребёнки ===');
+console.log('=== наклон — это закрутка, и в ту же сторону, что идёт правая резьба ===');
 {
   // Face 0's outermost crest, found in the UNTWISTED section (that is what makes it a crest) but reported
   // in the fixed frame (that is what makes it a slide). Bottom against top gives the tangent of the lean.
@@ -199,25 +199,40 @@ console.log('=== наклон — это закрутка, и в ту же ст�
       return best; };
     return {slide: (pick(s.H/2) - pick(-s.H/2))/s.H, s};
   };
-  // The flat comb, measured the same way: how far its tooth crest slides across the plate's thickness. The
-  // crest line of level 0 is the one plane in the part at z = zAt(0) — the spine ends at ±H/2 and the
-  // labels start half a millimetre above it, so nothing else is there to be caught by mistake.
-  const flatSlide = lean => {
-    const p = Object.assign({}, DEF, {shape:'box', mntMode:'pitchgauge', mntPitchKind:'ext',
-                                      mntPitchR:0, mntPitchLean:lean});
-    const tris = buildTrisForShape('box', p), g = pitchGaugeSpec(p), zc = g.zAt(0);
-    const at = y => { let best = -1e9;
-      for(const T of tris) for(const v of T)
-        if(near(v[1], y, 1e-6) && near(v[2], zc, 1e-6) && v[0] > best) best = v[0];
+  /* Куда крутить — не выкладка, а СОБСТВЕННАЯ резьба приложения, померенная тем же лучом. У неё
+     `phase = y/P − hand·S·θ/2π`, то есть у правой гребень идёт с РОСТОМ θ; сверяемся с построенным
+     штуцером, а не с этой строкой. До v17.7.2 знак сверялся с плоской гребёнкой, но её больше нет, и
+     первоисточник тут в любом случае резьба. */
+  const threadSlide = hand => {
+    const P = 3;
+    const p = Object.assign({}, DEF, {shape:'box', threadMode:'stud', threadD:30, threadPitch:P,
+                                      threadLen:20, threadLead:0, threadStarts:1, threadHand:hand});
+    const tris = buildTrisForShape('box', p);
+    let lo = 1e9, hi = -1e9;
+    for(const T of tris) for(const v of T){ if(v[1]<lo) lo=v[1]; if(v[1]>hi) hi=v[1]; }
+    // Наружный радиус на луче наружу от оси: вдоль +X это θ=0, вдоль +Z это θ=π/2.
+    const rAt = (ax, y) => { const runs = solidRuns(tris, ax, ax===0 ? y : 0, ax===0 ? 0 : y);
+      let m = -1e9; for(const r of runs) m = Math.max(m, r[1]); return m; };
+    // Высота гребня рядом с серединой резьбы, отдельно на каждом из двух лучей.
+    const crest = ax => { const y0 = (lo+hi)/2 - P/2; let best = null, bm = -1e9;
+      for(let k=0;k<=400;k++){ const y = y0 + P*k/400, r = rAt(ax, y);
+        if(r > bm){ bm = r; best = y; } }
       return best; };
-    return (at(g.t/2) - at(-g.t/2))/g.t;
+    // phase = y/P − hand·S·θ/2π: у правой гребень на θ=π/2 стоит на P/4 ВЫШЕ, чем на θ=0.
+    let d = crest(2) - crest(0);
+    while(d >  P/2) d -= P; while(d < -P/2) d += P;
+    return d;
   };
+  const rightThread = threadSlide('right'), leftThread = threadSlide('left');
+  chk('правая и левая резьба идут в разные стороны', (rightThread > 0) !== (leftThread > 0),
+      {правая:rightThread, левая:leftThread});
   for(const lean of [1.4, 3, -1.4, -3]){
-    const P = polySlide(lean), F = flatSlide(lean), want = Math.tan(lean*Math.PI/180);
+    const P = polySlide(lean), want = Math.tan(lean*Math.PI/180);
     chk('λ='+lean+'°: призма скручена на tan λ по касательной', near(P.slide, want, 2e-3), {got:P.slide, want});
-    chk('λ='+lean+'°: плоская гребёнка наклонена на tan λ', near(F, want, 2e-3), {got:F, want});
-    chk('λ='+lean+'°: обе в одну сторону', (P.slide > 0) === (F > 0) && (P.slide > 0) === (lean > 0),
-        {poly:P.slide, flat:F});
+    // Плюс закручивает туда же, куда идёт правая резьба приложения; минус — куда левая.
+    const wantSign = lean > 0 ? rightThread > 0 : leftThread > 0;
+    chk('λ='+lean+'°: сторона та же, что у резьбы этой руки', (P.slide > 0) === wantSign,
+        {poly:P.slide, правая:rightThread, левая:leftThread});
     chk('λ='+lean+'°: закрутка = tan λ / вписанный радиус', near(P.s.rate, want/P.s.a, 1e-12),
         {rate:P.s.rate, want:want/P.s.a});
   }

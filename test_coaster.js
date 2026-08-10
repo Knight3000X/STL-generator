@@ -799,16 +799,17 @@ console.log('=== отступ кольца отсчитывается от КР�
   chk('ширина борта на это больше не влияет',
       Math.abs(spec({csRingInk:3, csRingW:1.5, csRingGap:1.5, csRimW:20}).ringR - g.ringR) < 1e-9,
       {узкий:g.ringR, широкий:spec({csRingInk:3, csRingW:1.5, csRingGap:1.5, csRimW:20}).ringR});
-  chk('и карман доходит до самого края', Math.abs(g.half - g.winHalf - COASTER_EDGE_WALL) < 1e-9,
-      {winHalf:g.winHalf, half:g.half});
+  chk('карман кольца не касается: он кончается раньше внутреннего радиуса',
+      g.winHalf <= g.ringInner - COASTER_GRID_LAP + 1e-9, {winHalf:g.winHalf, ringInner:g.ringInner});
   // Больший отступ двигает кольцо ВНУТРЬ на ту же величину — линейно, без зажимов.
   const g8 = spec({csRingInk:3, csRingW:1.5, csRingGap:8});
   chk('отступ 8 мм — это 8 мм', Math.abs(g8.ringEdge - 8) < 1e-9, g8.ringEdge);
   // Ближе, чем поясок плюс нахлёст, краску не пустить — об этом говорят вслух.
   const tight = spec({csRingInk:3, csRingW:1.5, csRingGap:0});
   chk('слишком близко к краю — зажато и сказано', tight.ringTrimmed, tight.ringEdge);
-  chk('и зажато ровно до предела кармана',
-      Math.abs(tight.ringR + tight.ringW/2 - tight.maxArt) < 1e-9, {ringR:tight.ringR, maxArt:tight.maxArt});
+  chk('и зажато ровно пояском по нижней кромке',
+      Math.abs(tight.ringOuter - (tight.half - COASTER_EDGE_WALL)) < 1e-9,
+      {ringOuter:tight.ringOuter, предел:tight.half - COASTER_EDGE_WALL});
   // Ставим тело и убеждаемся, что карман действительно вышел на край, а кольцо попало в свою пробку.
   logos.length = 0;
   Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:78.8, csT:6, csInlay:0.8,
@@ -817,6 +818,63 @@ console.log('=== отступ кольца отсчитывается от КР�
               invert:false, rotation:0, heightmap:HM, levels:2});
   const body = buildTrisForShape('box', paramState.box);
   chk('тело с кольцом у края герметично', manifoldCheck(body, 4).watertight, manifoldCheck(body, 4));
+  logos.length = 0;
+}
+
+console.log('=== кольцо строится КОЛЬЦОМ, а не клетками ===');
+{
+  /* Пока кольцо жило в растре кармана, попасть в карман оно могло только одним способом: карман до самого
+     края. На Ø99 это сетка 283×283 и четверть миллиона треугольников ради кружка — сборка за секунду,
+     приложение уходит в отложенное превью, и на экране остаётся ПРЕДЫДУЩАЯ модель. Со стороны выглядит
+     как «кольцо не генерируется», и именно так это и было названо. Здесь меряется цена. */
+  const setup = over => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:99, csT:3, csRim:0,
+      csInlay:0.8, csRingW:3, csRingGap:1.5, logoResolution:50}, over||{});
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w:22, h:22, depth:-0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return paramState.box; };
+  const off = coasterSpec(setup({csRingInk:0})), on = coasterSpec(setup({csRingInk:1}));
+  chk('кольцо не тянет карман за собой', Math.abs(on.winHalf - off.winHalf) < 1e-9,
+      {без:off.winHalf, с:on.winHalf});
+  chk('и не добавляет ни одной клетки', coasterGridN(on, 50) === coasterGridN(off, 50),
+      {без:coasterGridN(off,50), с:coasterGridN(on,50)});
+  const tOff = buildTrisForShape('box', setup({csRingInk:0}));
+  const tOn  = buildTrisForShape('box', setup({csRingInk:1}));
+  chk('кольцо стоит считанные тысячи треугольников, а не сотни тысяч',
+      tOn.length - tOff.length < 8000, {без:tOff.length, с:tOn.length});
+  chk('тело с кольцом герметично', manifoldCheck(tOn, 4).watertight, manifoldCheck(tOn, 4));
+  const plug = buildTrisForShape('box', setup({csRingInk:1, csPart:'ink1'}));
+  chk('пробка с кольцом герметична', manifoldCheck(plug, 4).watertight, manifoldCheck(plug, 4));
+
+  /* Где кольцо стоит — меряется лучом, а не спекой. Луч уводится с оси на радиан-другой: у правильного
+     многоугольника с чётным числом сторон луч вдоль оси идёт по вершине и считается то так, то этак. */
+  const g = coasterSpec(setup({csRingInk:1}));
+  const at = (tris, r) => { const a = 0.017; return upY(tris, r*Math.cos(a), r*Math.sin(a)); };
+  const inRing = (g.ringInner + g.ringOuter)/2;
+  chk('в кольце у тела карман на всю глубину',
+      !covers(at(tOn, inRing), g.inlay*0.5), at(tOn, inRing));
+  chk('и пробка его заполняет ровно по глубину кармана',
+      at(plug, inRing).length === 1 && Math.abs(at(plug, inRing)[0][1] - g.inlay) < 1e-6,
+      at(plug, inRing));
+  chk('сразу внутри кольца тело сплошное', covers(at(tOn, g.ringInner - 0.6), g.inlay*0.5),
+      at(tOn, g.ringInner - 0.6));
+  chk('сразу снаружи кольца тоже', covers(at(tOn, g.ringOuter + 0.6), g.inlay*0.5),
+      at(tOn, g.ringOuter + 0.6));
+  chk('и снаружи кольца пробки нет', at(plug, g.ringOuter + 0.6).length === 0, at(plug, g.ringOuter + 0.6));
+  chk('ширина кольца — та, что заказана', Math.abs((g.ringOuter - g.ringInner) - 3) < 1e-9,
+      g.ringOuter - g.ringInner);
+  chk('и стоит оно в 1.5 мм от края', Math.abs(g.ringEdge - 1.5) < 1e-9, g.ringEdge);
+  // Кольцо и карман не пересекаются НИКОГДА: окно обрезается по внутреннему радиусу кольца.
+  for(const w of [20, 60, 95]){
+    logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:99, csRingInk:1,
+      csRingW:3, csRingGap:1.5});
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w, h:w, depth:-0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    const q = coasterSpec(paramState.box);
+    chk('логотип '+w+' мм: карман не доходит до кольца',
+        q.winHalf <= q.ringInner - COASTER_GRID_LAP + 1e-9, {winHalf:q.winHalf, ringInner:q.ringInner});
+  }
   logos.length = 0;
 }
 

@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.3';
+const APP_VERSION = 'v17.7.4';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12766,36 +12766,44 @@ function coasterSpec(p){
      карман на 4.6 мм внутрь, кольцо вместе с ним — на 5.6 вместо заказанных 1.5, — и оставляло по краю
      видимый шов между пояском и полем. */
   const maxWin = Math.max(4, half - COASTER_EDGE_WALL);
-  const maxArt = Math.max(2, maxWin - COASTER_GRID_LAP - 0.5);
-  /* Кольцо у края — тем же цветом, что и один из тонов рисунка. Живёт оно в ТОЙ ЖЕ сетке кармана и той
-     же маске, поэтому и карман под него, и пробка получаются сами собой: отдельной машинки не нужно, а
-     контуры сходятся по построению. Отступ считается от КРАЯ ДЕТАЛИ, а не от кромки кармана: карман
-     меняет размер вслед за рисунком, и кольцо ездило бы вместе с ним. */
+  /* Кольцо у края — тем же цветом, что и один из тонов рисунка, и оно НЕ растровая деталь. Кольцо это два
+     радиуса; карман под него в теле и пробка его цвета выходят из ОДНИХ И ТЕХ ЖЕ двух радиусов, то есть
+     сходятся по построению не хуже, чем сходились бы по клеткам, — и ровными окружностями вместо лесенки.
+
+     В сетке кармана оно жило с v17.6.0 и стоило непозволительно дорого: чтобы попасть в карман, кольцу
+     нужен был карман ДО САМОГО КРАЯ, а это на Ø99 сетка 283×283 и четверть миллиона треугольников ради
+     кружка. Сборка переваливала за секунду, приложение уходило в отложенное превью — и на экране
+     оставалась ПРЕДЫДУЩАЯ модель, без кольца. Со стороны это выглядит ровно как «кольцо не генерируется».
+
+     Отступ считается от КРАЯ ДЕТАЛИ: карман меняет размер вслед за рисунком, и кольцо ездило бы вместе с
+     ним. Дальше пояска по нижней кромке кольцу хода нет — там кончается сама деталь. */
   const ringInk = Math.max(0, Math.min(6, Math.round(p.csRingInk || 0)));
   const ringW = Math.max(0.4, Math.min(6, p.csRingW == null ? 1.5 : p.csRingW));
   const ringGap = Math.max(0, Math.min(20, p.csRingGap == null ? 1.5 : p.csRingGap));
-  // Отступ отсчитывается от КРАЯ ДЕТАЛИ — так его и просили. Дальше гладкого борта карману хода нет,
-  // поэтому положение зажимается; о том, что зажали, сказано в предупреждениях.
   const ringWant = half - ringGap - ringW/2;
-  const ringR = Math.max(ringW, Math.min(maxArt - ringW/2, ringWant));
+  const ringR = Math.max(ringW, Math.min(half - COASTER_EDGE_WALL - ringW/2, ringWant));
   const ringTrimmed = ringInk > 0 && ringR < ringWant - 1e-9;
-  /* Окно растёт ПОД РИСУНОК, а не всегда до предела. Предел снят — упереться теперь можно только в саму
-     деталь, — но платить за это сеткой должен тот, кто большой рисунок и заказал: карман до борта на
-     Ø90 это вчетверо больше клеток, чем нужно логотипу в 30 мм, и столько же лишнего времени на КАЖДОМ
-     подстаканнике. Размер берётся у первого логотипа с картинкой — у того же, из которого карман и
-     режется, — и у кольца, если оно включено. */
+  /* Карман и кольцо не пересекаются: кольцо стоит СНАРУЖИ кармана, в гладком пояске. Спорить им не о чем
+     ровно до тех пор, пока рисунок не захочет столько же места; тогда уступает рисунок — у кольца размер
+     задан в миллиметрах от края, а рисунок и так обрезается по окну, и об обрезке говорят вслух. */
+  const winCap = ringInk ? Math.max(4, Math.min(maxWin, ringR - ringW/2 - COASTER_GRID_LAP)) : maxWin;
+  const maxArt = Math.max(2, winCap - COASTER_GRID_LAP - 0.5);
+  /* Окно растёт ПОД РИСУНОК, а не всегда до предела: карман до края на Ø90 это вчетверо больше клеток,
+     чем нужно логотипу в 30 мм, и столько же лишнего времени на КАЖДОМ подстаканнике. Размер берётся у
+     первого логотипа с картинкой — у того же, из которого карман и режется. Кольцо сюда больше не
+     входит: оно живёт снаружи окна и своей сетки не просит вовсе. */
   const lg0 = (typeof logos !== 'undefined') ? logos.find(l => l && l.heightmap) : null;
   let wantHalf = 4;
   if (lg0){
     const ext = rotatedHalfExtents(Math.max(2, lg0.w||10), Math.max(2, lg0.h||10), lg0.rotation);
     wantHalf = Math.max(wantHalf, ext.halfX + Math.abs(lg0.u0||0), ext.halfY + Math.abs(lg0.v0||0));
   }
-  if (ringInk) wantHalf = Math.max(wantHalf, ringR + ringW/2);
-  const winHalf = Math.max(4, Math.min(maxWin, wantHalf + COASTER_GRID_LAP + 0.5));
+  const winHalf = Math.max(4, Math.min(winCap, wantHalf + COASTER_GRID_LAP + 0.5));
   const artHalf = Math.max(2, winHalf - COASTER_GRID_LAP - 0.5);
   return {shape, part, ink, size, half, t, inlay, rim, rimW, cornerR, seg, winHalf,
-          artHalf, maxArt, ringInk, ringW, ringGap, ringR, ringTrimmed,
+          artHalf, maxArt, maxWin, winCap, ringInk, ringW, ringGap, ringR, ringTrimmed,
           ringEdge: half - ringR - ringW/2,
+          ringOuter: ringR + ringW/2, ringInner: ringR - ringW/2,
           round: shape === 'round',
           topFlat: t - rim,                        // the recessed middle of the top face
           innerHalf};
@@ -12857,16 +12865,10 @@ function buildCoaster(p, res){
       const u0 = cellAt(i), u1 = cellAt(i+1), v0 = cellAt(j), v1 = cellAt(j+1);
       const base = (j*nG+i)*NK;
       for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
-        // Координаты подвыборки в ДЕТАЛИ и в РИСУНКЕ — разные: рисунок можно сдвинуть, кольцо нельзя.
+        // Рисунок можно сдвинуть по детали, поэтому координаты подвыборки в детали и в рисунке разные.
+        // Кольцо сюда не пишется вовсе: оно снаружи окна и строится кольцом, а не клетками.
         const cu = u0 + (u1-u0)*(si+0.5)/SS, cv = v0 + (v1-v0)*(sj+0.5)/SS;
-        const su = cu - (lg.u0||0), sv = cv - (lg.v0||0);
-        let k = label(su, sv);
-        if (g.ringInk && inWin(cu, cv)){
-          const r = g.round ? Math.hypot(cu, cv) : Math.max(Math.abs(cu), Math.abs(cv));
-          // Кольцо кладётся ПОВЕРХ рисунка: оно у края, рисунок в середине, и спорить им обычно не о чем;
-          // а где всё же спорят, выигрывает кольцо — иначе оно рвалось бы в случайном месте.
-          if (Math.abs(r - g.ringR) <= g.ringW/2) k = Math.min(g.ringInk, NK-1);
-        }
+        const k = label(cu - (lg.u0||0), cv - (lg.v0||0));
         if (k < NK) cov[base+k] += 1/(SS*SS);
       }
       let best = 0, bestC = cov[base];
@@ -12891,22 +12893,44 @@ function buildCoaster(p, res){
   // An accent part is ONLY its own plugs — nothing else, or that filament would print a whole coaster.
   // Every colour shares one pocket at one depth: on a part printed face-down the colours tile a plane,
   // they are not stacked by height.
+  /* Кольцо у края — два контура той же формы, что и деталь, и ничего больше. Его карман в теле и его
+     пробка выходят из одних и тех же двух радиусов, поэтому сходятся по построению; сетка кармана про
+     кольцо не знает и на него не тратится. Скругление углов у квадрата ужимается вместе с контуром — так
+     же, как у окна. */
+  const ringOn = g.ringInk > 0 && !!lg;
+  const ringLoop = (rr) => coasterLoop(g.shape, rr,
+    g.round ? rr : Math.max(0, Math.min(rr, g.cornerR - (g.half - rr))), g.seg);
+  const ringOut = ringOn ? ringLoop(g.ringOuter) : null;
+  const ringIn  = ringOn ? ringLoop(g.ringInner) : null;
+  // Какой цвет несёт кольцо: заказать можно любой из шести, а тонов у рисунка столько, сколько есть.
+  const ringInk = ringOn ? Math.min(g.ringInk, Math.max(1, inks.levels.length)) : 0;
+
   if (g.ink){
-    if (!anyArt || g.ink > inks.levels.length) return [];
-    return coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay, warp);
+    const mine = (anyArt && g.ink <= inks.levels.length)
+      ? coasterGridSlab(mask, g.ink, nG, cellAt, 0, g.inlay, warp) : [];
+    if (ringOn && g.ink === ringInk)
+      for (const T of extrudePolyYTris([ringOut, ringIn], 0, g.inlay)) mine.push(T);
+    return mine;
   }
 
   // `out.push(...arr)` passes every triangle as an ARGUMENT, and a 180 mm coaster's field slab is tens of
   // thousands of them — that overflows the stack rather than being slow. The same spread had to go from
   // the stand's relief for the same reason; it is the shape of bug that only shows on the big sizes.
   const add = (arr) => { for (const T of arr) out.push(T); };
-  if (!anyArt){
-    // No artwork: one plain prism from the plate to the top, plus the rim.
+  if (!anyArt && !ringOn){
+    // No artwork and no ring: one plain prism from the plate to the top, plus the rim.
     add(extrudePolyYTris([outer], 0, g.topFlat));
   } else {
     add(extrudePolyYTris([outer], g.inlay, g.topFlat));                 // everything above the pocket
-    add(extrudePolyYTris([outer, win], 0, g.inlay + COASTER_BODY_LAP)); // smooth ring, real edge
-    add(coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP, warp));  // field between glyphs
+    // Нижний слой: поясок снаружи кольца, само кольцо оставлено пустым, и всё, что внутри него.
+    const inner = ringOn ? ringIn : outer;
+    if (ringOn) add(extrudePolyYTris([outer, ringOut], 0, g.inlay + COASTER_BODY_LAP));
+    if (anyArt){
+      add(extrudePolyYTris([inner, win], 0, g.inlay + COASTER_BODY_LAP));  // smooth land round the pocket
+      add(coasterGridSlab(mask, 0, nG, cellAt, 0, g.inlay + COASTER_BODY_LAP, warp)); // field between glyphs
+    } else {
+      add(extrudePolyYTris([inner], 0, g.inlay + COASTER_BODY_LAP));      // сплошняк внутри кольца
+    }
   }
   if (g.rim > 0){
     const inner = coasterLoop(g.shape, g.innerHalf, Math.max(0, g.cornerR - g.rimW), g.seg);
@@ -13835,8 +13859,15 @@ function polyGaugeSpec(p){
     if (au >= S/2 - 1e-12) return 0;
     const P = list[k].P;
     const h = profile(P, y - u*shear - y0Of(P));
-    if (h === 0) return 0;
-    return au <= run/2 ? h : h*(S/2 - au)/(S/2 - run/2);
+    if (h === 0 || au <= run/2) return h;
+    /* Плечо: гребень СХОДИТ на нет, и сходит гладко. Прямой спад приходит в оба конца под углом — излом
+       на кромке гребня и второй у самого угла, — а излом на бочке, где ему взяться неоткуда, читается
+       глазом как тёмная полоса вдоль каждого зубца: нормаль прыгает через ребро, которого в детали нет.
+       Гладкая ступень 3t²−2t³ входит в оба конца с нулевым наклоном, так что ребра не остаётся ни одного.
+       Трогает она ТОЛЬКО плечо: между ±run/2 профиль остаётся ровно тем ISO, которым меряют, и притуплять
+       его было бы не сглаживанием, а враньём — зуб перестал бы садиться в резьбу так, как обещает. */
+    const t = (S/2 - au)/(S/2 - run/2);
+    return h*t*t*(3 - 2*t);
   };
   return {imp, list, n, H, a, S, edge, yEdge, run, rb, digit, wide, mLab, lean, shear, band,
           td, nTeeth, y0Of, profile, heightAt,
@@ -13868,17 +13899,23 @@ function buildPolyGauge(p){
     const m = Math.max(8, Math.ceil(s.H/step));
     for(let j=0;j<=m;j++) ys.push(-s.H/2 + s.H*j/m);
   }
-  // Где резать по ширине грани. Без наклона высота вдоль u постоянна на самом гребне и линейна на плечах,
-  // так что хватает четырёх станций; с наклоном шаг по u должен сдвигать профиль меньше, чем на площадку.
-  const us = [-s.S/2, -s.run/2];
+  /* Где резать по ширине грани. ПЛЕЧО режется на несколько станций: спад по нему гладкий (3t²−2t³), а
+     гладкая кривая, снятая двумя точками, — это по-прежнему прямая, только с изломами на концах. Шага
+     хватает двух: сетка по высоте ОБЩАЯ на все грани (объединение изломов всех шагов сразу), поэтому
+     каждый лишний столбец стоит четырёх сотен рядов на каждой грани, и платить за него надо тем, что
+     видно. Два шага убирают излом, четыре добавляют втрое треугольников и почти ничего сверх того. Сам ГРЕБЕНЬ без наклона постоянен
+     по u, и там станций нужно ровно столько, чтобы стояла средняя — по ней читается шаг и по ней грань
+     симметрична; с наклоном шаг по u должен сдвигать профиль меньше, чем на площадку гребня. */
+  const shoulder = s.S/2 - s.run/2, SH = 2;
+  const us = [];
+  for(let i=0;i<SH;i++) us.push(-s.S/2 + shoulder*i/SH);
   {
-    // Середина гребня стоит станцией всегда: без наклона она ничего не меняет (высота вдоль u постоянна),
-    // зато делает грань симметричной и даёт на что смотреть — по этой линии и читается шаг.
     const du = s.shear !== 0 ? Math.max(0.2, Math.min(s.run, s.list[0].P/8/Math.abs(s.shear))) : s.run/2;
     const m = Math.max(2, Math.ceil(s.run/du));
-    for(let i=1;i<m;i++) us.push(-s.run/2 + s.run*i/m);
+    for(let i=0;i<m;i++) us.push(-s.run/2 + s.run*i/m);
   }
-  us.push(s.run/2, s.S/2);
+  for(let i=0;i<SH;i++) us.push(s.run/2 + shoulder*i/SH);
+  us.push(s.S/2);
   const NU = us.length;
   // Наружная поверхность: по сетке (u, y) на каждой грани. В крайних столбцах u = ±S/2 высота нулевая,
   // так что там точка — это угол самого многогранника, общий с соседней гранью: оболочка смыкается

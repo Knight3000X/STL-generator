@@ -91,17 +91,22 @@ function faceColumn(tris, s, k){
 
 console.log('=== собирается, замкнут и ориентирован — по всему полю настроек ===');
 {
+  /* Наклонов здесь ДВА, а не четыре. Развёртка отвечает на вопрос «замыкается ли», и на него отвечают
+     прямой случай и наклонённый; знак наклона и его величина разобраны отдельным блоком ниже, где их и
+     меряют. Лишние два наклона — это вдвое больше самой дорогой сборки в батарее, а батарея гоняет
+     четыре файла на четырёх ядрах, и у соседей есть проверки бюджета процессорного времени с запасом в
+     считанные проценты. Тест, который роняет соседа своей ценой, стоит дешевле переписать, чем объяснять. */
   let n = 0, open = 0, flip = 0;
   for(const std of ['metric','imperial'])
     for(const [lo,hi] of [[0.7,2],[0.3,3.5],[1,1],[0.85,0.95],[0.35,0.6],[2,3.5]])
-      for(const lean of [0, 3, -3, 1.4])
+      for(const lean of [0, 3])
         for(const bore of [0, 3, 8, 40])
           for(const H of [5, 12, 60]){
             const t = build({mntPolyStd:std, mntPitchMin:lo, mntPitchMax:hi,
                              mntPitchLean:lean, mntPolyBore:bore, mntPolyH:H});
             n++; if(!wt(t)) open++; if(flippedEdges(t)) flip++;
           }
-  chk('576 сочетаний собраны', n === 576, n);
+  chk('288 сочетаний собраны', n === 288, n);
   chk('все замкнуты', open === 0, open);
   chk('ни одной перевёрнутой грани', flip === 0, flip);
 }
@@ -335,15 +340,20 @@ console.log('=== отверстие под кольцо ===');
 {
   const s = polyGaugeSpec(par({mntPolyBore:8}));
   chk('Ø8 помещается целиком', near(s.rb, 4) && !s.boreCut, {rb:s.rb, cut:s.boreCut});
+  /* Лучи уводятся С ОСИ. Ровно по оси у правильного многогранника проходит ребро крышки: луч попадает в
+     общее ребро двух треугольников, оба его отбрасывают, и сплошное тело читается как пустое. Ловушка
+     ровно та же, о которой предупреждает шапка про чётные многоугольники, — и первым в неё попался этот
+     файл. Точка в полумиллиметре от оси про отверстие говорит ровно то же самое и ни на чём не стоит. */
+  const OFF = 0.37;
   const t = build({mntPolyBore:8});
-  chk('по оси — насквозь, пусто', rayY(t, 0, 0).length === 0, rayY(t, 0, 0));
+  chk('по оси — насквозь, пусто', rayY(t, OFF, 0).length === 0, rayY(t, OFF, 0));
   const solid = rayY(t, s.rb + 2, 0);
   chk('в стенке между отверстием и гранью — сплошняк на всю высоту',
       solid.length === 1 && near(solid[0][1]-solid[0][0], s.H, 1e-6), solid);
   chk('внутри отверстия по-прежнему пусто', rayY(t, s.rb - 0.5, 0).length === 0, rayY(t, s.rb - 0.5, 0));
   const noBore = polyGaugeSpec(par({mntPolyBore:0}));
   chk('0 — отверстия нет', noBore.rb === 0 && !noBore.boreCut, {rb:noBore.rb, cut:noBore.boreCut});
-  const full = rayY(build({mntPolyBore:0}), 0, 0);
+  const full = rayY(build({mntPolyBore:0}), OFF, 0);
   chk('без отверстия по оси сплошняк', full.length === 1 && near(full[0][1]-full[0][0], noBore.H, 1e-6), full);
   const huge = polyGaugeSpec(par({mntPolyBore:60}));
   chk('Ø60 урезан, а не раздул шаблон', huge.boreCut && near(huge.a, noBore.a), {a:huge.a, rb:huge.rb});

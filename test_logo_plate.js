@@ -290,6 +290,47 @@ console.log('=== промятая крышка НЕ теряет свои вин
   logos.length = 0;
 }
 
+// СЕТКА ПОД НАДПИСЬЮ ГУЩЕ, ЧЕМ ВОКРУГ, и слушается «Детализации». Пока плита резалась одним
+// равномерным шагом с потолком 200 клеток на длинную сторону, на крышке 77 мм выходило 0.385 мм
+// на клетку — надпись 16 × 4.2 мм ложилась на 41 × 11 клеток, лесенкой, и ползунок детализации
+// на неё не влиял вовсе. Меряется расстояние между соседними станциями сетки: под надписью и в
+// стороне от неё.
+console.log('=== крышка корпуса: сетка сгущается под надписью ===');
+{
+  // Считаются РАЗЛИЧНЫЕ станции сетки в окне шириной 4 мм — окно под надписью против окна рядом с
+  // ней. Окно, а не шаг между соседями: в те же координаты попадают точки зенковок и рёбер бортика,
+  // и одна такая пара соседей рассказала бы про них, а не про сетку. Окна берутся вдали от винтов.
+  const nStations = (tris, lo, hi) => {
+    const s = new Set();
+    for(const T of tris) for(const v of T) if(v[0] > lo && v[0] < hi) s.add(Math.round(v[0]*1e5)/1e5);
+    return s.size;
+  };
+  const lid = (res) => {
+    logos.length=0; boxHoles.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:77,height:57,depth:30, pbPart:'lid'});
+    logoResolution = res;
+    logos.push({face:'+Y',u0:0,v0:0,w:16,h:4.2,rotation:0,depth:-0.6,threshold:0.5,invert:false,heightmap:art()});
+    return buildTrisForShape('box', paramState.box);
+  };
+  const t500 = lid(250), t50 = lid(50);
+  // Под надписью — станции по X внутри её половины ширины; в стороне — за полем в 2 мм от края зоны.
+  const fine500 = nStations(t500, -2, 2), fine50 = nStations(t50, -2, 2);
+  const coarse500 = nStations(t500, 12, 16);
+  chk('под надписью сетка мельче 0.1 мм при детализации 250', 4/fine500 < 0.1, {шаг:+(4/fine500).toFixed(4)});
+  chk('и она заметно гуще, чем в стороне от надписи', fine500 > coarse500*3,
+      {под:fine500, вокруг:coarse500});
+  chk('ползунок детализации на неё влияет', fine500 > fine50*3, {'50':fine50, '250':fine500});
+  chk('крышка при этом герметична', manifoldCheck(t500,4).watertight, manifoldCheck(t500,4));
+  // Игл быть не должно: станции сгущения кладутся ВМЕСТО редких, а не вперемешку с ними — иначе
+  // на стыке зоны получается столбец в тысячные доли миллиметра шириной.
+  let sl=0;
+  for(const T of t500){ const e=[[0,1],[1,2],[2,0]].map(([i,j])=>Math.hypot(T[i][0]-T[j][0],T[i][1]-T[j][1],T[i][2]-T[j][2]));
+    const s=(e[0]+e[1]+e[2])/2, A=Math.sqrt(Math.max(0,s*(s-e[0])*(s-e[1])*(s-e[2])));
+    if(A>0 && Math.max(...e)**2/A > 40) sl++; }
+  chk('без игл на стыке сгущения', sl < t500.length*0.02, {доля:+(100*sl/t500.length).toFixed(1)});
+  logos.length = 0; logoResolution = 50;
+}
+
 console.log('=== the cube family is untouched (it displaces its own vertices) ===');
 {
   const r = withLabel({}, {face:'+Z', depth:0.8});

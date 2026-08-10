@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.4';
+const APP_VERSION = 'v17.7.5';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -9341,22 +9341,26 @@ function holeFaceWithHoles(a, s, half, holes, N, dispFn) {
   const [p,q] = HOLE_AXIS_PQ[a];
   const hp=half[p], hq=half[q], ha=half[a];
   const outward=[0,0,0]; outward[a]=s;
-  // Per-AXIS grid counts (shared box-wide), so two faces meeting at an edge always agree on how many
-  // points sit along that edge — a per-face resolution would mismatch and open the shared edge.
-  const Np=N[p], Nq=N[q];
+  // Per-AXIS grid STATIONS (shared box-wide), so two faces meeting at an edge always agree on where the
+  // points along that edge are — a per-face grid would mismatch and open the shared edge. Stations rather
+  // than a count, because the grid is not uniform: it is dense where the artwork is and coarse elsewhere.
+  const uPos=N[p], vPos=N[q], Np=uPos.length-1, Nq=vPos.length-1;
   const tris=[];
   const pushQ=(A,B,C,D)=>{ tris.push(orient([A,B,C], outward)); tris.push(orient([A,C,D], outward)); };
+  // Index of the last station at or below `v`, and of the first at or above it. A non-uniform grid has no
+  // arithmetic for this, so it is a search — over a few hundred stations, once per hole.
+  const loAt=(arr,v)=>{ let i=0; while(i+1<arr.length && arr[i+1]<=v) i++; return i; };
+  const hiAt=(arr,v)=>{ let i=arr.length-1; while(i>0 && arr[i-1]>=v) i--; return i; };
   const blocks = holes.map(h=>{
     const e=holeBlockExtents(h);
     const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
-    const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
-    let i0=Math.max(0,Math.floor(toIp(h.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(h.cp+hsP)));
-    let j0=Math.max(0,Math.floor(toIq(h.cq-hsQ))), j1=Math.min(Nq,Math.ceil(toIq(h.cq+hsQ)));
+    let i0=loAt(uPos, h.cp-hsP), i1=hiAt(uPos, h.cp+hsP);
+    let j0=loAt(vPos, h.cq-hsQ), j1=hiAt(vPos, h.cq+hsQ);
     if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
     return {h,i0,i1,j0,j1};
   });
   const inBlock=(ci,cj)=>blocks.some(b=> ci>=b.i0&&ci<b.i1&&cj>=b.j0&&cj<b.j1);
-  const flat=(ip,iq)=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=-hp+2*hp*ip/Np; c[q]=-hq+2*hq*iq/Nq; return c; };
+  const flat=(ip,iq)=>{ const c=[0,0,0]; c[a]=s*ha; c[p]=uPos[ip]; c[q]=vPos[iq]; return c; };
   // RELIEF ON THIS FACE. The vertex slides along the OUTWARD normal by the heightmap value at its own
   // (u, v) — the same rule buildFaceAsymFromAxis follows, so a dent here and a dent there are the same
   // dent. P stays a PURE function of (ip, iq), and that is what keeps the relief watertight: every cell
@@ -9401,10 +9405,42 @@ function holeFaceWithHoles(a, s, half, holes, N, dispFn) {
 //
 // `res` is cells along the LONGEST dimension. The grid is shared per axis, so asking for relief on one
 // face refines the neighbours too — that is what keeps the shared edges matching.
-function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res){
+function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res, zones, logoRes){
   const half=[w/2,h/2,d/2], tris=[];
   const gres=Math.max(w,h,d)/Math.max(2, Math.round(res>0 ? res : 24));
-  const N=[Math.max(2,Math.round(w/gres)), Math.max(2,Math.round(h/gres)), Math.max(2,Math.round(d/gres))];
+  /* Сетка НЕРАВНОМЕРНАЯ: густая там, где рисунок, редкая всюду остальное. Равномерная не годится ни в ту,
+     ни в другую сторону — на крышке 77 мм двести клеток дают шаг 0.385 мм, и надпись 16 × 4.2 мм ложится
+     на 41 × 11 клеток, то есть лесенкой; а сделать 0.05 мм по всей плите — это семьсот тысяч клеток там,
+     где рисунка нет вовсе. Ровно так же поступает скруглённый куб (`zonesByAxis`), и по той же причине.
+     `zones[ось] = [[от, до], …]` в координатах детали, от её центра; густоту внутри зоны задаёт
+     `logoRes` — столько делений на зону, как в buildLogoAwareAxisPositions. */
+  const base=[Math.max(2,Math.round(w/gres)), Math.max(2,Math.round(h/gres)), Math.max(2,Math.round(d/gres))];
+  const zRes = Math.max(4, Math.min(500, Math.round(logoRes>0 ? logoRes : 50)));
+  const N = base.map((n, ax) => {
+    const lim = half[ax], coarse = 2*lim/n;
+    const zs = ((zones && zones[ax]) || [])
+      .map(z => [Math.max(-lim, Math.min(z[0], z[1])), Math.min(lim, Math.max(z[0], z[1]))])
+      .filter(z => z[1] > z[0] + 1e-9).sort((p,q) => p[0]-q[0]);
+    const merged = [];
+    for(const z of zs){ const last = merged[merged.length-1];
+      if(last && z[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], z[1]); else merged.push([z[0], z[1]]); }
+    // Тот же потолок, что у скруглённого куба: сколько бы надписей ни легло на одну ось, сгущение
+    // стоит не дороже AXIS_POINT_BUDGET точек.
+    const eff = (merged.length && merged.length*zRes > AXIS_POINT_BUDGET)
+      ? Math.max(4, Math.floor(AXIS_POINT_BUDGET/merged.length)) : zRes;
+    /* Редкая станция ВНУТРИ зоны не нужна — её заменили частые. Выбрасывается и та, что подошла к
+       границе зоны ближе полуклетки: оставить её значило бы получить столбец в тысячные доли
+       миллиметра шириной, то есть иглу — а иглами и сыпется вид поверхности. Потеря же — соседняя
+       редкая клетка вырастает самое большее в полтора раза. */
+    const g = coarse*0.45;
+    const nearZone = v => merged.some(z => v > z[0] - g && v < z[1] + g);
+    const out = [];
+    for(let i=0;i<=n;i++){ const v = -lim + 2*lim*i/n; if(!nearZone(v) || i===0 || i===n) out.push(v); }
+    for(const [lo,hi] of merged) for(let i=0;i<=eff;i++) out.push(lo + (hi-lo)*i/eff);
+    out.sort((x,y)=>x-y);
+    // Слипшиеся станции — это вырожденные четырёхугольники; выбрасываются здесь, а не позже.
+    return out.filter((v,i,arr)=> i===0 || v > arr[i-1] + 1e-7);
+  });
   const byAxis={0:[],1:[],2:[]};
   for(const H of holes) byAxis[H.axis].push(H);
   // Drop any hole whose grid block would overlap OR touch an already-kept hole on the SAME axis.
@@ -9413,14 +9449,16 @@ function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res){
   // stitching → open edges. Requiring a one-cell gap (block index rects strictly disjoint) keeps the
   // plain grid quad between them consistent with both border rings → watertight by construction. The
   // block index math mirrors holeFaceWithHoles exactly so the kept set matches what actually gets built.
+  const loAt=(arr,v)=>{ let i=0; while(i+1<arr.length && arr[i+1]<=v) i++; return i; };
+  const hiAt=(arr,v)=>{ let i=arr.length-1; while(i>0 && arr[i-1]>=v) i--; return i; };
   for(let a=0;a<3;a++){
-    const [p,q]=HOLE_AXIS_PQ[a], hp=half[p], hq=half[q], Np=N[p], Nq=N[q], kept=[], keptBlocks=[];
+    const [p,q]=HOLE_AXIS_PQ[a], hp=half[p], hq=half[q];
+    const uPos=N[p], vPos=N[q], Np=uPos.length-1, Nq=vPos.length-1, kept=[], keptBlocks=[];
     for(const H of byAxis[a]){
       const e=holeBlockExtents(H);
       const hsP=Math.min(e.ap*1.7, hp-1e-3), hsQ=Math.min(e.aq*1.7, hq-1e-3);
-      const toIp=v=>(v+hp)/(2*hp)*Np, toIq=v=>(v+hq)/(2*hq)*Nq;
-      let i0=Math.max(0,Math.floor(toIp(H.cp-hsP))), i1=Math.min(Np,Math.ceil(toIp(H.cp+hsP)));
-      let j0=Math.max(0,Math.floor(toIq(H.cq-hsQ))), j1=Math.min(Nq,Math.ceil(toIq(H.cq+hsQ)));
+      let i0=loAt(uPos, H.cp-hsP), i1=hiAt(uPos, H.cp+hsP);
+      let j0=loAt(vPos, H.cq-hsQ), j1=hiAt(vPos, H.cq+hsQ);
       if(i1-i0<2)i1=Math.min(Np,i0+2); if(j1-j0<2)j1=Math.min(Nq,j0+2);
       const clash=keptBlocks.some(b=> i0<=b.i1&&b.i0<=i1 && j0<=b.j1&&b.j0<=j1);
       if(!clash){ kept.push(H); keptBlocks.push({i0,i1,j0,j1}); }
@@ -14352,7 +14390,7 @@ function pboxVentSpec(p){
    Ориентация остаётся общей для всего приложения (LOGO_FACE_MAP), и это важнее удобства: наклейка на
    кубе и надпись на корпусе обязаны ложиться одинаково, иначе к списку зеркальных поверхностей
    добавится ещё одна. */
-function pboxPanelDispFns(p, face, sx, sy, sz){
+function pboxPanelDispFns(p, face, sx, sy, sz, logoRes){
   if (typeof logos === 'undefined' || !logos.length) return null;
   // Цветная печать по-прежнему идёт накладкой: карман и пробки обязаны резаться ОДНОЙ сеткой, а
   // промятая панель и отдельные пробки — это две разные сетки, которые по контуру не совпадут.
@@ -14370,6 +14408,24 @@ function pboxPanelDispFns(p, face, sx, sy, sz){
   if (!fns.length) return null;
   const out = {};
   out[face] = (u, v, base) => { for (const fn of fns){ const d = fn(u, v, base); if (d !== 0) return d; } return 0; };
+  /* Где сетку СГУСТИТЬ. Рисунок занимает малую долю плиты — надпись 16 × 4.2 мм на крышке 77 × 57, — и
+     равномерная сетка не годится ни в ту, ни в другую сторону: двести клеток на 77 мм дают шаг 0.385 мм,
+     то есть 41 × 11 клеток на всю надпись (лесенка, которую видно), а 0.05 мм по всей плите — это сотни
+     тысяч клеток там, где рисунка нет.
+     Зоны считаются ТОЧНО так же, как их считает скруглённый куб (computeLogoZonesByAxis): прямоугольник
+     рисунка плюс поле в 2 мм, а густоту внутри задаёт «Детализация» — столько делений на зону. Одно
+     правило на оба построителя нужно затем, чтобы одна и та же настройка давала одну и ту же
+     мелкость и на кубе, и на корпусе; своя формула здесь означала бы, что ползунок врёт на одном из них. */
+  const margin = 2;
+  const zones = {0:[], 1:[], 2:[]};
+  for (const lg of mine){
+    const ax = FACE_AXES[lg.face]; if (!ax) continue;
+    const [uAxis, vAxis] = ax(dims);
+    const ext = logoFaceExtent(lg, lg.w, lg.h, lg.rotation);
+    zones[uAxis].push([(lg.u0||0) - ext.halfX - margin, (lg.u0||0) + ext.halfX + margin]);
+    zones[vAxis].push([(lg.v0||0) - ext.halfY - margin, (lg.v0||0) + ext.halfY + margin]);
+  }
+  out.__zones = zones;
   return out;
 }
 /* Какие грани несёт КАЖДАЯ деталь корпуса. Список нужен пер-детальный, а не общий: у крышки наружу
@@ -14427,12 +14483,16 @@ function buildProjectBox(p){
        Остальные плиты остаются простыми оболочками: гнать их через сетку под рельеф значило бы платить
        десятками тысяч треугольников за грань, на которой ничего нет. */
     const sx = x1-x0, sy = y1-y0, sz = z1-z0;
+    const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
     let dfn = null;
-    for (const f of faces){ dfn = pboxPanelDispFns(p, f, sx, sy, sz); if (dfn) break; }
+    for (const f of faces){ dfn = pboxPanelDispFns(p, f, sx, sy, sz, lres); if (dfn) break; }
     let t;
     if (dfn){
-      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
-      t = buildBoxWithHoles(sx, sy, sz, hs, dfn, Math.max(24, Math.min(200, lres*2)));
+      /* Сетка плиты остаётся редкой — рельеф читает не она, а СГУЩЕНИЯ, которые построитель
+         надписей вернул в dfn.__zones: лишние ряды кладутся только под саму надпись. Раньше вся
+         плита резалась одним равномерным шагом с потолком 200, и «Абоба» 16×4 мм попадала на
+         клетку 0.385 мм — буквы выходили рублеными. */
+      t = buildBoxWithHoles(sx, sy, sz, hs, dfn, Math.max(24, Math.min(200, lres*2)), dfn.__zones, lres);
     } else {
       t = hs.length ? buildBoxWithHoles(sx, sy, sz, hs) : plainBoxShellTris(sx, sy, sz);
     }
@@ -14510,12 +14570,12 @@ function buildProjectBox(p){
     for(const h of userHoles) if(h.face==='+Y') holes.push(Object.assign({}, h));
     // Крышка НЕСЁТ винтовые отверстия всегда, поэтому «мять только там, где вырезов нет» ей не подходит:
     // мять и сверлить приходится одной и той же плитой.
-    const ldfn = pboxPanelDispFns(p, '+Y', lidW, lidT, lidD)
-              || pboxPanelDispFns(p, '-Y', lidW, lidT, lidD);
+    const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
+    const ldfn = pboxPanelDispFns(p, '+Y', lidW, lidT, lidD, lres)
+              || pboxPanelDispFns(p, '-Y', lidW, lidT, lidD, lres);
     if (ldfn){
-      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
       for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes, ldfn,
-                                       Math.max(24, Math.min(200, lres*2)))) t.push(T);
+                                       Math.max(24, Math.min(200, lres*2)), ldfn.__zones, lres)) t.push(T);
     } else {
       for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);        // plate (centred)
     }

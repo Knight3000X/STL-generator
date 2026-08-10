@@ -15,7 +15,12 @@
 // collinear runs ends the ear clipper on three of them often, and dropping that remainder as degenerate put
 // a triangular hole in BOTH caps; and a flat corner has no normal to orient by, so deciding each cap from
 // its own gave two caps that were not mirrors of each other — a directed edge running the wrong way on a
-// mesh that pairs every undirected one. Run via ./run-all.sh.
+// mesh that pairs every undirected one.
+//
+// The teeth turned 90° in v17.7.3: they run AROUND the prism and stack up its axis, so a screw lies along
+// the axis. What that moves is where the measurements are taken — the pitch is read up a face's height
+// now, not across its width — and how the lean works: a twist of the section cannot tilt a horizontal ring,
+// so the lean is a shear, the height read at y − u·tan λ. Run via ./run-all.sh.
 let pass=0, fail=0;
 function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 const near = (a,b,eps) => Math.abs(a-b) < (eps||1e-6);
@@ -69,21 +74,17 @@ function solidRuns(tris, ax, p, q){
 }
 const rayY = (tris, x, z) => solidRuns(tris, 1, z, x);     // straight up, at (x, z)
 
-// Every vertex of the body at one height, put into face k's own frame: u along the face from its middle, h
-// out of the face plane. The station's twist is undone first, so a leaning tool reads the same as a
-// straight one — which is the point: the teeth are the same teeth, they are only turned.
-function faceLocal(tris, s, k, yWant){
+// Every vertex of the body standing on face k's own middle line (u = 0), as [y, h]: how far up the face and
+// how far out of its plane. The teeth stack along y now, so this is the line the pitch is read along.
+function faceColumn(tris, s, k){
   const th = 2*Math.PI*k/s.n, nx = Math.cos(th), nz = Math.sin(th), tx = -Math.sin(th), tz = Math.cos(th);
   const out = [], seen = new Set();
   for(const T of tris) for(const v of T){
-    if(!near(v[1], yWant, 1e-6)) continue;
-    const a = s.angAt(v[1]), ca = Math.cos(a), sa = Math.sin(a);
-    const x = v[0]*ca + v[2]*sa, z = -v[0]*sa + v[2]*ca;   // back to the untwisted section
-    const u = x*tx + z*tz, h = x*nx + z*nz - s.a;
-    if(Math.abs(u) > s.S/2 + 1e-6) continue;               // belongs to a neighbour
-    const key = u.toFixed(6) + ',' + h.toFixed(6);
+    const u = v[0]*tx + v[2]*tz, h = v[0]*nx + v[2]*nz - s.a;
+    if(Math.abs(u) > 1e-6) continue;                       // only the face's own middle line
+    const key = v[1].toFixed(6) + ',' + h.toFixed(6);
     if(seen.has(key)) continue; seen.add(key);
-    out.push([u, h]);
+    out.push([v[1], h]);
   }
   return out.sort((A,B) => A[0]-B[0]);
 }
@@ -148,61 +149,109 @@ console.log('=== грань несёт тот шаг, который на ней
     const tris = build({mntPolyStd:std});
     for(let k=0;k<s.n;k++){
       const P = s.list[k].P, d = s.td(P);
-      const pts = faceLocal(tris, s, k, -s.H/2);
+      const pts = faceColumn(tris, s, k);
       // Crests: the points standing a full tooth depth out of the face. Every crest is a FLAT of P/8, so
       // they come in pairs; the pitch is the distance between one pair's middle and the next one's.
+      /* Гребни ищутся ОТРЕЗКАМИ, а не парами точек. Сетка по высоте общая на все грани — это объединение
+         изломов всех шагов сразу, — поэтому на площадку одного гребня попадает сколько угодно станций, и
+         «первая и вторая» ничего не значат. Отрезок — это подряд идущие точки на глубине зуба; между
+         соседними гребнями разрыв не меньше трёх четвертей шага, по нему и режем. */
       const crest = pts.filter(q => near(q[1], d, 1e-6)).map(q => q[0]);
-      chk(std+' грань '+s.list[k].tag+': гребни парами',
-          crest.length >= 6 && crest.length % 2 === 0, crest.length);
-      const mids = []; for(let i=0;i<crest.length;i+=2) mids.push((crest[i]+crest[i+1])/2);
+      const runs = [];
+      for(const y of crest){ const last = runs[runs.length-1];
+        if(last && y - last[last.length-1] < P/4) last.push(y); else runs.push([y]); }
+      chk(std+' грань '+s.list[k].tag+': гребней столько, сколько зубцов',
+          runs.length === s.nTeeth(P), {гребней:runs.length, зубцов:s.nTeeth(P)});
+      const mids = runs.map(r => (r[0] + r[r.length-1])/2);
       let worst = 0;
       for(let i=1;i<mids.length;i++) worst = Math.max(worst, Math.abs((mids[i]-mids[i-1]) - P));
-      chk(std+' грань '+s.list[k].tag+': шаг между гребнями = ' + P.toFixed(4), worst < 1e-6, worst);
-      // Crest flat P/8 — the ISO profile, the same one the flat comb cuts.
-      let flatC = 0; for(let i=0;i<crest.length;i+=2) flatC = Math.max(flatC, Math.abs((crest[i+1]-crest[i]) - P/8));
+      chk(std+' грань '+s.list[k].tag+': шаг между гребнями = ' + P.toFixed(4) + ' мм ПО ВЫСОТЕ',
+          worst < 1e-6, worst);
+      // Crest flat P/8 — the ISO profile, the same one the comb cut before it was rolled into a ring.
+      let flatC = 0; for(const r of runs) flatC = Math.max(flatC, Math.abs((r[r.length-1]-r[0]) - P/8));
       chk(std+' грань '+s.list[k].tag+': площадка гребня P/8', flatC < 1e-6, flatC);
       const deep = Math.max.apply(null, pts.map(q => q[1]));
       chk(std+' грань '+s.list[k].tag+': глубина 0.5413·P', near(deep, 0.5413*P, 1e-9), {deep, want:0.5413*P});
       const root = pts.filter(q => near(q[1], 0, 1e-9));
-      chk(std+' грань '+s.list[k].tag+': впадины лежат на самой грани', root.length >= 6, root.length);
+      chk(std+' грань '+s.list[k].tag+': впадины лежат на самой грани', root.length >= 4, root.length);
     }
   }
 }
 
-console.log('=== число зубцов и плечи по краям грани ===');
+console.log('=== зубцы идут КОЛЬЦАМИ, а не вдоль оси ===');
+{
+  /* То, ради чего был поворот на 90°: вдоль грани (по u) высота постоянна, вдоль оси (по y) она и есть
+     профиль зуба. Мерится это прямо на построенных треугольниках — луч поперёк детали на высоте гребня
+     видит МНОГОГРАННИК, а на высоте впадины — многогранник поменьше, и разница есть глубина зуба. */
+  const s = polyGaugeSpec(par({}));
+  const tris = build({});
+  const P = s.list[0].P, d = s.td(P), y0 = s.y0Of(P);
+  // Радиус грани 0 (нормаль вдоль +X) на заданной высоте: самая дальняя точка луча вдоль X при z = 0.
+  const rAt = y => { const runs = solidRuns(tris, 0, y, 0); let m = -1e9;
+    for(const r of runs) m = Math.max(m, r[1]); return m; };
+  const yCrest = y0 + P/4 + 0.3125*P + P/16;          // середина площадки гребня первого зуба
+  const yRoot  = y0 + P/8;                            // середина площадки впадины
+  chk('на высоте гребня грань стоит на глубину зуба дальше',
+      near(rAt(yCrest) - rAt(yRoot), d, 1e-3), {гребень:rAt(yCrest), впадина:rAt(yRoot), d});
+  chk('и впадина лежит ровно на самой грани', near(rAt(yRoot), s.a, 1e-3), {got:rAt(yRoot), a:s.a});
+  // А вдоль грани, на одной высоте, высота не меняется — пока не начнётся плечо.
+  const th = 0, tx = 0, tz = 1;                        // грань 0: t = (0, 1) в (x, z)
+  const hAtU = (u, y) => { const runs = solidRuns(tris, 0, y, u); let m = -1e9;
+    for(const r of runs) m = Math.max(m, r[1]); return m; };
+  let flat = 0;
+  for(const u of [-4, -2, 0, 2, 4]) flat = Math.max(flat, Math.abs(hAtU(u, yCrest) - rAt(yCrest)));
+  chk('на гребне высота вдоль грани постоянна', flat < 2e-3, flat);
+  // ...и сходит на нет к углу: там встречаются две грани с РАЗНЫМИ шагами, и обе обязаны прийти в одну точку.
+  const uCorner = s.S/2 - 0.05;
+  chk('у самого угла зуба уже нет', near(hAtU(uCorner, yCrest), s.a, 0.02),
+      {угол:hAtU(uCorner, yCrest), a:s.a});
+  chk('плечо начинается там, где кончается гребень', s.run < s.S - 1e-9, {run:s.run, S:s.S});
+}
+
+console.log('=== число зубцов задаёт ВЫСОТА, а не ширина грани ===');
 {
   const s = polyGaugeSpec(par({}));
   for(let k=0;k<s.n;k++){
     const P = s.list[k].P, nT = s.nTeeth(P);
-    chk('грань '+s.list[k].tag+': не меньше шести витков', nT >= 6, nT);
-    chk('грань '+s.list[k].tag+': зубцы не доходят до угла', nT*P <= s.S - 2*s.edge + 1e-9, {run:nT*P, S:s.S});
-    const pts = faceLocal(build({}), s, k, -s.H/2);
-    const uMax = Math.max.apply(null, pts.filter(q => near(q[1], s.td(P), 1e-6)).map(q => q[0]));
-    chk('грань '+s.list[k].tag+': последний гребень внутри плеча', uMax < s.S/2 - s.edge + 1e-6,
-        {uMax, lim:s.S/2 - s.edge});
+    chk('грань '+s.list[k].tag+': зубцов ровно столько, сколько влезло по высоте',
+        nT === Math.floor(s.band/P + 1e-9), {nT, band:s.band, P});
+    chk('грань '+s.list[k].tag+': зубцы не выходят за высоту', nT*P <= s.band + 1e-9, {run:nT*P, band:s.band});
+    const pts = faceColumn(build({}), s, k);
+    const yMax = Math.max.apply(null, pts.filter(q => near(q[1], s.td(P), 1e-6)).map(q => q[0]));
+    chk('грань '+s.list[k].tag+': последний гребень не достаёт до торца',
+        yMax < s.H/2 - 1e-9, {yMax, H:s.H});
   }
+  // Выше деталь — больше витков на той же грани. Это и есть «высота задаёт число».
+  const tall = polyGaugeSpec(par({mntPolyH:30}));
+  chk('выше призма — больше зубцов', tall.nTeeth(tall.list[0].P) > s.nTeeth(s.list[0].P),
+      {H12:s.nTeeth(s.list[0].P), H30:tall.nTeeth(tall.list[0].P)});
+  // ...а ширина грани на число зубцов не влияет вовсе.
+  chk('ширина грани числа зубцов не меняет', s.nTeeth(s.list[0].P) === polyGaugeSpec(par({})).nTeeth(s.list[0].P));
+  const low = polyGaugeSpec(par({mntPolyH:5}));
+  chk('на низкой призме крупный шаг набирает мало витков — и об этом сказано',
+      low.few === (low.nTeeth(low.list[low.n-1].P) < 4), {nT:low.nTeeth(low.list[low.n-1].P), few:low.few});
 }
 
-console.log('=== наклон — это закрутка, и в ту же сторону, что идёт правая резьба ===');
+console.log('=== наклон — это СДВИГ, и в ту же сторону, что идёт правая резьба ===');
 {
-  // Face 0's outermost crest, found in the UNTWISTED section (that is what makes it a crest) but reported
-  // in the fixed frame (that is what makes it a slide). Bottom against top gives the tangent of the lean.
-  const polySlide = lean => {
+  /* Кольцо нельзя наклонить поворотом сечения — оно так и останется горизонтальным. Наклон здесь это
+     сдвиг: высота читается на y − u·tan λ, то есть один и тот же зуб поднимается, пока идёт по грани.
+     Мерится он на построенных треугольниках: на сколько уезжает по высоте гребень между двумя точками
+     грани, разнесёнными по u. */
+  const polyLift = lean => {
     const s = polyGaugeSpec(par({mntPitchLean:lean})), tris = build({mntPitchLean:lean});
-    const d = s.td(s.list[0].P);
-    const pick = y => { let best = -1e9;
-      for(const T of tris) for(const v of T){ if(!near(v[1], y, 1e-6)) continue;
-        const a = s.angAt(v[1]), ca = Math.cos(a), sa = Math.sin(a);
-        const x = v[0]*ca + v[2]*sa, z = -v[0]*sa + v[2]*ca;      // face 0: n = (1,0), t = (0,1)
-        if(Math.abs(z) > s.S/2 + 1e-6 || !near(x - s.a, d, 1e-6)) continue;
-        if(v[2] > best) best = v[2]; }
+    const P = s.list[0].P, d = s.td(P);
+    // Грань 0: нормаль вдоль +X, касательная вдоль +Z. Луч поперёк детали при z = u даёт радиус в (u, y).
+    const rAt = (u, y) => { const runs = solidRuns(tris, 0, y, u); let m = -1e9;
+      for(const r of runs) m = Math.max(m, r[1]); return m; };
+    // Высота первого гребня над заданной точкой грани: ищем максимум радиуса по y в окне в один шаг.
+    const crestY = u => { const y0 = s.y0Of(P) + P; let best = null, bm = -1e9;
+      for(let i=0;i<=300;i++){ const y = y0 + P*i/300, r = rAt(u, y);
+        if(r > bm){ bm = r; best = y; } }
       return best; };
-    return {slide: (pick(s.H/2) - pick(-s.H/2))/s.H, s};
+    const u0 = -4, u1 = 4;
+    return {lift: (crestY(u1) - crestY(u0))/(u1 - u0), s};
   };
-  /* Куда крутить — не выкладка, а СОБСТВЕННАЯ резьба приложения, померенная тем же лучом. У неё
-     `phase = y/P − hand·S·θ/2π`, то есть у правой гребень идёт с РОСТОМ θ; сверяемся с построенным
-     штуцером, а не с этой строкой. До v17.7.2 знак сверялся с плоской гребёнкой, но её больше нет, и
-     первоисточник тут в любом случае резьба. */
   const threadSlide = hand => {
     const P = 3;
     const p = Object.assign({}, DEF, {shape:'box', threadMode:'stud', threadD:30, threadPitch:P,
@@ -210,10 +259,8 @@ console.log('=== наклон — это закрутка, и в ту же ст�
     const tris = buildTrisForShape('box', p);
     let lo = 1e9, hi = -1e9;
     for(const T of tris) for(const v of T){ if(v[1]<lo) lo=v[1]; if(v[1]>hi) hi=v[1]; }
-    // Наружный радиус на луче наружу от оси: вдоль +X это θ=0, вдоль +Z это θ=π/2.
     const rAt = (ax, y) => { const runs = solidRuns(tris, ax, ax===0 ? y : 0, ax===0 ? 0 : y);
       let m = -1e9; for(const r of runs) m = Math.max(m, r[1]); return m; };
-    // Высота гребня рядом с серединой резьбы, отдельно на каждом из двух лучей.
     const crest = ax => { const y0 = (lo+hi)/2 - P/2; let best = null, bm = -1e9;
       for(let k=0;k<=400;k++){ const y = y0 + P*k/400, r = rAt(ax, y);
         if(r > bm){ bm = r; best = y; } }
@@ -227,43 +274,23 @@ console.log('=== наклон — это закрутка, и в ту же ст�
   chk('правая и левая резьба идут в разные стороны', (rightThread > 0) !== (leftThread > 0),
       {правая:rightThread, левая:leftThread});
   for(const lean of [1.4, 3, -1.4, -3]){
-    const P = polySlide(lean), want = Math.tan(lean*Math.PI/180);
-    chk('λ='+lean+'°: призма скручена на tan λ по касательной', near(P.slide, want, 2e-3), {got:P.slide, want});
-    // Плюс закручивает туда же, куда идёт правая резьба приложения; минус — куда левая.
+    const L = polyLift(lean), want = Math.tan(lean*Math.PI/180);
+    chk('λ='+lean+'°: гребень поднимается на tan λ на миллиметр грани',
+        near(L.lift, want, 3e-3), {got:L.lift, want});
+    // Плюс поднимает туда же, куда идёт правая резьба приложения; минус — куда левая.
     const wantSign = lean > 0 ? rightThread > 0 : leftThread > 0;
-    chk('λ='+lean+'°: сторона та же, что у резьбы этой руки', (P.slide > 0) === wantSign,
-        {poly:P.slide, правая:rightThread, левая:leftThread});
-    chk('λ='+lean+'°: закрутка = tan λ / вписанный радиус', near(P.s.rate, want/P.s.a, 1e-12),
-        {rate:P.s.rate, want:want/P.s.a});
+    chk('λ='+lean+'°: сторона та же, что у резьбы этой руки', (L.lift > 0) === wantSign,
+        {poly:L.lift, правая:rightThread, левая:leftThread});
+    chk('λ='+lean+'°: сдвиг в спеке — это tan λ', near(L.s.shear, want, 1e-12), {shear:L.s.shear, want});
   }
   const zero = polyGaugeSpec(par({mntPitchLean:0}));
-  chk('без наклона закрутки нет и проход один', !zero.twist && zero.rate === 0 && zero.steps === 1, zero.steps);
-  // Zero turn through the twisting extruder must be the straight extruder, triangle for triangle.
-  const loop = [[10,0],[10,6],[-4,6],[-4,-6],[10,-6]];
-  const A = extrudePolyYTris([loop], -3, 3), B = extrudePolyTwistYTris([loop], -3, 3, 1, () => 0);
-  chk('скручивание на 0 — это обычная выдавка', A.length === B.length &&
-      A.every((T,i) => T.every((v,j) => v.every((c,l) => near(c, B[i][j][l], 1e-12)))), {a:A.length, b:B.length});
-}
-
-console.log('=== закрученная призма остаётся телом, а не выворачивается ===');
-{
-  // A quarter turn is far past anything the gauge asks for, and is exactly where a wall reference taken
-  // from the untwisted loop points at the wrong side.
-  const loop = []; for(let i=0;i<6;i++){ const a = 2*Math.PI*i/6; loop.push([12*Math.cos(a), 12*Math.sin(a)]); }
-  const straight = 12*12*Math.sin(Math.PI/3)*3*16;
-  for(const turn of [0.2, Math.PI/2, -Math.PI/2, 2*Math.PI/3]){
-    const t = extrudePolyTwistYTris([loop], -8, 8, 24, y => turn*(y+8)/16);
-    chk('поворот '+turn.toFixed(2)+' рад: замкнут', wt(t), manifoldCheck(t,4));
-    chk('поворот '+turn.toFixed(2)+' рад: ни одной перевёрнутой грани', flippedEdges(t) === 0, flippedEdges(t));
-    // The side is ruled between turned stations and each quad is split along ONE of its two diagonals, so a
-    // twist trims the solid one way and swells it the other. Bounded, not equal — and the bound is what
-    // says the walls did not fold through themselves.
-    const v = meshVolume(t);
-    chk('поворот '+turn.toFixed(2)+' рад: объём остался объёмом призмы с точностью до огранки',
-        v > 0 && Math.abs(v - straight) < straight*0.03, {v, straight});
-  }
-  chk('малая закрутка почти ничего не меняет',
-      near(meshVolume(extrudePolyTwistYTris([loop], -8, 8, 24, y => 0.02*(y+8)/16)), straight, 1), true);
+  chk('без наклона сдвига нет', zero.shear === 0, zero.shear);
+  // Без наклона высота на грани зависит ТОЛЬКО от y — это и значит «кольцо».
+  const s0 = polyGaugeSpec(par({}));
+  let worst = 0;
+  for(const y of [-3, -1, 0, 1, 3]) for(const u of [-4, 0, 4])
+    worst = Math.max(worst, Math.abs(s0.heightAt(0, u, y) - s0.heightAt(0, 0, y)));
+  chk('без наклона высота вдоль грани не зависит от u', worst < 1e-12, worst);
 }
 
 console.log('=== подпись стоит над своей гранью и это её подпись ===');
@@ -274,7 +301,7 @@ console.log('=== подпись стоит над своей гранью и э�
     // Label ink is the only thing standing proud of the top face.
     const ink = []; for(const T of tris) for(const v of T) if(v[1] > s.H/2 + 1e-6) ink.push(v);
     chk(std+' λ='+lean+': над верхом что-то есть', ink.length > 0, ink.length);
-    const aTop = s.angAt(s.H/2), half = Math.PI/s.n;
+    const aTop = 0, half = Math.PI/s.n;
     const groups = []; for(let k=0;k<s.n;k++) groups.push([]);
     let stray = 0;
     for(const v of ink){

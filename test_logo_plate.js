@@ -85,23 +85,57 @@ console.log('=== refusals: nowhere flat to sit ===');
   chk('gear: still watertight with it', manifoldCheck(off.withIt,4).watertight);
 }
 
-console.log('=== emboss vs engrave ===');
+console.log('=== электрокорпус мнёт СВОЮ стенку, а не носит бляшку ===');
 {
-  const em = withLabel({pbPart:'tray'}, {face:'-Y', depth:1.2});
-  const en = withLabel({pbPart:'tray'}, {face:'-Y', depth:-1.2});
+  /* Раньше корпус стоял в LOGO_PLATE_MODES, и обёртка клала поверх него плиту: надпись сидела на
+     выпуклой площадке, а гравировка была утопленным знаком в поднятой бляшке. Просили обратного —
+     чтобы мялось само тело.
+
+     Меряется вмятина против ВЫПУКЛОСТИ той же глубины, а не против гладкой детали: построитель у
+     промятой панели другой, и разница с гладкой мерила бы смену построителя, а не рисунок. У одного
+     и того же построителя разница только в знаке, и она обязана быть примерно удвоенным объёмом
+     рисунка. */
+  for (const [part, face] of [['lid','+Y'], ['tray','-Y'], ['tray','+Z'], ['tray','-X'], ['both','+X']]){
+    const en = withLabel({pbPart:part}, {face, depth:-0.5});
+    const em = withLabel({pbPart:part}, {face, depth:+0.5});
+    chk(part + '/' + face + ': вмятина герметична', manifoldCheck(en.withIt,4).watertight);
+    chk(part + '/' + face + ': выпуклость герметична', manifoldCheck(em.withIt,4).watertight);
+    chk(part + '/' + face + ': вмятина УБАВЛЯЕТ материал против выпуклости',
+        vol(en.withIt) < vol(em.withIt) - 1,
+        {вмятина:+vol(en.withIt).toFixed(1), выпукло:+vol(em.withIt).toFixed(1)});
+  }
+  /* А грань, которой у детали наружу нет, по-прежнему уходит в накладку — и об этом сказано вслух.
+     Молчаливое исчезновение хуже накладки: у лотка нет верха, и логотип на «+Y» иначе просто пропал бы. */
+  const top = withLabel({pbPart:'tray'}, {face:'+Y', depth:-0.5});
+  chk('у лотка нет верха — логотип уходит в накладку', vol(top.withIt) > vol(top.plain));
+  chk('и герметичность цела', manifoldCheck(top.withIt,4).watertight);
+  logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {pbPart:'lid'});
+  logos.push({id:1, face:'-Z', u0:0, v0:0, w:12, h:6, depth:-0.5, threshold:0.5,
+              invert:false, rotation:0, heightmap:art(), levels:2});
+  chk('про грань, которой у детали нет, приложение говорит вслух',
+      collectPrintWarnings(paramState.box).some(x => /такой грани нет/.test(x)),
+      collectPrintWarnings(paramState.box));
+  logos.length = 0;
+}
+console.log('=== emboss vs engrave: бляшка там, где она осталась ===');
+{
+  /* Бляшка никуда не делась — ею живут формы, у которых своей сетки под вмятину нет: шестерня,
+     резьба, крючок. На них гравировка по-прежнему утопленный знак в поднятой плите, потому что
+     вычитания в приложении нет вовсе. */
+  const host = {gearMode:'spur', gearTeeth:40, gearModule:2, gearThick:6};
+  const em = withLabel(host, {face:'+Y', u0:22, depth:1.2, w:9, h:5});
+  const en = withLabel(host, {face:'+Y', u0:22, depth:-1.2, w:9, h:5});
   chk('emboss: watertight', manifoldCheck(em.withIt,4).watertight);
   chk('engrave: watertight', manifoldCheck(en.withIt,4).watertight);
-  // Both ADD material — there is no CSG here, so an engraving is a sunk glyph in a raised plaque.
   chk('emboss adds volume',  vol(em.withIt) > vol(em.plain));
   chk('engrave adds volume too (it is a plaque, not a cut)', vol(en.withIt) > vol(en.plain));
-  // The plaque must be thick enough that the sunk floor still has material under it.
   const eb = bbox(en.withIt), pb = bbox(en.plain);
   chk('engrave: plaque stands proud by more than the engraving is deep',
-      (pb.lo[1] - eb.lo[1]) > 1.2, {stood:+(pb.lo[1]-eb.lo[1]).toFixed(3), depth:1.2});
-  // A deeper engraving needs a thicker plaque, automatically.
-  const deep = withLabel({pbPart:'tray'}, {face:'-Y', depth:-2.5});
+      (eb.hi[1] - pb.hi[1]) > 1.2, {stood:+(eb.hi[1]-pb.hi[1]).toFixed(3), depth:1.2});
+  const deep = withLabel(host, {face:'+Y', u0:22, depth:-2.5, w:9, h:5});
   const db = bbox(deep.withIt);
-  chk('engrave: deeper engraving thickens the plaque', (pb.lo[1]-db.lo[1]) > (pb.lo[1]-eb.lo[1]));
+  chk('engrave: deeper engraving thickens the plaque', (db.hi[1]-pb.hi[1]) > (eb.hi[1]-pb.hi[1]));
   chk('engrave deep: watertight', manifoldCheck(deep.withIt,4).watertight);
 }
 
@@ -128,9 +162,10 @@ console.log('=== the artwork controls actually reach the plate ===');
 
 console.log('=== logoPlate: a plaque under an EMBOSSED label too ===');
 {
-  setup({pbPart:'tray'});
+  // На форме, которая живёт накладкой (шестерня): подложка поднимает всю надпись на свою толщину.
+  setup({gearMode:'spur', gearTeeth:40, gearModule:2, gearThick:6});
   const plain = buildTrisForShape('box', paramState.box);
-  logos.push({face:'-Y',u0:0,v0:0,w:14,h:9,rotation:0,depth:0.8,threshold:0.5,invert:false,heightmap:art()});
+  logos.push({face:'+Y',u0:22,v0:0,w:9,h:5,rotation:0,depth:0.8,threshold:0.5,invert:false,heightmap:art()});
   const noPlate = buildTrisForShape('box', paramState.box);
   paramState.box.logoPlate = 1.5;
   const withPlate = buildTrisForShape('box', paramState.box);
@@ -139,10 +174,26 @@ console.log('=== logoPlate: a plaque under an EMBOSSED label too ===');
   chk('plaque adds volume over a bare emboss', vol(withPlate) > vol(noPlate));
   const a = bbox(noPlate), b = bbox(withPlate);
   chk('plaque lifts the whole label by its thickness',
-      Math.abs((a.lo[1]-b.lo[1]) - 1.5) < 1e-6, {lift:+(a.lo[1]-b.lo[1]).toFixed(4)});
+      Math.abs((b.hi[1]-a.hi[1]) - 1.5) < 1e-6, {lift:+(b.hi[1]-a.hi[1]).toFixed(4)});
   chk('bare emboss stands only as proud as its depth',
-      Math.abs((plain.length? bbox(plain).lo[1] : 0) - a.lo[1] - 0.8) < 1e-6,
-      {stood:+((bbox(plain).lo[1]) - a.lo[1]).toFixed(4)});
+      Math.abs((a.hi[1] - bbox(plain).hi[1]) - 0.8) < 1e-6,
+      {stood:+(a.hi[1]-bbox(plain).hi[1]).toFixed(4)});
+}
+console.log('=== а где панель мнётся, подложка ни на что не влияет ===');
+{
+  /* `logoPlate` описывает НАКЛАДКУ, и только её. Где панель мнётся, накладки нет вовсе, и поднимать
+     нечего — то же правило, что у подставки с v17.3.0. Проверяется тем, что результат не меняется:
+     молчаливое «настройка есть, а толку нет» лучше поймать здесь, чем на печати. */
+  setup({pbPart:'lid'});
+  logos.push({face:'+Y',u0:0,v0:0,w:14,h:9,rotation:0,depth:-0.8,threshold:0.5,invert:false,heightmap:art()});
+  const off = buildTrisForShape('box', paramState.box);
+  paramState.box.logoPlate = 1.5;
+  const on = buildTrisForShape('box', paramState.box);
+  paramState.box.logoPlate = 0;
+  chk('на промятой крышке подложка ничего не меняет',
+      Math.abs(vol(on) - vol(off)) < 1e-6 && on.length === off.length,
+      {off:+vol(off).toFixed(2), on:+vol(on).toFixed(2)});
+  chk('и деталь остаётся герметичной', manifoldCheck(on,4).watertight);
 }
 
 console.log('=== the cube family is untouched (it displaces its own vertices) ===');

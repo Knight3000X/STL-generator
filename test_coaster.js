@@ -284,7 +284,9 @@ console.log('=== модель зарегистрирована везде, гд�
   chk('группа не пуста', rows.length >= 6, rows.length);
   for(const r of rows){
     const st = Object.assign({}, defaultBoxParams(), {csMode:'square', csRim:2});
-    chk('строка «'+r.key+'» видна на своей подмодели', paramRowRelevant(r, st), r.key);
+    // Строка со своим `only` живёт под собственным выключателем — её проверяет он, а не эта перепись:
+    // «ширина кольца» без включённого кольца обязана быть скрыта, иначе получится холостой ход.
+    chk('строка «'+r.key+'» видна на своей подмодели', paramRowRelevant(r, st) || !!r.only, r.key);
   }
   chk('радиус углов не предлагается кругу',
       !paramRowRelevant(rows.find(r=>r.key==='csCorner'), Object.assign({}, defaultBoxParams(), {csMode:'round'})));
@@ -408,7 +410,16 @@ console.log('=== плотность кармана задана в миллим�
   // «Детализация логотипов» used to be read here as a cell COUNT across the window, and it defaults to
   // 50: on a 90 mm coaster that is a 1.17 mm cell — a staircase you can see across the room. The same 50
   // is 0.8 mm on a 40 mm cube, so one number cannot mean both «cells across a face» and «edge quality».
-  const cell = (csD, res) => { const g = coasterSpec({csMode:'round', csD});
+  /* Логотип обязателен: карман существует только под ним, а с v17.6.0 окно ещё и растёт вслед за его
+     размером — спрашивать густоту у спецификации без рисунка значит спрашивать про карман, которого
+     нет. Логотип берётся во всю деталь, чтобы окно упёрлось в её собственный предел и размеры окна
+     сравнивались между диаметрами честно. */
+  const cell = (csD, res) => {
+    logos.length = 0;
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w:csD, h:csD, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD});
+    const g = coasterSpec(paramState.box);
     return 2*(g.winHalf + 0.5) / coasterGridN(g, res); };
 
   for(const csD of [45, 90, 140])
@@ -427,9 +438,18 @@ console.log('=== плотность кармана задана в миллим�
   chk('но не бесконечно: есть потолок по числу ячеек',
       coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000) <= COASTER_MAX_CELLS,
       coasterGridN(coasterSpec({csMode:'round', csD:90}), 5000));
-  chk('и потолок достижим не на первом же щелчке слайдера',
-      coasterGridN(coasterSpec({csMode:'round', csD:90}), 100) < COASTER_MAX_CELLS,
-      coasterGridN(coasterSpec({csMode:'round', csD:90}), 100));
+  /* Потолок меряется на РИСУНКЕ ВО ВСЮ ДЕТАЛЬ: окно теперь растёт под рисунок, и на маленьком логотипе
+     потолок недостижим вовсе — не потому, что его нет, а потому, что карман мал. */
+  const bigSpec = (() => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90});
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w:76, h:76, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return coasterSpec(paramState.box); })();
+  /* На УМОЛЧАНИИ слайдера запас есть даже у рисунка во всю деталь — это и проверяется. Выше по
+     слайдеру потолок берётся, и так и задумано: он на то и потолок. Раньше сюда ставили 100, но окно
+     тогда было втрое меньше и до потолка оттуда было далеко. */
+  chk('и на умолчании слайдера до потолка есть запас',
+      coasterGridN(bigSpec, 50) < COASTER_MAX_CELLS, coasterGridN(bigSpec, 50));
   chk('и пол, чтобы мелкий подстаканник не стал плоским пятном',
       coasterGridN(coasterSpec({csMode:'round', csD:40}), 1) >= 48,
       coasterGridN(coasterSpec({csMode:'round', csD:40}), 1));
@@ -680,6 +700,83 @@ console.log('=== цветная печать идёт СВОИМ ключом, �
   const m = assemblyMate(Object.assign({}, defaultBoxParams(), {csMode:'round', csPart:'body', logoAms:'body'}));
   chk('цепочка ведёт по своему ключу, а не по общему',
       !!m && m.over.csPart === 'ink1' && m.over.logoAms === undefined, m && m.over);
+}
+
+console.log('=== окно кармана идёт по контуру детали, а не квадратом ===');
+{
+  /* Квадрат, вписанный в круг, съедал треть диаметра: на Ø90 логотип упирался в 55 мм и дальше не
+     пускался. Предел теперь один — сама деталь. */
+  logos.length = 0;
+  const bare = coasterSpec(Object.assign({}, defaultBoxParams(), {csMode:'round', csD:90}));
+  chk('ПРЕДЕЛ окна доходит почти до борта', bare.maxArt > bare.innerHalf - 2,
+      {maxArt:bare.maxArt, innerHalf:bare.innerHalf});
+  chk('и это заметно больше прежней трети диаметра', 2*bare.maxArt > 70, +(2*bare.maxArt).toFixed(1));
+  /* А само окно растёт ПОД РИСУНОК, а не всегда до предела: карман до борта на Ø90 это вчетверо больше
+     клеток, чем нужно логотипу в 30 мм, и столько же лишнего времени на каждом подстаканнике. */
+  const specFor = w => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90});
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w, h:w, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return coasterSpec(paramState.box); };
+  const small = specFor(30), big = specFor(76);
+  chk('маленькому рисунку — маленькое окно', small.winHalf < bare.maxArt - 5, small.winHalf);
+  chk('большому — до самого предела', Math.abs(big.artHalf - bare.maxArt) < 1.5, {big:big.artHalf, предел:bare.maxArt});
+  chk('и клеток у маленького меньше', coasterGridN(small, 50) < coasterGridN(big, 50),
+      {мал:coasterGridN(small,50), бол:coasterGridN(big,50)});
+  const g = big;
+  const mk = (w, over) => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90, logoResolution:40}, over || {});
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w, h:w, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return buildTrisForShape('box', paramState.box); };
+  for (const w of [30, 50, 70]){
+    const t = mk(w);
+    chk('логотип ' + w + ' мм строится и герметичен', manifoldCheck(t, 4).watertight, w);
+  }
+  /* Больший рисунок обязан занимать БОЛЬШЕ кармана. Раньше сверх предела он просто переставал расти,
+     и «шире окна» было единственным ответом. */
+  const a1 = meshVolume(mk(30)), a2 = meshVolume(mk(70));
+  chk('и больший рисунок правда снимает больше материала', a2 < a1, {'30':+a1.toFixed(0), '70':+a2.toFixed(0)});
+  // квадратный подстаканник тоже не ограничен вписанным квадратом меньшего размера
+  logos.length = 0;
+  const sq = coasterSpec(Object.assign({}, defaultBoxParams(), {csMode:'square', csD:90}));
+  chk('у квадратного предел тоже почти у борта', sq.maxArt > sq.innerHalf - 2, {maxArt:sq.maxArt, innerHalf:sq.innerHalf});
+}
+
+console.log('=== кольцо у края одним из цветов рисунка ===');
+{
+  const mk = (over) => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90, logoResolution:40}, over || {});
+    logos.push({id:1, face:'+Z', u0:0, v0:0, w:40, h:40, depth:-0.6, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:2});
+    return buildTrisForShape('box', paramState.box); };
+  const off = mk({}), on = mk({csRingInk:1, csRingW:1.5, csRingGap:1.5});
+  chk('кольцо герметично', manifoldCheck(on, 4).watertight);
+  chk('и оно УБАВЛЯЕТ материал у тела — это карман, а не бугор', meshVolume(on) < meshVolume(off),
+      {без:+meshVolume(off).toFixed(1), с:+meshVolume(on).toFixed(1)});
+  /* Кольцо обязано попасть в ПРОБКУ своего цвета: иначе карман под него есть, а печатать его нечем. */
+  const plugOff = mk({csPart:'ink1'}), plugOn = mk({csRingInk:1, csPart:'ink1'});
+  chk('и попадает в пробку своего цвета', plugOn.length > plugOff.length,
+      {без:plugOff.length, с:plugOn.length});
+  chk('пробка с кольцом герметична', manifoldCheck(plugOn, 4).watertight);
+  // шире кольцо — больше материала снято
+  const wide = mk({csRingInk:1, csRingW:3, csRingGap:1.5});
+  chk('шире кольцо — глубже карман', meshVolume(wide) < meshVolume(on),
+      {узкое:+meshVolume(on).toFixed(1), широкое:+meshVolume(wide).toFixed(1)});
+  // отступ двигает кольцо, а не только меняет его размер
+  const far = mk({csRingInk:1, csRingW:1.5, csRingGap:8});
+  chk('отступ двигает кольцо', Math.abs(meshVolume(far) - meshVolume(on)) > 1,
+      {близко:+meshVolume(on).toFixed(1), далеко:+meshVolume(far).toFixed(1)});
+  chk('без кольца настройки ширины и отступа ничего не меняют',
+      Math.abs(meshVolume(mk({csRingW:3, csRingGap:5})) - meshVolume(off)) < 1e-6);
+  // строки панели
+  const row = SHAPE_PARAMS.box.find(r => r.key === 'csRingInk');
+  chk('переключатель кольца есть и по умолчанию выключен', !!row && row.default === '0', row && row.default);
+  const wRow = SHAPE_PARAMS.box.find(r => r.key === 'csRingW');
+  chk('ширина прячется, когда кольца нет',
+      !paramRowRelevant(wRow, Object.assign({}, defaultBoxParams(), {csMode:'round', csRingInk:'0'})));
+  chk('и показана, когда есть',
+      paramRowRelevant(wRow, Object.assign({}, defaultBoxParams(), {csMode:'round', csRingInk:'2'})));
 }
 
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');

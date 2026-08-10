@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.5.3';
+const APP_VERSION = 'v17.6.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4904,6 +4904,13 @@ const SHAPE_PARAMS = {
     {group:'Подстаканник', key:'csT', label:'Подстаканник: толщина', min:2, max:15, step:0.5, default:6, unit:'мм'},
     {group:'Подстаканник', key:'csRim', label:'Подстаканник: высота борта (0 = плоский)', min:0, max:8, step:0.5, default:2, unit:'мм'},
     {group:'Подстаканник', key:'csRimW', label:'Подстаканник: ширина борта', min:1.5, max:20, step:0.5, default:4, unit:'мм', needs:{csRim:0}},
+    /* Кольцо у края — тем же цветом, что и один из тонов рисунка. Номер тона, а не свой цвет: у
+       подстаканника цвета уже есть, и заводить им второй источник значило бы разрешить им разойтись. */
+    {group:'Подстаканник', key:'csRingInk', label:'Подстаканник: кольцо у края (цвет рисунка)', type:'select', default:'0',
+      options:[{v:'0',t:'нет'},{v:'1',t:'цвет 1'},{v:'2',t:'цвет 2'},{v:'3',t:'цвет 3'},
+               {v:'4',t:'цвет 4'},{v:'5',t:'цвет 5'},{v:'6',t:'цвет 6'}]},
+    {group:'Подстаканник', key:'csRingW', label:'Подстаканник: ширина кольца', min:0.4, max:6, step:0.1, default:1.5, unit:'мм', only:{csRingInk:['1','2','3','4','5','6']}},
+    {group:'Подстаканник', key:'csRingGap', label:'Подстаканник: отступ кольца от края', min:0, max:20, step:0.5, default:1.5, unit:'мм', only:{csRingInk:['1','2','3','4','5','6']}},
     {group:'Подстаканник', key:'csInlay', label:'Подстаканник: глубина кармана под логотип', min:0.4, max:3, step:0.1, default:0.8, unit:'мм'},
     {group:'Литофания', key:'ltMode', label:'Литофания', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'flat',t:'плоская панель'},{v:'curved',t:'дуга'},
@@ -12681,20 +12688,57 @@ function coasterSpec(p){
   const rimW  = Math.min(cl(p.csRimW, 1.5, 20, 4), Math.max(1.5, half*0.4));
   const cornerR = shape === 'square' ? cl(p.csCorner, 0, 60, 10) : half;
   const seg   = shape === 'round' ? Math.max(48, Math.min(360, Math.round(size*2.2))) : 48;
-  // The logo window: a rectangle strictly inside the outline, so the ring around it is a real ring. On a
-  // circle the usable inscribed square is half*√2 a side; 0.62 of the size leaves a comfortable margin.
-  const winHalf = Math.max(4, (shape === 'round' ? half*0.66 : half - Math.max(3, rimW)) - 1);
+  /* Окно кармана идёт по КОНТУРУ детали, а не вписанным в неё квадратом. Квадрат внутри круга съедал
+     треть диаметра: на Ø90 логотип упирался в 55 мм и дальше не пускался вовсе. Теперь карман доходит
+     до борта, и предел у рисунка ровно один — сама деталь.
+
+     Сетка при этом остаётся квадратной: она покрывает описанный вокруг окна квадрат, а клетки за
+     контуром просто принадлежат полю. Так и было, изменилась только форма самого контура. */
+  const innerHalf = Math.max(1, half - rimW);
+  const maxWin = Math.max(4, innerHalf - 0.6);          // дальше борта карману хода нет
+  const maxArt = Math.max(2, maxWin - COASTER_GRID_LAP - 0.5);
+  /* Кольцо у края — тем же цветом, что и один из тонов рисунка. Живёт оно в ТОЙ ЖЕ сетке кармана и той
+     же маске, поэтому и карман под него, и пробка получаются сами собой: отдельной машинки не нужно, а
+     контуры сходятся по построению. Отступ считается от КРАЯ ДЕТАЛИ, а не от кромки кармана: карман
+     меняет размер вслед за рисунком, и кольцо ездило бы вместе с ним. */
+  const ringInk = Math.max(0, Math.min(6, Math.round(p.csRingInk || 0)));
+  const ringW = Math.max(0.4, Math.min(6, p.csRingW == null ? 1.5 : p.csRingW));
+  const ringGap = Math.max(0, Math.min(20, p.csRingGap == null ? 1.5 : p.csRingGap));
+  // Отступ отсчитывается от КРАЯ ДЕТАЛИ — так его и просили. Дальше гладкого борта карману хода нет,
+  // поэтому положение зажимается; о том, что зажали, сказано в предупреждениях.
+  const ringWant = half - ringGap - ringW/2;
+  const ringR = Math.max(ringW, Math.min(maxArt - ringW/2, ringWant));
+  const ringTrimmed = ringInk > 0 && ringR < ringWant - 1e-9;
+  /* Окно растёт ПОД РИСУНОК, а не всегда до предела. Предел снят — упереться теперь можно только в саму
+     деталь, — но платить за это сеткой должен тот, кто большой рисунок и заказал: карман до борта на
+     Ø90 это вчетверо больше клеток, чем нужно логотипу в 30 мм, и столько же лишнего времени на КАЖДОМ
+     подстаканнике. Размер берётся у первого логотипа с картинкой — у того же, из которого карман и
+     режется, — и у кольца, если оно включено. */
+  const lg0 = (typeof logos !== 'undefined') ? logos.find(l => l && l.heightmap) : null;
+  let wantHalf = 4;
+  if (lg0){
+    const ext = rotatedHalfExtents(Math.max(2, lg0.w||10), Math.max(2, lg0.h||10), lg0.rotation);
+    wantHalf = Math.max(wantHalf, ext.halfX + Math.abs(lg0.u0||0), ext.halfY + Math.abs(lg0.v0||0));
+  }
+  if (ringInk) wantHalf = Math.max(wantHalf, ringR + ringW/2);
+  const winHalf = Math.max(4, Math.min(maxWin, wantHalf + COASTER_GRID_LAP + 0.5));
+  const artHalf = Math.max(2, winHalf - COASTER_GRID_LAP - 0.5);
   return {shape, part, ink, size, half, t, inlay, rim, rimW, cornerR, seg, winHalf,
-          // where the logo may reach: the window, less the lap the grid runs under the ring
-          artHalf: Math.max(2, winHalf - COASTER_GRID_LAP - 0.5),
+          artHalf, maxArt, ringInk, ringW, ringGap, ringR, ringTrimmed,
+          ringEdge: half - ringR - ringW/2,
+          round: shape === 'round',
           topFlat: t - rim,                        // the recessed middle of the top face
-          innerHalf: Math.max(1, half - rimW)};
+          innerHalf};
 }
 function buildCoaster(p, res){
   const g = coasterSpec(p);
   const out = [];
   const outer = coasterLoop(g.shape, g.half, g.cornerR, g.seg);
-  const win = [[-g.winHalf,-g.winHalf],[g.winHalf,-g.winHalf],[g.winHalf,g.winHalf],[-g.winHalf,g.winHalf]];
+  // Окно повторяет контур детали, уменьшенный до winHalf: у круга это круг, у квадрата — квадрат со
+  // своим скруглением. Раньше здесь всегда стоял квадрат, и он-то и ограничивал рисунок.
+  const winCornerR = g.round ? g.winHalf
+    : Math.max(0, Math.min(g.winHalf, g.cornerR - (g.half - g.winHalf)));
+  const win = coasterLoop(g.shape, g.winHalf, winCornerR, g.seg);
 
   // The legend comes from the first logo card, exactly as the keycap's does — one artwork pipeline for
   // images, text and QR alike. With no logo at all there is no pocket and the coaster is a plain disc.
@@ -12702,6 +12746,7 @@ function buildCoaster(p, res){
   const nG = coasterGridN(g, res);
   const cellAt = (i) => -g.winHalf - COASTER_GRID_LAP + (i/nG)*2*(g.winHalf + COASTER_GRID_LAP);
   const mask = new Uint8Array(nG*nG);
+  const outside = new Uint8Array(nG*nG);            // клетки за контуром окна — ничьи
   const inks = coasterInks(lg);
   const NK = inks.levels.length + 1;                 // colours plus the coaster's own field
   const cov = new Float32Array(nG*nG*NK);            // what fraction of each cell belongs to each colour
@@ -12722,8 +12767,11 @@ function buildCoaster(p, res){
        The cell's own colour is then the one holding the most of it — which for an edge running through
        the middle is the same answer the centre sample gave, and for a thin feature is a better one. */
     const SS = 3, inv = !!lg.invert;
+    // Внутри окна ли точка. У круга это радиус, у квадрата — прежняя проверка по сторонам.
+    const inWin = (u, v) => g.round ? (Math.hypot(u, v) <= g.artHalf)
+                                    : (Math.abs(u) <= g.artHalf && Math.abs(v) <= g.artHalf);
     const label = (su, sv) => {
-      if (Math.abs(su) > g.artHalf || Math.abs(sv) > g.artHalf) return 0;   // never under the ring
+      if (!inWin(su, sv)) return 0;                                          // never under the rim
       const x = fm[0]*su + fm[1]*sv, z = fm[2]*su + fm[3]*sv;
       const lu = x*cR - z*sR, lv = x*sR + z*cR;
       if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) return 0;
@@ -12739,19 +12787,35 @@ function buildCoaster(p, res){
       const u0 = cellAt(i), u1 = cellAt(i+1), v0 = cellAt(j), v1 = cellAt(j+1);
       const base = (j*nG+i)*NK;
       for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
-        const su = u0 + (u1-u0)*(si+0.5)/SS - (lg.u0||0), sv = v0 + (v1-v0)*(sj+0.5)/SS - (lg.v0||0);
-        const k = label(su, sv);
+        // Координаты подвыборки в ДЕТАЛИ и в РИСУНКЕ — разные: рисунок можно сдвинуть, кольцо нельзя.
+        const cu = u0 + (u1-u0)*(si+0.5)/SS, cv = v0 + (v1-v0)*(sj+0.5)/SS;
+        const su = cu - (lg.u0||0), sv = cv - (lg.v0||0);
+        let k = label(su, sv);
+        if (g.ringInk && inWin(cu, cv)){
+          const r = g.round ? Math.hypot(cu, cv) : Math.max(Math.abs(cu), Math.abs(cv));
+          // Кольцо кладётся ПОВЕРХ рисунка: оно у края, рисунок в середине, и спорить им обычно не о чем;
+          // а где всё же спорят, выигрывает кольцо — иначе оно рвалось бы в случайном месте.
+          if (Math.abs(r - g.ringR) <= g.ringW/2) k = Math.min(g.ringInk, NK-1);
+        }
         if (k < NK) cov[base+k] += 1/(SS*SS);
       }
       let best = 0, bestC = cov[base];
       for(let k=1;k<NK;k++) if(cov[base+k] > bestC){ bestC = cov[base+k]; best = k; }
       if (best > 0){ mask[j*nG+i] = best; anyArt = true; }
+      // Клетка целиком за окном: её не занимает никто. Отмечаем ПОСЛЕ подсчёта покрытия — им живёт warp.
+      if (!inWin((u0+u1)/2, (v0+v1)/2)) outside[j*nG+i] = 1;
     }
     /* The grid's vertices, slid onto the artwork's own boundary. The mosaic keeps its cells and its
        topology; only the corners move, and every part moves them the same way, so the colours still tile
        the pocket exactly. Without it the edge of a logo is a staircase of 0.35 mm steps whatever the
        artwork says — the cell can only turn at its own corner. */
     warp = mosaicWarp(mask, cov, inks.levels.length, nG, nG);
+    /* Клетки за окном не принадлежат ни полю, ни цвету. Пока сетка была квадратной и окно тоже, таких
+       клеток не было вовсе; с круглым окном они появились — и поле выкладывало их поверх борта, ровно
+       по его верхней грани. Совпавшие грани герметичность не ломают и объём не меняют, поэтому нашлись
+       они только счётом направленных рёбер: 24 штуки на Ø90. Метка 255 — «ничья»: ни один вызов
+       coasterGridSlab её не просит. */
+    for(let q=0;q<mask.length;q++) if (outside[q]) mask[q] = 255;
   }
 
   // An accent part is ONLY its own plugs — nothing else, or that filament would print a whole coaster.
@@ -14113,6 +14177,59 @@ function pboxVentSpec(p){
   const slot = (along - (n - 1)*bar)/n;
   return {face, acrossZ, vert, u, v, n, bar, slot, cv:(wy0 + H)/2};
 }
+/* ---- Логотип на электрокорпусе: мнётся сама стенка ----------------------------------------------
+   Раньше корпус стоял в LOGO_PLATE_MODES, и обёртка клала поверх него плиту-накладку: надпись сидела на
+   выпуклой площадке, а не в теле. Лечится тем же, чем лечилась подставка в v17.3.0 — панель строится
+   промятой, — но взять машинку куба целиком нельзя: `buildCombinedLogoDispFns` считает рамку от
+   p.width/height/depth, а у корпуса каждая плита своего размера и стоит со своим смещением.
+
+   Поэтому рамка берётся у ТОЙ ЖЕ FACE_AXES, но с габаритами конкретной плиты. Положение логотипа при
+   этом НЕ сдвигается: u0/v0 задаются от центра ГРАНИ, а не в мировых координатах, и центр грани плиты —
+   это и есть её собственный центр. Первая версия вычитала центр плиты, и на боковой стенке рисунок
+   уезжал ровно на её кромку — туда, где смещение обязано быть нулевым; получались открытые рёбра, хотя
+   та же стенка, построенная отдельно, замыкалась при любых настройках.
+
+   Ориентация остаётся общей для всего приложения (LOGO_FACE_MAP), и это важнее удобства: наклейка на
+   кубе и надпись на корпусе обязаны ложиться одинаково, иначе к списку зеркальных поверхностей
+   добавится ещё одна. */
+function pboxPanelDispFns(p, face, sx, sy, sz){
+  if (typeof logos === 'undefined' || !logos.length) return null;
+  // Цветная печать по-прежнему идёт накладкой: карман и пробки обязаны резаться ОДНОЙ сеткой, а
+  // промятая панель и отдельные пробки — это две разные сетки, которые по контуру не совпадут.
+  if (logoAmsOn(p)) return null;
+  const mine = logos.filter(lg => lg && lg.heightmap && (lg.depth||0) && lg.face === face);
+  if (!mine.length) return null;
+  const dims = {width:sx, height:sy, depth:sz};
+  const fns = [];
+  for (const lg of mine){
+    const ax = FACE_AXES[lg.face]; if (!ax) continue;
+    const [uAxis, vAxis, nAxis, nOffset] = ax(dims);
+    const full = Object.assign({}, lg, {uAxis, vAxis, nAxis, nOffset});
+    fns.push(makeLogoDispFn(full, makeLogoFrame(full, q => q)));
+  }
+  if (!fns.length) return null;
+  const out = {};
+  out[face] = (u, v, base) => { for (const fn of fns){ const d = fn(u, v, base); if (d !== 0) return d; } return 0; };
+  return out;
+}
+/* Какие грани несёт КАЖДАЯ деталь корпуса. Список нужен пер-детальный, а не общий: у крышки наружу
+   смотрят только её верх и низ, у лотка — дно и четыре стенки, а верх у лотка открыт вовсе. Пока гейт
+   был общим, логотип, положенный на грань, которой у печатаемой детали нет, ПРОПАДАЛ совсем: вмятины
+   не выходило, потому что мять нечего, а накладку гейт уже запретил. */
+const PBOX_PART_FACES = { lid: ['+Y','-Y'], tray: ['-Y','+X','-X','+Z','-Z'] };
+function pboxPartFaces(part){
+  if (part === 'lid') return PBOX_PART_FACES.lid;
+  if (part === 'tray') return PBOX_PART_FACES.tray;
+  return PBOX_PART_FACES.lid.concat(PBOX_PART_FACES.tray);      // 'both' — обе детали разом
+}
+// Промнёт ли корпус ЭТОТ логотип сам. Вопрос задаётся по одному логотипу, потому что ответ у них
+// разный: один может лежать на стенке, другой — на грани, которой у этой детали нет.
+function pboxDentsLogo(p, lg){
+  if (!p || !p.pbPart || p.pbPart === 'none') return false;
+  if (logoAmsOn(p)) return false;                               // цветная печать по-прежнему накладкой
+  if (!lg || !lg.heightmap || !(lg.depth||0)) return false;
+  return pboxPartFaces(p.pbPart).indexOf(lg.face) >= 0;
+}
 function buildProjectBox(p){
   const part  = p.pbPart || 'tray';
   const {W, D, H, wall, floorT, lidT, flange, emb, Ww, Dw} = pboxDims(p);   // см. pboxDims — один источник
@@ -14144,7 +14261,21 @@ function buildProjectBox(p){
     const cx=(x0+x1)/2, cy=(y0+y1)/2, cz=(z0+z1)/2, ctr={0:cx,1:cy,2:cz};
     const hs = userHoles.filter(h=>faces.includes(h.face)).map(h=>{ const [pI,qI]=HOLE_AXIS_PQ[h.axis];
       return Object.assign({}, h, {cp: h.cp-ctr[pI], cq: h.cq-ctr[qI]}); });
-    const t = hs.length ? buildBoxWithHoles(x1-x0, y1-y0, z1-z0, hs) : plainBoxShellTris(x1-x0, y1-y0, z1-z0);
+    /* Плита, которую называет логотип, строится ПРОМЯТОЙ — через тот же построитель, которым живёт
+       скруглённый куб: он единственный держит и вырезы, и смещение граней разом, и остаётся при этом
+       герметичным (проверено). Остальные плиты остаются простыми оболочками: гнать их через ту же
+       машинку значило бы платить десятками тысяч треугольников за грань, на которой ничего нет. */
+    const sx = x1-x0, sy = y1-y0, sz = z1-z0;
+    let dfn = null;
+    for (const f of faces){ dfn = pboxPanelDispFns(p, f, sx, sy, sz); if (dfn) break; }
+    let t;
+    if (dfn){
+      const R0 = asymRadiiFromGroups(0, 0, 0, sx/2, sy/2, sz/2);
+      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
+      t = buildAsymRoundedBox(sx, sy, sz, R0, Math.max(24, Math.min(200, lres*2)), 4, dfn, null, lres, undefined, hs);
+    } else {
+      t = hs.length ? buildBoxWithHoles(sx, sy, sz, hs) : plainBoxShellTris(sx, sy, sz);
+    }
     for(const T of t) out.push(T.map(v=>[v[0]+cx, v[1]+cy, v[2]+cz]));
   };
   const center = t => { let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
@@ -14217,7 +14348,18 @@ function buildProjectBox(p){
     const holes = postPos.map(([cx,cz])=>({axis:1,cp:cx,cq:cz,r:screwD*0.55,head:'sink',headR:hR,headDepth:hD,headSide:1}));
     // Cutouts the user placed on the TOP face land on the lid (its plate is centred, so no Y shift applies).
     for(const h of userHoles) if(h.face==='+Y') holes.push(Object.assign({}, h));
-    for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);          // plate (centred, y∈[-lidT/2,lidT/2])
+    // Крышка НЕСЁТ винтовые отверстия всегда, поэтому «мять только там, где вырезов нет» ей не подходит:
+    // мять и сверлить приходится одной и той же плитой.
+    const ldfn = pboxPanelDispFns(p, '+Y', lidW, lidT, lidD)
+              || pboxPanelDispFns(p, '-Y', lidW, lidT, lidD);
+    if (ldfn){
+      const R0 = asymRadiiFromGroups(0, 0, 0, lidW/2, lidT/2, lidD/2);
+      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 60;
+      for(const T of buildAsymRoundedBox(lidW, lidT, lidD, R0, Math.max(24, Math.min(200, lres*2)), 4,
+                                         ldfn, null, lres, undefined, holes)) t.push(T);
+    } else {
+      for(const T of buildBoxWithHoles(lidW, lidT, lidD, holes)) t.push(T);        // plate (centred)
+    }
     const lipH=Math.max(2, Math.min(H*0.5, p.pbLipH||5));
     const lipWo=Math.max(6, Wi-2*clr), lipDo=Math.max(6, Di-2*clr);   // rib hugs the wall; posts are inset to clear it
     for(const T of rectRingYTris(0,0, lipWo,lipDo, lipWall, -lidT/2-lipH, -lidT/2+0.6)) t.push(T);   // drop-in lip
@@ -15843,7 +15985,14 @@ function buildTrisForShape(shape, p) {
     // print a second container underneath its own logo.
     const amsK = logoAmsIndex(p.logoAms);
     if (amsK) return snapWeldTris(buildLogoAmsInkTris(p, host, res, amsK));
-    for (const lg of logos) tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
+    /* Логотип, который корпус промял сам, накладки получать не должен — иначе к вмятине добавится ровно
+       та бляшка, ради избавления от которой всё и делалось. Отбор ПО ОДНОМУ логотипу: на одной детали
+       один может лежать на промятой стенке, а другой — на грани, которой у неё нет, и тому накладка
+       по-прежнему нужна, иначе он просто исчезнет. */
+    for (const lg of logos){
+      if (pboxDentsLogo(p, lg)) continue;
+      tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
+    }
   }
   // The edge bevel goes LAST, on the finished union — see bevelledMesh. Welding first is required,
   // not tidy: it is what makes a connected component equal one closed shell.
@@ -17940,6 +18089,30 @@ function collectPrintWarnings(p){
     const ns = threadNeckSpec(p);
     if (!ns) w.push('переходник: под такой резьбой не остаётся потолка, чтобы открыть в нём канал — крышка вышла глухой');
     else if (ns.wall < 0.8) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше 0.8 мм');
+  }
+  if (p.csMode && p.csMode !== 'none'){
+    const g = coasterSpec(p);
+    if (g.ringTrimmed)
+      w.push('подстаканник: кольцо отодвинуто от края на ' + g.ringEdge.toFixed(1) + ' мм вместо ' +
+             g.ringGap.toFixed(1) + ' — ближе не пускает гладкий борт шириной ' + g.rimW.toFixed(1) +
+             ' мм; уменьшите его, чтобы вынести кольцо к краю');
+    if (g.ringInk && typeof logos !== 'undefined'){
+      const lg = logos.find(l => l && l.heightmap);
+      const n = lg ? coasterInks(lg).levels.length : 0;
+      if (g.ringInk > n)
+        w.push('подстаканник: кольцу назначен цвет ' + g.ringInk + ', а в рисунке тонов ' + n +
+               ' — оно напечатается цветом ' + Math.max(1, n));
+    }
+  }
+  if (p.pbPart && p.pbPart !== 'none' && typeof logos !== 'undefined'){
+    /* Логотип, который эта деталь не несёт, молча исчезает: мять нечего, а накладке не на чем стоять.
+       Молчаливый холостой ход хуже отсутствия — про такой логотип надо сказать. */
+    const faces = pboxPartFaces(p.pbPart);
+    const lost = logos.filter(lg => lg && lg.heightmap && (lg.depth||0) && faces.indexOf(lg.face) < 0);
+    for (const lg of lost)
+      w.push('электрокорпус: логотип на грани ' + lg.face + ' — у детали «' +
+             ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart] + '» такой грани нет наружу; ' +
+             'он выйдет накладкой или не выйдет вовсе');
   }
   if ((p.threadMode || 'none') === 'anchor'){
     const a = anchorSpec(p);

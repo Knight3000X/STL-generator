@@ -878,5 +878,33 @@ console.log('=== кольцо строится КОЛЬЦОМ, а не клет�
   logos.length = 0;
 }
 
+// ЦВЕТНАЯ ЧАСТЬ — ОТДЕЛЬНАЯ ДЕТАЛЬ, и об этом надо говорить всегда, а не только при двух тонах и
+// больше. В теле остаётся один карман, и со стороны это неотличимо от «цвет не генерируется» — так
+// и было сообщено. С кольцом у края тем более: заказавший кольцо и не заказавший его деталь получит
+// у края голый паз.
+console.log('=== про отдельную цветную деталь говорят вслух ===');
+{
+  const say = (ov, lv) => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), Object.assign({csMode:'round', csD:99}, ov));
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w:40, h:40, depth:-0.8, threshold:0.5,
+                invert:false, rotation:0, heightmap:HM, levels:lv||2});
+    return collectPrintWarnings(paramState.box); };
+  const one = say({csPart:'body'});
+  chk('про отдельную деталь цвета сказано и при ОДНОМ тоне',
+      one.some(t => /ОТДЕЛЬНОЙ деталью/.test(t)), one.filter(t=>/цвет|тон/i.test(t)));
+  const ring = say({csPart:'body', csRingInk:'1', csRingW:3});
+  chk('с кольцом сказано про обе части', ring.some(t => /кольцо и логотип печатаются ОТДЕЛЬНЫМИ/.test(t)),
+      ring.filter(t=>/кольц/i.test(t)));
+  chk('и названо, сколько раз нажать', ring.some(t => /\+ Цвет N \(AMS\)/.test(t)), ring);
+  // На самой цветной детали этого говорить незачем — она и есть та деталь.
+  const ink = say({csPart:'ink1'});
+  chk('на цветной детали про это молчат', !ink.some(t => /ОТДЕЛЬН/.test(t)), ink);
+  // Заказанный цвет, которого у рисунка нет, по-прежнему назван отдельно — деталь выйдет пустой.
+  const gone = say({csPart:'ink5'});
+  chk('про пустую деталь несуществующего цвета сказано',
+      gone.some(t => /деталь выйдет пустой/.test(t)), gone);
+  logos.length = 0;
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

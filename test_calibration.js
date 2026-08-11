@@ -1,12 +1,17 @@
-// Calibration prints (калибровочные печати): temperature tower, bridge/overhang test and retraction test,
-// through the REAL buildTrisForShape pipeline. These models exist to be MEASURED off the bed, so the tests
+// Тесты печати (базовая форма «Тесты», v18.0.0): температурная башня, тест мостов и нависаний, тест
+// ретракта — через НАСТОЯЩИЙ buildTrisForShape.
+//
+// До v18.0.0 все три жили в «Крепеже» на `mntMode`, среди кронштейнов и холдеров. Разделение по существу:
+// крепёж — деталь, которую ставят в изделие, а калибровочный образец меряет ПРИНТЕР и в изделие не идёт.
+// Ключи переименованы из `mnt*` в `tst*`; перенос старых конфигов проверяется здесь же.
+// (Далее — исходный заголовок.) These models exist to be MEASURED off the bed, so the tests
 // measure them off the mesh — segment heights, tick counts, bridge spans, overhang angles, tower taper.
 // Run via ./run-all.sh.
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
-    mntMode:'temptower', mntCalN:5, mntCalH:12, mntW:30, mntT:4, mntBrSpan:50, mntRetGap:35,
+    tstMode:'temptower', tstSegN:5, tstSegH:12, tstW:30, tstT:4, tstSpan:50, tstRetGap:35, mntMode:'none',
     fnOn:false,pbPart:'none',woBack:'none',hookMount:'none',gearMode:'none',pipMode:'none',psOn:false,
     threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
@@ -43,20 +48,20 @@ for(const m of ['temptower','bridgetest','retract'])
   for(const n of [3,5,8,10])
     for(const H of [5,12,60])
       for(const W of [10,30,300]){
-        const t=base({mntMode:m,mntCalN:n,mntCalH:H,mntW:W}), mc=manifoldCheck(t,4);
+        const t=base({mntMode:m,tstSegN:n,tstSegH:H,tstW:W}), mc=manifoldCheck(t,4);
         chk(m+' n'+n+' H'+H+' W'+W+' watertight (+vol)', mc.watertight&&vol(t)>0,
             {open:mc.openEdges,bad:mc.badEdges});
       }
-for(const ov of [{mntMode:'bridgetest',mntBrSpan:10},{mntMode:'bridgetest',mntBrSpan:120},
-                 {mntMode:'retract',mntRetGap:10},{mntMode:'retract',mntRetGap:150},
-                 {mntMode:'temptower',mntT:20},{mntMode:'bridgetest',mntT:2},
-                 {mntMode:'retract',mntW:10,mntCalH:5},{mntMode:'temptower',mntCalN:10,mntCalH:60}]){
+for(const ov of [{tstMode:'bridgetest',tstSpan:10},{tstMode:'bridgetest',tstSpan:120},
+                 {tstMode:'retract',tstRetGap:10},{tstMode:'retract',tstRetGap:150},
+                 {tstMode:'temptower',tstT:20},{tstMode:'bridgetest',tstT:2},
+                 {tstMode:'retract',tstW:10,tstSegH:5},{tstMode:'temptower',tstSegN:10,tstSegH:60}]){
   const t=base(ov), mc=manifoldCheck(t,4);
   chk('extreme '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
 }
 
 console.log('=== temperature tower: the segments are countable and each one tests something ===');
-{ const H=12, n=5, W=30, t=base({mntMode:'temptower',mntCalN:n,mntCalH:H,mntW:W});
+{ const H=12, n=5, W=30, t=base({tstMode:'temptower',tstSegN:n,tstSegH:H,tstW:W});
   const B=computeBBox(t), y0=B.minY;
   chk('height = segments × segment height', Math.abs((B.maxY-B.minY)-n*H)<0.05, {y:+(B.maxY-B.minY).toFixed(2)});
   const widths=[];
@@ -73,12 +78,12 @@ console.log('=== temperature tower: the segments are countable and each one test
     chk('segment '+(k+1)+' has a bridged window', sectionLoops(t, y0+k*H+H*0.42)===2,
         {loops:sectionLoops(t, y0+k*H+H*0.42)});
 }
-{ const a=computeBBox(base({mntMode:'temptower',mntCalN:4})), b=computeBBox(base({mntMode:'temptower',mntCalN:9}));
+{ const a=computeBBox(base({tstMode:'temptower',tstSegN:4})), b=computeBBox(base({tstMode:'temptower',tstSegN:9}));
   chk('more segments → taller tower', (b.maxY-b.minY) > (a.maxY-a.minY)+50,
       {a:+(a.maxY-a.minY).toFixed(0), b:+(b.maxY-b.minY).toFixed(0)}); }
 
 console.log('=== bridge / overhang: the spans and the angles are the ones printed on the tin ===');
-{ const n=5, span=50, t=base({mntMode:'bridgetest',mntCalN:n,mntBrSpan:span,mntCalH:12,mntW:30,mntT:4});
+{ const n=5, span=50, t=base({tstMode:'bridgetest',tstSegN:n,tstSpan:span,tstSegH:12,tstW:30,tstT:4});
   const B=computeBBox(t), W=Math.min(30,40)*0.5, pitch=W+6;
   const xAt=k=>-(n-1)*pitch/2 + k*pitch;
   const got=[];
@@ -98,9 +103,9 @@ console.log('=== bridge / overhang: the spans and the angles are the ones printe
   }
   chk('the spans grow linearly to the maximum asked for',
       got.every((s,i)=>Math.abs(s-span*(i+1)/n)<0.6), got.map(v=>+v.toFixed(1)));
-  chk('and the widest really is mntBrSpan', Math.abs(got[n-1]-span)<0.6, {got:+got[n-1].toFixed(2)});
+  chk('and the widest really is tstSpan', Math.abs(got[n-1]-span)<0.6, {got:+got[n-1].toFixed(2)});
 }
-{ const n=5, t=base({mntMode:'bridgetest',mntCalN:n,mntBrSpan:50,mntCalH:12,mntW:30,mntT:4});
+{ const n=5, t=base({tstMode:'bridgetest',tstSegN:n,tstSpan:50,tstSegH:12,tstW:30,tstT:4});
   const B=computeBBox(t), W=Math.min(30,40)*0.5, pitch=W+6, xAt=k=>-(n-1)*pitch/2 + k*pitch;
   const angles=[];
   for(let k=0;k<n;k++){
@@ -121,18 +126,18 @@ console.log('=== bridge / overhang: the spans and the angles are the ones printe
       Math.abs(angles[0]-30)<6 && Math.abs(angles[n-1]-80)<6 &&
       angles.every((v,i)=>i===0||v>angles[i-1]), angles.map(v=>+v.toFixed(1)));
 }
-{ const a=computeBBox(base({mntMode:'bridgetest',mntBrSpan:20})), b=computeBBox(base({mntMode:'bridgetest',mntBrSpan:100}));
+{ const a=computeBBox(base({tstMode:'bridgetest',tstSpan:20})), b=computeBBox(base({tstMode:'bridgetest',tstSpan:100}));
   chk('a bigger maximum span makes a deeper model', (b.maxZ-b.minZ) > (a.maxZ-a.minZ)+50,
       {a:+(a.maxZ-a.minZ).toFixed(0), b:+(b.maxZ-b.minZ).toFixed(0)}); }
 
 console.log('=== retraction: two towers, tapered, the requested distance apart ===');
-{ const gap=35, t=base({mntMode:'retract',mntRetGap:gap,mntCalH:12,mntW:30,mntT:4});
+{ const gap=35, t=base({tstMode:'retract',tstRetGap:gap,tstSegH:12,tstW:30,tstT:4});
   const B=computeBBox(t), yBase=B.minY;
   const xs=hitsXu(t, yBase+8, 0);
   chk('there are exactly two towers', xs.length===4, {n:xs.length});
   if(xs.length===4){
     const c1=(xs[0]+xs[1])/2, c2=(xs[2]+xs[3])/2;
-    chk('their centres are mntRetGap apart', Math.abs((c2-c1)-gap)<0.05, {got:+(c2-c1).toFixed(3)});
+    chk('their centres are tstRetGap apart', Math.abs((c2-c1)-gap)<0.05, {got:+(c2-c1).toFixed(3)});
     chk('and they are symmetric about the middle', Math.abs(c1+c2)<0.05, {c1:+c1.toFixed(4),c2:+c2.toFixed(4)});
   }
   const wAt=y=>{ const h=hitsXu(t, y, 0); return h.length===4 ? (h[1]-h[0]) : NaN; };
@@ -140,20 +145,70 @@ console.log('=== retraction: two towers, tapered, the requested distance apart =
   chk('the towers taper toward the top', hi < lo-1, {bottom:+lo.toFixed(2), top:+hi.toFixed(2)});
   chk('and taper is the only overhang: the top is never wider', hi <= lo+1e-9, {});
 }
-{ const a=computeBBox(base({mntMode:'retract',mntRetGap:15})), b=computeBBox(base({mntMode:'retract',mntRetGap:120}));
+{ const a=computeBBox(base({tstMode:'retract',tstRetGap:15})), b=computeBBox(base({tstMode:'retract',tstRetGap:120}));
   chk('a wider gap makes a wider model', (b.maxX-b.minX)-(a.maxX-a.minX) > 100,
       {d:+((b.maxX-b.minX)-(a.maxX-a.minX)).toFixed(1)}); }
-{ const a=computeBBox(base({mntMode:'retract',mntCalH:8})), b=computeBBox(base({mntMode:'retract',mntCalH:40}));
+{ const a=computeBBox(base({tstMode:'retract',tstSegH:8})), b=computeBBox(base({tstMode:'retract',tstSegH:40}));
   chk('the height knob drives the towers', (b.maxY-b.minY) > (a.maxY-a.minY)+80,
       {a:+(a.maxY-a.minY).toFixed(0), b:+(b.maxY-b.minY).toFixed(0)}); }
 
+/* Соседи по крепежу. `tstMode:'none'` здесь ОБЯЗАТЕЛЕН и не для красоты: базовый набор этого файла
+   включает температурную башню, а форма «Тесты» стоит в dominantMode ВЫШЕ крепежа. Без выключения обе
+   проверки ниже мерили бы башню и проходили бы всегда — холостыми. Ровно это и случилось при переносе,
+   и поймала это единственная строка, которая проверяет ОТСУТСТВИЕ влияния. */
 console.log('=== the new modes do not disturb the old ones ===');
 for(const m of ['lbracket','vesa','boss','tool','pipe','foot','fittest','dovetail']){
-  const t=base({mntMode:m}), mc=manifoldCheck(t,4);
+  const t=base({tstMode:'none', mntMode:m}), mc=manifoldCheck(t,4);
   chk(m+' still watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
+  chk(m+' — это и правда крепёж, а не тест', dominantMode(paramState.box)==='mount', dominantMode(paramState.box));
 }
-{ const a=vol(base({mntMode:'fittest',mntCalN:3})), b=vol(base({mntMode:'fittest',mntCalN:9}));
+{ const a=vol(base({tstMode:'none',mntMode:'fittest',tstSegN:3})),
+        b=vol(base({tstMode:'none',mntMode:'fittest',tstSegN:9}));
   chk('the calibration-segment knob does nothing to the fit test', Math.abs(a-b)<1e-9, {}); }
+
+/* ПЕРЕНОС СТАРЫХ КОНФИГОВ. Конфиг, сохранённый до v18.0.0, несёт `mntMode:'temptower'` и размеры в
+   ключах `mnt*`. Без переноса он открылся бы КРЕПЕЖОМ без разновидности — пустой моделью, по которой
+   человек решил бы, что файл испорчен. Перенос идёт по СЫРЫМ параметрам, до слияния с умолчаниями:
+   после слияния у новых ключей уже стоят их умолчания, и «пусто ли здесь» ответить нечем. */
+console.log('=== старый конфиг открывается тестом, а не пустым крепежом ===');
+{
+  for(const was of ['temptower','bridgetest','retract']){
+    const raw = {mntMode:was, mntCalN:7, mntCalH:15, mntBrSpan:80, mntRetGap:60, mntW:50, mntT:5};
+    const mp = Object.assign(defaultBoxParams(), migrateLegacyParams(raw));
+    chk(was+': разновидность перенесена', mp.tstMode === was, {tstMode:mp.tstMode, mntMode:mp.mntMode});
+    chk(was+': крепёж выключен', mp.mntMode === 'none', mp.mntMode);
+    chk(was+': размеры перенесены', mp.tstSegN === 7 && mp.tstSegH === 15 && mp.tstSpan === 80 &&
+        mp.tstRetGap === 60 && mp.tstW === 50 && mp.tstT === 5,
+        {n:mp.tstSegN, h:mp.tstSegH, span:mp.tstSpan, gap:mp.tstRetGap, w:mp.tstW, t:mp.tstT});
+    chk(was+': и открывается формой «Тесты»', dominantMode(mp) === 'test', dominantMode(mp));
+    logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
+    Object.assign(paramState.box, mp);
+    const t = buildTrisForShape('box', paramState.box);
+    chk(was+': и это настоящая деталь, а не пустой список',
+        t.length > 100 && manifoldCheck(t,4).watertight, t.length);
+  }
+  const keep = Object.assign(defaultBoxParams(), migrateLegacyParams({mntMode:'lbracket', mntW:50}));
+  chk('чужой крепёж не тронут', keep.mntMode === 'lbracket' && (keep.tstMode||'none') === 'none',
+      {mnt:keep.mntMode, tst:keep.tstMode});
+  chk('и он по-прежнему крепёж', dominantMode(keep) === 'mount', dominantMode(keep));
+}
+
+console.log('=== форма «Тесты» стоит в панели наравне с остальными ===');
+{
+  chk('имя формы есть', KIND_LABEL.test === 'Тесты', KIND_LABEL.test);
+  chk('её группа знает свою форму', GROUP_KIND['Тесты печати'] === 'test');
+  chk('и свой переключатель подмодели', subModelKey('test') === 'tstMode', subModelKey('test'));
+  chk('группа видна только на ней', sectionRelevant('Тесты печати','test',false) &&
+      !sectionRelevant('Тесты печати','mount',false));
+  chk('а крепёж на ней не виден', !sectionRelevant('Крепёж / монтаж','test',false));
+  for(const m of ['temptower','bridgetest','retract']){
+    chk(m+': справка на месте', !!MODEL_HELP['test:'+m], m);
+    chk(m+': и её больше нет под крепежом', !MODEL_HELP['mount:'+m], m);
+  }
+  const mnt = SHAPE_PARAMS.box.find(r => r.key === 'mntMode').options.map(o => o.v);
+  chk('в крепеже калибровок больше нет',
+      !mnt.includes('temptower') && !mnt.includes('bridgetest') && !mnt.includes('retract'), mnt);
+}
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

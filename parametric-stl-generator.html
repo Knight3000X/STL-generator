@@ -1001,6 +1001,7 @@
         <button class="base-btn" data-base="funnel" title="Воронка: конус со сливным носиком, оболочка постоянной толщины">Воронка</button>
         <button class="base-btn" data-base="coaster" title="Подстаканник: круг или квадрат со скруглёнными углами, логотип внизу, двухцветная печать через AMS">Подстаканник</button>
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">Подставка</button>
+        <button class="base-btn" data-base="test" title="Тесты печати: калибровочные образцы — температурная башня, мосты и нависания, ретракт">Тесты</button>
         <button class="base-btn" data-base="litho" title="Литофания: фото становится толщиной панели — на просвет проявляется картинка. Плоская, дугой или цилиндром-абажуром">Литофания</button>
       </div>
     </div>
@@ -1181,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.11';
+const APP_VERSION = 'v18.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4705,7 +4706,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'temptower',t:'калибровка: температурная башня'},{v:'bridgetest',t:'калибровка: мосты + нависания'},{v:'retract',t:'калибровка: ретракт (две башни)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -4720,10 +4721,19 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'battSpring', w:['battery'], label:'Холдер: запас длины под пружинный контакт', min:0, max:12, step:0.5, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'battMouth', w:['battery'], label:'Холдер: раскрытие горловины (% Ø, <100 = защёлк.)', min:50, max:98, step:1, default:88, unit:'%'},
     {group:'Крепёж / монтаж', key:'battClear', w:['battery'], label:'Холдер: зазор посадки элемента', min:0, max:1, step:0.05, default:0.35, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntCalN', w:['temptower','bridgetest'], label:'Калибровка: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
-    {group:'Крепёж / монтаж', key:'mntCalH', w:['temptower','bridgetest','retract'], label:'Калибровка: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntBrSpan', w:['bridgetest'], label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntRetGap', w:['retract'], label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
+    /* ТЕСТЫ ПЕЧАТИ — своя базовая форма с v18.0.0. До этого три калибровки жили в «Крепеже», среди
+       кронштейнов и холдеров, и это было неверно по существу: крепёж — деталь, которую ставят в изделие,
+       а калибровочный образец меряет ПРИНТЕР и в изделие не идёт вовсе. Ключи переименованы из `mnt*` в
+       `tst*`; старые конфиги переносит `migrateLegacyParams`. */
+    {group:'Тесты печати', key:'tstMode', label:'Тест печати', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'temptower',t:'температурная башня'},
+               {v:'bridgetest',t:'мосты + нависания'},{v:'retract',t:'ретракт (две башни)'}]},
+    {group:'Тесты печати', key:'tstW', w:['temptower','bridgetest','retract'], label:'Тест: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Тесты печати', key:'tstT', w:['bridgetest','retract'], label:'Тест: толщина основания', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Тесты печати', key:'tstSegN', w:['temptower','bridgetest'], label:'Тест: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
+    {group:'Тесты печати', key:'tstSegH', w:['temptower','bridgetest','retract'], label:'Тест: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
+    {group:'Тесты печати', key:'tstSpan', w:['bridgetest'], label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
+    {group:'Тесты печати', key:'tstRetGap', w:['retract'], label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitD', w:['fittest'], label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitN', w:['fittest'], label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntFitStart', w:['fittest'], label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
@@ -4778,8 +4788,8 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntFootH', w:['foot'], label:'Ножка: глубина посадки', min:4, max:100, step:1, default:22, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootPad', w:['foot'], label:'Ножка: толщина подошвы', min:1.2, max:20, step:0.5, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFootClear', w:['foot'], label:'Ножка: зазор посадки на ножку', min:0, max:1.5, step:0.05, default:0.3, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntW', w:['temptower','bridgetest','retract','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pingauge','bridgetest','retract','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntW', w:['vesa','boss','tool','pipe','lbracket'], label:'Крепёж: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pingauge','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegA', w:['boss','tool','pipe','lbracket'], label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegB', w:['tool','lbracket'], label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntScrewD', w:['battery','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
@@ -5884,6 +5894,7 @@ function dominantMode(p){
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
+  if (p.tstMode && p.tstMode !== 'none') return 'test';
   if (p.mntMode && p.mntMode !== 'none') return 'mount';
   if (p.gearMode && p.gearMode !== 'none') return 'gear';
   if (p.pipMode && p.pipMode !== 'none') return 'hinge';
@@ -5908,6 +5919,7 @@ function dominantMode(p){
 // control. The census in test_paramrows.js is what makes it strict: an unmarked row fails the battery.
 const FAMILY_MODE = {
   'Крепёж / монтаж': 'mntMode',
+  'Тесты печати': 'tstMode',
   'Шестерня': 'gearMode',
   'Резьба (крышка / штуцер)': 'threadMode',
   // Дюбель — вторая группа того же семейства, ровно как у петель: строки помечены тем же `w`, и группа
@@ -5961,6 +5973,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подстаканник': return mode==='coaster';
     case 'Литофания': return mode==='litho';
+    case 'Тесты печати': return mode==='test';
     case 'Подставка (телефон / планшет)': return mode==='stand';
     case 'Воронка': return mode==='funnel';
     // Every base shape can carry a label now: the cube family by displacing its own vertices, the
@@ -6009,14 +6022,14 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
-  'Литофания':'litho',
+  'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
 const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
-  litho:'Литофания',
+  litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
 // Every parameter whose label matches, with the group it lives in and whether that group is reachable
@@ -6355,9 +6368,9 @@ const MODEL_HELP = {
   'mount:foot':      {what:'Ножка или накладка на мебель: площадка со скруглением и посадочным штырём.', how:'Площадкой на стол. Верхний слой — то, что будет касаться пола, поэтому гладить его стоит.', mat:['tpu','petg']},
   'mount:fittest':   {what:'Калибровка зазора: набор штырьков и отверстий с шагом, чтобы подобрать посадку именно вашего принтера. Один раз напечатать — и все подвижные модели садятся с первого раза.', how:'Плашмя, без изменения настроек — иначе измеряете не то.', mat:['pla','petg']},
   'mount:battery':   {what:'Батарейный холдер под AA/AAA/C/D/18650/21700 или свой размер: ложе с пружинными язычками.', how:'Ложем вверх. Контактные язычки под пластину печатать не нужно — они металлические.', mat:['petg','abs']},
-  'mount:temptower': {what:'Температурная башня: несколько секций, чтобы сменой температуры по высоте найти лучшую для конкретного пластика.', how:'Как есть. Смену температуры задаёт слайсер — вставьте команду на границах секций.', mat:['pla','petg']},
-  'mount:bridgetest':{what:'Тест мостов и нависаний: пролёты разной длины и козырьки под разными углами.', how:'Как есть, без поддержек — в этом весь смысл.', mat:['pla','petg']},
-  'mount:retract':   {what:'Тест ретракта: две башни, между которыми сопло ходит вхолостую. Паутина между ними и есть результат.', how:'Как есть, обе башни за один проход.', mat:['petg','pla']},
+  'test:temptower': {what:'Температурная башня: несколько секций, чтобы сменой температуры по высоте найти лучшую для конкретного пластика.', how:'Как есть. Смену температуры задаёт слайсер — вставьте команду на границах секций.', mat:['pla','petg']},
+  'test:bridgetest':{what:'Тест мостов и нависаний: пролёты разной длины и козырьки под разными углами.', how:'Как есть, без поддержек — в этом весь смысл.', mat:['pla','petg']},
+  'test:retract':    {what:'Тест ретракта: две башни, между которыми сопло ходит вхолостую. Паутина между ними и есть результат.', how:'Как есть, обе башни за один проход.', mat:['petg','pla']},
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
   'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
@@ -6538,6 +6551,7 @@ function setBaseShape(kind){
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
+  setSel('tstMode',    kind==='test'   ? 'temptower' : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
   setSel('fnOn',       kind==='funnel' ? true     : false);
   // Refresh explicitly: the last activator touched may not have been the one that decides the mode, so we
@@ -13571,9 +13585,9 @@ function buildBatteryHolder(p){
    goes the less material each layer holds, so travel moves get more frequent per unit of extrusion and
    stringing shows up as a gradient rather than a yes/no. */
 function buildCalTower(p){
-  const n = Math.max(3, Math.min(10, Math.round(p.mntCalN||5)));
-  const H = Math.max(5, p.mntCalH||12);
-  const W = Math.max(16, p.mntW||30), D = Math.max(12, W*0.7), tris=[];
+  const n = Math.max(3, Math.min(10, Math.round(p.tstSegN||5)));
+  const H = Math.max(5, p.tstSegH||12);
+  const W = Math.max(16, p.tstW||40), D = Math.max(12, W*0.7), tris=[];
   for(let k=0;k<n;k++){
     const w = W - k*0.8, y0 = k*H;                       // narrowing upward keeps every ledge self-supporting
     // Segments OVERLAP by 0.4 instead of stacking face to face: identical Z extents would put two boxes'
@@ -13591,11 +13605,11 @@ function buildCalTower(p){
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
 function buildBridgeTest(p){
-  const n = Math.max(3, Math.min(8, Math.round(p.mntCalN||5)));
-  const t = Math.max(2, p.mntT||4);
-  const maxS = Math.max(10, p.mntBrSpan||50);
-  const W = Math.max(6, Math.min(p.mntW||30, 40)*0.5);            // width of one specimen along X
-  const pH = Math.max(8, p.mntCalH||12), post = Math.max(4, W*0.6);
+  const n = Math.max(3, Math.min(8, Math.round(p.tstSegN||5)));
+  const t = Math.max(2, p.tstT||4);
+  const maxS = Math.max(10, p.tstSpan||50);
+  const W = Math.max(6, Math.min(p.tstW||40, 40)*0.5);            // width of one specimen along X
+  const pH = Math.max(8, p.tstSegH||12), post = Math.max(4, W*0.6);
   const pitch = W + 6, tris=[];
   const spanAt = k => maxS*(k+1)/n, angAt = k => (30 + 50*k/Math.max(1,n-1))*Math.PI/180;
   let maxSpanZ = 0; for(let k=0;k<n;k++) maxSpanZ = Math.max(maxSpanZ, spanAt(k)+2*post);
@@ -13628,16 +13642,27 @@ function buildBridgeTest(p){
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
 function buildRetractTest(p){
-  const gap = Math.max(10, p.mntRetGap||35);
-  const H   = Math.max(15, (p.mntCalH||12)*3);
-  const rB  = Math.max(2.5, Math.min(p.mntW||30, 40)*0.18), rT = Math.max(1.2, rB*0.4);
-  const t   = Math.max(1.6, p.mntT||4)*0.6;
+  const gap = Math.max(10, p.tstRetGap||35);
+  const H   = Math.max(15, (p.tstSegH||12)*3);
+  const rB  = Math.max(2.5, Math.min(p.tstW||40, 40)*0.18), rT = Math.max(1.2, rB*0.4);
+  const t   = Math.max(1.6, p.tstT||4)*0.6;
   const seg = Math.max(28, Math.round(rB*8)), tris=[];
   for(const T of boxSpanTris(-(gap/2+rB+3), gap/2+rB+3, 0, t, -(rB+3), rB+3)) tris.push(T);
   for(const s of [-1,1]) for(const T of solidLatheYTris([[rB, t-0.4],[rT, t+H]], seg))
     tris.push(T.map(v=>[v[0]+s*gap/2, v[1], v[2]]));
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
+}
+/* Одна дверь во все тесты печати. Разновидность выбирает `tstMode`, и никакой другой ключ на это не
+   влияет: до v18.0.0 три калибровки висели на `mntMode` вперемешку с кронштейнами, и вопрос «печатаем
+   деталь или меряем принтер» решался перебором двадцати значений одного поля. */
+function buildTestPrint(p){
+  switch (p.tstMode) {
+    case 'temptower':  return buildCalTower(p);
+    case 'bridgetest': return buildBridgeTest(p);
+    case 'retract':    return buildRetractTest(p);
+  }
+  return [];
 }
 function buildDovetail(p){
   const L    = Math.max(10, p.mntDtLen||60);
@@ -14342,9 +14367,6 @@ function buildMount(p){
   if(p.mntMode==='cupholder') return buildCupHolder(p);
   if(p.mntMode==='transition') return buildTransition(p);
   if(p.mntMode==='battery') return buildBatteryHolder(p);
-  if(p.mntMode==='temptower') return buildCalTower(p);
-  if(p.mntMode==='bridgetest') return buildBridgeTest(p);
-  if(p.mntMode==='retract') return buildRetractTest(p);
   if(p.mntMode==='foot') return buildFoot(p);
   if(p.mntMode==='vesa') return buildVesa(p);
   if(p.mntMode==='boss') return buildBoss(p);
@@ -16316,6 +16338,9 @@ function buildTrisForShapeCore(shape, p) {
     // box-specific organizer add-ons (scoop / grip / ears / gridfinity / dividers / feet / rim) are gated
     // off for these in buildTrisForShape — they assume rectangular walls.
     // Flat perforated sheet / panel: overrides other box modes. Taper (наклон) rides afterwards.
+    if (p.tstMode && p.tstMode !== 'none') {
+      return snapWeldTris(buildTestPrint(p));
+    }
     if (p.woBack && p.woBack !== 'none') {
       return snapWeldTris(buildWallOrg(p));
     }
@@ -16706,7 +16731,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form',
+  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -17867,6 +17892,8 @@ function activeShapeLabel() {
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
   if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
   if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
+  if (p.tstMode && p.tstMode !== 'none') return 'тест печати: ' +
+    ({temptower:'температурная башня', bridgetest:'мосты + нависания', retract:'ретракт'})[p.tstMode];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
     return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +
@@ -18930,6 +18957,30 @@ function restoreDieFromDef(ad) {
     img.src = ad.previewUrl;
   });
 }
+/* Перенос параметров, переехавших между версиями. Отдельной функцией, а не строкой внутри загрузчика,
+   по двум причинам: её вызывают ДВА места (файл сборки и любой другой путь, где параметры приходят
+   снаружи), и её можно прогнать тестом, чего строка внутри обработчика события не позволяет.
+
+   v18.0.0: три калибровочных образца уехали из «Крепежа» в свою базовую форму «Тесты». Конфиг, сохранённый
+   до этого, несёт `mntMode:'temptower'` и размеры в ключах `mnt*`; без переноса он открылся бы КРЕПЕЖОМ
+   без разновидности, то есть пустой моделью, и человек решил бы, что файл испорчен.
+
+   Работает по СЫРЫМ сохранённым параметрам, ДО слияния с умолчаниями, и это не мелочь: после слияния у
+   новых ключей уже стоят их умолчания, «пусто ли здесь» ответить нечем, и перенос молча не делает
+   ничего. Ровно на это я и наступил, когда написал наоборот. */
+function migrateLegacyParams(mp){
+  if (!mp) return mp;
+  if (mp.rim) { mp.hollow = true; mp.cavityDepth = mp.rimHeight || 8; mp.rim = false; }   // legacy «борт»
+  const CAL = {temptower:1, bridgetest:1, retract:1};
+  if (CAL[mp.mntMode]) {
+    mp.tstMode = mp.mntMode; mp.mntMode = 'none';
+    const move = (from, to) => { if (mp[from] != null && mp[to] === undefined) mp[to] = mp[from]; };
+    move('mntCalN', 'tstSegN'); move('mntCalH', 'tstSegH');
+    move('mntBrSpan', 'tstSpan'); move('mntRetGap', 'tstRetGap');
+    move('mntW', 'tstW'); move('mntT', 'tstT');
+  }
+  return mp;
+}
 function importAssemblyJSON(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -18947,8 +18998,7 @@ function importAssemblyJSON(file) {
         if (mm) { if (typeof scene !== 'undefined' && scene) scene.remove(mm); mm.geometry && mm.geometry.dispose(); mm.material && mm.material.dispose(); modelMeshes.delete(m.id); } }
       models.length = 0; activeModelId = null; nextModelId = 1; pendingChanges = false; updateApplyButton();
       data.models.forEach((md, i) => {
-        const mp = Object.assign(defaultBoxParams(), md.params || {});
-        if (mp.rim) { mp.hollow = true; mp.cavityDepth = mp.rimHeight || 8; mp.rim = false; } // legacy «борт»
+        const mp = Object.assign(defaultBoxParams(), migrateLegacyParams(md.params || {}));
         const rec = makeModelRecord(md.name || ('Модель ' + nextModelId), mp);
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';

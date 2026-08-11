@@ -124,7 +124,7 @@ for(const r of ALL){
   const bd = ALL.find(r => r.key === 'battD');
   chk('условие «only» попало в подсказку', paramTooltip(bd).indexOf('свой размер') > 0, paramTooltip(bd));
   const many = ALL.find(r => r.key === 'mntW');
-  chk('длинный список свёрнут в число', paramTooltip(many).indexOf('Относится к 8 разновидностям') > 0,
+  chk('длинный список свёрнут в число', paramTooltip(many).indexOf('Относится к 5 разновидностям') > 0,
       paramTooltip(many));
 }
 

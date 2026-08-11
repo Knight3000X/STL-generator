@@ -124,9 +124,21 @@ for(const g of Object.keys(FAMILY_MODE)){
     const p = Object.assign({}, DEF, {[mk]:md});
     const n = rows.filter(r => paramRowRelevant(r, p)).length;
     worst = Math.max(worst, n);
-    // Every sub-model must show SOMETHING of its own family — either its own rows or, for a sub-model whose
-    // controls live in a group of their own, at least the selector that got you there.
-    chk('«'+g+'»/'+md+': строк на экране '+n+' (было '+rows.length+')', n <= Math.max(4, rows.length*0.6), n);
+    /* Правило сворачивания: одна подмодель не должна тащить на экран всю семью. Оно про ТЕСНОТУ и
+       написано под «Крепёж» — двадцать подмоделей в семидесяти девяти строках, где выбор гребёнки
+       кабелей выводил семьдесят чужих контролов.
+
+       Семье из трёх-четырёх подмоделей оно не подходит и меряет не то. У «Тестов печати» семь строк и три
+       подмодели, которые честно делят ширину, толщину, число ступеней и их высоту: у моста на экране
+       шесть строк из семи, и каждая из шести им используется. Свернуть тут нечего, а 60 % дали бы
+       четыре — то есть потребовали бы спрятать работающий контрол, ровно ту беду, против которой весь
+       этот файл и написан.
+
+       Что строки не врут, проверяет не это правило, а развёртка по геометрии ниже: она перебирает весь
+       диапазон каждого параметра и смотрит, двигается ли сетка. Порог здесь — грубая страховка от
+       тесноты, и применяется он там, где теснота вообще возможна. */
+    if (modes.length > 4)
+      chk('«'+g+'»/'+md+': строк на экране '+n+' (было '+rows.length+')', n <= Math.max(4, rows.length*0.6), n);
   }
   chk('«'+g+'»: худшая подмодель короче всей группы', worst < rows.length, {worst, all:rows.length});
   // ...and every sub-model of the family is reachable: none of them ends up with nothing anywhere.

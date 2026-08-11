@@ -290,5 +290,52 @@ console.log('=== комплексная плита: шесть станций, �
   logos.length = 0;
 }
 
+/* МЕРИТЕЛЬНАЯ КАРТОЧКА. Гейдж, который врёт, хуже отсутствия гейджа, поэтому меряются сами величины,
+   а не «построилось ли что-то». Угол клина — ДВУМЯ СЕЧЕНИЯМИ: у равнобедренного клина полуширина убывает
+   с высотой линейно, и наклон этого убывания есть tg(угол/2). Так замер ничего не знает о том, КАК клин
+   построен, — а первая версия строителя как раз выводила основание из высоты неверно, и все клинья
+   выходили с одним углом при разных подписях. */
+console.log('=== мерительная карточка: углы клиньев равны подписям ===');
+{
+  const card = w => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'toolcard', tstCardW:w});
+    return buildTrisForShape('box', paramState.box); };
+  for(const w of [60, 110, 220]){
+    const t = card(w), mc = manifoldCheck(t,4), b = computeBBox(t);
+    chk('W='+w+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+    // Ничто не торчит за край карты: вырез, не влезающий в свою колонку, уезжал ЗА габарит.
+    chk('W='+w+': ничего не торчит за край', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
+  }
+  const W = 110, t = card(W), b = computeBBox(t), cardTop = b.maxY > 2 ? b.minY + (b.maxY-b.minY) : 0;
+  const nR = Math.max(3, Math.min(9, Math.floor(Math.sqrt(W/2.6)))), cell = W/nR;
+  const yTop = 1.4;                                   // половина толщины карты при tstT по умолчанию
+  const topAt = (x, z) => { let hi = -1e9;
+    for(const T of t){ const [A,B,C] = T;
+      const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
+      const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
+      const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar)<1e-12) continue;
+      const w1=((B[0]-x)*(C[2]-z)-(B[2]-z)*(C[0]-x))/ar, w2=((C[0]-x)*(A[2]-z)-(C[2]-z)*(A[0]-x))/ar;
+      hi = Math.max(hi, w1*A[1]+w2*B[1]+(1-w1-w2)*C[1]); }
+    return hi; };
+  const N = 1200;
+  for(let k=0;k<nR;k++){
+    const x = -W/2 + cell*(k+0.5);
+    let apex = -1e9;
+    for(let q=0;q<=N;q++) apex = Math.max(apex, topAt(x, b.minZ + (b.maxZ-b.minZ)*q/N));
+    const widthAt = (y) => { let z0=null, z1=null;
+      for(let q=0;q<=N;q++){ const z = b.minZ + (b.maxZ-b.minZ)*q/N;
+        if(topAt(x, z) >= y){ if(z0===null) z0 = z; z1 = z; } }
+      return z0===null ? 0 : z1-z0; };
+    const y1 = yTop + (apex-yTop)*0.25, y2 = yTop + (apex-yTop)*0.75;
+    const ang = 2*Math.atan(((widthAt(y1)-widthAt(y2))/2)/(y2-y1))*180/Math.PI;
+    const want = 10 + 70*k/(nR-1);
+    chk('клин '+Math.round(want)+'°: измеренный угол совпадает', Math.abs(ang - want) < 1.2,
+        {заявлено:+want.toFixed(0), измерено:+ang.toFixed(1)});
+  }
+  logos.length = 0;
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

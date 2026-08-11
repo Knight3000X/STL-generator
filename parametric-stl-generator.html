@@ -967,8 +967,8 @@
     </div>
     <button id="btn-add-baseplate" title="Отдельная модель: Gridfinity-базплейт (сетка гнёзд под ножки бинов)">+ Базплейт (Gridfinity)</button>
     <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью. С «Регистрационными штифтами» на срезах появятся штифт и ответное гнездо — фрагменты собираются без подгонки на глаз.">✂ Разрезать на фрагменты</button>
-    <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL или OBJ) отдельной моделью сборки — например скан мыши для грипов. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ</button>
-    <input type="file" id="mesh-import-input" accept=".stl,.obj,model/stl,model/obj" style="display:none">
+    <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL, OBJ или 3MF) в сборку. 3MF несёт НЕСКОЛЬКО деталей со своими местами — каждая приходит отдельной моделью и встаёт туда, где стояла. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ / 3MF</button>
+    <input type="file" id="mesh-import-input" accept=".stl,.obj,.3mf,model/stl,model/obj,model/3mf" style="display:none">
     <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
     <input type="file" id="sheet-svg-input" accept=".svg,image/svg+xml" style="display:none">
     <details class="note-fold"><summary>ⓘ справка</summary><div class="export-note">Каждая модель — свой независимый набор параметров, логотипов, отверстий, поворота и позиции. Клик по карточке делает модель активной — панели ниже редактируют именно её. Двигать модель можно полями «Позиция» или мышью в сцене (кнопка «✥ перемещение»). Все ВИДИМЫЕ модели выгружаются в один STL со своими позициями/поворотами, либо в 3MF — там каждая модель уходит частью печатаемого тела и несёт свою катушку, а детали одной AMS-сборки (подстаканник с цветами, оболочка кейкапа с сердечником) собираются в ОДИН объект, потому что они занимают одно и то же место (галочка «в сцене и в STL» убирает модель и из превью, и из файлов). «+ Крышка» делает модель-компаньон выбранного типа: накидную, с защёлками (бампы на контейнере + окна в юбке) или откидную с петлёй (ось — кусочек филамента 1.75 в каналах Ø2).</div></details>
@@ -1182,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.3.1';
+const APP_VERSION = 'v18.4.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4441,9 +4441,9 @@ const SHAPE_PARAMS = {
     {group:'Размеры', key:'segW', label:'Сегменты X', min:1, max:20, step:1, default:1, unit:'', int:true},
     {group:'Размеры', key:'segH', label:'Сегменты Y', min:1, max:20, step:1, default:1, unit:'', int:true},
     {group:'Размеры', key:'segD', label:'Сегменты Z', min:1, max:20, step:1, default:1, unit:'', int:true},
-    {group:'Импорт STL/OBJ', key:'importFit', label:'Импорт: масштабирование', type:'select', default:'scale',
+    {group:'Импорт STL / OBJ / 3MF', key:'importFit', label:'Импорт: масштабирование', type:'select', default:'scale',
       options:[{v:'scale',t:'равномерно × процент (сохраняет форму)'},{v:'box',t:'вписать в Ш×В×Г (растянуть по осям)'}]},
-    {group:'Импорт STL/OBJ', key:'importScale', label:'Импорт: масштаб (для «равномерно»)', min:1, max:5000, step:1, default:100, unit:'%'},
+    {group:'Импорт STL / OBJ / 3MF', key:'importScale', label:'Импорт: масштаб (для «равномерно»)', min:1, max:5000, step:1, default:100, unit:'%'},
     {group:'Многогранник', key:'polyN', label:'Многогранник: число боковых граней (0 = куб)', min:0, max:64, step:1, default:0, unit:'', int:true},
     {group:'Многогранник', key:'polyRound', label:'Многогранник: скругление вертикальных рёбер', min:0, max:150, step:0.5, default:0, unit:'мм'},
     {group:'Многогранник', key:'binRound', label:'Бин: скругление вертикальных углов, полный габарит (0 = выкл)', min:0, max:150, step:0.5, default:0, unit:'мм'},
@@ -5726,38 +5726,63 @@ function sliceActiveModel(){
 // or a uniform % rescale it live. Sits centred on the origin like every other shape; may be non-watertight
 // (a scan) — that's fine for preview / export / grip raycasting; slicing needs a closed mesh.
 const MAX_IMPORT_TRIS = 1200000;
+/* Одна деталь файла — одна модель сборки. Для STL и OBJ деталь всегда одна; 3MF несёт их сколько
+   угодно, каждую со своим местом, и ради этого формат и взят. Место 3MF отдаёт МАТРИЦЕЙ, уже вшитой в
+   координаты, поэтому детали приходят стоящими друг относительно друга правильно — а вот собственный
+   сдвиг модели сборки (`px/py/pz`) для них должен остаться НУЛЕВЫМ. Раскладка «следующая правее
+   предыдущей», которой встречают одиночный STL, разнесла бы собранный узел по столу. */
+function addImportedPart(tris, name, place){
+  const b = computeBBox(tris);
+  const id = nextImportId++; importedMeshes.set(id, tris);
+  const params = defaultBoxParams();
+  params.importId = id; params.importFit = 'scale'; params.importScale = 100;
+  params.width  = Math.max(0.1, Math.round((b.maxX-b.minX)*100)/100);   // native size → 100% is identity
+  params.height = Math.max(0.1, Math.round((b.maxY-b.minY)*100)/100);
+  params.depth  = Math.max(0.1, Math.round((b.maxZ-b.minZ)*100)/100);
+  const rec = makeModelRecord(name.slice(0,40) || 'Импорт', params);
+  if (place){
+    let right = -Infinity;
+    for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
+    rec.px = (right === -Infinity) ? 0 : Math.round(right + (b.maxX-b.minX)/2 + 12);
+  }
+  models.push(rec);
+  return rec;
+}
 function importMeshFile(file){
   if (models.length >= MAX_MODELS){ alert('Достигнут лимит моделей ('+MAX_MODELS+').'); return; }
   const reader = new FileReader();
   reader.onload = (e) => {
-    let tris; try { tris = parseMeshFile(e.target.result, file.name); }
-    catch(err){ alert('Не удалось разобрать файл: '+err.message); return; }
-    if (!tris || !tris.length){ alert('В файле не найдено треугольников (поддерживаются STL binary/ASCII и OBJ).'); return; }
-    if (tris.length > MAX_IMPORT_TRIS){ alert('Слишком много треугольников: '+tris.length.toLocaleString('ru')+
-      ' (лимит '+MAX_IMPORT_TRIS.toLocaleString('ru')+'). Упростите/дециммируйте меш в Blender/Meshmixer.'); return; }
-    // drop non-finite / degenerate triangles a scan can carry
-    tris = tris.filter(t => t.every(v => v.length===3 && v.every(Number.isFinite)));
-    if (!tris.length){ alert('Все треугольники повреждены (нечисловые координаты).'); return; }
-    if (pendingChanges) applyPendingNow();
-    saveActiveModel();
-    const b = computeBBox(tris);
-    const id = nextImportId++; importedMeshes.set(id, tris);
-    const params = defaultBoxParams();
-    params.importId = id; params.importFit = 'scale'; params.importScale = 100;
-    params.width  = Math.max(0.1, Math.round((b.maxX-b.minX)*100)/100);   // native size → 100% is identity
-    params.height = Math.max(0.1, Math.round((b.maxY-b.minY)*100)/100);
-    params.depth  = Math.max(0.1, Math.round((b.maxZ-b.minZ)*100)/100);
-    const rec = makeModelRecord(file.name.replace(/\.(stl|obj)$/i,'').slice(0,40) || 'Импорт', params);
-    let right = -Infinity;
-    for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
-    rec.px = (right === -Infinity) ? 0 : Math.round(right + (b.maxX-b.minX)/2 + 12);
-    models.push(rec);
-    loadModel(rec);
-    regenerate();
-    renderModelCards();
-    if (scene3DReady) frameCamera(sceneUnionBBox());
-    const wt = tris.length < 200000 ? manifoldCheck(rec.rawTris||[], 3).watertight : 'skip(big)';
-    console.log('imported', file.name, tris.length, 'tris; watertight=', wt);
+    parseMeshFileParts(e.target.result, file.name).then(parts => {
+      if (!parts || !parts.length){
+        alert('В файле не найдено треугольников (поддерживаются STL binary/ASCII, OBJ и 3MF).'); return; }
+      // Мусор выбрасывается ДО подсчёта: скан приносит нечисловые координаты, и деталь из одних таких
+      // не должна занимать место в сборке.
+      parts = parts.map(p => ({name:p.name, tris:p.tris.filter(t => t.every(v => v.length===3 && v.every(Number.isFinite)))}))
+                   .filter(p => p.tris.length);
+      if (!parts.length){ alert('Все треугольники повреждены (нечисловые координаты).'); return; }
+      const total = parts.reduce((n, p) => n + p.tris.length, 0);
+      if (total > MAX_IMPORT_TRIS){ alert('Слишком много треугольников: '+total.toLocaleString('ru')+
+        ' (лимит '+MAX_IMPORT_TRIS.toLocaleString('ru')+'). Упростите/дециммируйте меш в Blender/Meshmixer.'); return; }
+      const room = MAX_MODELS - models.length;
+      if (parts.length > room){
+        alert('В файле '+parts.length+' деталей, а мест в сборке осталось '+room+'. Загружены первые '+room+'.');
+        parts = parts.slice(0, room);
+      }
+      if (pendingChanges) applyPendingNow();
+      saveActiveModel();
+      const stem = file.name.replace(/\.(stl|obj|3mf)$/i,'') || 'Импорт';
+      const many = parts.length > 1;
+      let last = null;
+      parts.forEach((p, i) => {
+        const nm = many ? (p.name || (stem + ' · ' + (i+1))) : stem;
+        last = addImportedPart(p.tris, nm, !many);          // сборку не раскладываем: у неё своя раскладка
+      });
+      loadModel(last);
+      regenerate();
+      renderModelCards();
+      if (scene3DReady) frameCamera(sceneUnionBBox());
+      console.log('imported', file.name, parts.length, 'part(s),', total, 'tris');
+    }).catch(err => alert('Не удалось разобрать файл: ' + err.message));
   };
   reader.onerror = () => alert('Не удалось прочитать файл.');
   reader.readAsArrayBuffer(file);
@@ -16241,6 +16266,135 @@ function parseOBJ(txt){
   }
   return tris;
 }
+/* ---- 3MF ----------------------------------------------------------------------------------------
+   3MF — это ZIP, внутри которого лежит XML: `3D/3dmodel.model`. Отсюда две задачи, и обе решаются тем,
+   что уже есть в браузере, без единой сторонней библиотеки:
+
+     распаковка — `DecompressionStream('deflate-raw')`, штатная и в браузере, и в Node, так что один и
+                  тот же код и работает у пользователя, и проверяется тестом;
+     разбор XML — СВОИМ сканером, а не `DOMParser`. Не из принципа: `DOMParser` есть в браузере и нет в
+                  Node, и разбор через него означал бы, что проверяется одно, а у пользователя работает
+                  другое. Формат здесь узкий — вершины, треугольники, ссылки и матрицы, — и сканер по нему
+                  честнее зависимости, которую нельзя прогнать.
+
+   Главное отличие от STL: 3MF несёт НЕСКОЛЬКО ОБЪЕКТОВ, каждый со своим местом в сборке, и ради этого
+   формат и берётся. Объект бывает сеткой, а бывает набором ССЫЛОК на другие объекты со своими матрицами
+   (`<components>`), и раскладка сборки задаётся отдельно (`<build><item>`). Разбор рекурсивный, матрицы
+   перемножаются, и наружу выходит СПИСОК деталей — по модели сборки на каждую. Склеить их в одну кучу
+   значило бы выбросить ровно то, зачем формат нужен. */
+function zipEntries(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder();
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= 0 && i >= buf.byteLength - 65557; i--)
+    if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  if (eocd < 0) return null;                                   // не ZIP
+  const n = dv.getUint16(eocd + 10, true), cd = dv.getUint32(eocd + 16, true);
+  const out = [];
+  let p = cd;
+  for (let k = 0; k < n && p + 46 <= buf.byteLength; k++){
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    out.push({ name: dec.decode(u8.subarray(p + 46, p + 46 + nl)), method, csize,
+               lho: dv.getUint32(p + 42, true) });
+    p += 46 + nl + el + cl;
+  }
+  return out;
+}
+function zipRead(buf, e){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  // Длины имени и «extra» берутся из ЛОКАЛЬНОГО заголовка, а не из центрального: у них разрешено
+  // расходиться, и запись, прочитанная по центральным длинам, съезжает на несколько байт.
+  const nl = dv.getUint16(e.lho + 26, true), el = dv.getUint16(e.lho + 28, true);
+  const start = e.lho + 30 + nl + el;
+  const raw = u8.slice(start, start + e.csize);
+  if (e.method === 0) return Promise.resolve(raw);             // сложено без сжатия
+  if (e.method !== 8) return Promise.reject(new Error('неизвестный метод сжатия ' + e.method));
+  const ds = new DecompressionStream('deflate-raw');
+  return new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer().then(b => new Uint8Array(b));
+}
+const MF_UNITS = {micron:0.001, millimeter:1, centimeter:10, inch:25.4, foot:304.8, meter:1000};
+// Матрица 3MF — двенадцать чисел построчно: три строки поворота-масштаба и строка сдвига.
+function mfMat(str){
+  const v = String(str||'').trim().split(/[\s,]+/).map(Number);
+  if (v.length !== 12 || v.some(x => !Number.isFinite(x))) return null;
+  return v;
+}
+function mfMul(a, b){                                          // сперва a, потом b
+  if (!a) return b; if (!b) return a;
+  const o = new Array(12);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++)
+    o[r*3+c] = a[r*3+0]*b[0*3+c] + a[r*3+1]*b[1*3+c] + a[r*3+2]*b[2*3+c] + (r === 3 ? b[9+c] : 0);
+  return o;
+}
+const mfApply = (m, p) => !m ? p : [
+  p[0]*m[0] + p[1]*m[3] + p[2]*m[6] + m[9],
+  p[0]*m[1] + p[1]*m[4] + p[2]*m[7] + m[10],
+  p[0]*m[2] + p[1]*m[5] + p[2]*m[8] + m[11]];
+const mfAttr = (tag, name) => { const m = new RegExp(name + '\\s*=\\s*"([^"]*)"').exec(tag); return m ? m[1] : null; };
+function parse3MFModel(xml){
+  const unit = MF_UNITS[(mfAttr(/<model[^>]*>/.exec(xml) ? /<model[^>]*>/.exec(xml)[0] : '', 'unit') || 'millimeter')] || 1;
+  const objs = new Map();
+  const reObj = /<object\b([^>]*)>([\s\S]*?)<\/object>/g;
+  let m;
+  while ((m = reObj.exec(xml))){
+    const attrs = '<object' + m[1] + '>', body = m[2];
+    const id = mfAttr(attrs, 'id'); if (id == null) continue;
+    const verts = [], tris = [], comps = [];
+    const reV = /<vertex\b([^>]*)\/?>/g; let v;
+    while ((v = reV.exec(body))){ const a = '<vertex' + v[1] + '>';
+      verts.push([+mfAttr(a,'x'), +mfAttr(a,'y'), +mfAttr(a,'z')]); }
+    const reT = /<triangle\b([^>]*)\/?>/g; let t;
+    while ((t = reT.exec(body))){ const a = '<triangle' + t[1] + '>';
+      tris.push([+mfAttr(a,'v1'), +mfAttr(a,'v2'), +mfAttr(a,'v3')]); }
+    const reC = /<component\b([^>]*)\/?>/g; let c;
+    while ((c = reC.exec(body))){ const a = '<component' + c[1] + '>';
+      comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')) }); }
+    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps });
+  }
+  // Развёртка объекта в треугольники: своя сетка плюс всё, на что он ссылается. Глубина ограничена —
+  // ссылка на самого себя в чужом файле встречается, и без предела это зависание, а не ошибка.
+  const build = (id, mat, depth, out) => {
+    if (depth > 12) return;
+    const o = objs.get(id); if (!o) return;
+    for (const f of o.tris){
+      const p = f.map(k => o.verts[k]);
+      if (p.some(q => !q || q.some(x => !Number.isFinite(x)))) continue;
+      out.push(p.map(q => mfApply(mat, q)));
+    }
+    for (const c of o.comps) build(c.id, mfMul(c.mat, mat), depth + 1, out);
+  };
+  const parts = [];
+  const reItem = /<item\b([^>]*)\/?>/g; let it;
+  while ((it = reItem.exec(xml))){
+    const a = '<item' + it[1] + '>', id = mfAttr(a, 'objectid'); if (id == null) continue;
+    const out = []; build(id, mfMat(mfAttr(a, 'transform')), 0, out);
+    if (out.length) parts.push({ name: (objs.get(id) || {}).name || ('Деталь ' + id), tris: out });
+  }
+  // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой.
+  if (!parts.length) for (const [id, o] of objs){
+    if (!o.tris.length) continue;
+    const out = []; build(id, null, 0, out);
+    if (out.length) parts.push({ name: o.name || ('Деталь ' + id), tris: out });
+  }
+  if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
+  return parts;
+}
+function parse3MF(buf){
+  const entries = zipEntries(buf);
+  if (!entries) return Promise.reject(new Error('это не 3MF: внутри нет ZIP-архива'));
+  const e = entries.find(x => /^3D\/3dmodel\.model$/i.test(x.name)) || entries.find(x => /\.model$/i.test(x.name));
+  if (!e) return Promise.reject(new Error('в архиве нет 3D/3dmodel.model'));
+  return zipRead(buf, e).then(bytes => parse3MFModel(new TextDecoder().decode(bytes)));
+}
+// Один вход для всех форматов. STL и OBJ разбираются на месте, 3MF — обещанием (распаковка
+// асинхронная), поэтому наружу всегда уходит обещание СПИСКА деталей: у 3MF их бывает много, и
+// склеивать их в одну — значит терять сборку, ради которой формат и взят.
+function parseMeshFileParts(buf, name){
+  if (/\.3mf$/i.test(name||'')) return parse3MF(buf);
+  const tris = /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
+  return Promise.resolve(tris.length ? [{name:'', tris}] : []);
+}
 function parseMeshFile(buf, name){
   return /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
 }
@@ -17033,7 +17187,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL/OBJ':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form',
+  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -18191,7 +18345,7 @@ function setShading(smooth) {
 function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
-  if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ)';
+  if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ/3MF)';
   if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
   if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.tstMode && p.tstMode !== 'none') return 'тест печати: ' +

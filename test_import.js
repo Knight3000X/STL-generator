@@ -69,5 +69,123 @@ console.log('=== regression: no importId → normal cube ===');
   const t=buildTrisForShape('box', paramState.box); const b=computeBBox(t);
   chk('cube unaffected', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
-console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
-process.exit(fail?1:0);
+/* 3MF — ZIP с XML внутри, и берётся он ради СОСТАВНЫХ моделей: несколько объектов, каждый со своим
+   местом. Проверяется весь путь целиком, на настоящем архиве, собранном прямо здесь: центральная
+   директория, распаковка deflate, разбор XML, ссылки `<components>` с матрицами, раскладка `<build>`
+   и единицы измерения. Разбирать один XML было бы проверкой половины дороги.
+
+   Архив собирается вручную, без библиотек: `DecompressionStream` умеет только РАСПАКОВЫВАТЬ, поэтому
+   записи кладутся методом 0 («сложено»), а отдельной записью — deflate-поток, полученный через
+   `CompressionStream`. Так проверены обе ветки чтения. */
+function zipStored(files){
+  const enc = new TextEncoder(), parts = [], cd = [];
+  let off = 0;
+  const crcTab = (() => { const t = new Uint32Array(256);
+    for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1); t[n]=c>>>0; }
+    return t; })();
+  const crc32 = b => { let c = 0xFFFFFFFF; for(let i=0;i<b.length;i++) c = crcTab[(c ^ b[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; };
+  for(const f of files){
+    const nm = enc.encode(f.name), data = f.data, crc = crc32(f.raw !== undefined ? f.raw : data);
+    const lh = new Uint8Array(30 + nm.length), dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true); dv.setUint16(8, f.method, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, data.length, true);
+    dv.setUint32(22, (f.raw !== undefined ? f.raw.length : data.length), true);
+    dv.setUint16(26, nm.length, true);
+    lh.set(nm, 30);
+    parts.push(lh, data);
+    const ch = new Uint8Array(46 + nm.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(6, 20, true); cv.setUint16(10, f.method, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true);
+    cv.setUint32(24, (f.raw !== undefined ? f.raw.length : data.length), true);
+    cv.setUint16(28, nm.length, true); cv.setUint32(42, off, true);
+    ch.set(nm, 46);
+    cd.push(ch);
+    off += lh.length + data.length;
+  }
+  const cdOff = off; let cdLen = 0; for(const c of cd) cdLen += c.length;
+  const eo = new Uint8Array(22), ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, cd.length, true); ev.setUint16(10, cd.length, true);
+  ev.setUint32(12, cdLen, true); ev.setUint32(16, cdOff, true);
+  let total = 0; for(const p of parts) total += p.length; total += cdLen + 22;
+  const out = new Uint8Array(total); let q = 0;
+  for(const p of parts){ out.set(p, q); q += p.length; }
+  for(const c of cd){ out.set(c, q); q += c.length; }
+  out.set(eo, q);
+  return out.buffer;
+}
+const MODEL_XML = (unit, withBuild) => '<?xml version="1.0"?>' +
+  '<model unit="' + unit + '"><resources>' +
+  '<object id="1" name="Тетра" type="model"><mesh><vertices>' +
+  '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+  '</vertices><triangles>' +
+  '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+  '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+  '</triangles></mesh></object>' +
+  '<object id="2" name="Сдвинутый" type="model"><components>' +
+  '<component objectid="1" transform="1 0 0 0 1 0 0 0 1 20 0 0"/></components></object>' +
+  '</resources>' +
+  (withBuild ? '<build><item objectid="1"/><item objectid="2" transform="1 0 0 0 1 0 0 0 1 0 50 0"/></build>' : '') +
+  '</model>';
+
+console.log('=== 3MF: составная модель приходит деталями, каждая на своём месте ===');
+(async () => {
+  const enc = new TextEncoder();
+  // 1) без сжатия, со сборкой
+  {
+    const buf = zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(MODEL_XML('millimeter', true))}]);
+    const parts = await parse3MF(buf);
+    chk('деталей две', parts.length === 2, parts.length);
+    chk('имена взяты из файла', parts[0].name === 'Тетра' && parts[1].name === 'Сдвинутый',
+        parts.map(p=>p.name));
+    const b0 = computeBBox(parts[0].tris), b1 = computeBBox(parts[1].tris);
+    chk('у первой габарит 2×4×6', approx(b0.maxX-b0.minX,2) && approx(b0.maxY-b0.minY,4) && approx(b0.maxZ-b0.minZ,6),
+        [b0.maxX-b0.minX, b0.maxY-b0.minY, b0.maxZ-b0.minZ]);
+    /* Место — главное, ради чего берётся 3MF. У второй детали складываются ДВЕ матрицы: сдвиг ссылки
+       (+20 по X) и сдвиг элемента сборки (+50 по Y). Перемножь их не в том порядке — и узел рассыплется. */
+    chk('матрицы ссылки и сборки сложились', approx((b1.minX+b1.maxX)/2, 21) && approx((b1.minY+b1.maxY)/2, 52),
+        [(b1.minX+b1.maxX)/2, (b1.minY+b1.maxY)/2]);
+  }
+  // 2) со сжатием deflate
+  {
+    const raw = enc.encode(MODEL_XML('millimeter', true));
+    const cs = new CompressionStream('deflate-raw');
+    const packed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer());
+    const buf = zipStored([{name:'3D/3dmodel.model', method:8, data:packed, raw}]);
+    const parts = await parse3MF(buf);
+    chk('сжатый архив читается так же', parts.length === 2 && parts[0].tris.length === 4, parts.length);
+  }
+  // 3) без раскладки сборки — берутся объекты с собственной сеткой
+  {
+    const buf = zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(MODEL_XML('millimeter', false))}]);
+    const parts = await parse3MF(buf);
+    chk('без <build> берутся объекты с сеткой', parts.length === 1 && parts[0].name === 'Тетра',
+        parts.map(p=>p.name));
+  }
+  // 4) единицы: дюймы пересчитываются в миллиметры
+  {
+    const buf = zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(MODEL_XML('inch', false))}]);
+    const parts = await parse3MF(buf);
+    const b = computeBBox(parts[0].tris);
+    chk('дюймы пересчитаны в миллиметры', approx(b.maxX-b.minX, 2*25.4, 1e-3), b.maxX-b.minX);
+  }
+  // 5) отказы внятные, а не молчаливые
+  {
+    let msg = '';
+    try { await parse3MF(new Uint8Array([1,2,3,4]).buffer); } catch(e){ msg = e.message; }
+    chk('не-ZIP отвергнут словами', /не 3MF/.test(msg), msg);
+    msg = '';
+    try { await parse3MF(zipStored([{name:'что-то.txt', method:0, data:enc.encode('привет')}])); }
+    catch(e){ msg = e.message; }
+    chk('ZIP без модели отвергнут словами', /3dmodel\.model/.test(msg), msg);
+  }
+  // 6) общий вход отдаёт список деталей для всех форматов
+  {
+    const one = await parseMeshFileParts(makeBinSTL(T), 'куб.stl');
+    chk('STL приходит одной деталью', one.length === 1 && one[0].tris.length === 4, one.length);
+    const buf = zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(MODEL_XML('millimeter', true))}]);
+    const two = await parseMeshFileParts(buf, 'узел.3mf');
+    chk('3MF приходит двумя', two.length === 2, two.length);
+  }
+  console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
+  process.exit(fail?1:0);
+})();

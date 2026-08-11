@@ -1182,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.4.2';
+const APP_VERSION = 'v18.5.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4726,22 +4726,30 @@ const SHAPE_PARAMS = {
        а калибровочный образец меряет ПРИНТЕР и в изделие не идёт вовсе. Ключи переименованы из `mnt*` в
        `tst*`; старые конфиги переносит `migrateLegacyParams`. */
     {group:'Тесты печати', key:'tstMode', label:'Тест печати', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'temptower',t:'температурная башня'},
-               {v:'bridgetest',t:'мосты + нависания'},{v:'retract',t:'ретракт (две башни)'},
-               {v:'allinone',t:'комплексная плита (6 тестов разом)'},
-               {v:'toolcard',t:'мерительная карточка (отверстия, окна, щели, углы)'},
-               {v:'filcard',t:'карточка филамента (бирка на катушку + пробы)'}]},
-    {group:'Тесты печати', key:'tstW', w:['temptower','bridgetest','retract'], label:'Тест: ширина', min:10, max:300, step:1, default:40, unit:'мм'},
-    {group:'Тесты печати', key:'tstT', w:['bridgetest','retract','allinone','toolcard','filcard'], label:'Тест: толщина основания', min:2, max:20, step:0.5, default:4, unit:'мм'},
-    {group:'Тесты печати', key:'tstSegN', w:['temptower','bridgetest','allinone'], label:'Тест: число сегментов / ступеней', min:3, max:10, step:1, default:5, unit:'', int:true},
-    {group:'Тесты печати', key:'tstSegH', w:['temptower','bridgetest','retract'], label:'Тест: высота сегмента (башня — треть высоты)', min:5, max:60, step:1, default:12, unit:'мм'},
-    {group:'Тесты печати', key:'tstSpan', w:['bridgetest'], label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:50, unit:'мм'},
-    {group:'Тесты печати', key:'tstRetGap', w:['retract'], label:'Ретракт: расстояние между башнями', min:10, max:150, step:5, default:35, unit:'мм'},
-    {group:'Тесты печати', key:'tstFilW', w:['filcard'], label:'Карточка филамента: ширина', min:40, max:160, step:2, default:72, unit:'мм',
-      hint:'Название пластика на бирку кладётся общим механизмом логотипов — «+ Текст» на грани +Y.'},
-    {group:'Тесты печати', key:'tstCardW', w:['toolcard'], label:'Мерительная карточка: ширина', min:60, max:220, step:5, default:110, unit:'мм'},
-    {group:'Тесты печати', key:'tstPlateW', w:['allinone'], label:'Комплексная плита: ширина', min:50, max:220, step:5, default:90, unit:'мм',
-      hint:'Глубина плиты выводится из ширины (половина), а высоты станций — из глубины: одна ручка задаёт размер всей печати.'},
+      options:[{v:'none',t:'нет'},{v:'ruler',t:'линейка'},{v:'radius',t:'образец скруглений'},
+               {v:'chamfer',t:'образец фасок'},{v:'overhang',t:'нависания'},{v:'bridge',t:'мосты'},
+               {v:'sphere',t:'купола'},{v:'fit',t:'посадка (отверстия + штырь)'},
+               {v:'tower',t:'башня диаметров'},{v:'dim',t:'проверка размеров'},
+               {v:'wall',t:'тонкие стенки'}]},
+    {group:'Тесты печати', key:'tstT', w:['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'],
+      label:'Тест: толщина основания', min:2, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Тесты печати', key:'tstN', w:['radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'],
+      label:'Тест: число образцов в ряду', min:3, max:14, step:1, default:8, unit:'', int:true,
+      hint:'Величины идут ровными долями максимума: при N = 8 и максимуме 16 мм это 2, 4, … 16.'},
+    {group:'Тесты печати', key:'tstH', w:['overhang','bridge','tower','wall'], label:'Тест: высота элемента', min:5, max:40, step:1, default:12, unit:'мм'},
+    {group:'Тесты печати', key:'tstRulerL', w:['ruler'], label:'Линейка: длина', min:50, max:300, step:10, default:200, unit:'мм'},
+    {group:'Тесты печати', key:'tstRadMax', w:['radius'], label:'Скругления: наибольший радиус', min:2, max:24, step:1, default:16, unit:'мм'},
+    {group:'Тесты печати', key:'tstChfMax', w:['chamfer'], label:'Фаски: наибольшая фаска', min:1, max:16, step:0.5, default:8, unit:'мм'},
+    {group:'Тесты печати', key:'tstAngMax', w:['overhang'], label:'Нависания: наибольший угол от вертикали', min:40, max:85, step:5, default:80, unit:'°'},
+    {group:'Тесты печати', key:'tstSpan', w:['bridge'], label:'Мосты: наибольший пролёт', min:10, max:120, step:5, default:80, unit:'мм'},
+    {group:'Тесты печати', key:'tstSphMax', w:['sphere'], label:'Купола: наибольший Ø', min:6, max:40, step:1, default:24, unit:'мм'},
+    {group:'Тесты печати', key:'tstFitMax', w:['fit'], label:'Посадка: наибольший зазор', min:0.2, max:1.6, step:0.05, default:0.8, unit:'мм'},
+    {group:'Тесты печати', key:'tstFitPin', w:['fit'], label:'Посадка: Ø штыря', min:3, max:12, step:0.5, default:6, unit:'мм'},
+    {group:'Тесты печати', key:'tstTowMin', w:['tower'], label:'Башня: Ø верхней ступени', min:2, max:40, step:1, default:5, unit:'мм'},
+    {group:'Тесты печати', key:'tstTowMax', w:['tower'], label:'Башня: Ø нижней ступени', min:5, max:80, step:1, default:40, unit:'мм'},
+    {group:'Тесты печати', key:'tstDimMin', w:['dim'], label:'Размеры: наименьшая фигура', min:3, max:30, step:1, default:5, unit:'мм'},
+    {group:'Тесты печати', key:'tstDimMax', w:['dim'], label:'Размеры: наибольшая фигура', min:5, max:60, step:1, default:19, unit:'мм'},
+    {group:'Тесты печати', key:'tstWallMax', w:['wall'], label:'Стенки: наибольшая толщина', min:0.4, max:4, step:0.1, default:1.6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitD', w:['fittest'], label:'Калибровка: Ø штырька', min:3, max:30, step:0.5, default:6, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFitN', w:['fittest'], label:'Калибровка: число ступеней', min:2, max:10, step:1, default:5, unit:'', int:true},
     {group:'Крепёж / монтаж', key:'mntFitStart', w:['fittest'], label:'Калибровка: начальный зазор', min:0, max:1, step:0.05, default:0.1, unit:'мм'},
@@ -6312,6 +6320,16 @@ const PRINT_MATERIALS = {
 // what — что это и зачем; how — как класть и чего ждать при печати; mat — первый в списке рекомендуемый;
 // steps — порядок действий, если модель печатается не в один заход (пока это только двухцветный кейкап).
 const MODEL_HELP = {
+  'test:ruler':     {what:'Прецизионная линейка: миллиметровая шкала с рисками трёх высот — миллиметр, пять, десять — и подписанными десятками. Печатается плашмя, служит и мерилом, и проверкой машины: если шкала «уплыла», у принтера врут шаги.', how:'Плашмя на стол, без поддержек. Проверьте её по стальной линейке ПЕРЕД тем, как ею мерить: печатная шкала верна ровно настолько, насколько верны шаги вашей машины, — и в этом половина её пользы.', mat:['pla','petg']},
+  'test:radius':    {what:'Ряд блоков, у каждого верхняя кромка скруглена своим радиусом. Скругление принтер огрубляет дважды — хордами модели и ступенями слоёв, — и на каком радиусе дуга перестаёт читаться как дуга, зависит от высоты слоя.', how:'Плашмя на стол, поддержки не нужны: скруглена только верхняя кромка. Смотрите на просвет сбоку — «лесенка» видна раньше, чем на ощупь.', mat:['pla','petg']},
+  'test:chamfer':   {what:'Ряд блоков со срезанной под 45° верхней кромкой, от самой мелкой фаски до самой крупной. Проба-напарник к образцу скруглений: держать обе рядом стоит того, потому что сравнивают их именно друг с другом.', how:'Плашмя на стол, без поддержек. Мелкие фаски смажутся первыми — это и есть ответ, с какого размера фаску в чертеже имеет смысл рисовать.', mat:['pla','petg']},
+  'test:overhang':  {what:'Ряд наклонных пластин, угол считается от вертикали — так же, как его называет слайсер. Показывает, при каком угле ваша машина перестаёт держать нависание без поддержек.', how:'Плашмя на стол, БЕЗ поддержек — иначе тест меряет поддержки. Смотрите на нижние поверхности: провисшая нитка появляется на одну-две ступени раньше, чем брак становится виден сверху.', mat:['pla','petg']},
+  'test:bridge':    {what:'Ряд мостов растущего пролёта: две опоры и настил между ними. Меряет обдув и скорость на первом слое над пустотой — то, что не показывает ни один тест на сплошном теле.', how:'Плашмя, без поддержек. Обдув на максимум. Провисание меряйте штангенциркулем от верха настила, а не на глаз: полмиллиметра прогиба глазом не видно, а на детали это брак.', mat:['pla','petg']},
+  'test:sphere':    {what:'Ряд полусфер растущего диаметра. Купол проверяет то, чего не проверяют куб и цилиндр: слой, у которого каждый следующий контур шире предыдущего снизу и уже сверху.', how:'Плашмя на стол, без поддержек — купол нигде не нависает круче 45° только у самого основания. «Ступенчатая макушка» на мелких куполах говорит о высоте слоя, а не о сетке.', mat:['pla','petg']},
+  'test:fit':       {what:'Плита с рядом отверстий растущего зазора и один штырь рядом. Первое отверстие, в которое штырь входит от руки, и есть рабочий зазор ВАШЕЙ машины — мерить его чужим стальным штифтом значит мерить заодно и штифт.', how:'Плашмя, одним заданием: штырь и отверстия должны выйти из одной машины с одними настройками, иначе проба ничего не говорит. Отломите штырь от плиты и пробуйте от руки, без нажима.', mat:['pla','petg','abs']},
+  'test:tower':     {what:'Стопка цилиндров: снизу самый крупный, сверху самый мелкий. Одной деталью меряется то, ради чего иначе печатают восемь, — насколько диаметр отпечатка отличается от заданного и меняется ли эта разница с размером.', how:'Стоя, без поддержек. Меряйте штангенциркулем каждую ступень: сжатие первого периметра постоянно в миллиметрах, а не в процентах, и на мелких ступенях та же ошибка весит вчетверо больше.', mat:['pla','petg']},
+  'test:dim':       {what:'Два ряда одинаковых номиналов: кубы сзади, цилиндры спереди. Куб меряется по плоским граням, цилиндр — по касательной; разница между двумя замерами одного номинала и есть вклад дискретизации круга.', how:'Плашмя, без поддержек. Высота фигур над плитой ровно номинальная, так что мерить можно и по вертикали. Меряйте у основания и посередине: расхождение — это «слоновья нога».', mat:['pla','petg']},
+  'test:wall':      {what:'Ряд перегородок растущей толщины, от заведомо непечатаемой до заведомо печатаемой. Меряет не столько принтер, сколько слайсер: стенка тоньше нитки либо молча выбрасывается, либо раздувается до ширины сопла.', how:'Плашмя, без поддержек. Сравните отпечаток с предпросмотром слайсера: пропавшие там стенки и есть граница, ниже которой тонкую деталь в модели рисовать бесполезно.', mat:['pla','petg']},
   box:      {what:'Прямоугольная коробка или призма: сплошная, полая (контейнер) или с неглубоким карманом (лоток). Отсюда же растут Gridfinity, перегородки, крышка на защёлках и рельеф на любой грани.', how:'Дном на стол — так и задумано. Полость печатается без поддержек, если верх открыт.', mat:['pla','petg']},
   die:      {what:'Игральная кость или правильный многогранник, D4–D100, с утопленными или выпуклыми числами.', how:'Гранью на стол. Для честной кости важна равномерность заполнения — печатать со 100 % или с одинаковой стенкой.', mat:['pla','petg']},
   sheet:    {what:'Плоский лист или панель: прямоугольник, круг, N-угольник или контур из SVG. Основа для табличек, накладок, грип-падов и панелей приборов.', how:'Плашмя. Первый слой решает всё: тонкий лист поведёт, если стол не выровнен.', mat:['petg','pla']},
@@ -6406,12 +6424,6 @@ const MODEL_HELP = {
   'mount:foot':      {what:'Ножка или накладка на мебель: площадка со скруглением и посадочным штырём.', how:'Площадкой на стол. Верхний слой — то, что будет касаться пола, поэтому гладить его стоит.', mat:['tpu','petg']},
   'mount:fittest':   {what:'Калибровка зазора: набор штырьков и отверстий с шагом, чтобы подобрать посадку именно вашего принтера. Один раз напечатать — и все подвижные модели садятся с первого раза.', how:'Плашмя, без изменения настроек — иначе измеряете не то.', mat:['pla','petg']},
   'mount:battery':   {what:'Батарейный холдер под AA/AAA/C/D/18650/21700 или свой размер: ложе с пружинными язычками.', how:'Ложем вверх. Контактные язычки под пластину печатать не нужно — они металлические.', mat:['petg','abs']},
-  'test:temptower': {what:'Температурная башня: несколько секций, чтобы сменой температуры по высоте найти лучшую для конкретного пластика.', how:'Как есть. Смену температуры задаёт слайсер — вставьте команду на границах секций.', mat:['pla','petg']},
-  'test:bridgetest':{what:'Тест мостов и нависаний: пролёты разной длины и козырьки под разными углами.', how:'Как есть, без поддержек — в этом весь смысл.', mat:['pla','petg']},
-  'test:filcard':   {what:'Карточка филамента: бирка на катушку, напечатанная тем же пластиком, о котором рассказывает. Прорезь под стяжку, шкала остатка с рисками, и рядом быстрые пробы этим же прутком — язычок под 45°, короткий мост, три стенки 0.4/0.8/1.2 мм и отверстие Ø3. Название пластика кладётся общим механизмом логотипов («+ Текст» на верхнюю грань), чтобы шрифт и разметка были одни на всё приложение.', how:'Плашмя, тем самым филаментом и на тех настройках, которые собираетесь использовать: в этом весь смысл бирки. Цвет и просвет видно на ней самой, а пробы говорят, как этот пруток тянет стенку и держит нависание. Список материалов ниже — просто самые ходовые: у этой модели материал задаёте не вы, а катушка, которую подписываете.', mat:['pla','petg','abs']},
-  'test:toolcard':  {what:'Мерительная карточка: круглые отверстия и квадратные окна одного ряда размеров, сквозные щели и клинья с углами 10…80°. Не дубль шаблонов: радиусы меряет «шаблон радиусов», диаметры — «шаблон диаметров», резьбу — «шаблон резьб». Здесь то, что чаще всего рисуют: дырка, окно, прорезь и угол фаски.', how:'Плашмя на стол, без поддержек: всё вырезанное идёт насквозь, клинья опираются на карту. Приложите сверло к каждому отверстию: печатное всегда выходит меньше номинала. Квадратное окно того же размера ужимается иначе — у него углы. Прорези: с какой ширины перестают заплывать, такова и минимальная щель у машины. Клинья говорят, какой угол фаски она ещё держит.',  mat:['pla','petg']},
-  'test:allinone':  {what:'Комплексная плита: шесть тестов за одну печать — нависания 30…80°, мосты, струнение, зазоры 0.05…0.30 мм, отверстия Ø2…Ø7 и куб 10 мм. Каждая станция отвечает за одно, чтобы по браку было понятно, что крутить.', how:'Как есть, без поддержек — иначе нависания и мосты ничего не покажут. Одной сплошной плитой на стол. Читается так: у нависаний найдите самое пологое ребро с чистым низом — это предел обдува; у мостов самый длинный пролёт без провиса; паутина между башенками означает малый ретракт; какой зазор заплыл, столько и лишней раздачи по XY; отверстия промерьте штангенциркулем, они всегда меньше номинала; куб обязан быть 10.00 по всем трём осям.',  mat:['pla','petg']},
-  'test:retract':    {what:'Тест ретракта: две башни, между которыми сопло ходит вхолостую. Паутина между ними и есть результат.', how:'Как есть, обе башни за один проход.', mat:['petg','pla']},
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
   'mount:radgauge':  {what:'Шаблон радиусов (гребёнка): набор вогнутых и выпуклых полукругов с подписанными числами.', how:'Плашмя. Слой 0,1 мм — иначе край радиуса ступенчатый и мерить нечем.', mat:['pla','petg']},
@@ -6592,7 +6604,7 @@ function setBaseShape(kind){
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
-  setSel('tstMode',    kind==='test'   ? 'temptower' : 'none');
+  setSel('tstMode',    kind==='test'   ? 'ruler'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
   setSel('fnOn',       kind==='funnel' ? true     : false);
   // Refresh explicitly: the last activator touched may not have been the one that decides the mode, so we
@@ -13625,386 +13637,347 @@ function buildBatteryHolder(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
-/* ---- Calibration prints ------------------------------------------------------------------------
-   Three prints that measure a printer rather than make a part. Each answers ONE question, because a
-   tower that mixes five effects tells you which segment failed and never which setting caused it.
+/* ЛИНЕЙКА (`ruler`) — миллиметровая шкала на плоской планке.
 
-   TEMPERATURE TOWER (`temptower`): n stacked segments, each stepped 0.8 mm narrower than the one below
-   so the boundary is unmistakable when you tell the slicer to change temperature at that height. Each
-   segment carries the two things temperature actually decides — a bridged window (its top edge is
-   unsupported, so it sags when the plastic is too hot) and a horizontal fin (droop). Segment k wears
-   k+1 ribs, so the best-looking one can be counted off the print instead of measured off the model.
+   Вещь двойного назначения, и второе важнее первого. Как мерило она удобна: лежит на столе, не боится
+   масла, ею меряют отпечаток не отходя от принтера. Но напечатанная шкала верна ровно настолько,
+   насколько верны шаги машины по X, — и сравнение её со стальной линейкой это и есть проверка шагов,
+   куда более чувствительная, чем куб 20 мм: ошибка накапливается на всей длине, а не на двадцати
+   миллиметрах.
 
-   BRIDGE / OVERHANG (`bridgetest`): spans that grow linearly to the requested maximum, next to fins
-   whose UNDERSIDE angle sweeps 30° to 80° from vertical. Both on one base, because the answer you want
-   is a pair of numbers — the longest span and the shallowest angle your machine still holds.
-
-   RETRACTION (`retract`): two tapered towers a fixed distance apart. Tapered on purpose: the higher it
-   goes the less material each layer holds, so travel moves get more frequent per unit of extrusion and
-   stringing shows up as a gradient rather than a yes/no. */
-function buildCalTower(p){
-  const n = Math.max(3, Math.min(10, Math.round(p.tstSegN||5)));
-  const H = Math.max(5, p.tstSegH||12);
-  const W = Math.max(16, p.tstW||40), D = Math.max(12, W*0.7), tris=[];
-  for(let k=0;k<n;k++){
-    const w = W - k*0.8, y0 = k*H;                       // narrowing upward keeps every ledge self-supporting
-    // Segments OVERLAP by 0.4 instead of stacking face to face: identical Z extents would put two boxes'
-    // edges in the same place, which is a bad edge, not a union.
-    const yLo = k===0 ? 0 : y0-0.4, hgt = (k+1)*H - yLo;
-    const hole = [{axis:2, cp:0, cq:(y0+H*0.42)-(yLo+hgt/2), ap:Math.max(2,w*0.28), aq:Math.max(1.5,H*0.22), rc:0}];
-    for(const T of buildBoxWithHoles(w, hgt, D, hole)) tris.push(T.map(v=>[v[0], v[1]+yLo+hgt/2, v[2]]));
-    const finL = Math.max(3, W*0.28), finT = Math.max(1.2, H*0.14);
-    for(const T of boxSpanTris(w/2-1.2, w/2+finL, y0+H-finT, y0+H-0.3, -D*0.3, D*0.3)) tris.push(T);  // droop fin
-    const rib = Math.max(1, W*0.035), pitch = Math.min(rib*2.6, (w*0.7)/Math.max(1,k+1));
-    for(let i=0;i<=k;i++){ const cx = -(k*pitch)/2 + i*pitch;                                    // count marks
-      for(const T of boxSpanTris(cx-rib/2, cx+rib/2, y0+H*0.55, y0+H*0.85, -D/2-0.8, -D/2+0.6)) tris.push(T); }
-  }
-  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
-  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
-}
-function buildBridgeTest(p){
-  const n = Math.max(3, Math.min(8, Math.round(p.tstSegN||5)));
-  const t = Math.max(2, p.tstT||4);
-  const maxS = Math.max(10, p.tstSpan||50);
-  const W = Math.max(6, Math.min(p.tstW||40, 40)*0.5);            // width of one specimen along X
-  const pH = Math.max(8, p.tstSegH||12), post = Math.max(4, W*0.6);
-  const pitch = W + 6, tris=[];
-  const spanAt = k => maxS*(k+1)/n, angAt = k => (30 + 50*k/Math.max(1,n-1))*Math.PI/180;
-  let maxSpanZ = 0; for(let k=0;k<n;k++) maxSpanZ = Math.max(maxSpanZ, spanAt(k)+2*post);
-  const finL = Math.max(5, Math.min(maxS*0.2, 12)), zFin = maxSpanZ/2 + 8;
-  const zBackWall = zFin + t;
-  const Wtot = n*pitch - 6 + 8;
-  const zBase0 = -maxSpanZ/2 - 5, zBase1 = zFin + finL + 6;
-  for(const T of boxSpanTris(-Wtot/2, Wtot/2, 0, t, zBase0, zBase1)) tris.push(T);   // one base, one part
-  const xAt = k => -(n-1)*pitch/2 + k*pitch;
-  for(let k=0;k<n;k++){
-    const s = spanAt(k), x = xAt(k);
-    for(const sgn of [-1,1])                                                          // the two piers
-      for(const T of boxSpanTris(x-W/2, x+W/2, t-0.4, t+pH-0.4, sgn*(s/2), sgn*(s/2+post))) tris.push(T);
-    // The deck runs 0.4 past the pier tops so it interpenetrates them; ending flush would leave the two
-    // solids sharing the pier's top edges.
-    for(const T of boxSpanTris(x-W/2, x+W/2, t+pH-Math.max(1.6,t*0.5), t+pH, -(s/2+post), s/2+post)) tris.push(T);
-  }
-  // Overhang fins: the underside makes `ang` with the VERTICAL, which is the number printers are rated by.
-  // The wall has to clear the STEEPEST fin's rise, or a 30° fin starts below the bed: over a run of finL a
-  // fin at angle a climbs finL/tan(a), largest at the smallest angle.
-  const fT0 = Math.max(1.5, t*0.6);
-  const wallH = fT0 + finL/Math.tan(30*Math.PI/180) + 3;
-  for(const T of boxSpanTris(-Wtot/2+4, Wtot/2-4, t-0.4, t+wallH, zFin, zBackWall)) tris.push(T);
-  const fT = fT0;
-  for(let k=0;k<n;k++){ const a=angAt(k), x=xAt(k), rise=finL/Math.tan(a);
-    const q=[[t+wallH-fT-rise, zBackWall-0.6],[t+wallH-fT, zBackWall+finL],
-             [t+wallH, zBackWall+finL],[t+wallH-rise, zBackWall-0.6]];
-    for(const T of convexPrismXTris(q, x-W/2+0.6, x+W/2-0.6)) tris.push(T); }   // narrower than its pier
-  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
-  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
-}
-function buildRetractTest(p){
-  const gap = Math.max(10, p.tstRetGap||35);
-  const H   = Math.max(15, (p.tstSegH||12)*3);
-  const rB  = Math.max(2.5, Math.min(p.tstW||40, 40)*0.18), rT = Math.max(1.2, rB*0.4);
-  const t   = Math.max(1.6, p.tstT||4)*0.6;
-  const seg = Math.max(28, Math.round(rB*8)), tris=[];
-  for(const T of boxSpanTris(-(gap/2+rB+3), gap/2+rB+3, 0, t, -(rB+3), rB+3)) tris.push(T);
-  for(const s of [-1,1]) for(const T of solidLatheYTris([[rB, t-0.4],[rT, t+H]], seg))
-    tris.push(T.map(v=>[v[0]+s*gap/2, v[1], v[2]]));
-  let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
-  const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
-}
-/* КОМПЛЕКСНАЯ ПЛИТА (`allinone`) — шесть вопросов к принтеру за одну печать, каждый на своём месте и
-   каждый читается глазом без инструмента.
-
-   Вопросы выбраны так, чтобы ответы НЕ ПЕРЕПУТЫВАЛИСЬ. Общая беда сборных калибровок в том, что они
-   валят в кучу эффекты, которые лечатся разными настройками: увидев брак, вы не знаете, что крутить.
-   Здесь каждая станция отвечает за одно и стоит отдельно:
-
-     нависания  — фаски, у которых НИЖНЯЯ грань идёт под углом к вертикали, от 30° до 80°. Это тот угол,
-                  в котором принтеры и меряют: 45° печатает любой, 70° уже нет.
-     мосты      — пролёты, растущие линейно до заданного. Отвечают за обдув и скорость мостов.
-     струнение  — две тонкие башенки с промежутком: сопло ходит между ними вхолостую, и паутина видна.
-     зазоры     — шесть пар стенок с просветом 0.05…0.30 мм. Столько же — цена XY-компенсации: какой
-                  просвет заплыл, такова и раздача экструзии.
-     отверстия  — Ø2…Ø7 насквозь через плиту. Отверстие всегда выходит меньше номинала, и вот насколько.
-     куб        — 10 мм ровно, на проверку шагов по всем трём осям.
-
-   Всё стоит на ОДНОЙ плите и заходит в неё на 0.4 мм: доли миллиметра перекрытия и делают из шести
-   отдельных оболочек одно тело, без общих граней и без CSG. */
-function buildAllInOneTest(p){
+   Риски трёх высот — миллиметр, пять, десять, — потому что шкала без иерархии не читается: глаз ищет
+   десяток, а не считает штрихи. Подписаны десятки; подпись стоит ПОД своей риской и уже её шага, иначе
+   соседние сливаются. Нулевая риска совпадает с торцом планки: мерить от края — то, ради чего линейку и
+   кладут на деталь. */
+function buildTestRuler(p){
   const cl = (v, lo, hi, d) => { const n = (v==null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); };
-  const W = cl(p.tstPlateW, 60, 220, 90);
-  const D = Math.max(34, W*0.5);
+  const L = Math.round(cl(p.tstRulerL, 50, 300, 200));
   const t = Math.max(1.6, Math.min(6, cl(p.tstT, 2, 20, 4)*0.6));
-  const n = Math.round(cl(p.tstSegN, 3, 10, 5));
-  const tris = [], push = a => { for(const T of a) tris.push(T); };
-  const yB = t/2 - 0.4;                       // всё стоящее заходит в плиту на 0.4
-  const yTop = t/2;
-  const lab = Math.max(2.2, Math.min(4, W/26));
+  const D = Math.max(14, Math.min(28, L*0.11));            // ширина планки
+  const tris = boxSpanTris(-L/2, L/2, -t/2, t/2, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  const yTop = t/2, yB = yTop - 0.4;
+  const lab = Math.max(2.4, Math.min(4, D*0.22));
+  /* Риска — брусок, СТОЯЩИЙ на планке, а не канавка в ней. Канавку печатает сопло шириной 0.4, и
+     миллиметровые деления в ней сливаются; выступ той же ширины машина кладёт одной ниткой и он
+     читается. Ширина риски 0.4 — ровно один проход. */
+  /* У крайних рисок брусок сдвинут ВНУТРЬ на свою полуширину. Иначе нулевая риска, стоящая на самом
+     торце, свисает с него на 0.2 — и линейка в 200 мм печатается длиной 200.4, то есть врёт на том
+     самом размере, ради которого её и берут. Мерная кромка остаётся ровно на нуле: сдвигается тело
+     риски, а не её край. */
+  const tick = (x, len) => {
+    const x0 = Math.max(-L/2, Math.min(L/2 - 0.4, x - 0.2));
+    push(boxSpanTris(x0, x0 + 0.4, yB, yTop + 0.5, -D/2, -D/2 + len));
+  };
+  const big = Math.max(5, D*0.42), mid = big*0.62, sml = big*0.34;
+  for(let mm = 0; mm <= L; mm++){
+    const x = -L/2 + mm;
+    tick(x, mm % 10 === 0 ? big : (mm % 5 === 0 ? mid : sml));
+    if (mm % 10 === 0 && mm > 0 && mm < L)
+      push(seg7TrisXZ(String(mm), x, -D/2 + big + 1 + lab, lab, yTop));
+  }
+  return tris;
+}
+/* ===== ТЕСТЫ ПЕЧАТИ: ряд станций на плите ==========================================================
 
-  /* Плита с рядом отверстий. Отверстия режет тот же построитель, что и всем прочим деталям, — свой
-     кольцевой шов здесь был бы вторым способом делать одно и то же. */
-  const nH = 6, rMax = (2 + nH - 1)/2;
-  /* Подпись стоит МЕЖДУ передним краем и своим отверстием, и место ей отмеряется от самого крупного из
-     них, а не от каждого своего. Иначе ряд разъезжается: подпись у Ø2 сидит вплотную, у Ø7 налезает на
-     край дырки — что и вышло с первого раза. */
-  const zLab = D/2 - 1.5;                                  // низ цифры у переднего края
-  const zHole = zLab - lab - 1.5 - rMax;                   // центр ряда отверстий
-  const holes = [];
-  for(let i=0;i<nH;i++)
-    holes.push({axis:1, cp:-W/2 + W*(i+0.5)/nH, cq:zHole, r:(2+i)/2});
-  /* Сетка задаётся явно, около миллиметра на клетку. По умолчанию построитель берёт 24 клетки на
-     длинную сторону — то есть 3.75 мм на плите в 90, — и блок самого мелкого отверстия (Ø2) раздувается до
-     двух клеток, задевает соседний и выбрасывается сторожем столкновений. Пропажа тихая: деталь
-     остаётся герметичной, просто отверстий пять вместо шести. */
-  push(buildBoxWithHoles(W, t, D, holes, null, Math.max(24, Math.round(Math.max(W, D)))));
-  for(let i=0;i<nH;i++)
-    push(seg7TrisXZ(String(2+i), -W/2 + W*(i+0.5)/nH, zLab, lab, yTop));
+   Девять из десяти образцов ниже устроены одинаково: плита-основание и РЯД станций вдоль X, у каждой
+   своя величина и своя подпись. Раскладка вынесена сюда одним куском, потому что иначе её пришлось бы
+   написать девять раз — и она разошлась бы девятью способами, из которых первым обычно расходится ЗАПАС
+   ПОД ПОДПИСЬ: станция шириной со свою фигуру выглядит правильной ровно до тех пор, пока подпись не
+   станет шире фигуры, после чего соседние цифры наползают друг на друга. Ровно это уже случилось на
+   мерительной карточке, и лечится оно в одном месте: ширина станции есть максимум из ширины фигуры и
+   ширины её подписи.
 
-  const band = W/5, xOf = k => -W/2 + band*(k+0.5);   // пять станций вдоль X, у каждой своя полоса
-  const zA = -D/2 + 3, zB = zHole - rMax - 4;               // полоса, свободная от отверстий и подписей
-  const deep = zB - zA;
+   `tstRow` ничего не строит. Он отвечает на единственный вопрос — где стоит станция k и какой она
+   ширины, — а фигуры и подписи ставят сами строители.
 
-  // --- нависания: стенка и рёбра, нижняя грань каждого под своим углом к вертикали ---
-  {
-    const x0 = xOf(0) - band*0.42, x1 = xOf(0) + band*0.42;
-    const finL = Math.max(4, deep*0.32), fT = Math.max(1.2, t*0.5);
-    const wallH = fT + finL/Math.tan(30*Math.PI/180) + 2;
-    const zW = zA + 2, wallT = Math.max(1.6, t*0.8);
-    push(boxSpanTris(x0, x1, yB, yB + wallH, zW, zW + wallT));
-    const step = (x1 - x0)/n;
-    for(let k=0;k<n;k++){
-      const a = (30 + 50*k/Math.max(1,n-1))*Math.PI/180, rise = finL/Math.tan(a);
-      const q = [[yB + wallH - fT - rise, zW + wallT - 0.6], [yB + wallH - fT, zW + wallT + finL],
-                 [yB + wallH,             zW + wallT + finL], [yB + wallH - rise, zW + wallT - 0.6]];
-      push(convexPrismXTris(q, x0 + step*k + 0.35, x0 + step*(k+1) - 0.35));
-    }
+   Величины идут РОВНЫМИ ДОЛЯМИ максимума: k-я станция несёт max·(k+1)/N. Умолчания максимумов подобраны
+   так, чтобы при умолчании N = 8 доли выходили круглыми (16 мм → 2, 4, … 16; 0.8 мм → 0.1, 0.2, … 0.8).
+   Поставьте своё N — доли пересчитаются, и подписи скажут правду, какой бы некруглой она ни оказалась:
+   подпись берётся из той же величины, что и фигура, а не пишется рядом отдельным списком. */
+function tstNum(v, lo, hi, d){ const n = (v == null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); }
+function tstCount(p){ return Math.round(tstNum(p.tstN, 3, 14, 8)); }
+function tstPlateT(p){ return tstNum(p.tstT, 2, 20, 4); }
+function tstFeatH(p){ return tstNum(p.tstH, 5, 40, 12); }
+const TST_LAB = 3;                                        // высота цифр подписи, мм
+function tstRow(labels, sizes, gap){
+  const cols = [], g = gap == null ? 3 : gap;
+  let x = 0;
+  for(let k = 0; k < labels.length; k++){
+    const w = Math.max(sizes[k], seg7Width(labels[k], TST_LAB)) + g;
+    cols.push({w:w, xc:x + w/2, x0:x, x1:x + w});
+    x += w;
   }
-  // --- мосты: опоры и настилы, пролёт растёт линейно ---
-  {
-    const x0 = xOf(1) - band*0.42, x1 = xOf(1) + band*0.42;
-    const pier = Math.max(3, deep*0.1), h = Math.max(5, deep*0.22);
-    const step = (x1 - x0)/n, maxS = deep - 2*pier - 2;
-    for(let k=0;k<n;k++){
-      const sp = maxS*(k+1)/n, xa = x0 + step*k + 0.4, xb = x0 + step*(k+1) - 0.4;
-      const zc = (zA + zB)/2;
-      /* Настил перекрывает опоры, а не садится на них. Сядь он вровень — верхние грани опор и настила
-         легли бы в одну плоскость, а боковые совпали бы по X: это общие грани, то есть шесть «плохих»
-         рёбер на каждый мост, а не соединение. Поэтому опоры кончаются на 0.4 ниже, а настил уже их на
-         0.3 с каждой стороны. */
-      for(const sg of [-1,1]) push(boxSpanTris(xa, xb, yB, yB + h - 0.4, zc + sg*sp/2, zc + sg*(sp/2 + pier)));
-      push(boxSpanTris(xa + 0.3, xb - 0.3, yB + h - Math.max(1.2, t*0.4), yB + h,
-                       zc - (sp/2 + pier), zc + sp/2 + pier));
-    }
-  }
-  // --- струнение: две конические башенки, между ними сопло идёт вхолостую ---
-  {
-    const xc = xOf(2), h = Math.max(10, deep*0.6), rB = Math.max(1.8, band*0.09);
-    const gap = Math.max(8, band*0.5), seg = Math.max(20, Math.round(rB*10));
-    for(const sg of [-1,1]) for(const T of solidLatheYTris([[rB, yB],[Math.max(0.8, rB*0.35), yB + h]], seg))
-      push([T.map(v => [v[0] + xc + sg*gap/2, v[1], v[2] + (zA + zB)/2])]);
-  }
-  // --- зазоры: шесть пар стенок с просветом 0.05…0.30 ---
-  {
-    const x0 = xOf(3) - band*0.42, x1 = xOf(3) + band*0.42;
-    const h = Math.max(4, deep*0.16), wT = Math.max(0.8, t*0.35);
-    const gaps = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30];
-    const step = (zB - zA)/gaps.length;
-    gaps.forEach((g, k) => {
-      const z = zA + step*(k + 0.5), xm = (x0 + x1)/2;
-      push(boxSpanTris(x0, xm - g/2, yB, yB + h, z - wT/2, z + wT/2));
-      push(boxSpanTris(xm + g/2, x1, yB, yB + h, z - wT/2, z + wT/2));
-    });
-  }
-  // --- куб 10 мм: шаги по всем трём осям разом. Своя полоса, потому что размер у него ЗАДАННЫЙ:
-  //     ужать его под соседа значило бы напечатать не десять миллиметров, а «около десяти».
-  {
-    /* Ровно 10 мм НАД ПЛИТОЙ, а не 10 мм высотой: куб заходит в плиту на перекрытие, и построй его
-       высотой в десять — снаружи осталось бы 9.6, то есть эталон, который врёт на четыре сотых. */
-    const c = 10, xc = xOf(4), zc = (zA + zB)/2;
-    push(boxSpanTris(xc - c/2, xc + c/2, yB, yTop + c, zc - c/2, zc + c/2));
-    push(seg7TrisXZ('10', xc, zc + c/2 + 1 + lab, lab, yTop));
-  }
+  for(const c of cols){ c.xc -= x/2; c.x0 -= x/2; c.x1 -= x/2; }
+  return {cols:cols, W:x};
+}
+// Все образцы строятся «плита от нуля вверх», а модель отдаётся центрированной по Y, как остальные формы.
+function tstCenterY(tris){
   let lo = 1e9, hi = -1e9;
   for(const T of tris) for(const v of T){ if(v[1] < lo) lo = v[1]; if(v[1] > hi) hi = v[1]; }
   const dy = -(lo + hi)/2;
   return tris.map(T => T.map(v => [v[0], v[1] + dy, v[2]]));
 }
-/* МЕРИТЕЛЬНАЯ КАРТОЧКА (`toolcard`) — плоская карта, по которой сверяют то, что чаще всего рисуют:
-   отверстие, квадратное окно, щель и угол. Не дубль уже имеющихся шаблонов: радиусы меряет `radgauge`,
-   диаметры стоек — `pingauge`, резьбу — `polygauge`, посадку — `gauge`. Здесь другое.
-
-     круглые отверстия  — Ø2…Ø14. Печатное отверстие ВСЕГДА выходит меньше номинала, и карточка говорит
-                          насколько: приложили сверло — увидели, с какого размера начинается расхождение.
-     квадратные окна    — та же сторона, что и Ø рядом. Квадрат ужимается иначе, чем круг: у него углы,
-                          и внутренний угол принтер заваливает сильнее, чем дугу.
-     щели               — 1…4 мм НАСКВОЗЬ. Узкая прорезь заплывает раньше круглого отверстия того же
-                          размера, и вот с какой ширины. Доли миллиметра тут не обещаются намеренно:
-                          вырез режется сеткой построителя, минимальный шаг которой около клетки, и
-                          нарисовать 0.2 мм значило бы напечатать миллиметр с подписью «0.2». Просветы
-                          в сотых долях меряет комплексная плита — там они сделаны зазором между
-                          стенками, где сетка ни при чём.
-     углы               — клинья 10…80°. Тот самый угол, под который рисуют фаску, и который надо
-                          прикинуть глазом до печати.
-
-   Карта плоская и печатается без поддержек: всё, что вырезано, идёт насквозь, всё, что стоит, — клинья
-   с опорой на карту. */
-function buildToolCard(p){
-  const cl = (v, lo, hi, d) => { const n = (v==null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); };
-  const W = cl(p.tstCardW, 60, 220, 110);
-  const t = Math.max(1.6, Math.min(6, cl(p.tstT, 2, 20, 4)*0.7));
-  /* Сколько мерных мест влезло, столько и есть. Условие ставит не сам вырез, а его СЛУЖЕБНЫЙ БЛОК:
-     построитель отверстий окружает каждый вырез полем в 1.7 его размера, и если блоки двух соседних
-     колонок задели друг друга хотя бы одним индексом сетки, сторож столкновений выбрасывает второй —
-     МОЛЧА. Деталь остаётся герметичной, просто дырки нет, и обычная проверка этого не видит.
-
-     Соседи — самая крупная пара, 2·nR и 2·nR−2, полублоки 1.7·nR и 1.7·(nR−1); шаг колонки W/nR должен
-     их сумму превосходить. Прикидка «W ≥ 2.6·nR²» этого не учитывала и на карте в 110 мм давала шесть
-     мест, из которых крупнейшее исчезало в обоих рядах — при том, что подпись под него стояла. */
-  let nR = 3;
-  for(let n = 9; n >= 3; n--){
-    const pitch = W/n, need = 1.7*(2*n - 1) + 1.5;      // полублоки соседней пары плюс поле
-    if (pitch >= need){ nR = n; break; }
+/* Купол: ВЕРХНЯЯ полусфера радиуса r с плоским дном на y0, замкнутая диском основания.
+   Не `sphereTris`, и это не придирка: шар с центром в толще плиты вылезает НИЖЕ её дна, как только его
+   радиус превышает утопление, — на плите 4 мм это любой шар крупнее Ø8. Купол не вылезает никогда. */
+function domeYTris(cx, cz, r, y0, seg){
+  const out = [], nLat = Math.max(3, Math.round(seg/4)), nLon = Math.max(8, seg);
+  const V = (i, j) => { const th = (Math.PI/2)*i/nLat, ph = 2*Math.PI*(j % nLon)/nLon;
+    return [cx + r*Math.cos(th)*Math.cos(ph), y0 + r*Math.sin(th), cz + r*Math.cos(th)*Math.sin(ph)]; };
+  const rf = v => [v[0]-cx, v[1]-y0, v[2]-cz];
+  for(let i = 0; i < nLat; i++) for(let j = 0; j < nLon; j++){
+    const A = V(i,j), B = V(i,j+1), C = V(i+1,j+1), D = V(i+1,j);
+    if(i === nLat-1) out.push(orient([A,B,D], rf(A)));    // C и D — оба вершина купола
+    else { out.push(orient([A,B,C], rf(A))); out.push(orient([A,C,D], rf(A))); }
   }
-  const cell = W/nR;
-  /* Кегль выводится из ШИРИНЫ КЛЕТКИ, а не из ширины карты, и подбирается по самой длинной подписи.
-     Из ширины карты он получался великоват на узких: «14» вылезало за колонку, и габарит карты в 60 мм
-     выходил 62.7 — то есть подпись торчала наружу. Мерить надо то, что ограничивает, а ограничивает
-     соседняя колонка. */
-  let lab = Math.min(3.6, W/34);
-  while (lab > 1.2 && seg7Width('14', lab) > cell*0.85) lab -= 0.1;
-  lab = Math.max(1.2, lab);
-  const dOf = k => 2 + 2*k;                       // 2, 4, … 2·nR
-  const dMax = dOf(nR-1);
-  /* Шаг ряда считается по БЛОКУ выреза, а не по самому вырезу — по той же причине, что и шаг колонки:
-     блоки соседних рядов, задев друг друга, роняют сторож столкновений, и вырез пропадает молча. */
-  const rowH = Math.max(1.7*dMax + lab + 6, 22);
-  const slotAq = Math.max(3, dMax/3);
-  /* Полоса клиньев вмещает САМЫЙ ШИРОКИЙ клин с подписью. Раньше её глубина бралась от кегля, а
-     основание клина растёт с углом до 0.8 клетки — и два последних клина свисали с края карты. */
-  const runMax = cell*0.8;
-  const wedgeBand = runMax + lab + 6;
-  const D = rowH*3 + wedgeBand;
-  const zRow = i => -D/2 + rowH*(i + 0.5);
-  const xOf = k => -W/2 + cell*(k + 0.5);
-  const holes = [];
-  for(let k=0;k<nR;k++){
-    const d = dOf(k);
-    holes.push({axis:1, cp:xOf(k), cq:zRow(0), r:d/2});                                  // круг
-    holes.push({axis:1, cp:xOf(k), cq:zRow(1), ap:d/2, aq:d/2, rc:0});                   // квадрат
-    const wSlot = 1 + k*(3/(nR-1));                                                      // щель 1…4 мм
-    holes.push({axis:1, cp:xOf(k), cq:zRow(2), ap:wSlot/2, aq:slotAq, rc:0});
-  }
-  /* Сетка — около 0.8 мм на клетку: мельче самого мелкого выреза (Ø2 и щель 1 мм), но не мельче, чем
-     нужно. Полмиллиметра давали 128 тысяч треугольников на карту и ничего не добавляли: минимальный
-     размер выреза у этого построителя всё равно порядка клетки. */
-  const tris = buildBoxWithHoles(W, t, D, holes, null, Math.max(24, Math.round(Math.max(W, D)/0.8)));
-  const push = a => { for(const T of a) tris.push(T); };
-  const yTop = t/2;
-  for(let k=0;k<nR;k++){
-    const d = dOf(k), zLab = i => zRow(i) + (i === 2 ? slotAq : d/2) + 1 + lab;
-    push(seg7TrisXZ(String(d), xOf(k), zLab(0), lab, yTop));
-    push(seg7TrisXZ(String(d), xOf(k), zLab(1), lab, yTop));
-    push(seg7TrisXZ(fmtNum(+(1 + k*(3/(nR-1))).toFixed(1)), xOf(k), zLab(2), lab, yTop));
-  }
-  /* Клинья: угол при вершине — это то, что меряют, поэтому он строится напрямую, а не выводится из
-     катетов. Клин лежит на карте и растёт вверх, так что печатается без поддержек. */
-  {
-    const zc = -D/2 + rowH*3 + lab + 3 + runMax/2;    // подпись под клином, потом сам клин
-    const hMax = Math.max(4, Math.min(10, cell*0.5));
-    for(let k=0;k<nR;k++){
-      const ang = 10 + 70*k/(nR-1), a = ang*Math.PI/180;
-      /* Клин равнобедренный, основание внизу, вершина вверху; УГОЛ ПРИ ВЕРШИНЕ и есть заявленный, а он
-         равен 2·arctg((основание/2)/высота). Значит основание выводится из высоты, а не наоборот:
-         основание = 2·высота·tg(угол/2). Сначала я написал обратное — и все клинья вышли одной высоты,
-         с углом, который не совпадал с подписью ни у одного. Если основание не влезает в колонку,
-         ужимается ВЫСОТА: угол при этом сохраняется, а он и есть то, что меряют. */
-      let h = hMax, run = 2*h*Math.tan(a/2);
-      if (run > runMax){ run = runMax; h = run/(2*Math.tan(a/2)); }
-      const x = xOf(k), w = Math.min(cell*0.6, 8);
-      const q = [[yTop - 0.4, zc - run/2], [yTop - 0.4, zc + run/2], [yTop - 0.4 + h, zc]];
-      push(convexPrismXTris(q, x - w/2, x + w/2));
-      push(seg7TrisXZ(String(Math.round(ang)), x, zc - run/2 - 1, lab, yTop));
-    }
-  }
-  return tris;
+  for(let j = 0; j < nLon; j++)
+    out.push(orient([[cx,y0,cz], V(0,j), V(0,j+1)], [0,-1,0]));
+  return out;
 }
-/* КАРТОЧКА ФИЛАМЕНТА (`filcard`) — бирка на катушку, напечатанная ТЕМ ЖЕ пластиком, о котором она
-   рассказывает. В этом весь смысл: цвет и полупрозрачность видно на самой бирке, а не в описании, и
-   рядом стоят несколько быстрых проб, снятых этим же прутком и на этих же настройках.
+/* ОБРАЗЕЦ СКРУГЛЕНИЙ (`radius`) — ряд блоков, у каждого верхняя передняя кромка скруглена своим радиусом.
 
-     прорезь            — под стяжку или крючок, чтобы бирка висела на катушке, а не терялась в ящике.
-     шкала остатка      — риски с подписями. Отмечаете, сколько осталось, — и не взвешиваете каждый раз.
-     проба на нависание — язычок под 45°, самый ходовой угол.
-     проба на мост      — короткий пролёт.
-     стенки             — три ребра в 0.4 / 0.8 / 1.2 мм: тот же пластик тянется по-разному, и вот как.
-     отверстие Ø3       — сколько этот пруток даёт усадки на мелком отверстии.
+   Зачем печатать то, что можно посмотреть в слайсере: скругление — единственная деталь формы, которую
+   принтер огрубляет ДВАЖДЫ, сначала хордами модели, потом ступенями слоёв, и на каком радиусе дуга
+   перестаёт читаться как дуга, зависит от высоты слоя, а не от сетки. Ряд отвечает на это одним взглядом.
 
-   Название пластика бирка на себе НЕ несёт: для надписей у приложения есть общий механизм логотипов,
-   он умеет и текст, и QR, и любую грань. Второй способ писать текст здесь означал бы второй шрифт,
-   вторую разметку и второе место, где это ломается. */
-function buildFilamentCard(p){
-  const cl = (v, lo, hi, d) => { const n = (v==null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); };
-  const W = cl(p.tstFilW, 40, 160, 72);
-  const D = Math.max(28, W*0.62);
-  const t = Math.max(1.2, Math.min(5, cl(p.tstT, 2, 20, 4)*0.5));
-  const lab = Math.max(2, Math.min(3.4, W/24));
-  const yTop = t/2, yB = yTop - 0.4;
-  const holes = [];
-  // Прорезь под стяжку: скруглённое окно у левого края, поперёк — так бирка висит ровно.
-  const slotW = Math.max(6, W*0.12), slotH = Math.max(2.4, t*1.2);
-  holes.push({axis:1, cp:-W/2 + slotW/2 + 3.5, cq:-D/2 + slotH/2 + 3.5, ap:slotW/2, aq:slotH/2, rc:Math.min(slotH, slotW)/2*0.9});
-  holes.push({axis:1, cp:W/2 - 6, cq:D/2 - 6, r:1.5});                     // проба: отверстие Ø3
-  // Сетка около миллиметра: мельче самого мелкого выреза (Ø3 и прорезь), но не мельче нужного.
-  const tris = buildBoxWithHoles(W, t, D, holes, null, Math.max(24, Math.round(Math.max(W, D)/1.0)));
+   Блок сидит в плите на 0.4 мм, и его ВИДИМАЯ высота — ровно r + 4: утопление вычтено при построении, а
+   не забыто, как это было с калибровочным кубом, выходившим 9.6 вместо 10. */
+function buildTestRadius(p){
+  const N = tstCount(p), t = tstPlateT(p), Rmax = tstNum(p.tstRadMax, 2, 24, 16);
+  const R = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const r = Rmax*(k+1)/N;
+    R.push(r); labels.push(fmtNum(+r.toFixed(2))); sizes.push(r + 8); }
+  const row = tstRow(labels, sizes), Dz = 2*Rmax + 6, D = Dz + TST_LAB + 9;
+  const z0 = -D/2, z1 = z0 + Dz;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
   const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const r = R[k], c = row.cols[k], yB = t - 0.4, yT = t + r + 4;
+    const poly = [[yB, z0 + 1], [yB, z1], [yT - r, z1]];
+    const M = Math.max(8, Math.round(r*4));
+    for(let i = 1; i <= M; i++){ const a = (Math.PI/2)*i/M;
+      poly.push([yT - r + r*Math.sin(a), z1 - r + r*Math.cos(a)]); }
+    poly.push([yT, z0 + 1]);
+    push(convexPrismXTris(poly, c.x0 + 1.5, c.x1 - 1.5));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 2, TST_LAB, t));
+  }
+  return tstCenterY(tris);
+}
+/* ОБРАЗЕЦ ФАСОК (`chamfer`) — тот же ряд, но кромка срезана прямой, а не дугой.
 
-  /* Шкала остатка — в ПРОЦЕНТАХ, а не в граммах. Катушки бывают 0.5, 0.75 и 1 кг, и подпись «600»
-     на полукилограммовой врёт. Процент не врёт ни на какой, и единицы к нему не нужно. Пять рисок,
-     подписаны нулевая, средняя и полная. */
-  {
-    const zs = -D/2 + 3, nT = 5, x0 = -W/2 + slotW + 8, x1 = W/2 - 4;
-    for(let k=0;k<nT;k++){
-      const x = x0 + (x1 - x0)*k/(nT-1), long = (k % 2 === 0);
-      push(boxSpanTris(x - 0.4, x + 0.4, yB, yTop + 0.6, zs, zs + (long ? 4.5 : 2.6)));
-      if (long) push(seg7TrisXZ(String(k*25), x, zs + 4.5 + 1 + lab, lab, yTop));
-    }
+   Отдельная модель, а не переключатель у скруглений: сравнивают их именно друг с другом. Фаска печатается
+   чисто почти всегда, скругление того же размера — не всегда, и держать обе пробы рядом на столе стоит
+   больше, чем экономия одной строки в панели. */
+function buildTestChamfer(p){
+  const N = tstCount(p), t = tstPlateT(p), Cmax = tstNum(p.tstChfMax, 1, 16, 8);
+  const C = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const c = Cmax*(k+1)/N;
+    C.push(c); labels.push(fmtNum(+c.toFixed(2))); sizes.push(c + 8); }
+  const row = tstRow(labels, sizes), Dz = 2*Cmax + 6, D = Dz + TST_LAB + 9;
+  const z0 = -D/2, z1 = z0 + Dz;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const ch = C[k], c = row.cols[k], yB = t - 0.4, yT = t + ch + 4;
+    push(convexPrismXTris([[yB, z0+1], [yB, z1], [yT-ch, z1], [yT, z1-ch], [yT, z0+1]],
+                          c.x0 + 1.5, c.x1 - 1.5));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 2, TST_LAB, t));
   }
-  /* Пробы. Стоят в один ряд у верхнего края, каждая своей высоты и своего дела; всё заходит в карту
-     на 0.4 мм, поэтому это перекрытие, а не общие грани. */
-  {
-    const zc = D/2 - 9, xs = -W/2 + slotW + 8, span = (W/2 - 6) - xs;
-    const cellF = span/3;
-    // 1. язычок под 45°: опора и нависающий козырёк
-    { const x = xs + cellF*0.5, w = Math.min(cellF*0.7, 12), h = Math.max(4, D*0.12), run = h;
-      push(boxSpanTris(x - w/2, x + w/2, yB, yB + h, zc - 1, zc + 1));
-      /* Козырёк начинается ВНУТРИ опоры, на 0.4 раньше её грани. Начнись он вровень — вертикальные
-         грани опоры и козырька легли бы в одну плоскость при одном диапазоне X: это общая грань, одно
-         «плохое» ребро на всю деталь, и ищется оно потом счётом направленных рёбер. */
-      push(convexPrismXTris([[yB + h - Math.max(1, t*0.6), zc + 0.6], [yB + h, zc + 0.6],
-                             [yB + h, zc + 1 + run]], x - w/2, x + w/2)); }
-    // 2. мост: две опоры и настил между ними; настил перекрывает опоры, а не садится на них
-    { const x = xs + cellF*1.5, w = Math.min(cellF*0.7, 12), h = Math.max(4, D*0.12), sp = Math.max(8, w);
-      for(const sg of [-1,1]) push(boxSpanTris(x - w/2, x + w/2, yB, yB + h - 0.4, zc + sg*sp/2, zc + sg*(sp/2 + 2.5)));
-      push(boxSpanTris(x - w/2 + 0.3, x + w/2 - 0.3, yB + h - Math.max(1, t*0.5), yB + h,
-                       zc - (sp/2 + 2.5), zc + sp/2 + 2.5)); }
-    // 3. три стенки 0.4 / 0.8 / 1.2 — то, что машина вытягивает одним, двумя и тремя проходами
-    { const x = xs + cellF*2.5, h = Math.max(4, D*0.12), len = Math.min(cellF*0.7, 12);
-      [0.4, 0.8, 1.2].forEach((wall, i) => {
-        const z = zc - 3.5 + i*3.5;
-        push(boxSpanTris(x - len/2, x + len/2, yB, yB + h, z - wall/2, z + wall/2)); }); }
+  return tstCenterY(tris);
+}
+/* ТЕСТ НАВИСАНИЙ (`overhang`) — ряд наклонных пластин, угол считается ОТ ВЕРТИКАЛИ.
+
+   От вертикали, а не от стола, потому что так его называет слайсер: «поддержки при 55°» означает 55° от
+   вертикали. Пластина, а не клин: у клина нижняя грань сходится в лезвие, первый слой которого шириной
+   в ноль, и провалится он у всех — тест перестаёт мерить нависание и начинает мерить лезвие. */
+function buildTestOverhang(p){
+  const N = tstCount(p), t = tstPlateT(p), H = tstFeatH(p);
+  const aMax = tstNum(p.tstAngMax, 40, 85, 80), s = 3;
+  const A = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const a = aMax*(k+1)/N;
+    A.push(a); labels.push(String(Math.round(a))); sizes.push(9); }
+  const row = tstRow(labels, sizes);
+  const runMax = H*Math.tan(aMax*Math.PI/180), D = TST_LAB + 6 + runMax + s + 4;
+  const z0 = -D/2 + TST_LAB + 6;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const c = row.cols[k], run = H*Math.tan(A[k]*Math.PI/180), yB = t - 0.4, yT = yB + H;
+    push(convexPrismXTris([[yB, z0], [yB, z0+s], [yT, z0+run+s], [yT, z0+run]], c.x0 + 1.5, c.x1 - 1.5));
+    push(seg7TrisXZ(labels[k], c.xc, -D/2 + TST_LAB + 2, TST_LAB, t));
   }
-  return tris;
+  return tstCenterY(tris);
+}
+/* ТЕСТ МОСТОВ (`bridge`) — ряд пролётов, каждый следующий длиннее предыдущего.
+
+   Настил НЕ делит грани с опорами: он на 0.4 мм ниже их верха и на 0.3 мм уже с каждой стороны. Общая
+   грань двух замкнутых оболочек — это не «почти то же самое»: `manifoldCheck` считает рёбра
+   НЕНАПРАВЛЕННО и совпадающих граней не видит вовсе, а слайсер видит и оставляет в детали щель. Именно
+   этим болел прежний тест мостов — шесть плохих рёбер на модель. */
+function buildTestBridge(p){
+  const N = tstCount(p), t = tstPlateT(p), hP = tstFeatH(p);
+  const spanMax = tstNum(p.tstSpan, 10, 120, 80), pd = 6, dt = 3;
+  const S = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const s = spanMax*(k+1)/N;
+    S.push(s); labels.push(fmtNum(+s.toFixed(1))); sizes.push(14); }
+  const row = tstRow(labels, sizes);
+  const D = spanMax + 2*pd + 2*(TST_LAB + 5);
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const c = row.cols[k], sp = S[k], xa = c.x0 + 1.5, xb = c.x1 - 1.5;
+    for(const sgn of [-1, 1])
+      push(boxSpanTris(xa, xb, t - 0.4, t + hP, sgn*(sp/2), sgn*(sp/2 + pd)));
+    push(boxSpanTris(xa + 0.3, xb - 0.3, t + hP - 0.4, t + hP + dt, -(sp/2 + pd/2), sp/2 + pd/2));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 2, TST_LAB, t));
+  }
+  return tstCenterY(tris);
+}
+/* КУПОЛА (`sphere`) — ряд полусфер растущего диаметра.
+
+   Купол проверяет ровно то, чего не проверяет ни куб, ни цилиндр: как машина кладёт слой, у которого
+   каждый следующий контур ШИРЕ предыдущего снизу и УЖЕ сверху. Внизу это нависание, вверху — площадка в
+   несколько ниток, и «ступенчатая макушка» на мелких куполах говорит о высоте слоя, а не о сетке. */
+function buildTestSphere(p){
+  const N = tstCount(p), t = tstPlateT(p), Dmax = tstNum(p.tstSphMax, 6, 40, 24);
+  const R = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const d = Dmax*(k+1)/N;
+    R.push(d/2); labels.push(fmtNum(+d.toFixed(2))); sizes.push(d + 4); }
+  const row = tstRow(labels, sizes);
+  const rMax = Dmax/2, D = 2*rMax + 4 + TST_LAB + 9, zc = -D/2 + rMax + 3;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const c = row.cols[k];
+    push(domeYTris(c.xc, zc, R[k], t - 0.4, 48));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 2, TST_LAB, t));
+  }
+  return tstCenterY(tris);
+}
+/* ТЕСТ ПОСАДКИ (`fit`) — ряд отверстий с растущим зазором и ОДИН штырь, который в них пробуют.
+
+   Штырь печатается тут же и стоит в конце ряда: зазор, который нужно знать, — это зазор МЕЖДУ ДВУМЯ
+   ДЕТАЛЯМИ ЭТОЙ МАШИНЫ, и мерить его чужим стальным штифтом значит мерить заодно и точность штифта.
+   Первое отверстие, в которое штырь входит от руки, и есть ваш рабочий зазор.
+
+   Плита строится СРАЗУ С ОТВЕРСТИЯМИ — одним контуром снаружи и по контуру на каждое. Не «плита, из
+   которой вычли цилиндры»: булевой операции здесь нет и не будет, а протяжка многоугольника с дырами
+   даёт точную окружность и герметична по построению. */
+function buildTestFit(p){
+  const N = tstCount(p), t = tstPlateT(p);
+  const gMax = tstNum(p.tstFitMax, 0.2, 1.6, 0.8), pin = tstNum(p.tstFitPin, 3, 12, 6);
+  const G = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const g = gMax*(k+1)/N;
+    G.push(g); labels.push(fmtNum(+g.toFixed(2))); sizes.push(pin + g + 8); }
+  G.push(null); labels.push(fmtNum(pin)); sizes.push(pin + 8);      // последняя станция — сам штырь
+  const row = tstRow(labels, sizes);
+  const D = pin + gMax + 8 + TST_LAB + 9, zc = -D/2 + (pin + gMax)/2 + 4;
+  const rect = [[-row.W/2, -D/2], [row.W/2, -D/2], [row.W/2, D/2], [-row.W/2, D/2]];
+  const holes = [];
+  for(let k = 0; k < N; k++){ const r = (pin + G[k])/2, c = row.cols[k], loop = [];
+    for(let j = 0; j < 64; j++){ const a = 2*Math.PI*j/64;
+      loop.push([c.xc + r*Math.cos(a), zc + r*Math.sin(a)]); }
+    holes.push(loop); }
+  const tris = extrudePolyYTris([rect].concat(holes), 0, t);
+  const push = a => { for(const T of a) tris.push(T); };
+  const last = row.cols[N];
+  push(discYTris(last.xc, zc, pin/2, t - 0.4, t + Math.max(10, pin*2), 64));
+  for(let k = 0; k <= N; k++)
+    push(seg7TrisXZ(labels[k], row.cols[k].xc, D/2 - 2, TST_LAB, t));
+  return tstCenterY(tris);
+}
+/* БАШНЯ ДИАМЕТРОВ (`tower`) — стопка цилиндров, снизу самый крупный, сверху самый мелкий.
+
+   Одной деталью меряется то, ради чего иначе печатают восемь: насколько диаметр отпечатка отличается от
+   заданного и МЕНЯЕТСЯ ЛИ эта разница с размером. Она меняется — сжатие первого периметра постоянно в
+   миллиметрах, а не в процентах, — и башня показывает это штангенциркулем за минуту.
+
+   Подписей на башне нет намеренно: ступень шириной 2.5 мм несёт цифру только в ущерб самой ступени, а
+   ступени здесь и есть измеряемое. Диаметры идут ровными долями от верхнего к нижнему.
+
+   Соседние ступени ПЕРЕКРЫВАЮТСЯ на 0.4 мм по высоте. Поставленные встык, они делили бы кольцевую грань,
+   и деталь читалась бы герметичной, оставаясь склеенной из двух поверхностей в одной плоскости. */
+function buildTestTower(p){
+  const N = tstCount(p), t = tstPlateT(p), hL = tstFeatH(p);
+  const dLo = tstNum(p.tstTowMin, 2, 40, 5);
+  const dHi = Math.max(dLo + 2, tstNum(p.tstTowMax, 5, 80, 40));
+  const tris = discYTris(0, 0, dHi/2 + 3, 0, t, 96);
+  const push = a => { for(const T of a) tris.push(T); };
+  let y = t - 0.4;
+  for(let k = 0; k < N; k++){
+    const r = (dHi - (dHi - dLo)*k/(N - 1))/2;
+    push(discYTris(0, 0, r, y, y + hL + (k === N-1 ? 0 : 0.4), 96));
+    y += hL;
+  }
+  return tstCenterY(tris);
+}
+/* ПРОВЕРКА РАЗМЕРОВ (`dim`) — два ряда: кубы сзади, цилиндры того же размера спереди.
+
+   Пара «куб + цилиндр» одного номинала стоит рядом не для красоты. Куб меряется по плоским граням и
+   показывает ошибку периметра; цилиндр меряется по касательной и показывает её же ПЛЮС хордовую
+   погрешность круга. Разница между двумя замерами одного номинала — это и есть вклад дискретизации, и
+   увидеть его можно только так.
+
+   Высота обеих фигур над плитой РОВНО номинальная: утопление 0.4 мм прибавлено к верху, а не съедено
+   из него. */
+function buildTestDim(p){
+  const N = tstCount(p), t = tstPlateT(p);
+  const dLo = tstNum(p.tstDimMin, 3, 30, 5);
+  const dHi = Math.max(dLo + 2, tstNum(p.tstDimMax, 5, 60, 19));
+  const S = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const s = dLo + (dHi - dLo)*k/(N - 1);
+    S.push(s); labels.push(fmtNum(+s.toFixed(2))); sizes.push(s + 3); }
+  const row = tstRow(labels, sizes);
+  const D = 2*dHi + TST_LAB + 12, zA = -D/2 + 3 + dHi/2, zB = zA + dHi + 4;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const s = S[k], c = row.cols[k];
+    push(boxSpanTris(c.xc - s/2, c.xc + s/2, t - 0.4, t + s, zA - s/2, zA + s/2));
+    push(discYTris(c.xc, zB, s/2, t - 0.4, t + s, 96));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 3, TST_LAB, t));
+  }
+  return tstCenterY(tris);
+}
+/* ТОНКИЕ СТЕНКИ (`wall`) — ряд перегородок растущей толщины.
+
+   Меряет не принтер, а СЛАЙСЕР: стенка тоньше нитки либо выбрасывается из печати молча, либо
+   вытягивается до ширины сопла, и какой из двух вариантов у вас — видно только на отпечатке. Ряд от
+   заведомо непечатаемой до заведомо печатаемой показывает, где именно проходит эта граница у вашей
+   связки «сопло + слайсер», и она почти никогда не равна диаметру сопла. */
+function buildTestWall(p){
+  const N = tstCount(p), t = tstPlateT(p), H = tstFeatH(p);
+  const wMax = tstNum(p.tstWallMax, 0.4, 4, 1.6), Lz = 15;
+  const W = [], labels = [], sizes = [];
+  for(let k = 0; k < N; k++){ const w = wMax*(k+1)/N;
+    W.push(w); labels.push(fmtNum(+w.toFixed(2))); sizes.push(w + 2); }
+  const row = tstRow(labels, sizes, 2);
+  const D = Lz + TST_LAB + 10, zc = -D/2 + Lz/2 + 2;
+  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const push = a => { for(const T of a) tris.push(T); };
+  for(let k = 0; k < N; k++){
+    const w = W[k], c = row.cols[k];
+    push(boxSpanTris(c.xc - w/2, c.xc + w/2, t - 0.4, t + H, zc - Lz/2, zc + Lz/2));
+    push(seg7TrisXZ(labels[k], c.xc, D/2 - 2, TST_LAB, t));
+  }
+  return tstCenterY(tris);
 }
 /* Одна дверь во все тесты печати. Разновидность выбирает `tstMode`, и никакой другой ключ на это не
-   влияет: до v18.0.0 три калибровки висели на `mntMode` вперемешку с кронштейнами, и вопрос «печатаем
-   деталь или меряем принтер» решался перебором двадцати значений одного поля. */
+   влияет: до v18.0.0 калибровки висели на `mntMode` вперемешку с кронштейнами, и вопрос «печатаем деталь
+   или меряем принтер» решался перебором двадцати значений одного поля. */
 function buildTestPrint(p){
   switch (p.tstMode) {
-    case 'temptower':  return buildCalTower(p);
-    case 'bridgetest': return buildBridgeTest(p);
-    case 'retract':    return buildRetractTest(p);
-    case 'allinone':   return buildAllInOneTest(p);
-    case 'toolcard':   return buildToolCard(p);
-    case 'filcard':    return buildFilamentCard(p);
+    case 'ruler':    return buildTestRuler(p);
+    case 'radius':   return buildTestRadius(p);
+    case 'chamfer':  return buildTestChamfer(p);
+    case 'overhang': return buildTestOverhang(p);
+    case 'bridge':   return buildTestBridge(p);
+    case 'sphere':   return buildTestSphere(p);
+    case 'fit':      return buildTestFit(p);
+    case 'tower':    return buildTestTower(p);
+    case 'dim':      return buildTestDim(p);
+    case 'wall':     return buildTestWall(p);
   }
   return [];
 }
@@ -18387,7 +18360,9 @@ function activeShapeLabel() {
   if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
   if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
   if (p.tstMode && p.tstMode !== 'none') return 'тест печати: ' +
-    ({temptower:'температурная башня', bridgetest:'мосты + нависания', retract:'ретракт'})[p.tstMode];
+    ({ruler:'линейка', radius:'скругления', chamfer:'фаски', overhang:'нависания', bridge:'мосты',
+      sphere:'купола', fit:'посадка', tower:'башня диаметров', dim:'проверка размеров',
+      wall:'тонкие стенки'})[p.tstMode];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
     return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +
@@ -19465,13 +19440,24 @@ function restoreDieFromDef(ad) {
 function migrateLegacyParams(mp){
   if (!mp) return mp;
   if (mp.rim) { mp.hollow = true; mp.cavityDepth = mp.rimHeight || 8; mp.rim = false; }   // legacy «борт»
+  const move = (from, to) => { if (mp[from] != null && mp[to] === undefined) mp[to] = mp[from]; };
   const CAL = {temptower:1, bridgetest:1, retract:1};
   if (CAL[mp.mntMode]) {
     mp.tstMode = mp.mntMode; mp.mntMode = 'none';
-    const move = (from, to) => { if (mp[from] != null && mp[to] === undefined) mp[to] = mp[from]; };
-    move('mntCalN', 'tstSegN'); move('mntCalH', 'tstSegH');
-    move('mntBrSpan', 'tstSpan'); move('mntRetGap', 'tstRetGap');
-    move('mntW', 'tstW'); move('mntT', 'tstT');
+    move('mntCalN', 'tstN'); move('mntCalH', 'tstH');
+    move('mntBrSpan', 'tstSpan'); move('mntT', 'tstT');
+  }
+  /* v18.5.0: старый набор тестов заменён целиком. Прежние шесть образцов сняты (они остались на ветке
+     `backup/test-models-v18.4.2`), и конфиг, который на них ссылается, воспроизвести НЕЛЬЗЯ — выбор
+     здесь только между пустой моделью и ближайшим уцелевшим образцом. Пустая хуже: человек видит
+     «ничего не построилось» и решает, что испорчен файл, тогда как испорчена ссылка. Поэтому ближайший,
+     и плитка сразу показывает, какой именно выбран. Точных соответствий два — мосты и мерительная
+     карточка; остальные четыре честно приблизительны. */
+  const GONE = {temptower:'tower', bridgetest:'bridge', retract:'tower',
+                allinone:'dim', toolcard:'fit', filcard:'ruler'};
+  if (GONE[mp.tstMode]) {
+    mp.tstMode = GONE[mp.tstMode];
+    move('tstSegN', 'tstN'); move('tstSegH', 'tstH');
   }
   return mp;
 }

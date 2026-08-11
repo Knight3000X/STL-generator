@@ -1,196 +1,473 @@
-// Тесты печати (базовая форма «Тесты», v18.0.0): температурная башня, тест мостов и нависаний, тест
-// ретракта — через НАСТОЯЩИЙ buildTrisForShape.
+// Тесты печати (базовая форма «Тесты») — через НАСТОЯЩИЙ buildTrisForShape.
 //
-// До v18.0.0 все три жили в «Крепеже» на `mntMode`, среди кронштейнов и холдеров. Разделение по существу:
-// крепёж — деталь, которую ставят в изделие, а калибровочный образец меряет ПРИНТЕР и в изделие не идёт.
-// Ключи переименованы из `mnt*` в `tst*`; перенос старых конфигов проверяется здесь же.
-// (Далее — исходный заголовок.) These models exist to be MEASURED off the bed, so the tests
-// measure them off the mesh — segment heights, tick counts, bridge spans, overhang angles, tower taper.
+// v18.5.0: прежние шесть образцов сняты целиком (они остались на ветке `backup/test-models-v18.4.2`) и
+// заменены пулом из десяти. Файл переписан под него.
+//
+// Эти детали существуют, ЧТОБЫ ИХ МЕРИЛИ, поэтому здесь меряют их самих: радиус скругления читается со
+// скруглённой кромки, угол нависания — с нависающей грани, диаметр отверстия — с отверстия. Ни одна
+// проверка не спрашивает строителя, что он собирался построить: величина берётся из сетки и сравнивается
+// с подписанной. Так поймалась мерительная карточка, у которой все клинья выходили с одним углом при
+// разных подписях, и температурная башня, у которой куб выходил 9.6 вместо 10.
+//
+// Две вещи меряются здесь потому, что герметичность их не видит:
+//   • СОВПАДАЮЩИЕ ГРАНИ. `manifoldCheck` ключует рёбра НЕНАПРАВЛЕННО и склейку двух оболочек по общей
+//     грани принимает за норму. Ловит её счёт НАПРАВЛЕННЫХ рёбер: в замкнутой согласованно
+//     ориентированной сетке каждое направленное ребро встречается ровно один раз.
+//   • НАЛОЖЕНИЕ ПОДПИСЕЙ. Цифры, наехавшие друг на друга, оставляют деталь герметичной и печатаются как
+//     каша. Проверяется просветом: между соседними станциями в полосе подписей обязан быть пустой зазор.
+//
 // Run via ./run-all.sh.
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
-function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
-  Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
-    tstMode:'temptower', tstSegN:5, tstSegH:12, tstW:30, tstT:4, tstSpan:50, tstRetGap:35, mntMode:'none',
-    fnOn:false,pbPart:'none',woBack:'none',hookMount:'none',gearMode:'none',pipMode:'none',psOn:false,
-    threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
-    scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
-  return buildTrisForShape('box',paramState.box); }
 
-const uniq=a=>a.filter((v,i)=>i===0||v-a[i-1]>1e-6);
-function hitsX(tris,y,z){const xs=[];for(const T of tris){const[a,b,c]=T;
- const d1=(b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]);const d2=(c[1]-b[1])*(z-b[2])-(c[2]-b[2])*(y-b[1]);const d3=(a[1]-c[1])*(z-c[2])-(a[2]-c[2])*(y-c[1]);
- if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0)))continue;
- const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);if(Math.abs(A)<1e-12)continue;
- const w1=((b[1]-y)*(c[2]-z)-(b[2]-z)*(c[1]-y))/A,w2=((c[1]-y)*(a[2]-z)-(c[2]-z)*(a[1]-y))/A;
- xs.push(w1*a[0]+w2*b[0]+(1-w1-w2)*c[0]);}return xs.sort((u,v)=>u-v);}
-// De-duplicated only where distinct POSITIONS are wanted; parity counting needs every crossing, including
-// the two a shared edge legitimately produces.
-const hitsXu=(t,y,z)=>uniq(hitsX(t,y,z));
-// A horizontal section's closed loops: the outline plus one per through-window.
-function sectionLoops(tris, y){
-  const segs=[];
-  for(const T of tris){ const pts=[];
-    for(let k=0;k<3;k++){ const A=T[k], B=T[(k+1)%3];
-      if((A[1]-y)*(B[1]-y)<0){ const t=(y-A[1])/(B[1]-A[1]);
-        pts.push([A[0]+(B[0]-A[0])*t, A[2]+(B[2]-A[2])*t]); } }
-    if(pts.length===2) segs.push(pts); }
-  const key=q=>q.map(c=>Math.round(c*1e3)).join(',');
-  const par=new Map(), find=a=>{ while(par.get(a)!==a){ par.set(a,par.get(par.get(a))); a=par.get(a);} return a; };
-  const add=q=>{ const k=key(q); if(!par.has(k)) par.set(k,k); return k; };
-  for(const sg of segs){ const a=find(add(sg[0])), b=find(add(sg[1])); if(a!==b) par.set(b,a); }
-  const roots=new Set(); for(const k of par.keys()) roots.add(find(k));
-  return roots.size;
+const MODES = ['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'];
+function build(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  Object.assign(paramState.box, defaultBoxParams(), ov);
+  return buildTrisForShape('box', paramState.box); }
+
+// Направленные рёбра: каждое ровно один раз, иначе две оболочки делят грань или треугольник вывернут.
+function dupDirected(tris){
+  const m = new Map(), K = v => v[0].toFixed(4)+','+v[1].toFixed(4)+','+v[2].toFixed(4);
+  let bad = 0;
+  for(const T of tris) for(let i=0;i<3;i++){ const k = K(T[i])+'|'+K(T[(i+1)%3]); m.set(k, (m.get(k)||0)+1); }
+  for(const n of m.values()) if(n > 1) bad++;
+  return bad;
 }
-
-console.log('=== watertight across every knob ===');
-for(const m of ['temptower','bridgetest','retract'])
-  for(const n of [3,5,8,10])
-    for(const H of [5,12,60])
-      for(const W of [10,30,300]){
-        const t=base({mntMode:m,tstSegN:n,tstSegH:H,tstW:W}), mc=manifoldCheck(t,4);
-        chk(m+' n'+n+' H'+H+' W'+W+' watertight (+vol)', mc.watertight&&vol(t)>0,
-            {open:mc.openEdges,bad:mc.badEdges});
-      }
-for(const ov of [{tstMode:'bridgetest',tstSpan:10},{tstMode:'bridgetest',tstSpan:120},
-                 {tstMode:'retract',tstRetGap:10},{tstMode:'retract',tstRetGap:150},
-                 {tstMode:'temptower',tstT:20},{tstMode:'bridgetest',tstT:2},
-                 {tstMode:'retract',tstW:10,tstSegH:5},{tstMode:'temptower',tstSegN:10,tstSegH:60}]){
-  const t=base(ov), mc=manifoldCheck(t,4);
-  chk('extreme '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
-}
-
-console.log('=== temperature tower: the segments are countable and each one tests something ===');
-{ const H=12, n=5, W=30, t=base({tstMode:'temptower',tstSegN:n,tstSegH:H,tstW:W});
-  const B=computeBBox(t), y0=B.minY;
-  chk('height = segments × segment height', Math.abs((B.maxY-B.minY)-n*H)<0.05, {y:+(B.maxY-B.minY).toFixed(2)});
-  const widths=[];
-  for(let k=0;k<n;k++){ const xs=hitsXu(t, y0+k*H+H*0.15, 0);
-    widths.push(xs.length>=2 ? xs[xs.length-1]-xs[0] : NaN); }
-  chk('every segment steps in, so the boundary is visible',
-      widths.every((w,i)=>i===0 || w < widths[i-1]-0.5), widths.map(v=>+v.toFixed(2)));
-  chk('and the bottom one is the width asked for', Math.abs(widths[0]-W)<0.05, {w:+widths[0].toFixed(2)});
-  for(let k=0;k<n;k++){
-    const xs=hitsXu(t, y0+k*H+H*0.7, -( (B.maxZ-B.minZ)/2 )+0.2 - 0.6);
-    chk('segment '+(k+1)+' wears '+(k+1)+' count marks', xs.length===2*(k+1), {got:xs.length/2, want:k+1});
+// Треугольники, чья проекция на XZ может накрыть точку с этой z / этим y — сузить перебор один раз на скан.
+const byZ = (t,z) => t.filter(T => Math.min(T[0][2],T[1][2],T[2][2]) <= z && Math.max(T[0][2],T[1][2],T[2][2]) >= z);
+const byY = (t,y) => t.filter(T => Math.min(T[0][1],T[1][1],T[2][1]) <= y && Math.max(T[0][1],T[1][1],T[2][1]) >= y);
+const EMPTY = -1e8;
+// Высота верхней поверхности в столбике (x,z). Пусто (сквозная дыра / вне детали) — вернёт EMPTY-меньше.
+function topOf(sub, x, z){ let hi = -1e9;
+  for(const T of sub){ const A=T[0],B=T[1],C=T[2];
+    const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
+    const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
+    const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar)<1e-12) continue;
+    const w1=((B[0]-x)*(C[2]-z)-(B[2]-z)*(C[0]-x))/ar, w2=((C[0]-x)*(A[2]-z)-(C[2]-z)*(A[0]-x))/ar;
+    hi = Math.max(hi, w1*A[1]+w2*B[1]+(1-w1-w2)*C[1]); }
+  return hi; }
+// Пересечения луча вдоль X с оболочкой в точке (y,z) — для замеров ВНУТРИ детали, куда взгляд сверху не достаёт.
+function hitsX(sub, y, z){ const xs=[];
+  for(const T of sub){ const A=T[0],B=T[1],C=T[2];
+    const d1=(B[1]-A[1])*(z-A[2])-(B[2]-A[2])*(y-A[1]);
+    const d2=(C[1]-B[1])*(z-B[2])-(C[2]-B[2])*(y-B[1]);
+    const d3=(A[1]-C[1])*(z-C[2])-(A[2]-C[2])*(y-C[1]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const ar=(B[1]-A[1])*(C[2]-A[2])-(B[2]-A[2])*(C[1]-A[1]); if(Math.abs(ar)<1e-12) continue;
+    const w1=((B[1]-y)*(C[2]-z)-(B[2]-z)*(C[1]-y))/ar, w2=((C[1]-y)*(A[2]-z)-(C[2]-z)*(A[1]-y))/ar;
+    xs.push(w1*A[0]+w2*B[0]+(1-w1-w2)*C[0]); }
+  return xs.sort((u,v)=>u-v); }
+// Где вдоль X в полосе z стоит материал выше `yMin`: списком отрезков. Так СТАНЦИИ НАХОДЯТСЯ, а не
+// вычисляются по формуле раскладки: тест не должен повторять арифметику, которую проверяет.
+function runsX(tris, z, yMin, b, step){
+  const sub = byZ(tris, z), out = [], st = step || 0.05;
+  let inR = false, x0 = 0, prev = 0;
+  for(let x = b.minX; x <= b.maxX; x += st){
+    const solid = topOf(sub, x, z) > yMin;
+    if(solid && !inR){ x0 = x; inR = true; }
+    if(!solid && inR){ out.push([x0, prev]); inR = false; }
+    prev = x;
   }
-  for(let k=0;k<n;k++)
-    chk('segment '+(k+1)+' has a bridged window', sectionLoops(t, y0+k*H+H*0.42)===2,
-        {loops:sectionLoops(t, y0+k*H+H*0.42)});
+  if(inR) out.push([x0, b.maxX]);
+  return out;
 }
-{ const a=computeBBox(base({tstMode:'temptower',tstSegN:4})), b=computeBBox(base({tstMode:'temptower',tstSegN:9}));
-  chk('more segments → taller tower', (b.maxY-b.minY) > (a.maxY-a.minY)+50,
-      {a:+(a.maxY-a.minY).toFixed(0), b:+(b.maxY-b.minY).toFixed(0)}); }
+/* Станции по ВЕРШИНАМ выше `yMin`. Нужно там, где скан сверху не годится: стенка в 0.2 мм тоньше любого
+   разумного шага, а наклонная пластина у общей для всех глубины ещё утоплена в плите. Подписи в выборку
+   не попадают — они не поднимаются выше 0.6 мм над плитой.
 
-console.log('=== bridge / overhang: the spans and the angles are the ones printed on the tin ===');
-{ const n=5, span=50, t=base({tstMode:'bridgetest',tstSegN:n,tstSpan:span,tstSegH:12,tstW:30,tstT:4});
-  const B=computeBBox(t), W=Math.min(30,40)*0.5, pitch=W+6;
-  const xAt=k=>-(n-1)*pitch/2 + k*pitch;
-  const got=[];
-  for(let k=0;k<n;k++){
-    const y=B.minY+4+6;                        // between the base and the deck: only the piers are here
-    // read the clear span under the deck by walking z and testing solidity
-    let runs=[], inside=false, start=0;
-    for(let i=0;i<=1600;i++){ const z=B.minZ+(B.maxZ-B.minZ)*i/1600;
-      const xs=hitsX(t, y, z), x=xAt(k);
-      let cross=0; for(const v of xs) if(v<x) cross++;
-      const solid=(cross%2)===1;
-      if(solid && !inside){ start=z; inside=true; }
-      if(!solid && inside){ runs.push([start,z]); inside=false; } }
-    if(inside) runs.push([start,B.maxZ]);
-    const piers=runs.filter(r=>r[1]-r[0]>1);
-    got.push(piers.length>=2 ? piers[1][0]-piers[0][1] : NaN);
+   Границы берутся ПАРАМИ подряд, а не разрывами: у прямой стенки и у наклонной пластины ровно две
+   плоскости по X, и разрыв ВНУТРИ станции (её толщина) у одних моделей больше, а у других меньше
+   разрыва МЕЖДУ станциями — порога, который развёл бы и то и другое, не существует. Пар выходит ровно
+   столько, сколько станций, и это заодно проверка: лишняя плоскость сразу собьёт счёт. */
+function spansX(tris, yMin){
+  const all = [];
+  for(const T of tris) for(const v of T) if(v[1] > yMin) all.push(v[0]);
+  all.sort((a, b) => a - b);
+  const u = []; for(const x of all) if(!u.length || x - u[u.length-1] > 1e-6) u.push(x);
+  const pairs = []; for(let i = 0; i + 1 < u.length; i += 2) pairs.push([u[i], u[i+1]]);
+  return {planes:u.length, pairs:pairs};
+}
+// Просвет между соседними подписями: если цифры наехали друг на друга, пустого места между станциями нет.
+function labelsClear(tris, zLab, yMin, centres, b){
+  const sub = byZ(tris, zLab);
+  for(let k = 1; k < centres.length; k++){
+    let gap = 0, best = 0;
+    for(let x = centres[k-1]; x <= centres[k]; x += 0.05){
+      if(topOf(sub, x, zLab) > yMin){ gap = 0; } else { gap += 0.05; if(gap > best) best = gap; }
+    }
+    if(best < 0.5) return {between:k-1, clear:+best.toFixed(2)};
   }
-  chk('the spans grow linearly to the maximum asked for',
-      got.every((s,i)=>Math.abs(s-span*(i+1)/n)<0.6), got.map(v=>+v.toFixed(1)));
-  chk('and the widest really is tstSpan', Math.abs(got[n-1]-span)<0.6, {got:+got[n-1].toFixed(2)});
+  return null;
 }
-{ const n=5, t=base({tstMode:'bridgetest',tstSegN:n,tstSpan:50,tstSegH:12,tstW:30,tstT:4});
-  const B=computeBBox(t), W=Math.min(30,40)*0.5, pitch=W+6, xAt=k=>-(n-1)*pitch/2 + k*pitch;
-  const angles=[];
-  for(let k=0;k<n;k++){
-    // The fin is a prism: its underside runs between exactly two Z stations. Take the lowest vertex at
-    // each and the angle from vertical is atan(run / rise).
-    const zs=new Map();                                    // the fin is narrower than its pier, so this
-    for(const T of t) for(const v of T){                   // slot contains the fin and nothing else
-      if(Math.abs(v[0]-xAt(k)) > W/2-0.3) continue;
-      if(v[1] < B.minY+5) continue;                        // above the base
-      const zk=Math.round(v[2]*100);
-      if(!zs.has(zk) || v[1]<zs.get(zk)) zs.set(zk, v[1]); }
-    const keys=[...zs.keys()].sort((a,b)=>a-b);
-    if(keys.length<2){ angles.push(NaN); continue; }
-    const z0=keys[0]/100, z1=keys[keys.length-1]/100, y0=zs.get(keys[0]), y1=zs.get(keys[keys.length-1]);
-    angles.push(Math.atan2(z1-z0, y1-y0)*180/Math.PI);
+
+console.log('=== все десять образцов герметичны и не склеены по граням ===');
+for(const m of MODES)
+  for(const n of [3, 8, 14]){
+    const t = build({tstMode:m, tstN:n}), mc = manifoldCheck(t, 4);
+    chk(m+' N='+n+': герметичен, объём положителен', mc.watertight && vol(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges, vol:+vol(t).toFixed(1)});
+    chk(m+' N='+n+': ни одного дублирующегося направленного ребра', dupDirected(t) === 0, dupDirected(t));
   }
-  chk('the overhang angles sweep 30° → 80° from vertical',
-      Math.abs(angles[0]-30)<6 && Math.abs(angles[n-1]-80)<6 &&
-      angles.every((v,i)=>i===0||v>angles[i-1]), angles.map(v=>+v.toFixed(1)));
+/* Крайние положения КАЖДОЙ собственной ручки. Умолчания подобраны так, чтобы доли выходили круглыми, и
+   именно поэтому проверять надо не их: ошибка раскладки прячется на границах диапазона, где фигура шире
+   подписи или наоборот. */
+for(const ov of [{tstMode:'ruler',tstRulerL:50},{tstMode:'ruler',tstRulerL:300},
+                 {tstMode:'radius',tstRadMax:2},{tstMode:'radius',tstRadMax:24},
+                 {tstMode:'chamfer',tstChfMax:1},{tstMode:'chamfer',tstChfMax:16},
+                 {tstMode:'overhang',tstAngMax:40},{tstMode:'overhang',tstAngMax:85,tstH:40},
+                 {tstMode:'bridge',tstSpan:10},{tstMode:'bridge',tstSpan:120,tstH:5},
+                 {tstMode:'sphere',tstSphMax:6},{tstMode:'sphere',tstSphMax:40},
+                 {tstMode:'fit',tstFitMax:0.2,tstFitPin:3},{tstMode:'fit',tstFitMax:1.6,tstFitPin:12},
+                 {tstMode:'tower',tstTowMin:2,tstTowMax:5},{tstMode:'tower',tstTowMin:39,tstTowMax:80},
+                 {tstMode:'dim',tstDimMin:3,tstDimMax:5},{tstMode:'dim',tstDimMin:30,tstDimMax:60},
+                 {tstMode:'wall',tstWallMax:0.4},{tstMode:'wall',tstWallMax:4,tstH:40},
+                 {tstMode:'wall',tstT:2},{tstMode:'dim',tstT:20}]){
+  const t = build(ov), mc = manifoldCheck(t, 4);
+  chk('край '+JSON.stringify(ov)+': герметичен', mc.watertight && vol(t) > 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  chk('край '+JSON.stringify(ov)+': без совпадающих граней', dupDirected(t) === 0, dupDirected(t));
 }
-{ const a=computeBBox(base({tstMode:'bridgetest',tstSpan:20})), b=computeBBox(base({tstMode:'bridgetest',tstSpan:100}));
-  chk('a bigger maximum span makes a deeper model', (b.maxZ-b.minZ) > (a.maxZ-a.minZ)+50,
-      {a:+(a.maxZ-a.minZ).toFixed(0), b:+(b.maxZ-b.minZ).toFixed(0)}); }
 
-console.log('=== retraction: two towers, tapered, the requested distance apart ===');
-{ const gap=35, t=base({tstMode:'retract',tstRetGap:gap,tstSegH:12,tstW:30,tstT:4});
-  const B=computeBBox(t), yBase=B.minY;
-  const xs=hitsXu(t, yBase+8, 0);
-  chk('there are exactly two towers', xs.length===4, {n:xs.length});
-  if(xs.length===4){
-    const c1=(xs[0]+xs[1])/2, c2=(xs[2]+xs[3])/2;
-    chk('their centres are tstRetGap apart', Math.abs((c2-c1)-gap)<0.05, {got:+(c2-c1).toFixed(3)});
-    chk('and they are symmetric about the middle', Math.abs(c1+c2)<0.05, {c1:+c1.toFixed(4),c2:+c2.toFixed(4)});
-  }
-  const wAt=y=>{ const h=hitsXu(t, y, 0); return h.length===4 ? (h[1]-h[0]) : NaN; };
-  const lo=wAt(yBase+6), hi=wAt(B.maxY-4);
-  chk('the towers taper toward the top', hi < lo-1, {bottom:+lo.toFixed(2), top:+hi.toFixed(2)});
-  chk('and taper is the only overhang: the top is never wider', hi <= lo+1e-9, {});
+console.log('=== линейка: длина ровно заданная, риски на своих местах ===');
+for(const L of [50, 200, 300]){
+  const t = build({tstMode:'ruler', tstRulerL:L}), b = computeBBox(t);
+  chk('L='+L+': габарит по X ровно L', Math.abs((b.maxX - b.minX) - L) < 1e-6, +(b.maxX-b.minX).toFixed(4));
 }
-{ const a=computeBBox(base({tstMode:'retract',tstRetGap:15})), b=computeBBox(base({tstMode:'retract',tstRetGap:120}));
-  chk('a wider gap makes a wider model', (b.maxX-b.minX)-(a.maxX-a.minX) > 100,
-      {d:+((b.maxX-b.minX)-(a.maxX-a.minX)).toFixed(1)}); }
-{ const a=computeBBox(base({tstMode:'retract',tstSegH:8})), b=computeBBox(base({tstMode:'retract',tstSegH:40}));
-  chk('the height knob drives the towers', (b.maxY-b.minY) > (a.maxY-a.minY)+80,
-      {a:+(a.maxY-a.minY).toFixed(0), b:+(b.maxY-b.minY).toFixed(0)}); }
-
-/* Соседи по крепежу. `tstMode:'none'` здесь ОБЯЗАТЕЛЕН и не для красоты: базовый набор этого файла
-   включает температурную башню, а форма «Тесты» стоит в dominantMode ВЫШЕ крепежа. Без выключения обе
-   проверки ниже мерили бы башню и проходили бы всегда — холостыми. Ровно это и случилось при переносе,
-   и поймала это единственная строка, которая проверяет ОТСУТСТВИЕ влияния. */
-console.log('=== the new modes do not disturb the old ones ===');
-for(const m of ['lbracket','vesa','boss','tool','pipe','foot','fittest','dovetail']){
-  const t=base({tstMode:'none', mntMode:m}), mc=manifoldCheck(t,4);
-  chk(m+' still watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
-  chk(m+' — это и правда крепёж, а не тест', dominantMode(paramState.box)==='mount', dominantMode(paramState.box));
-}
-{ const a=vol(base({tstMode:'none',mntMode:'fittest',tstSegN:3})),
-        b=vol(base({tstMode:'none',mntMode:'fittest',tstSegN:9}));
-  chk('the calibration-segment knob does nothing to the fit test', Math.abs(a-b)<1e-9, {}); }
-
-/* ПЕРЕНОС СТАРЫХ КОНФИГОВ. Конфиг, сохранённый до v18.0.0, несёт `mntMode:'temptower'` и размеры в
-   ключах `mnt*`. Без переноса он открылся бы КРЕПЕЖОМ без разновидности — пустой моделью, по которой
-   человек решил бы, что файл испорчен. Перенос идёт по СЫРЫМ параметрам, до слияния с умолчаниями:
-   после слияния у новых ключей уже стоят их умолчания, и «пусто ли здесь» ответить нечем. */
-console.log('=== старый конфиг открывается тестом, а не пустым крепежом ===');
 {
-  for(const was of ['temptower','bridgetest','retract']){
-    const raw = {mntMode:was, mntCalN:7, mntCalH:15, mntBrSpan:80, mntRetGap:60, mntW:50, mntT:5};
+  const L = 200, t = build({tstMode:'ruler', tstRulerL:L}), b = computeBBox(t);
+  const yTop = b.maxY - 0.5;                        // риски выступают на 0.5 над планкой
+  const sub = byZ(t, b.minZ + 0.5), xs = [];
+  for(let x = b.minX; x <= b.maxX; x += 0.05) if(topOf(sub, x, b.minZ + 0.5) > yTop + 1e-6) xs.push(x);
+  const runs = []; for(const x of xs){ const l = runs[runs.length-1];
+    if(l && x - l[1] < 0.08) l[1] = x; else runs.push([x, x]); }
+  chk('рисок ровно L+1 (нулевая и последняя — на торцах)', runs.length === L + 1, runs.length);
+  chk('первая риска начинается на нуле', Math.abs(runs[0][0] - b.minX) < 0.06, +(runs[0][0]-b.minX).toFixed(3));
+  chk('последняя кончается на L', Math.abs(runs[runs.length-1][1] - b.maxX) < 0.06,
+      +(b.maxX - runs[runs.length-1][1]).toFixed(3));
+}
+
+console.log('=== скругления: радиус кромки равен подписанному ===');
+{
+  const N = 8, Rmax = 16, t = build({tstMode:'radius', tstN:N, tstRadMax:Rmax}), b = computeBBox(t);
+  const yP = b.minY + 4;                                   // верх плиты при tstT по умолчанию
+  const st = runsX(t, b.minZ + 2, yP + 1, b);
+  chk('станций ровно N', st.length === N, st.length);
+  const centres = st.map(r => (r[0] + r[1])/2);
+  for(let k = 0; k < Math.min(N, st.length); k++){
+    const x = centres[k], want = Rmax*(k+1)/N;
+    // Скан по глубине в столбце станции: где кончается плоский верх и где кончается сам блок.
+    let apex = -1e9, zFlat = -1e9, zFront = -1e9;
+    const col = t.filter(T => Math.min(T[0][0],T[1][0],T[2][0]) <= x && Math.max(T[0][0],T[1][0],T[2][0]) >= x);
+    for(let z = b.minZ; z <= b.maxZ; z += 0.02){ const h = topOf(col, x, z); if(h > apex) apex = h; }
+    for(let z = b.minZ; z <= b.maxZ; z += 0.02){ const h = topOf(col, x, z);
+      if(h > apex - 1e-6) zFlat = z; if(h > yP + 1) zFront = z; }
+    chk('R'+(+want.toFixed(2))+': высота блока — R + 4 над плитой',
+        Math.abs((apex - yP) - (want + 4)) < 0.05, {izm:+(apex-yP).toFixed(3)});
+    chk('R'+(+want.toFixed(2))+': дуга съедает R по глубине',
+        Math.abs((zFront - zFlat) - want) < 0.08, {izm:+(zFront-zFlat).toFixed(3)});
+    /* ...и это ДУГА, а не срез. Проверяется одной точкой — той, где дуга проходит под 45°: у окружности
+       она отстоит от вершины на R·(1−sin45°) = 0.293 R, у прямой фаски того же размера — на 0.707 C.
+       Перепутать их вдвое с лишним нельзя, а «съедено R по глубине» верно для обеих. */
+    const d45 = want*(1 - Math.SQRT1_2), h45 = topOf(col, x, zFront - d45);
+    chk('R'+(+want.toFixed(2))+': кромка — дуга, а не фаска',
+        Math.abs((apex - h45) - d45) < 0.08, {izm:+(apex-h45).toFixed(3), want:+d45.toFixed(3)});
+  }
+  const bad = labelsClear(t, b.maxZ - 3.5, yP + 0.2, centres, b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== фаски: срез равен подписанному ===');
+{
+  const N = 8, Cmax = 8, t = build({tstMode:'chamfer', tstN:N, tstChfMax:Cmax}), b = computeBBox(t);
+  const yP = b.minY + 4;
+  const st = runsX(t, b.minZ + 2, yP + 1, b);
+  chk('станций ровно N', st.length === N, st.length);
+  const centres = st.map(r => (r[0] + r[1])/2);
+  for(let k = 0; k < Math.min(N, st.length); k++){
+    const x = centres[k], want = Cmax*(k+1)/N;
+    const col = t.filter(T => Math.min(T[0][0],T[1][0],T[2][0]) <= x && Math.max(T[0][0],T[1][0],T[2][0]) >= x);
+    let apex = -1e9, zFlat = -1e9, zFront = -1e9;
+    for(let z = b.minZ; z <= b.maxZ; z += 0.02){ const h = topOf(col, x, z); if(h > apex) apex = h; }
+    for(let z = b.minZ; z <= b.maxZ; z += 0.02){ const h = topOf(col, x, z);
+      if(h > apex - 1e-6) zFlat = z; if(h > yP + 1) zFront = z; }
+    chk('C'+(+want.toFixed(2))+': высота блока — C + 4 над плитой',
+        Math.abs((apex - yP) - (want + 4)) < 0.05, {izm:+(apex-yP).toFixed(3)});
+    chk('C'+(+want.toFixed(2))+': срез съедает C по глубине',
+        Math.abs((zFront - zFlat) - want) < 0.05, {izm:+(zFront-zFlat).toFixed(3)});
+    // Фаска — ПРЯМАЯ: на полпути по глубине высота ровно посередине между вершиной и передней кромкой.
+    const hMid = topOf(col, x, zFlat + want/2);
+    chk('C'+(+want.toFixed(2))+': срез прямой, а не дуга',
+        Math.abs(hMid - (apex - want/2)) < 0.03, {izm:+(hMid-apex).toFixed(3), want:+(-want/2).toFixed(3)});
+  }
+  const bad = labelsClear(t, b.maxZ - 3.5, yP + 0.2, centres, b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== нависания: угол от вертикали равен подписанному ===');
+{
+  const N = 8, aMax = 80, H = 12, t = build({tstMode:'overhang', tstN:N, tstAngMax:aMax, tstH:H});
+  const b = computeBBox(t), yP = b.minY + 4;
+  /* Станции ищутся по вершинам ВЫШЕ плиты, а не сканом на одной глубине: пластины наклонены, и общей
+     глубины, где все они стоят на заметной высоте, у них нет. Подписи выше плиты не поднимаются. */
+  const sp = spansX(t, yP + 1);
+  chk('плоскостей ровно 2N — по две на пластину', sp.planes === 2*N, sp.planes);
+  const st = sp.pairs;
+  chk('станций ровно N', st.length === N, st.length);
+  for(let k = 0; k < Math.min(N, st.length); k++){
+    const x = (st[k][0] + st[k][1])/2, want = aMax*(k+1)/N;
+    /* Угол читается ДВУМЯ СЕЧЕНИЯМИ по высоте: у наклонной пластины передняя кромка уезжает по Z
+       линейно, и наклон этого ухода есть tg(угла от вертикали). Так замер ничего не знает ни о том, где
+       строитель поставил основание, ни о толщине пластины — а первая версия строителя как раз выводила
+       вылет из высоты неверно, и все пластины выходили с одним углом при разных подписях. */
+    const zf = yy => { const sub = byY(t, yy); let last = -1e9;
+      for(let z = b.minZ; z <= b.maxZ; z += 0.02){
+        const xs = hitsX(sub, yy, z); let c = 0; for(const v of xs) if(v < x) c++;
+        if(c % 2 === 1) last = z; }
+      return last; };
+    const y1 = yP + 0.25*H, y2 = yP + 0.75*H;
+    const ang = Math.atan2(zf(y2) - zf(y1), y2 - y1)*180/Math.PI;
+    chk(Math.round(want)+'°: измеренный угол совпадает с подписью', Math.abs(ang - want) < 0.5,
+        {izm:+ang.toFixed(2)});
+  }
+  chk('высота пластин над плитой — заданная', Math.abs((b.maxY - yP) - (H - 0.4)) < 1e-6,
+      +(b.maxY - yP).toFixed(4));
+  const bad = labelsClear(t, b.minZ + 2, yP + 0.2, st.map(r=>(r[0]+r[1])/2), b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== мосты: пролёт под настилом равен подписанному ===');
+{
+  const N = 6, spanMax = 60, hP = 12, t = build({tstMode:'bridge', tstN:N, tstSpan:spanMax, tstH:hP});
+  const b = computeBBox(t), yP = b.minY + 4;
+  const st = runsX(t, 0, yP + 1, b);            // настил всегда накрывает середину, а опоры у каждой станции свои
+  chk('станций ровно N', st.length === N, st.length);
+  const yMid = yP + hP/2, sub = byY(t, yMid);            // на этой высоте стоят ТОЛЬКО опоры
+  for(let k = 0; k < Math.min(N, st.length); k++){
+    const x = (st[k][0] + st[k][1])/2, want = spanMax*(k+1)/N;
+    const runs = []; let inR = false, z0 = 0, prev = 0;
+    for(let z = b.minZ; z <= b.maxZ; z += 0.05){
+      const xs = hitsX(sub, yMid, z); let cross = 0; for(const v of xs) if(v < x) cross++;
+      const solid = (cross % 2) === 1;
+      if(solid && !inR){ z0 = z; inR = true; }
+      if(!solid && inR){ runs.push([z0, prev]); inR = false; }
+      prev = z; }
+    if(inR) runs.push([z0, b.maxZ]);
+    const piers = runs.filter(r => r[1] - r[0] > 1);
+    chk('пролёт '+(+want.toFixed(1))+': ровно две опоры', piers.length === 2, piers.length);
+    if(piers.length === 2)
+      chk('пролёт '+(+want.toFixed(1))+': просвет между ними равен подписи',
+          Math.abs((piers[1][0] - piers[0][1]) - want) < 0.12, {izm:+(piers[1][0]-piers[0][1]).toFixed(3)});
+  }
+  const bad = labelsClear(t, b.maxZ - 3.5, yP + 0.2, st.map(r=>(r[0]+r[1])/2), b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== купола: высота и след равны половине и целому подписанного Ø ===');
+{
+  const N = 8, Dmax = 24, t = build({tstMode:'sphere', tstN:N, tstSphMax:Dmax});
+  const b = computeBBox(t), yP = b.minY + 4, zc = b.minZ + Dmax/2 + 3;
+  const st = runsX(t, zc, yP + 0.5, b);
+  chk('станций ровно N', st.length === N, st.length);
+  for(let k = 0; k < Math.min(N, st.length); k++){
+    const x = (st[k][0] + st[k][1])/2, r = Dmax*(k+1)/N/2;
+    const col = t.filter(T => Math.min(T[0][0],T[1][0],T[2][0]) <= x && Math.max(T[0][0],T[1][0],T[2][0]) >= x);
+    let apex = -1e9;
+    for(let z = b.minZ; z <= b.maxZ; z += 0.05){ const h = topOf(col, x, z); if(h > apex) apex = h; }
+    // Купол сидит в плите на 0.4: над её верхом остаётся r − 0.4, и это ровно то, что видно на детали.
+    chk('Ø'+(+(2*r).toFixed(2))+': высота над плитой — r − 0.4', Math.abs((apex - yP) - (r - 0.4)) < 0.03,
+        {izm:+(apex-yP).toFixed(3)});
+    // След купола на плите — полный диаметр: меряется у самого верха плиты, где сечение почти экваториальное.
+    const w = st[k][1] - st[k][0];
+    chk('Ø'+(+(2*r).toFixed(2))+': след близок к полному диаметру', Math.abs(w - 2*r) < 0.9,
+        {izm:+w.toFixed(2)});
+  }
+  const bad = labelsClear(t, b.maxZ - 3.5, yP + 0.2, st.map(r=>(r[0]+r[1])/2), b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== посадка: отверстия сквозные, диаметры равны Ø штыря + зазор ===');
+{
+  const N = 8, gMax = 0.8, pin = 6, t = build({tstMode:'fit', tstN:N, tstFitMax:gMax, tstFitPin:pin});
+  const b = computeBBox(t), yP = b.minY + 4, zc = b.minZ + (pin + gMax)/2 + 4;
+  const sub = byZ(t, zc);
+  // Отверстие — столбик, в котором НЕТ ни одной поверхности: сквозное по определению, не «глубокое».
+  const holes = []; let inH = false, x0 = 0, prev = 0;
+  for(let x = b.minX; x <= b.maxX; x += 0.01){
+    const e = topOf(sub, x, zc) < EMPTY;
+    if(e && !inH){ x0 = x; inH = true; }
+    if(!e && inH){ holes.push([x0, prev]); inH = false; }
+    prev = x; }
+  if(inH) holes.push([x0, b.maxX]);
+  chk('отверстий ровно N и все сквозные', holes.length === N, holes.length);
+  for(let k = 0; k < Math.min(N, holes.length); k++){
+    const want = pin + gMax*(k+1)/N, got = holes[k][1] - holes[k][0];
+    chk('зазор '+(+(gMax*(k+1)/N).toFixed(2))+': Ø отверстия = Ø штыря + зазор',
+        Math.abs(got - want) < 0.06, {izm:+got.toFixed(3), want:+want.toFixed(3)});
+  }
+  chk('диаметры растут строго', holes.every((h,i) => i===0 || (h[1]-h[0]) > (holes[i-1][1]-holes[i-1][0]) + 1e-6));
+  // Штырь стоит отдельной станцией и он ровно Ø штыря — иначе проба меряет не то, что обещает.
+  const posts = runsX(t, zc, yP + 1, b, 0.01);
+  chk('штырь один', posts.length === 1, posts.length);
+  if(posts.length === 1)
+    chk('и он ровно заданного Ø', Math.abs((posts[0][1] - posts[0][0]) - pin) < 0.05,
+        {izm:+(posts[0][1]-posts[0][0]).toFixed(3)});
+  chk('штырь стоит ПОСЛЕ отверстий, а не среди них',
+      posts.length === 1 && posts[0][0] > holes[holes.length-1][1], {pin:posts[0], last:holes[holes.length-1]});
+}
+
+console.log('=== башня: диаметр каждой ступени равен своей доле ===');
+{
+  const N = 8, dLo = 5, dHi = 40, hL = 12;
+  const t = build({tstMode:'tower', tstN:N, tstTowMin:dLo, tstTowMax:dHi, tstH:hL});
+  const b = computeBBox(t), y0 = b.minY + 4 - 0.4;
+  /* Диаметр читается с ВЕРХНЕГО КОЛЬЦА ступени, а не лучом поперёк неё. Луч вдоль X при z = 0 проходит
+     ровно через шов цилиндра — вершину при угле 0 — и считает там то два пересечения, то три, смотря
+     какой треугольник первым признает точку своей. Кольцо однозначно: у ступени k своя плоскость,
+     y = y0 + k·hL + hL + 0.4, и соседи в неё не попадают. */
+  const got = [];
+  for(let k = 0; k < N; k++){
+    const yRing = y0 + (k + 1)*hL + (k === N - 1 ? 0 : 0.4), want = dHi - (dHi - dLo)*k/(N - 1);
+    let lo = 1e9, hi = -1e9;
+    for(const T of t) for(const v of T) if(Math.abs(v[1] - yRing) < 1e-7){
+      if(v[0] < lo) lo = v[0]; if(v[0] > hi) hi = v[0]; }
+    chk('ступень '+(k+1)+': кольцо найдено', hi > lo, {lo:lo, hi:hi});
+    chk('ступень '+(k+1)+': Ø = '+(+want.toFixed(2)), Math.abs((hi - lo) - want) < 0.02,
+        {izm:+(hi-lo).toFixed(3)});
+    got.push(hi - lo);
+  }
+  chk('каждая следующая ступень уже предыдущей', got.every((d,i) => i === 0 || d < got[i-1] - 1e-9),
+      got.map(v => +v.toFixed(2)));
+  chk('высота башни — N ступеней плюс плита', Math.abs((b.maxY - b.minY) - (4 - 0.4 + N*hL)) < 1e-6,
+      +(b.maxY-b.minY).toFixed(3));
+}
+
+console.log('=== проверка размеров: куб и цилиндр ровно номинальные ===');
+{
+  const N = 8, dLo = 5, dHi = 19, t = build({tstMode:'dim', tstN:N, tstDimMin:dLo, tstDimMax:dHi});
+  const b = computeBBox(t), yP = b.minY + 4;
+  const zA = b.minZ + 3 + dHi/2, zB = zA + dHi + 4;
+  const cubes = runsX(t, zA, yP + 0.5, b, 0.01), cyls = runsX(t, zB, yP + 0.5, b, 0.01);
+  chk('кубов ровно N', cubes.length === N, cubes.length);
+  chk('цилиндров ровно N', cyls.length === N, cyls.length);
+  for(let k = 0; k < Math.min(N, cubes.length, cyls.length); k++){
+    const s = dLo + (dHi - dLo)*k/(N - 1);
+    const x = (cubes[k][0] + cubes[k][1])/2;
+    chk(s+' мм: куб — ровно s по X', Math.abs((cubes[k][1]-cubes[k][0]) - s) < 0.02,
+        +(cubes[k][1]-cubes[k][0]).toFixed(3));
+    chk(s+' мм: цилиндр — ровно s по X', Math.abs((cyls[k][1]-cyls[k][0]) - s) < 0.02,
+        +(cyls[k][1]-cyls[k][0]).toFixed(3));
+    /* И РОВНО s НАД ПЛИТОЙ. Фигура утоплена в плиту на 0.4, и если утопление вычесть из верха вместо
+       того, чтобы прибавить, эталон 10 мм выходит 9.6 — герметичный, подписанный и врущий. Так и было. */
+    const col = t.filter(T => Math.min(T[0][0],T[1][0],T[2][0]) <= x && Math.max(T[0][0],T[1][0],T[2][0]) >= x);
+    chk(s+' мм: куб — ровно s НАД плитой', Math.abs((topOf(col, x, zA) - yP) - s) < 0.01,
+        +(topOf(col, x, zA) - yP).toFixed(4));
+    const xc = (cyls[k][0] + cyls[k][1])/2;
+    const col2 = t.filter(T => Math.min(T[0][0],T[1][0],T[2][0]) <= xc && Math.max(T[0][0],T[1][0],T[2][0]) >= xc);
+    chk(s+' мм: цилиндр — ровно s НАД плитой', Math.abs((topOf(col2, xc, zB) - yP) - s) < 0.01,
+        +(topOf(col2, xc, zB) - yP).toFixed(4));
+  }
+  const bad = labelsClear(t, b.maxZ - 4.5, yP + 0.2, cubes.map(r=>(r[0]+r[1])/2), b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== тонкие стенки: толщина равна подписанной, включая 0.2 мм ===');
+{
+  const N = 8, wMax = 1.6, H = 12, t = build({tstMode:'wall', tstN:N, tstWallMax:wMax, tstH:H});
+  const b = computeBBox(t), yP = b.minY + 4;
+  /* Стенка в 0.2 мм тоньше любого разумного шага скана, поэтому меряется ПО ВЕРШИНАМ: всё, что стоит
+     выше плиты, — это стенки (подписи не поднимаются выше 0.6 над её верхом), и разрывы по X делят их. */
+  const sp = spansX(t, yP + 1);
+  chk('плоскостей ровно 2N — по две на стенку', sp.planes === 2*N, sp.planes);
+  const grp = sp.pairs;
+  chk('стенок ровно N', grp.length === N, grp.length);
+  for(let k = 0; k < Math.min(N, grp.length); k++){
+    const want = wMax*(k+1)/N;
+    chk('стенка '+(+want.toFixed(2))+' мм: толщина совпадает', Math.abs((grp[k][1]-grp[k][0]) - want) < 1e-6,
+        +(grp[k][1]-grp[k][0]).toFixed(4));
+  }
+  chk('высота стенок над плитой — заданная', Math.abs((b.maxY - yP) - H) < 1e-6, +(b.maxY-yP).toFixed(4));
+  const bad = labelsClear(t, b.maxZ - 3.5, yP + 0.2, grp.map(r=>(r[0]+r[1])/2), b);
+  chk('подписи не наползают друг на друга', bad === null, bad);
+}
+
+console.log('=== ручки и правда управляют деталью ===');
+{
+  const pairs = [
+    ['radius',  {tstRadMax:4},   {tstRadMax:24},  b => b.maxY - b.minY],
+    ['chamfer', {tstChfMax:2},   {tstChfMax:16},  b => b.maxY - b.minY],
+    ['overhang',{tstAngMax:40},  {tstAngMax:85},  b => b.maxZ - b.minZ],
+    ['bridge',  {tstSpan:20},    {tstSpan:120},   b => b.maxZ - b.minZ],
+    ['sphere',  {tstSphMax:8},   {tstSphMax:40},  b => b.maxY - b.minY],
+    ['fit',     {tstFitPin:3},   {tstFitPin:12},  b => b.maxZ - b.minZ],
+    ['tower',   {tstTowMax:10},  {tstTowMax:80},  b => b.maxX - b.minX],
+    ['dim',     {tstDimMax:8},   {tstDimMax:60},  b => b.maxY - b.minY],
+    ['wall',    {tstH:5},        {tstH:40},       b => b.maxY - b.minY],
+    ['ruler',   {tstRulerL:50},  {tstRulerL:300}, b => b.maxX - b.minX],
+  ];
+  for(const [m, lo, hi, f] of pairs){
+    const a = f(computeBBox(build(Object.assign({tstMode:m}, lo))));
+    const c = f(computeBBox(build(Object.assign({tstMode:m}, hi))));
+    chk(m+': своя ручка меняет деталь', c > a + 1, {lo:+a.toFixed(1), hi:+c.toFixed(1)});
+  }
+  for(const m of MODES){
+    const a = build({tstMode:m, tstN:4}).length, c = build({tstMode:m, tstN:12}).length;
+    chk(m+': число образцов меняет деталь', m === 'ruler' ? a === c : c > a, {n4:a, n12:c});
+  }
+}
+
+/* Соседи по крепежу. `tstMode:'none'` здесь ОБЯЗАТЕЛЕН и не для красоты: форма «Тесты» стоит в
+   dominantMode ВЫШЕ крепежа, и включённый образец накрыл бы обе проверки ниже — они прошли бы всегда,
+   холостыми. Ровно это и случилось при переносе, и поймала это единственная строка, которая проверяет
+   ОТСУТСТВИЕ влияния. */
+console.log('=== тесты не мешают соседям ===');
+for(const m of ['lbracket','vesa','boss','tool','pipe','foot','fittest','dovetail']){
+  const t = build({tstMode:'none', mntMode:m, width:40, height:40, depth:40}), mc = manifoldCheck(t, 4);
+  chk(m+' по-прежнему герметичен', mc.watertight && vol(t) > 0, {open:mc.openEdges, bad:mc.badEdges});
+  chk(m+' — это крепёж, а не тест', dominantMode(paramState.box) === 'mount', dominantMode(paramState.box));
+}
+{ const a = vol(build({tstMode:'none', mntMode:'fittest', tstN:3})),
+        b = vol(build({tstMode:'none', mntMode:'fittest', tstN:12}));
+  chk('число образцов теста ничего не делает с калибровкой крепежа', Math.abs(a - b) < 1e-9, {a, b}); }
+
+/* ПЕРЕНОС СТАРЫХ КОНФИГОВ. Два поколения сразу. Конфиг до v18.0.0 несёт `mntMode:'temptower'` и размеры в
+   ключах `mnt*`; конфиг v18.0.0…v18.4.2 несёт `tstMode` со снятой разновидностью. Ни ту, ни другую
+   воспроизвести нельзя — образцы сняты, — но открыться ПУСТОЙ моделью хуже всего: человек решает, что
+   испорчен файл. Перенос идёт по СЫРЫМ параметрам, до слияния с умолчаниями: после слияния у новых
+   ключей уже стоят их умолчания, и «пусто ли здесь» ответить нечем. */
+console.log('=== старый конфиг открывается настоящим тестом, а не пустотой ===');
+{
+  const NEAR = {temptower:'tower', bridgetest:'bridge', retract:'tower',
+                allinone:'dim', toolcard:'fit', filcard:'ruler'};
+  for(const was in NEAR){
+    const raw = {tstMode:was, tstSegN:7, tstSegH:15, tstSpan:80, tstT:5};
     const mp = Object.assign(defaultBoxParams(), migrateLegacyParams(raw));
-    chk(was+': разновидность перенесена', mp.tstMode === was, {tstMode:mp.tstMode, mntMode:mp.mntMode});
-    chk(was+': крепёж выключен', mp.mntMode === 'none', mp.mntMode);
-    chk(was+': размеры перенесены', mp.tstSegN === 7 && mp.tstSegH === 15 && mp.tstSpan === 80 &&
-        mp.tstRetGap === 60 && mp.tstW === 50 && mp.tstT === 5,
-        {n:mp.tstSegN, h:mp.tstSegH, span:mp.tstSpan, gap:mp.tstRetGap, w:mp.tstW, t:mp.tstT});
-    chk(was+': и открывается формой «Тесты»', dominantMode(mp) === 'test', dominantMode(mp));
+    chk(was+' → '+NEAR[was], mp.tstMode === NEAR[was], mp.tstMode);
+    chk(was+': размеры перенесены', mp.tstN === 7 && mp.tstH === 15 && mp.tstT === 5,
+        {n:mp.tstN, h:mp.tstH, t:mp.tstT});
+    chk(was+': открывается формой «Тесты»', dominantMode(mp) === 'test', dominantMode(mp));
     logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
     Object.assign(paramState.box, mp);
     const t = buildTrisForShape('box', paramState.box);
     chk(was+': и это настоящая деталь, а не пустой список',
-        t.length > 100 && manifoldCheck(t,4).watertight, t.length);
+        t.length > 100 && manifoldCheck(t, 4).watertight, t.length);
+  }
+  for(const was of ['temptower','bridgetest','retract']){
+    const raw = {mntMode:was, mntCalN:6, mntCalH:20, mntBrSpan:90, mntT:6};
+    const mp = Object.assign(defaultBoxParams(), migrateLegacyParams(raw));
+    chk('крепёж '+was+': уехал в тесты', mp.tstMode === NEAR[was] && mp.mntMode === 'none',
+        {tst:mp.tstMode, mnt:mp.mntMode});
+    chk('крепёж '+was+': размеры перенесены', mp.tstN === 6 && mp.tstH === 20 && mp.tstSpan === 90 && mp.tstT === 6,
+        {n:mp.tstN, h:mp.tstH, span:mp.tstSpan, t:mp.tstT});
   }
   const keep = Object.assign(defaultBoxParams(), migrateLegacyParams({mntMode:'lbracket', mntW:50}));
   chk('чужой крепёж не тронут', keep.mntMode === 'lbracket' && (keep.tstMode||'none') === 'none',
       {mnt:keep.mntMode, tst:keep.tstMode});
   chk('и он по-прежнему крепёж', dominantMode(keep) === 'mount', dominantMode(keep));
+  const live = Object.assign(defaultBoxParams(), migrateLegacyParams({tstMode:'radius', tstN:5}));
+  chk('живая разновидность переносом не тронута', live.tstMode === 'radius' && live.tstN === 5,
+      {tst:live.tstMode, n:live.tstN});
 }
 
 console.log('=== форма «Тесты» стоит в панели наравне с остальными ===');
@@ -201,219 +478,29 @@ console.log('=== форма «Тесты» стоит в панели нарав
   chk('группа видна только на ней', sectionRelevant('Тесты печати','test',false) &&
       !sectionRelevant('Тесты печати','mount',false));
   chk('а крепёж на ней не виден', !sectionRelevant('Крепёж / монтаж','test',false));
-  for(const m of ['temptower','bridgetest','retract']){
+  const opts = SHAPE_PARAMS.box.find(r => r.key === 'tstMode').options.map(o => o.v);
+  chk('в списке ровно десять образцов и «нет»', opts.length === MODES.length + 1, opts);
+  for(const m of MODES){
+    chk(m+': есть плитка', opts.includes(m), opts);
     chk(m+': справка на месте', !!MODEL_HELP['test:'+m], m);
     chk(m+': и её больше нет под крепежом', !MODEL_HELP['mount:'+m], m);
+    chk(m+': строитель отдаёт непустую сетку', buildTestPrint(
+        Object.assign(defaultBoxParams(), {tstMode:m})).length > 50, m);
   }
+  for(const gone of ['temptower','bridgetest','retract','allinone','toolcard','filcard']){
+    chk(gone+': снят из списка', !opts.includes(gone), opts);
+    chk(gone+': и справка снята вместе с ним', !MODEL_HELP['test:'+gone]);
+  }
+  chk('неизвестная разновидность даёт пустой список, а не исключение',
+      buildTestPrint(Object.assign(defaultBoxParams(), {tstMode:'нетакой'})).length === 0);
   const mnt = SHAPE_PARAMS.box.find(r => r.key === 'mntMode').options.map(o => o.v);
-  chk('в крепеже калибровок больше нет',
-      !mnt.includes('temptower') && !mnt.includes('bridgetest') && !mnt.includes('retract'), mnt);
-}
-
-/* КОМПЛЕКСНАЯ ПЛИТА. Шесть станций на одной плите, и меряется именно то, ради чего каждая стоит:
-   отверстия — что их шесть и они растут от Ø2 до Ø7; куб — что он ровно 10 мм, а не «около»; станции —
-   что каждая стоит в СВОЕЙ полосе и никакая не пуста. Пустая станция на герметичность не влияет и
-   молча уезжает в печать — поймать её можно только счётом материала над плитой. */
-console.log('=== комплексная плита: шесть станций, каждая на своём месте ===');
-{
-  const plate = ov => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
-    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'allinone', tstPlateW:90, tstSegN:5}, ov);
-    return buildTrisForShape('box', paramState.box); };
-  for(const [w, n] of [[60,3],[90,5],[220,10],[90,10],[60,10]]){
-    const t = plate({tstPlateW:w, tstSegN:n}), mc = manifoldCheck(t,4);
-    chk('W='+w+' n='+n+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+  chk('в крепеже калибровок нет', !mnt.includes('temptower') && !mnt.includes('bridgetest') &&
+      !mnt.includes('retract'), mnt);
+  // Каждая ручка раздела относится к настоящей разновидности — иначе строка висит в панели мёртвой.
+  for(const r of SHAPE_PARAMS.box){
+    if(r.group !== 'Тесты печати' || !r.w || r.w === '*') continue;
+    chk(r.key+': относится только к живым образцам', r.w.every(v => MODES.includes(v)), r.w);
   }
-  const t = plate({}), b = computeBBox(t);
-  chk('ширина — заданная', Math.abs((b.maxX-b.minX) - 90) < 1e-6, b.maxX-b.minX);
-  chk('глубина — половина ширины', Math.abs((b.maxZ-b.minZ) - 45) < 1e-6, b.maxZ-b.minZ);
-
-  // Пол плиты и её потолок: всё, что выше потолка, — станции.
-  const yLo = b.minY;
-  const solidAtXZ = (x, z) => {           // есть ли материал в столбике (x,z), и до какой высоты
-    let hi = -1e9;
-    for(const T of t){ const [A,B,C] = T;
-      const d1 = (B[0]-A[0])*(z-A[2]) - (B[2]-A[2])*(x-A[0]);
-      const d2 = (C[0]-B[0])*(z-B[2]) - (C[2]-B[2])*(x-B[0]);
-      const d3 = (A[0]-C[0])*(z-C[2]) - (A[2]-C[2])*(x-C[0]);
-      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
-      const ar = (B[0]-A[0])*(C[2]-A[2]) - (B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar) < 1e-12) continue;
-      const w1 = ((B[0]-x)*(C[2]-z) - (B[2]-z)*(C[0]-x))/ar, w2 = ((C[0]-x)*(A[2]-z) - (C[2]-z)*(A[0]-x))/ar;
-      hi = Math.max(hi, w1*A[1] + w2*B[1] + (1-w1-w2)*C[1]); }
-    return hi; };
-  // Каждая из пяти полос вдоль X обязана нести что-то ВЫШЕ плиты.
-  const band = 90/5;
-  const names = ['нависания','мосты','струнение','зазоры','куб'];
-  for(let k=0;k<5;k++){
-    const x0 = -45 + band*k, x1 = x0 + band;
-    let top = -1e9;
-    for(let i=1;i<24;i++) for(let j=1;j<24;j++)
-      top = Math.max(top, solidAtXZ(x0 + band*i/24, -22.5 + 45*j/24));
-    chk('полоса «'+names[k]+'» не пуста', top > yLo + 4, {высота:+(top-yLo).toFixed(1)});
-  }
-  /* Куб — ровно 10 мм над плитой, иначе это не эталон, а «примерно». Ищется как САМОЕ ВЫСОКОЕ место
-     своей полосы: где именно строитель его поставил — его дело, а не теста. Верх плиты берётся у самого
-     переднего края, где заведомо ничего не стоит. */
-  {
-    let top = -1e9, plateTop = -1e9;
-    for(let i=1;i<40;i++) for(let j=1;j<40;j++)
-      top = Math.max(top, solidAtXZ(-45 + band*4 + band*i/40, -22.5 + 45*j/40));
-    for(let i=0;i<40;i++) plateTop = Math.max(plateTop, solidAtXZ(-45 + 90*(i+0.5)/40, 22.5 - 0.4));
-    chk('куб ровно 10 мм над плитой', Math.abs((top - plateTop) - 10) < 0.05,
-        {куб:+(top-plateTop).toFixed(3), плита:+plateTop.toFixed(2)});
-  }
-  /* Шесть сквозных отверстий. «Сквозное» — это отсутствие материала в столбике: solidAtXZ не находит
-     ни одного треугольника и возвращает −1e9. Ряд ищется сканом по глубине, потому что где именно он
-     стоит — дело строителя. */
-  {
-    const EMPTY = -1e8;
-    let через = 0, найдено = [];
-    for(let i=0;i<6;i++){
-      const x = -45 + 90*(i+0.5)/6;
-      for(let q=0;q<440;q++){ const zz = 22.5 - 0.3 - q*0.1;
-        if(zz < -22.5) break;
-        if(solidAtXZ(x, zz) < EMPTY){ через++; найдено.push(+zz.toFixed(1)); break; } }
-    }
-    chk('все шесть отверстий сквозные', через === 6, {через, найдено});
-    /* ...и они РАСТУТ. Ширина просвета меряется вдоль X на ОБЩЕЙ для всего ряда глубине — самой
-       глубокой из найденных: у мелкого отверстия край ближе к переднему краю, и мерь каждое на своей
-       z, сравнивались бы хорды разных высот, а не диаметры. */
-    if (найдено.length === 6){
-      const zRow = Math.min(...найдено) - 0.4;
-      const width = (i) => { const x0 = -45 + 90*(i+0.5)/6; let n = 0;
-        for(let q=0;q<400;q++){ const x = x0 - 5 + q*0.025;
-          if(solidAtXZ(x, zRow) < EMPTY) n++; }
-        return n*0.025; };
-      chk('и последнее шире первого', width(5) > width(0) + 3,
-          {первое:+width(0).toFixed(2), последнее:+width(5).toFixed(2)});
-    }
-  }
-  logos.length = 0;
-}
-
-/* МЕРИТЕЛЬНАЯ КАРТОЧКА. Гейдж, который врёт, хуже отсутствия гейджа, поэтому меряются сами величины,
-   а не «построилось ли что-то». Угол клина — ДВУМЯ СЕЧЕНИЯМИ: у равнобедренного клина полуширина убывает
-   с высотой линейно, и наклон этого убывания есть tg(угол/2). Так замер ничего не знает о том, КАК клин
-   построен, — а первая версия строителя как раз выводила основание из высоты неверно, и все клинья
-   выходили с одним углом при разных подписях. */
-console.log('=== мерительная карточка: углы клиньев равны подписям ===');
-{
-  const card = w => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
-    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'toolcard', tstCardW:w});
-    return buildTrisForShape('box', paramState.box); };
-  /* Сколько мест в ряду — считается тем же правилом, что и в строителе, и правило это про СЛУЖЕБНЫЙ
-     БЛОК выреза: построитель окружает каждый полем в 1.7 его размера, и блоки соседних колонок, задев
-     друг друга, роняют сторож столкновений — молча, оставляя деталь герметичной. */
-  const placesFor = W => { for(let n=9;n>=3;n--) if(W/n >= 1.7*(2*n-1) + 1.5) return n; return 3; };
-  for(const w of [60, 110, 220]){
-    const t = card(w), mc = manifoldCheck(t,4), b = computeBBox(t);
-    chk('W='+w+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
-    // Ничто не торчит за габарит — ни вбок, ни вперёд: клинья свисали с переднего края на 3 мм,
-    // и проверка только по X этого не видела.
-    chk('W='+w+': ничего не торчит вбок', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
-    let plateZ0 = 1e9, plateZ1 = -1e9;
-    for(const T of t) for(const v of T) if(Math.abs(v[1]-b.minY) < 1e-9){
-      plateZ0 = Math.min(plateZ0, v[2]); plateZ1 = Math.max(plateZ1, v[2]); }
-    chk('W='+w+': ничего не свисает с краёв по глубине',
-        b.maxZ - plateZ1 < 1e-6 && plateZ0 - b.minZ < 1e-6,
-        {спереди:+(b.maxZ-plateZ1).toFixed(2), сзади:+(plateZ0-b.minZ).toFixed(2)});
-    /* И НИ ОДИН ВЫРЕЗ НЕ ПРОПАЛ. Пропажа тихая: сторож столкновений выбрасывает вырез, деталь остаётся
-       герметичной, подпись под него стоит — а дырки нет. Меряется лучом в центр каждого места. */
-    const n = placesFor(w), cw = w/n, dMax = 2 + 2*(n-1);
-    let l = Math.min(3.6, w/34); while(l > 1.2 && seg7Width('14', l) > cw*0.85) l -= 0.1; l = Math.max(1.2, l);
-    const rH = Math.max(1.7*dMax + l + 6, 22), dep = rH*3 + cw*0.8 + l + 6;
-    const empty = (x, z) => { for(const T of t){ const [A,B,C] = T;
-        const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
-        const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
-        const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
-        if((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0)){
-          const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]);
-          if(Math.abs(ar) > 1e-12) return false; } }
-      return true; };
-    let miss = 0;
-    for(let r=0;r<3;r++) for(let k=0;k<n;k++)
-      if(!empty(-w/2 + cw*(k+0.5), -dep/2 + rH*(r+0.5))) miss++;
-    chk('W='+w+': все '+(3*n)+' вырезов на месте', miss === 0, {пропало:miss});
-  }
-  const W = 110, t = card(W), b = computeBBox(t);
-  const nR = placesFor(W), cell = W/nR;
-  const yTop = 1.4;                                   // половина толщины карты при tstT по умолчанию
-  const topAt = (x, z) => { let hi = -1e9;
-    for(const T of t){ const [A,B,C] = T;
-      const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
-      const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
-      const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
-      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
-      const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar)<1e-12) continue;
-      const w1=((B[0]-x)*(C[2]-z)-(B[2]-z)*(C[0]-x))/ar, w2=((C[0]-x)*(A[2]-z)-(C[2]-z)*(A[0]-x))/ar;
-      hi = Math.max(hi, w1*A[1]+w2*B[1]+(1-w1-w2)*C[1]); }
-    return hi; };
-  const N = 1200;
-  for(let k=0;k<nR;k++){
-    const x = -W/2 + cell*(k+0.5);
-    let apex = -1e9;
-    for(let q=0;q<=N;q++) apex = Math.max(apex, topAt(x, b.minZ + (b.maxZ-b.minZ)*q/N));
-    const widthAt = (y) => { let z0=null, z1=null;
-      for(let q=0;q<=N;q++){ const z = b.minZ + (b.maxZ-b.minZ)*q/N;
-        if(topAt(x, z) >= y){ if(z0===null) z0 = z; z1 = z; } }
-      return z0===null ? 0 : z1-z0; };
-    const y1 = yTop + (apex-yTop)*0.25, y2 = yTop + (apex-yTop)*0.75;
-    const ang = 2*Math.atan(((widthAt(y1)-widthAt(y2))/2)/(y2-y1))*180/Math.PI;
-    const want = 10 + 70*k/(nR-1);
-    chk('клин '+Math.round(want)+'°: измеренный угол совпадает', Math.abs(ang - want) < 1.2,
-        {заявлено:+want.toFixed(0), измерено:+ang.toFixed(1)});
-  }
-  logos.length = 0;
-}
-
-/* КАРТОЧКА ФИЛАМЕНТА. Меряется то, ради чего бирка существует: прорезь под стяжку СКВОЗНАЯ (иначе
-   бирка не повесится), три стенки правда разной толщины (иначе проба ничего не говорит) и ничего не
-   торчит за габарит карты. */
-console.log('=== карточка филамента: прорезь сквозная, стенки разной толщины ===');
-{
-  const fil = w => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
-    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'filcard', tstFilW:w});
-    return buildTrisForShape('box', paramState.box); };
-  for(const w of [40, 72, 160]){
-    const t = fil(w), mc = manifoldCheck(t,4), b = computeBBox(t);
-    chk('W='+w+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
-    chk('W='+w+': ничего не торчит за габарит', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
-  }
-  const W = 72, t = fil(W), b = computeBBox(t);
-  const topAt = (x, z) => { let hi = -1e9;
-    for(const T of t){ const [A,B,C] = T;
-      const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
-      const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
-      const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
-      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
-      const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar)<1e-12) continue;
-      const w1=((B[0]-x)*(C[2]-z)-(B[2]-z)*(C[0]-x))/ar, w2=((C[0]-x)*(A[2]-z)-(C[2]-z)*(A[0]-x))/ar;
-      hi = Math.max(hi, w1*A[1]+w2*B[1]+(1-w1-w2)*C[1]); }
-    return hi; };
-  // Прорезь: где-то у левого нижнего угла столбик пуст насквозь.
-  {
-    let пусто = 0;
-    for(let i=0;i<80;i++) for(let j=0;j<60;j++){
-      const x = -W/2 + 20*i/80, z = -b.maxZ + 16*j/60;
-      if(topAt(x, z) < -1e8) пусто++;
-    }
-    chk('прорезь под стяжку сквозная', пусто > 0, {пустыхстолбиков:пусто});
-  }
-  // Три стенки: считаем разные толщины по числу столбиков, где стоит материал выше карты.
-  {
-    const b2 = computeBBox(t), yCard = 1.0;      // половина толщины при tstT по умолчанию
-    const runs = [];
-    for(let j=0;j<3;j++){ }
-    let found = 0;
-    for(let q=0;q<600;q++){ const z = b2.minZ + (b2.maxZ-b2.minZ)*q/600;
-      let any = false;
-      for(let i=0;i<40;i++){ const x = W/2 - 20 + 18*i/40;
-        if(topAt(x, z) > yCard + 1) { any = true; break; } }
-      runs.push(any);
-    }
-    let segs = 0; for(let i=1;i<runs.length;i++) if(runs[i] && !runs[i-1]) segs++;
-    chk('в правой полосе стоят отдельные стенки, а не одна', segs >= 3, {полос:segs});
-  }
-  logos.length = 0;
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

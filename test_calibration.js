@@ -210,5 +210,85 @@ console.log('=== форма «Тесты» стоит в панели нарав
       !mnt.includes('temptower') && !mnt.includes('bridgetest') && !mnt.includes('retract'), mnt);
 }
 
+/* КОМПЛЕКСНАЯ ПЛИТА. Шесть станций на одной плите, и меряется именно то, ради чего каждая стоит:
+   отверстия — что их шесть и они растут от Ø2 до Ø7; куб — что он ровно 10 мм, а не «около»; станции —
+   что каждая стоит в СВОЕЙ полосе и никакая не пуста. Пустая станция на герметичность не влияет и
+   молча уезжает в печать — поймать её можно только счётом материала над плитой. */
+console.log('=== комплексная плита: шесть станций, каждая на своём месте ===');
+{
+  const plate = ov => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'allinone', tstPlateW:90, tstSegN:5}, ov);
+    return buildTrisForShape('box', paramState.box); };
+  for(const [w, n] of [[60,3],[90,5],[220,10],[90,10],[60,10]]){
+    const t = plate({tstPlateW:w, tstSegN:n}), mc = manifoldCheck(t,4);
+    chk('W='+w+' n='+n+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+  }
+  const t = plate({}), b = computeBBox(t);
+  chk('ширина — заданная', Math.abs((b.maxX-b.minX) - 90) < 1e-6, b.maxX-b.minX);
+  chk('глубина — половина ширины', Math.abs((b.maxZ-b.minZ) - 45) < 1e-6, b.maxZ-b.minZ);
+
+  // Пол плиты и её потолок: всё, что выше потолка, — станции.
+  const yLo = b.minY;
+  const solidAtXZ = (x, z) => {           // есть ли материал в столбике (x,z), и до какой высоты
+    let hi = -1e9;
+    for(const T of t){ const [A,B,C] = T;
+      const d1 = (B[0]-A[0])*(z-A[2]) - (B[2]-A[2])*(x-A[0]);
+      const d2 = (C[0]-B[0])*(z-B[2]) - (C[2]-B[2])*(x-B[0]);
+      const d3 = (A[0]-C[0])*(z-C[2]) - (A[2]-C[2])*(x-C[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const ar = (B[0]-A[0])*(C[2]-A[2]) - (B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar) < 1e-12) continue;
+      const w1 = ((B[0]-x)*(C[2]-z) - (B[2]-z)*(C[0]-x))/ar, w2 = ((C[0]-x)*(A[2]-z) - (C[2]-z)*(A[0]-x))/ar;
+      hi = Math.max(hi, w1*A[1] + w2*B[1] + (1-w1-w2)*C[1]); }
+    return hi; };
+  // Каждая из пяти полос вдоль X обязана нести что-то ВЫШЕ плиты.
+  const band = 90/5;
+  const names = ['нависания','мосты','струнение','зазоры','куб'];
+  for(let k=0;k<5;k++){
+    const x0 = -45 + band*k, x1 = x0 + band;
+    let top = -1e9;
+    for(let i=1;i<24;i++) for(let j=1;j<24;j++)
+      top = Math.max(top, solidAtXZ(x0 + band*i/24, -22.5 + 45*j/24));
+    chk('полоса «'+names[k]+'» не пуста', top > yLo + 4, {высота:+(top-yLo).toFixed(1)});
+  }
+  /* Куб — ровно 10 мм над плитой, иначе это не эталон, а «примерно». Ищется как САМОЕ ВЫСОКОЕ место
+     своей полосы: где именно строитель его поставил — его дело, а не теста. Верх плиты берётся у самого
+     переднего края, где заведомо ничего не стоит. */
+  {
+    let top = -1e9, plateTop = -1e9;
+    for(let i=1;i<40;i++) for(let j=1;j<40;j++)
+      top = Math.max(top, solidAtXZ(-45 + band*4 + band*i/40, -22.5 + 45*j/40));
+    for(let i=0;i<40;i++) plateTop = Math.max(plateTop, solidAtXZ(-45 + 90*(i+0.5)/40, 22.5 - 0.4));
+    chk('куб ровно 10 мм над плитой', Math.abs((top - plateTop) - 10) < 0.05,
+        {куб:+(top-plateTop).toFixed(3), плита:+plateTop.toFixed(2)});
+  }
+  /* Шесть сквозных отверстий. «Сквозное» — это отсутствие материала в столбике: solidAtXZ не находит
+     ни одного треугольника и возвращает −1e9. Ряд ищется сканом по глубине, потому что где именно он
+     стоит — дело строителя. */
+  {
+    const EMPTY = -1e8;
+    let через = 0, найдено = [];
+    for(let i=0;i<6;i++){
+      const x = -45 + 90*(i+0.5)/6;
+      for(let q=0;q<440;q++){ const zz = 22.5 - 0.3 - q*0.1;
+        if(zz < -22.5) break;
+        if(solidAtXZ(x, zz) < EMPTY){ через++; найдено.push(+zz.toFixed(1)); break; } }
+    }
+    chk('все шесть отверстий сквозные', через === 6, {через, найдено});
+    /* ...и они РАСТУТ. Ширина просвета меряется вдоль X на ОБЩЕЙ для всего ряда глубине — самой
+       глубокой из найденных: у мелкого отверстия край ближе к переднему краю, и мерь каждое на своей
+       z, сравнивались бы хорды разных высот, а не диаметры. */
+    if (найдено.length === 6){
+      const zRow = Math.min(...найдено) - 0.4;
+      const width = (i) => { const x0 = -45 + 90*(i+0.5)/6; let n = 0;
+        for(let q=0;q<400;q++){ const x = x0 - 5 + q*0.025;
+          if(solidAtXZ(x, zRow) < EMPTY) n++; }
+        return n*0.025; };
+      chk('и последнее шире первого', width(5) > width(0) + 3,
+          {первое:+width(0).toFixed(2), последнее:+width(5).toFixed(2)});
+    }
+  }
+  logos.length = 0;
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

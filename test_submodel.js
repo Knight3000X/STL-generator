@@ -15,14 +15,14 @@
 let pass=0, fail=0;
 function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 
-const MODES = ['box','die','sheet','keycap','thread','hinge','gear','mount','hook',
-               'wallorg','pbox','stand','funnel','baseplate','logo3d'];
+// Выводится из KIND_LABEL, а не переписывается руками: ручной список отстал на восемнадцатой форме.
+const MODES = Object.keys(KIND_LABEL);
 const rowOf = k => SHAPE_PARAMS.box.find(r => r.key === k);
 
 console.log('=== у каждого семейства ровно одна головная форма ===');
 {
   const fams = new Set(Object.keys(FAMILY_MODE).map(g => FAMILY_MODE[g]));
-  chk('семейств четыре', fams.size === 4, [...fams]);
+  chk('семейств пять', fams.size === 5, [...fams]);
   const found = {};
   for(const m of MODES){ const k = subModelKey(m); if(k){ chk('форма '+m+' → '+k+' (единственный раз)', !found[k], found[k]); found[k] = m; } }
   chk('каждое семейство досягаемо с какой-то базовой формы',
@@ -35,7 +35,7 @@ console.log('=== у каждого семейства ровно одна гол
     chk('«'+g+'» видна на своей форме', sectionRelevant(g, found[k], true));
   }
   const plain = MODES.filter(m => !subModelKey(m));
-  chk('у остальных форм разновидностей нет', plain.length === MODES.length - 4, plain);
+  chk('у остальных форм разновидностей нет', plain.length === MODES.length - fams.size, plain);
 }
 
 console.log('=== плитки: настоящие варианты, ничего не выдумано и ничего не потеряно ===');

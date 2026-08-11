@@ -15,9 +15,11 @@
 let pass=0, fail=0;
 function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 
-// Every base shape the picker offers, plus the two that only a parameter can turn on.
-const MODES = ['box','die','sheet','keycap','thread','hinge','gear','mount','hook',
-               'wallorg','pbox','stand','funnel','coaster','litho','baseplate','logo3d'];
+/* Список базовых форм ВЫВОДИТСЯ из KIND_LABEL, а не переписывается сюда руками. Руками он уже отстал
+   однажды: восемнадцатая форма («Тесты», v18.0.0) в него не попала, и три проверки этого файла стали
+   сообщать, что её группа не видна нигде — при том что видна она ровно там, где надо. Список, который
+   надо помнить обновить, — это не список, а ловушка. */
+const MODES = Object.keys(KIND_LABEL);
 const GROUPS = (() => { const seen = new Set(), out = [];
   for(const sk in SHAPE_PARAMS) for(const p of SHAPE_PARAMS[sk]){
     const g = p.group || 'Параметры'; if(!seen.has(g)){ seen.add(g); out.push(g); } }
@@ -47,10 +49,15 @@ console.log('=== перепись: каждая группа знает, чья 
   const shared = GROUPS.filter(g => { const m = modesOf(g); return m.length > 1 && m.length < MODES.length; });
   chk('в нескольких формах — только заявленные', shared.every(g => g in SHARED),
       shared.filter(g => !(g in SHARED)));
+  /* Сравнение МНОЖЕСТВАМИ, а не строками. Раньше здесь стояло `JSON.stringify(...) === JSON.stringify(...)`,
+     и это требовало вдобавок совпадения ПОРЯДКА обхода — а порядок задаёт перечислитель форм, к вопросу
+     «в каких формах видна группа» отношения не имеющий. Пока список форм был переписан сюда руками в том
+     же порядке, что и в SHARED, оно сходилось случайно; стоило вывести список из KIND_LABEL — и четыре
+     проверки упали, ничего не найдя. */
+  const same = (a, b) => a.length === b.length && a.slice().sort().join('|') === b.slice().sort().join('|');
   for(const g of shared) if(g in SHARED)
     chk('«' + g + '» ровно в тех формах, что заявлены',
-        JSON.stringify(modesOf(g)) === JSON.stringify(SHARED[g].filter(m => MODES.includes(m))),
-        modesOf(g));
+        same(modesOf(g), SHARED[g].filter(m => MODES.includes(m))), modesOf(g));
 }
 
 console.log('=== исключительная группа зарегистрирована для поиска ===');

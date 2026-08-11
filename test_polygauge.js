@@ -37,12 +37,30 @@ function setp(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
 // Undirected pairing cannot see a face that is on the right edges and facing the wrong way. In a closed
 // mesh with consistent winding each DIRECTED edge occurs exactly once; anything else is a flipped or a
 // duplicated triangle.
+/* Вершины сводятся к ЦЕЛЫМ номерам, и ребро становится числом idA·N + idB, а не строкой. Строковый
+   ключ (`toFixed` на три координаты плюс два join на каждое направленное ребро) стоил в этом файле
+   186 секунд из 309: сборки перебора занимают 67 с, а всё остальное время уходило на сборку строк.
+   Квантование то же, что было: округление до `dec` знаков — оно и склеивает вершины, разошедшиеся на
+   последний бит. N·N < 2^53, так что произведение точное при миллионе вершин. */
 function flippedEdges(tris, dec){
-  const d = dec == null ? 4 : dec, seen = new Map();
-  const key = v => v.map(x => (+x).toFixed(d)).join(',');
-  for(const T of tris) for(let i=0;i<3;i++){
-    const k = key(T[i]) + '>' + key(T[(i+1)%3]);
-    seen.set(k, (seen.get(k)||0) + 1); }
+  const q = Math.pow(10, dec == null ? 4 : dec);
+  const ids = new Map(), seen = new Map();
+  let next = 0;
+  const idOf = (v) => {
+    const x = Math.round(v[0]*q), y = Math.round(v[1]*q), z = Math.round(v[2]*q);
+    // Ключ ведра — дешёвая числовая смесь; столкновения разбираются сравнением координат.
+    const h = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ Math.imul(z, 0x9e3779b1)) | 0;
+    let b = ids.get(h);
+    if (b === undefined){ b = []; ids.set(h, b); }
+    for (let k = 0; k < b.length; k += 4) if (b[k] === x && b[k+1] === y && b[k+2] === z) return b[k+3];
+    const id = next++; b.push(x, y, z, id); return id;
+  };
+  const N = 1 << 22;
+  for(const T of tris){
+    const a = idOf(T[0]), b2 = idOf(T[1]), c = idOf(T[2]);
+    for(const [u, v] of [[a,b2],[b2,c],[c,a]]){
+      const k = u*N + v;
+      seen.set(k, (seen.get(k)||0) + 1); } }
   let bad = 0; for(const v of seen.values()) if(v !== 1) bad += v;
   return bad;
 }
@@ -96,17 +114,39 @@ console.log('=== собирается, замкнут и ориентирова�
      меряют. Лишние два наклона — это вдвое больше самой дорогой сборки в батарее, а батарея гоняет
      четыре файла на четырёх ядрах, и у соседей есть проверки бюджета процессорного времени с запасом в
      считанные проценты. Тест, который роняет соседа своей ценой, стоит дешевле переписать, чем объяснять. */
-  let n = 0, open = 0, flip = 0;
+  /* ОТВЕРСТИЕ и ВЫСОТА идут не полным произведением, а по кругу. Полное произведение — 288 сборок, и
+     замер показал, чего они стоят: 67 с процессорного на сами сборки и ещё сотня на проверку замкнутости
+     каждой. При этом отверстие с высотой ни с чем не взаимодействуют: первое добавляет цилиндр по оси,
+     вторая множит число рядов, и ни то, ни другое не зависит ни от системы размеров, ни от окна шагов,
+     ни от наклона. Ошибки, которые этот блок реально ловил, были одно-факторными: вырожденный хвост
+     ушного триангулирования (от числа граней) и намотка крышек (от наклона).
+
+     Поэтому полное произведение остаётся там, где взаимодействие есть — система × окно шагов × наклон,
+     24 сочетания, — а отверстие и высота крутятся по кругу с шагом 1. Длины 4 и 3 взаимно просты, 24
+     кратно двенадцати, поэтому КАЖДАЯ пара (отверстие, высота) выпадает ровно дважды, и каждая пара с
+     любым из трёх остальных факторов — тоже. Оба угла поля, самый большой и самый мелкий, добавлены
+     явно: сокращение перебора не должно молча выкинуть края. */
+  const bores = [0, 3, 8, 40], Hs = [5, 12, 60];
+  const cfg = [];
+  let i = 0;
   for(const std of ['metric','imperial'])
     for(const [lo,hi] of [[0.7,2],[0.3,3.5],[1,1],[0.85,0.95],[0.35,0.6],[2,3.5]])
-      for(const lean of [0, 3])
-        for(const bore of [0, 3, 8, 40])
-          for(const H of [5, 12, 60]){
-            const t = build({mntPolyStd:std, mntPitchMin:lo, mntPitchMax:hi,
-                             mntPitchLean:lean, mntPolyBore:bore, mntPolyH:H});
-            n++; if(!wt(t)) open++; if(flippedEdges(t)) flip++;
-          }
-  chk('288 сочетаний собраны', n === 288, n);
+      for(const lean of [0, 3]){
+        cfg.push({mntPolyStd:std, mntPitchMin:lo, mntPitchMax:hi, mntPitchLean:lean,
+                  mntPolyBore:bores[i % bores.length], mntPolyH:Hs[i % Hs.length]});
+        i++;
+      }
+  cfg.push({mntPolyStd:'metric',   mntPitchMin:0.3, mntPitchMax:3.5, mntPitchLean:3, mntPolyBore:40, mntPolyH:60});
+  cfg.push({mntPolyStd:'imperial', mntPitchMin:1,   mntPitchMax:1,   mntPitchLean:0, mntPolyBore:0,  mntPolyH:5});
+  let open = 0, flip = 0;
+  const pairs = new Set();
+  for(const c of cfg){
+    const t = build(c);
+    if(!wt(t)) open++; if(flippedEdges(t)) flip++;
+    pairs.add(c.mntPolyBore + '/' + c.mntPolyH);
+  }
+  chk('26 сочетаний собраны', cfg.length === 26, cfg.length);
+  chk('и все 12 пар «отверстие × высота» среди них есть', pairs.size === 12, [...pairs]);
   chk('все замкнуты', open === 0, open);
   chk('ни одной перевёрнутой грани', flip === 0, flip);
 }
@@ -460,16 +500,13 @@ console.log('=== зубцы не осыпаются иглами ===');
    каждое направленное ребро встречается ровно один раз. */
 console.log('=== ребро призмы у двух граней одно ===');
 {
+  // Тот же счёт направленных рёбер, что и у flippedEdges, и тем же помощником: своя копия здесь
+  // означала бы вторую реализацию одной проверки, расходящуюся с первой при первой же правке.
   for(const ov of [{}, {mntPolyStd:'imperial'}, {mntPolyH:30}, {mntPitchLean:3}, {mntPolyBore:0}]){
-    const t = build(ov), seen = new Map();
-    const key = v => v.map(c => c.toFixed(4)).join(',');
-    for(const T of t) for(let i=0;i<3;i++){ const k = key(T[i]) + '|' + key(T[(i+1)%3]);
-      seen.set(k, (seen.get(k)||0) + 1); }
-    let bad = 0, lone = 0;
-    for(const [k, c] of seen){ if(c > 1) bad++;
-      const [a, b] = k.split('|'); if(!seen.has(b + '|' + a)) lone++; }
-    chk(JSON.stringify(ov) + ': каждое направленное ребро ровно раз и с парой',
-        bad === 0 && lone === 0, {дубли:bad, безпары:lone});
+    const t = build(ov);
+    chk(JSON.stringify(ov) + ': каждое направленное ребро ровно раз',
+        flippedEdges(t) === 0, {лишних:flippedEdges(t)});
+    chk(JSON.stringify(ov) + ': и оболочка замкнута', wt(t));
   }
 }
 

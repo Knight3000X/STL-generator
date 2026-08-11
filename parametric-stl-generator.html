@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.8';
+const APP_VERSION = 'v17.7.9';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2830,13 +2830,21 @@ function buildRimBox(w, h, d, wallThickness, rimHeight, resolution, logoDispFnsB
 function manifoldCheck(tris, decimals) {
   decimals = decimals == null ? 5 : decimals;
   const cellSz = Math.pow(10, -decimals), tol = cellSz * 0.51;
-  const exactId = new Map(), pts = [], triIds = [];
+  /* Вложенные ЧИСЛОВЫЕ карты вместо строковых ключей — ровно та правка, которую когда-то сделали
+     snapWeldTris (её собственный комментарий про это и говорит). Здесь она стоила дороже: ключ вершины
+     строился на каждую из трёх вершин каждого треугольника, а ключ ячейки — ДВАДЦАТЬ СЕМЬ раз на точку,
+     потому что соседей у неё 3×3×3, и строка собиралась на каждого. Замер профилем на самом долгом файле
+     батареи (test_keycap.js, 439 с): manifoldCheck занимал в нём 206 с, почти половину.
+     Смысл ключа не меняется: и строка `-0,…`, и число −0 в Map попадают туда же, куда 0, — SameValueZero
+     и String(-0) === "0" согласны между собой. */
+  const exact = new Map(), pts = [], triIds = [];
+  const sub = (m, k) => { let s = m.get(k); if (!s) { s = new Map(); m.set(k, s); } return s; };
   for (const tri of tris) {
     const ids = [];
     for (const p of tri) {
-      const ke = p[0]+','+p[1]+','+p[2];
-      let id = exactId.get(ke);
-      if (id === undefined) { id = pts.length; exactId.set(ke, id); pts.push(p); }
+      const mz = sub(sub(exact, p[0]), p[1]);
+      let id = mz.get(p[2]);
+      if (id === undefined) { id = pts.length; mz.set(p[2], id); pts.push(p); }
       ids.push(id);
     }
     triIds.push(ids);
@@ -2846,15 +2854,17 @@ function manifoldCheck(tris, decimals) {
   const grid = new Map();
   for (let i=0;i<pts.length;i++) {
     const p = pts[i], cx = Math.round(p[0]/cellSz), cy = Math.round(p[1]/cellSz), cz = Math.round(p[2]/cellSz);
-    for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) for (let dz=-1;dz<=1;dz++) {
-      const lst = grid.get((cx+dx)+','+(cy+dy)+','+(cz+dz));
-      if (lst) for (const j of lst) { const q = pts[j];
-        if (Math.abs(q[0]-p[0])<=tol && Math.abs(q[1]-p[1])<=tol && Math.abs(q[2]-p[2])<=tol) {
-          const a = find(i), b = find(j); if (a !== b) parent[a] = b;
-        } }
-    }
-    const k = cx+','+cy+','+cz;
-    let lst = grid.get(k); if (!lst) { lst = []; grid.set(k, lst); } lst.push(i);
+    // Пустая ветка отсекается на своём уровне: соседей 27, но занятых столбцов и строк среди них
+    // обычно один-два, и спускаться в них незачем.
+    for (let dx=-1;dx<=1;dx++) { const gx = grid.get(cx+dx); if (!gx) continue;
+      for (let dy=-1;dy<=1;dy++) { const gy = gx.get(cy+dy); if (!gy) continue;
+        for (let dz=-1;dz<=1;dz++) { const lst = gy.get(cz+dz); if (!lst) continue;
+          for (const j of lst) { const q = pts[j];
+            if (Math.abs(q[0]-p[0])<=tol && Math.abs(q[1]-p[1])<=tol && Math.abs(q[2]-p[2])<=tol) {
+              const a = find(i), b = find(j); if (a !== b) parent[a] = b;
+            } } } } }
+    const gy = sub(sub(grid, cx), cy);
+    let lst = gy.get(cz); if (!lst) { lst = []; gy.set(cz, lst); } lst.push(i);
   }
   const edges = new Map();
   for (const ids of triIds) {

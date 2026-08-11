@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.7';
+const APP_VERSION = 'v17.7.8';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12883,11 +12883,16 @@ function buildCoaster(p, res){
        The cell's own colour is then the one holding the most of it — which for an edge running through
        the middle is the same answer the centre sample gave, and for a thin feature is a better one. */
     const SS = 3, inv = !!lg.invert;
-    // Внутри окна ли точка. У круга это радиус, у квадрата — прежняя проверка по сторонам.
-    const inWin = (u, v) => g.round ? (Math.hypot(u, v) <= g.artHalf)
-                                    : (Math.abs(u) <= g.artHalf && Math.abs(v) <= g.artHalf);
+    /* Два РАЗНЫХ круга, и путать их нельзя. Рисунок обрезается по `artHalf` — дальше ему нельзя, там
+       кольцо и край. А вот КОМУ ПРИНАДЛЕЖИТ клетка, решает `winHalf`: карман вырезан до него, и сплошное
+       кольцо тела начинается тоже от него. Пока обе роли играл один `artHalf`, полоса между ними — ровно
+       `winHalf − artHalf` = 1.0 мм — не доставалась никому: ни полю, ни цвету, ни сплошному кольцу. На
+       экране это пустая канавка глубиной в карман, обегающая зону логотипа и ездящая вместе с ним. */
+    const inside = (u, v, R) => g.round ? (Math.hypot(u, v) <= R)
+                                        : (Math.abs(u) <= R && Math.abs(v) <= R);
+    const inArt = (u, v) => inside(u, v, g.artHalf);
     const label = (su, sv) => {
-      if (!inWin(su, sv)) return 0;                                          // never under the rim
+      if (!inArt(su, sv)) return 0;                                          // never under the rim
       const x = fm[0]*su + fm[1]*sv, z = fm[2]*su + fm[3]*sv;
       const lu = x*cR - z*sR, lv = x*sR + z*cR;
       if (Math.abs(lu) > w/2 || Math.abs(lv) > h/2) return 0;
@@ -12912,8 +12917,13 @@ function buildCoaster(p, res){
       let best = 0, bestC = cov[base];
       for(let k=1;k<NK;k++) if(cov[base+k] > bestC){ bestC = cov[base+k]; best = k; }
       if (best > 0){ mask[j*nG+i] = best; anyArt = true; }
-      // Клетка целиком за окном: её не занимает никто. Отмечаем ПОСЛЕ подсчёта покрытия — им живёт warp.
-      if (!inWin((u0+u1)/2, (v0+v1)/2)) outside[j*nG+i] = 1;
+      /* Ничья только та клетка, что ЦЕЛИКОМ за карманом — все четыре угла снаружи. По центру клетки
+         решать нельзя: у клетки, чей центр чуть снаружи, половина лежит внутри кармана, и эта половина
+         осталась бы дырой. Клетка, задевшая границу, мостится и заходит за неё — с тем же сплошным
+         кольцом она просто пересечётся по объёму, а это ровно то, на чём стоит вся сборка оболочек.
+         Отмечаем ПОСЛЕ подсчёта покрытия — им живёт warp. */
+      if (!inside(u0,v0,g.winHalf) && !inside(u1,v0,g.winHalf) &&
+          !inside(u0,v1,g.winHalf) && !inside(u1,v1,g.winHalf)) outside[j*nG+i] = 1;
     }
     /* The grid's vertices, slid onto the artwork's own boundary. The mosaic keeps its cells and its
        topology; only the corners move, and every part moves them the same way, so the colours still tile

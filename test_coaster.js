@@ -906,5 +906,56 @@ console.log('=== про отдельную цветную деталь гово�
   logos.length = 0;
 }
 
+/* КАНАВКА ВОКРУГ ЗОНЫ ЛОГОТИПА. Карман вырезан до `winHalf`, а рисунок обрезается по `artHalf`, который
+   на 1.0 мм внутри. Пока обе роли играл один `artHalf` — и обрезка рисунка, и «чья это клетка», — полоса
+   между ними не доставалась никому: ни полю, ни цвету, ни сплошному пояску тела, который начинается от
+   `winHalf`. На экране это пустая канавка глубиной в карман, обегающая логотип и ездящая вместе с ним.
+   Меряется лучом вдоль оси детали: сколько материала стоит на радиусе. */
+console.log('=== вокруг зоны логотипа нет пустой канавки ===');
+{
+  const thickAt = (t, r, ang) => {
+    const x = r*Math.cos(ang), z = r*Math.sin(ang), hits = [];
+    for(const T of t){ const [A,B,C] = T;
+      const d1 = (B[0]-A[0])*(z-A[2]) - (B[2]-A[2])*(x-A[0]);
+      const d2 = (C[0]-B[0])*(z-B[2]) - (C[2]-B[2])*(x-B[0]);
+      const d3 = (A[0]-C[0])*(z-C[2]) - (A[2]-C[2])*(x-C[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0) || (d1<=0&&d2<=0&&d3<=0))) continue;
+      const ar = (B[0]-A[0])*(C[2]-A[2]) - (B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar) < 1e-12) continue;
+      const w1 = ((B[0]-x)*(C[2]-z) - (B[2]-z)*(C[0]-x))/ar, w2 = ((C[0]-x)*(A[2]-z) - (C[2]-z)*(A[0]-x))/ar;
+      hits.push(w1*A[1] + w2*B[1] + (1-w1-w2)*C[1]); }
+    if(!hits.length) return 0;
+    hits.sort((a,b)=>a-b); return hits[hits.length-1] - hits[0]; };
+  for(const [shape, w] of [['round', 30], ['round', 60], ['square', 40]]){
+    logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:shape, csD:99, csT:3, csRim:0,
+      csRingInk:'1', csRingW:3, csRingGap:1.5, csInlay:0.8, csPart:'body', csCorner:10});
+    logos.push({id:1, face:'-Y', u0:0, v0:0, w:w, h:w, rotation:0, depth:-0.6,
+                threshold:0.5, invert:false, heightmap:HM, levels:2});
+    const g = coasterSpec(paramState.box), t = buildTrisForShape('box', paramState.box);
+    // Полоса между рисунком и стенкой кармана — та самая, что пустовала. Луч уводится с осей: у
+    // правильного многоугольника луч вдоль оси идёт по вершине и читает материал как пустоту.
+    let worst = 0, at = null;
+    for(let r = g.artHalf - 0.5; r < g.winHalf + 0.5; r += 0.05)
+      for(const ang of [0.37, 1.1, 2.3, 4.0]){
+        const gap = g.t - thickAt(t, r, ang);
+        if(gap > worst){ worst = gap; at = +r.toFixed(2); } }
+    chk(shape + ', логотип ' + w + ' мм: между рисунком и стенкой кармана материал сплошной',
+        worst < 0.2, {провал:+worst.toFixed(2), радиус:at, artHalf:g.artHalf, winHalf:g.winHalf});
+    chk(shape + ', логотип ' + w + ' мм: и деталь герметична', manifoldCheck(t,4).watertight);
+  }
+  /* Рисунок при этом по-прежнему обрезан по artHalf, а не по winHalf: под стенку кармана ему нельзя.
+     Кольцо на этой проверке ВЫКЛЮЧЕНО: оно живёт в той же детали цвета и уходит за artHalf по праву —
+     с ним замер поймал бы кольцо, а не рисунок. */
+  logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:99, csRingInk:'0', csPart:'ink1'});
+  logos.push({id:1, face:'-Y', u0:0, v0:0, w:200, h:200, rotation:0, depth:-0.6,
+              threshold:0.5, invert:false, heightmap:HM, levels:2});
+  const g2 = coasterSpec(paramState.box), ink = buildTrisForShape('box', paramState.box);
+  let rMax = 0; for(const T of ink) for(const v of T) rMax = Math.max(rMax, Math.hypot(v[0], v[2]));
+  chk('рисунок обрезан по artHalf, а не по стенке кармана', rMax <= g2.artHalf + 0.6,
+      {радиус:+rMax.toFixed(2), artHalf:g2.artHalf, winHalf:g2.winHalf});
+  logos.length = 0;
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

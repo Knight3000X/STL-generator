@@ -6,7 +6,7 @@
 # батареи, — из настоящего <script> страницы.
 #
 #   tools/3mf/analyze.sh parts   FILE                     — список деталей: имя, треугольники, габарит
-#   tools/3mf/analyze.sh map     FILE PART [NX] [NY]      — карта высот сверху, псевдографикой
+#   tools/3mf/analyze.sh map     FILE PART [NX] [NY] [X0 X1 Y0 Y1]  — карта высот сверху, псевдографикой
 #   tools/3mf/analyze.sh feat    FILE PART [ШАГ]          — выступы, сквозные отверстия и карманы списком
 #   tools/3mf/analyze.sh profile FILE PART x|y ФИКС A0 A1 [ШАГ]  — профиль поверхности вдоль прямой
 #

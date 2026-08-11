@@ -6,10 +6,14 @@ function loadParts(path){
 /* Карта высот сверху: для каждой клетки (X, Y) — наибольшая Z. Растеризацией по треугольникам, а не
    лучом на клетку: у присланных плит бывает 600 тыс. треугольников против 20 тыс. клеток, и перебор
    «каждый треугольник для каждой клетки» тут на три порядка дороже. */
-function heightMap(tris, step){
+function heightMap(tris, step, win){
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
   for(const T of tris) for(const v of T){
     if(v[0]<x0)x0=v[0]; if(v[0]>x1)x1=v[0]; if(v[1]<y0)y0=v[1]; if(v[1]>y1)y1=v[1]; }
+  /* Окно задаёт ГРАНИЦЫ РАСТРА, а не отбор треугольников. Отбором тут не обойтись: дно плиты — пара
+     треугольников во всю деталь, и по «задел окно» они тянут карту обратно к полному габариту, а по
+     «центр в окне» — выпадают вовсе, и дно исчезает. Растр же просто не выходит за окно. */
+  if (win){ x0=win[0]; x1=win[1]; y0=win[2]; y1=win[3]; }
   const NX=Math.max(1,Math.ceil((x1-x0)/step)), NY=Math.max(1,Math.ceil((y1-y0)/step));
   const g=new Float32Array(NX*NY).fill(-1e9);
   for(const T of tris){ const A=T[0],B=T[1],C=T[2];
@@ -52,18 +56,28 @@ function blobs(m, pred){
   }
   return out;
 }
+/* Кроп обязателен, а не удобен. На плите 200×200 целиком одна клетка карты — полтора миллиметра, и
+   соседние станции сливаются в одно пятно: разбор `feat` именно так и склеил метку с колонной, выдав
+   несуществующую станцию 20×20 посередине между ними. Рядом надо смотреть вблизи. */
 loadParts(process.argv[2]).then(parts => {
   const p = parts[+(process.argv[3]||0)];
   const NX = +(process.argv[4]||140), NY = +(process.argv[5]||55);
+  const c = [6,7,8,9].map(i => process.argv[i] === undefined ? null : +process.argv[i]);
+  let tris = p.tris;
   const b = computeBBox(p.tris);
-  const m = heightMap(p.tris, Math.max((b.maxX-b.minX)/NX, (b.maxY-b.minY)/NY));
+  const win = c[0] === null ? null : c;
+  const W = win ? win[1]-win[0] : b.maxX-b.minX, D = win ? win[3]-win[2] : b.maxY-b.minY;
+  const m = heightMap(p.tris, Math.max(W/NX, D/NY), win);
   let lo=1e9, hi=-1e9; for(const v of m.g) if(v>-1e8){ if(v<lo)lo=v; if(v>hi)hi=v; }
   console.log(p.name+'   X '+m.x0.toFixed(1)+'…'+m.x1.toFixed(1)+
               '   Y '+m.y0.toFixed(1)+'…'+m.y1.toFixed(1)+'   Z '+lo.toFixed(2)+'…'+hi.toFixed(2));
   console.log('(строка сверху = наибольший Y; пробел = сквозная пустота)');
-  const CH = ' .:-=+*#%@';
+  /* Пробел означает ПУСТО и только это. Держать его же самой низкой ступенью шкалы нельзя: у плиты,
+     обрезанной окном по ровному полю, минимум высоты — это её собственный верх, и полплиты рисовалось
+     пустотой. Ровно так у меня и «пропала» половина каждого кропа. */
+  const CH = '.:-=+*#%@';
   for(let j=m.NY-1;j>=0;j--){ let s='';
     for(let i=0;i<m.NX;i++){ const v=m.g[j*m.NX+i];
-      s += v<-1e8 ? ' ' : CH[Math.min(9, Math.max(0, Math.round((v-lo)/(hi-lo||1)*9)))]; }
+      s += v<-1e8 ? ' ' : CH[Math.min(8, Math.max(0, Math.round((v-lo)/(hi-lo||1)*8)))]; }
     console.log(s); }
 }).catch(e => { console.error('не разобралось:', e.message); process.exitCode = 1; });

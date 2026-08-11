@@ -1182,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.4.1';
+const APP_VERSION = 'v18.4.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -16349,8 +16349,11 @@ const mfApply = (m, p) => !m ? p : [
   p[0]*m[1] + p[1]*m[4] + p[2]*m[7] + m[10],
   p[0]*m[2] + p[1]*m[5] + p[2]*m[8] + m[11]];
 const mfAttr = (tag, name) => { const m = new RegExp(name + '\\s*=\\s*"([^"]*)"').exec(tag); return m ? m[1] : null; };
-function parse3MFModel(xml){
-  const unit = MF_UNITS[(mfAttr(/<model[^>]*>/.exec(xml) ? /<model[^>]*>/.exec(xml)[0] : '', 'unit') || 'millimeter')] || 1;
+/* Разбор ОДНОГО файла модели в карту объектов. Файлов бывает много: расширение Production (его пишут
+   Bambu Studio и Orca — то есть большинство того, что скачивается с MakerWorld) выносит геометрию в
+   отдельные `3D/Objects/object_N.model`, а в главном оставляет ссылки `p:path`. Объект поэтому опознаётся
+   ПАРОЙ «файл + id», а не одним id: номера в разных файлах свои и совпадают сплошь и рядом. */
+function parse3MFObjects(xml, self){
   const objs = new Map();
   const reObj = /<object\b([^>]*)>([\s\S]*?)<\/object>/g;
   let m;
@@ -16366,32 +16369,45 @@ function parse3MFModel(xml){
       tris.push([+mfAttr(a,'v1'), +mfAttr(a,'v2'), +mfAttr(a,'v3')]); }
     const reC = /<component\b([^>]*)\/?>/g; let c;
     while ((c = reC.exec(body))){ const a = '<component' + c[1] + '>';
-      comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')) }); }
+      comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')),
+                   path: a.indexOf('p:path') >= 0 ? mfAttr(a,'p:path') : null }); }
     objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps });
   }
+  return objs;
+}
+const mfPath = s => String(s||'').replace(/^\/+/, '');          // «/3D/Objects/x.model» → ключ записи ZIP
+function parse3MFModels(files, mainPath){
+  const xmlMain = files.get(mainPath) || '';
+  const um = /<model[^>]*>/.exec(xmlMain);
+  const unit = MF_UNITS[(mfAttr(um ? um[0] : '', 'unit') || 'millimeter')] || 1;
+  const byFile = new Map();
+  for (const [path, xml] of files) byFile.set(path, parse3MFObjects(xml, path));
   // Развёртка объекта в треугольники: своя сетка плюс всё, на что он ссылается. Глубина ограничена —
   // ссылка на самого себя в чужом файле встречается, и без предела это зависание, а не ошибка.
-  const build = (id, mat, depth, out) => {
+  const build = (path, id, mat, depth, out) => {
     if (depth > 12) return;
-    const o = objs.get(id); if (!o) return;
+    const o = (byFile.get(path) || new Map()).get(id); if (!o) return;
     for (const f of o.tris){
       const p = f.map(k => o.verts[k]);
       if (p.some(q => !q || q.some(x => !Number.isFinite(x)))) continue;
       out.push(p.map(q => mfApply(mat, q)));
     }
-    for (const c of o.comps) build(c.id, mfMul(c.mat, mat), depth + 1, out);
+    // Ссылка без `p:path` — на объект СВОЕГО файла; с ним — на чужой.
+    for (const c of o.comps) build(c.path ? mfPath(c.path) : path, c.id, mfMul(c.mat, mat), depth + 1, out);
   };
+  const objs = byFile.get(mainPath) || new Map();
   const parts = [];
   const reItem = /<item\b([^>]*)\/?>/g; let it;
-  while ((it = reItem.exec(xml))){
+  while ((it = reItem.exec(xmlMain))){
     const a = '<item' + it[1] + '>', id = mfAttr(a, 'objectid'); if (id == null) continue;
-    const out = []; build(id, mfMat(mfAttr(a, 'transform')), 0, out);
-    if (out.length) parts.push({ name: (objs.get(id) || {}).name || ('Деталь ' + id), tris: out });
+    const path = a.indexOf('p:path') >= 0 ? mfPath(mfAttr(a, 'p:path')) : mainPath;
+    const out = []; build(path, id, mfMat(mfAttr(a, 'transform')), 0, out);
+    if (out.length) parts.push({ name: ((byFile.get(path) || new Map()).get(id) || {}).name || ('Деталь ' + id), tris: out });
   }
-  // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой.
-  if (!parts.length) for (const [id, o] of objs){
+  // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой, из любого файла.
+  if (!parts.length) for (const [path, m] of byFile) for (const [id, o] of m){
     if (!o.tris.length) continue;
-    const out = []; build(id, null, 0, out);
+    const out = []; build(path, id, null, 0, out);
     if (out.length) parts.push({ name: o.name || ('Деталь ' + id), tris: out });
   }
   if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
@@ -16400,9 +16416,14 @@ function parse3MFModel(xml){
 function parse3MF(buf){
   const entries = zipEntries(buf);
   if (!entries) return Promise.reject(new Error('это не 3MF: внутри нет ZIP-архива'));
-  const e = entries.find(x => /^3D\/3dmodel\.model$/i.test(x.name)) || entries.find(x => /\.model$/i.test(x.name));
-  if (!e) return Promise.reject(new Error('в архиве нет 3D/3dmodel.model'));
-  return zipRead(buf, e).then(bytes => parse3MFModel(new TextDecoder().decode(bytes)));
+  const models = entries.filter(x => /\.model$/i.test(x.name));
+  if (!models.length) return Promise.reject(new Error('в архиве нет 3D/3dmodel.model'));
+  const main = models.find(x => /^3D\/3dmodel\.model$/i.test(x.name)) || models[0];
+  // Читаются ВСЕ файлы модели, а не только главный: у расширения Production геометрия лежит по
+  // отдельным `3D/Objects/*.model`, и главный несёт одни ссылки.
+  const dec = new TextDecoder();
+  return Promise.all(models.map(e => zipRead(buf, e).then(b => [e.name, dec.decode(b)])))
+    .then(pairs => parse3MFModels(new Map(pairs), main.name));
 }
 // Один вход для всех форматов. STL и OBJ разбираются на месте, 3MF — обещанием (распаковка
 // асинхронная), поэтому наружу всегда уходит обещание СПИСКА деталей: у 3MF их бывает много, и

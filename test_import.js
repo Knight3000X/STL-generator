@@ -178,7 +178,43 @@ console.log('=== 3MF: составная модель приходит дета�
     catch(e){ msg = e.message; }
     chk('ZIP без модели отвергнут словами', /3dmodel\.model/.test(msg), msg);
   }
-  // 6) общий вход отдаёт список деталей для всех форматов
+  /* 6) РАСШИРЕНИЕ PRODUCTION: геометрия в отдельных файлах, в главном одни ссылки `p:path`.
+        Так пишут Bambu Studio и Orca, то есть почти всё, что скачивается с MakerWorld. Первая версия
+        парсера читала только `3D/3dmodel.model` и на таких файлах возвращала НОЛЬ деталей — молча, потому
+        что «нет вершин» неотличимо от «пустая модель». Из семи настоящих файлов не открылись пять.
+
+        Номера объектов в разных файлах СВОИ и совпадают сплошь и рядом: здесь и главный, и внешний
+        содержат объект с id="1", и они разные. Поэтому объект опознаётся парой «файл + id». */
+  {
+    const external = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="1" name="Внешняя" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh></object></resources></model>';
+    // В главном файле объект с ТЕМ ЖЕ id="1", но пустой: он только ссылается на внешний.
+    const main = '<?xml version="1.0"?><model unit="millimeter" xmlns:p="…/production/2015/06"><resources>' +
+      '<object id="1" name="Обёртка" type="model"><components>' +
+      '<component p:path="/3D/Objects/object_1.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 5 0 0"/>' +
+      '</components></object></resources>' +
+      '<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 7 0"/></build></model>';
+    const buf = zipStored([
+      {name:'3D/3dmodel.model', method:0, data:enc.encode(main)},
+      {name:'3D/Objects/object_1.model', method:0, data:enc.encode(external)}]);
+    const parts = await parse3MF(buf);
+    chk('геометрия из внешнего файла найдена', parts.length === 1 && parts[0].tris.length === 4,
+        {деталей:parts.length, тр:parts[0] && parts[0].tris.length});
+    const b = computeBBox(parts[0].tris);
+    // Тетра занимает x∈[0,2], y∈[0,4] — центр её ГАБАРИТА (1, 2), а не центр тяжести.
+    // Ссылка сдвигает на +5 по X, элемент сборки на +7 по Y.
+    chk('и матрицы ссылки и сборки сложились', approx((b.minX+b.maxX)/2, 6, 1e-3) &&
+        approx((b.minY+b.maxY)/2, 9, 1e-3), [(b.minX+b.maxX)/2, (b.minY+b.maxY)/2]);
+    chk('взят объект ВНЕШНЕГО файла, а не одноимённый из главного',
+        parts[0].tris.length === 4, parts[0].tris.length);
+  }
+
+  // 7) общий вход отдаёт список деталей для всех форматов
   {
     const one = await parseMeshFileParts(makeBinSTL(T), 'куб.stl');
     chk('STL приходит одной деталью', one.length === 1 && one[0].tris.length === 4, one.length);

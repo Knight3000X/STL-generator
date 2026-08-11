@@ -300,14 +300,42 @@ console.log('=== мерительная карточка: углы клинье�
   const card = w => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
     Object.assign(paramState.box, defaultBoxParams(), {tstMode:'toolcard', tstCardW:w});
     return buildTrisForShape('box', paramState.box); };
+  /* Сколько мест в ряду — считается тем же правилом, что и в строителе, и правило это про СЛУЖЕБНЫЙ
+     БЛОК выреза: построитель окружает каждый полем в 1.7 его размера, и блоки соседних колонок, задев
+     друг друга, роняют сторож столкновений — молча, оставляя деталь герметичной. */
+  const placesFor = W => { for(let n=9;n>=3;n--) if(W/n >= 1.7*(2*n-1) + 1.5) return n; return 3; };
   for(const w of [60, 110, 220]){
     const t = card(w), mc = manifoldCheck(t,4), b = computeBBox(t);
     chk('W='+w+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
-    // Ничто не торчит за край карты: вырез, не влезающий в свою колонку, уезжал ЗА габарит.
-    chk('W='+w+': ничего не торчит за край', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
+    // Ничто не торчит за габарит — ни вбок, ни вперёд: клинья свисали с переднего края на 3 мм,
+    // и проверка только по X этого не видела.
+    chk('W='+w+': ничего не торчит вбок', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
+    let plateZ0 = 1e9, plateZ1 = -1e9;
+    for(const T of t) for(const v of T) if(Math.abs(v[1]-b.minY) < 1e-9){
+      plateZ0 = Math.min(plateZ0, v[2]); plateZ1 = Math.max(plateZ1, v[2]); }
+    chk('W='+w+': ничего не свисает с краёв по глубине',
+        b.maxZ - plateZ1 < 1e-6 && plateZ0 - b.minZ < 1e-6,
+        {спереди:+(b.maxZ-plateZ1).toFixed(2), сзади:+(plateZ0-b.minZ).toFixed(2)});
+    /* И НИ ОДИН ВЫРЕЗ НЕ ПРОПАЛ. Пропажа тихая: сторож столкновений выбрасывает вырез, деталь остаётся
+       герметичной, подпись под него стоит — а дырки нет. Меряется лучом в центр каждого места. */
+    const n = placesFor(w), cw = w/n, dMax = 2 + 2*(n-1);
+    let l = Math.min(3.6, w/34); while(l > 1.2 && seg7Width('14', l) > cw*0.85) l -= 0.1; l = Math.max(1.2, l);
+    const rH = Math.max(1.7*dMax + l + 6, 22), dep = rH*3 + cw*0.8 + l + 6;
+    const empty = (x, z) => { for(const T of t){ const [A,B,C] = T;
+        const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
+        const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
+        const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
+        if((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0)){
+          const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]);
+          if(Math.abs(ar) > 1e-12) return false; } }
+      return true; };
+    let miss = 0;
+    for(let r=0;r<3;r++) for(let k=0;k<n;k++)
+      if(!empty(-w/2 + cw*(k+0.5), -dep/2 + rH*(r+0.5))) miss++;
+    chk('W='+w+': все '+(3*n)+' вырезов на месте', miss === 0, {пропало:miss});
   }
-  const W = 110, t = card(W), b = computeBBox(t), cardTop = b.maxY > 2 ? b.minY + (b.maxY-b.minY) : 0;
-  const nR = Math.max(3, Math.min(9, Math.floor(Math.sqrt(W/2.6)))), cell = W/nR;
+  const W = 110, t = card(W), b = computeBBox(t);
+  const nR = placesFor(W), cell = W/nR;
   const yTop = 1.4;                                   // половина толщины карты при tstT по умолчанию
   const topAt = (x, z) => { let hi = -1e9;
     for(const T of t){ const [A,B,C] = T;

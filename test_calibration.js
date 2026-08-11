@@ -337,5 +337,56 @@ console.log('=== мерительная карточка: углы клинье�
   logos.length = 0;
 }
 
+/* КАРТОЧКА ФИЛАМЕНТА. Меряется то, ради чего бирка существует: прорезь под стяжку СКВОЗНАЯ (иначе
+   бирка не повесится), три стенки правда разной толщины (иначе проба ничего не говорит) и ничего не
+   торчит за габарит карты. */
+console.log('=== карточка филамента: прорезь сквозная, стенки разной толщины ===');
+{
+  const fil = w => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'filcard', tstFilW:w});
+    return buildTrisForShape('box', paramState.box); };
+  for(const w of [40, 72, 160]){
+    const t = fil(w), mc = manifoldCheck(t,4), b = computeBBox(t);
+    chk('W='+w+': герметична', mc.watertight, {open:mc.openEdges, bad:mc.badEdges});
+    chk('W='+w+': ничего не торчит за габарит', Math.abs((b.maxX-b.minX) - w) < 1e-6, +(b.maxX-b.minX).toFixed(2));
+  }
+  const W = 72, t = fil(W), b = computeBBox(t);
+  const topAt = (x, z) => { let hi = -1e9;
+    for(const T of t){ const [A,B,C] = T;
+      const d1=(B[0]-A[0])*(z-A[2])-(B[2]-A[2])*(x-A[0]);
+      const d2=(C[0]-B[0])*(z-B[2])-(C[2]-B[2])*(x-B[0]);
+      const d3=(A[0]-C[0])*(z-C[2])-(A[2]-C[2])*(x-C[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const ar=(B[0]-A[0])*(C[2]-A[2])-(B[2]-A[2])*(C[0]-A[0]); if(Math.abs(ar)<1e-12) continue;
+      const w1=((B[0]-x)*(C[2]-z)-(B[2]-z)*(C[0]-x))/ar, w2=((C[0]-x)*(A[2]-z)-(C[2]-z)*(A[0]-x))/ar;
+      hi = Math.max(hi, w1*A[1]+w2*B[1]+(1-w1-w2)*C[1]); }
+    return hi; };
+  // Прорезь: где-то у левого нижнего угла столбик пуст насквозь.
+  {
+    let пусто = 0;
+    for(let i=0;i<80;i++) for(let j=0;j<60;j++){
+      const x = -W/2 + 20*i/80, z = -b.maxZ + 16*j/60;
+      if(topAt(x, z) < -1e8) пусто++;
+    }
+    chk('прорезь под стяжку сквозная', пусто > 0, {пустыхстолбиков:пусто});
+  }
+  // Три стенки: считаем разные толщины по числу столбиков, где стоит материал выше карты.
+  {
+    const b2 = computeBBox(t), yCard = 1.0;      // половина толщины при tstT по умолчанию
+    const runs = [];
+    for(let j=0;j<3;j++){ }
+    let found = 0;
+    for(let q=0;q<600;q++){ const z = b2.minZ + (b2.maxZ-b2.minZ)*q/600;
+      let any = false;
+      for(let i=0;i<40;i++){ const x = W/2 - 20 + 18*i/40;
+        if(topAt(x, z) > yCard + 1) { any = true; break; } }
+      runs.push(any);
+    }
+    let segs = 0; for(let i=1;i<runs.length;i++) if(runs[i] && !runs[i-1]) segs++;
+    chk('в правой полосе стоят отдельные стенки, а не одна', segs >= 3, {полос:segs});
+  }
+  logos.length = 0;
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

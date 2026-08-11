@@ -185,9 +185,9 @@ function centreTopTris(tris, yt, rad){ let n=0; for(const t of tris){
   if(c[1]>yt-0.5 && (c[0]*c[0]+c[2]*c[2])<rad*rad){ const nrm=faceNormal(t); if(nrm[1]>0.8) n++; } } return n; }
 const yt = -(30/2 - clampWallThickness(70,30,70,2.5));
 const ringClosed=buildLogoFloor(()=>ringHM(false)), ringOpen=buildLogoFloor(()=>ringHM(true)), disc=buildLogoFloor(discHM);
-chk('closed-ring logo on lattice: watertight', manifoldCheck(ringClosed,5).watertight && !hasNaN(ringClosed), manifoldCheck(ringClosed,5));
-chk('C-gap ring on lattice: watertight', manifoldCheck(ringOpen,5).watertight && !hasNaN(ringOpen), manifoldCheck(ringOpen,5));
-chk('solid-disc logo on lattice: watertight', manifoldCheck(disc,5).watertight && !hasNaN(disc), manifoldCheck(disc,5));
+{ const __mc = manifoldCheck(ringClosed,5); chk('closed-ring logo on lattice: watertight', __mc.watertight && !hasNaN(ringClosed), __mc); }
+{ const __mc = manifoldCheck(ringOpen,5); chk('C-gap ring on lattice: watertight', __mc.watertight && !hasNaN(ringOpen), __mc); }
+{ const __mc = manifoldCheck(disc,5); chk('solid-disc logo on lattice: watertight', __mc.watertight && !hasNaN(disc), __mc); }
 // The closed ring's counter is a CLEAN OPENING → almost no top-floor material at the centre, unlike a solid
 // disc whose centre is the logo itself (fully covered on top).
 const cRing=centreTopTris(ringClosed,yt,5), cDisc=centreTopTris(disc,yt,5);

@@ -180,7 +180,7 @@ for(const D of [16, 25, 40]){
   const spec = assemblyMate(p);
   chk('Ø'+D+': пара — труба', spec && spec.name === 'Труба (образец)', {got: spec && spec.name});
   const plan = placed(p);
-  chk('Ø'+D+': труба замкнута', manifoldCheck(plan.tris,4).watertight, manifoldCheck(plan.tris,4));
+  { const __mc = manifoldCheck(plan.tris,4); chk('Ø'+D+': труба замкнута', __mc.watertight, __mc); }
   chk('Ø'+D+': отдана геометрией, а не параметрами', !!plan.frozenTris, {});
   const B = computeBBox(plan.world);
   // drawn a fit clearance under nominal — see the note in assemblyMate

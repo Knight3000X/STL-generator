@@ -50,7 +50,7 @@ function boreAt(tris, y){
 
 console.log('=== builds, and only when asked ===');
 { const plain = mk({threadTop:'none'});
-  chk('без воронки крышка не изменилась', manifoldCheck(plain,4).watertight, manifoldCheck(plain,4));
+  { const __mc = manifoldCheck(plain,4); chk('без воронки крышка не изменилась', __mc.watertight, __mc); }
   for(const D of [1, 8]){                          // below the throat it is not a funnel, it is a hole
     const t = mk({threadFunnelD:D});
     chk('Ø устья '+D+' — воронки нет, крышка та же',

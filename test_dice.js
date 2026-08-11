@@ -189,7 +189,7 @@ console.log('=== крупная цифра на треугольной гран�
     return buildTrisForShape('box', paramState.box); };
   const G20 = dieFaceGeometry('d20', 21, 21, 21), f20 = G20.faces[0];
   const t20 = setup('d20');
-  chk('d20 с крупной цифрой герметична', manifoldCheck(t20,4).watertight, manifoldCheck(t20,4));
+  { const __mc = manifoldCheck(t20,4); chk('d20 с крупной цифрой герметична', __mc.watertight, __mc); }
   // The discriminator between the two paths is the WALL of the pocket: a cell patch cuts it perpendicular
   // to the face, the displaced radial grid can only ramp between neighbouring grid points. Ramps are what
   // «нечёткость» looks like, so they are what gets counted.
@@ -283,7 +283,7 @@ console.log('\n=== край цифры идёт по рисунку, а не п�
   chk('цветная пробка идёт по той же линии', Math.abs(pPlug - pPocket) < 1e-6,
       {пробка:+pPlug.toFixed(4), карман:+pPocket.toFixed(4)});
   const whole = buildTrisForShape('box', paramState.box);
-  chk('кость с такой цифрой герметична', manifoldCheck(whole,4).watertight, manifoldCheck(whole,4));
+  { const __mc = manifoldCheck(whole,4); chk('кость с такой цифрой герметична', __mc.watertight, __mc); }
   dieFaces.length=0;
 }
 

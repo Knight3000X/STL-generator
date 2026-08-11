@@ -246,7 +246,7 @@ console.log('=== промятая крышка НЕ теряет свои вин
   const dented = buildTrisForShape('box', paramState.box);
   chk('крышка без надписи — четыре колодца', nBare === 4, nBare);
   chk('с надписью их столько же', wells(dented) === nBare, {было:nBare, стало:wells(dented)});
-  chk('промятая крышка герметична', manifoldCheck(dented,4).watertight, manifoldCheck(dented,4));
+  { const __mc = manifoldCheck(dented,4); chk('промятая крышка герметична', __mc.watertight, __mc); }
   chk('и надпись правда промяла её', vol(dented) < vol(bare) - 1,
       {без:+vol(bare).toFixed(1), с:+vol(dented).toFixed(1)});
   // ЗЕНКОВКА. У входа колодец шире, чем ниже по своей длине — это и есть потай, и это второе, что
@@ -320,7 +320,7 @@ console.log('=== крышка корпуса: сетка сгущается по
   chk('и она заметно гуще, чем в стороне от надписи', fine500 > coarse500*3,
       {под:fine500, вокруг:coarse500});
   chk('ползунок детализации на неё влияет', fine500 > fine50*3, {'50':fine50, '250':fine500});
-  chk('крышка при этом герметична', manifoldCheck(t500,4).watertight, manifoldCheck(t500,4));
+  { const __mc = manifoldCheck(t500,4); chk('крышка при этом герметична', __mc.watertight, __mc); }
   // Игл быть не должно: станции сгущения кладутся ВМЕСТО редких, а не вперемешку с ними — иначе
   // на стыке зоны получается столбец в тысячные доли миллиметра шириной.
   let sl=0;

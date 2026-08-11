@@ -1181,7 +1181,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v17.7.10';
+const APP_VERSION = 'v17.7.11';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -16356,7 +16356,13 @@ function buildTrisForShapeCore(shape, p) {
     // Keycap: overrides every other box mode. Legend comes from the first logo card; the shell/core
     // pair (AMS) is two assembly models — two objects in the exported 3MF, one filament each.
     if (p.keycapMode && p.keycapMode !== 'none') {
-      return snapWeldTris(buildKeycap(p, typeof logoResolution !== 'undefined' ? logoResolution : 60));
+      /* Без внешней сварки: buildKeycap отдаёт УЖЕ сваренную сетку — оба её возврата кончаются на
+         `polyDropDegen(snapWeldTris(tris))`. Второй проход по тем же треугольникам ничего не находил и
+         стоил около 110 мс на сборку: замер на 288 сочетаниях (все режимы × стемы × профили × ряды ×
+         плита × с логотипом и без) — изменённых сеток ноль, потраченного времени 17.5 с.
+         Инвариант закреплён проверкой в `test_keycap.js`, чтобы его нельзя было потерять правкой
+         внутри построителя. */
+      return buildKeycap(p, typeof logoResolution !== 'undefined' ? logoResolution : 60);
     }
     if (p.platonic && p.platonic !== 'none') {
       // Dice: D4/D6/D8/D12/D20 (Platonic) or D10/D100 (trapezohedra), with optional per-face relief

@@ -165,7 +165,7 @@ console.log('\n=== вентрешётка в стенке ===');
   // окно шире стенки зажимается по стенке, а не вылезает
   {
     const t = base({pbVent:'-Z', pbVentW:999, pbVentH:999});
-    chk('окно во всю стенку: герметично', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('окно во всю стенку: герметично', __mc.watertight, __mc); }
     chk('и рама всё-таки осталась', vol(t) > 0, vol(t)|0);
     /* Габарит — вот что ловит окно, не зажатое по стенке: контур, который шире грани, уводит вершины
        кольцевого стежка ЗА корпус, а герметичность этого не видит (manifoldCheck сшивает рёбра и на
@@ -177,7 +177,7 @@ console.log('\n=== вентрешётка в стенке ===');
         Math.abs(bv.maxY-bn.maxY)<1e-6 && Math.abs(bv.minY-bn.minY)<1e-6,
         {none:bn, vent:bv});
     const tiny = base({pbVent:'-Z', pbW:24, pbD:22, pbH:10});
-    chk('крошечный корпус с решёткой: герметичен', manifoldCheck(tiny,4).watertight, manifoldCheck(tiny,4));
+    { const __mc = manifoldCheck(tiny,4); chk('крошечный корпус с решёткой: герметичен', __mc.watertight, __mc); }
   }
   // по умолчанию решётки нет, и на крышке её тоже нет
   // предупреждения говорят то, что иначе замечаешь уже на столе
@@ -216,7 +216,7 @@ console.log('\n=== вентрешётка в стенке ===');
     chk('толщина стенки зажата по НАРУЖНОМУ габариту', Math.abs(d.wall - 5) < 1e-9, d.wall);
     chk('и пролёт стенки считается от него же', Math.abs(d.Ww - 17) < 1e-9 && Math.abs(d.Dw - 17) < 1e-9, [d.Ww, d.Dw]);
     const t = base(Object.assign({pbPart:'tray', pbVent:'-Z'}, p3));
-    chk('и корпус на этой настройке строится герметичным', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('и корпус на этой настройке строится герметичным', __mc.watertight, __mc); }
   }
   chk('по умолчанию решётки нет', base({}).length === none.length);
   chk('строка есть и она про стенки',

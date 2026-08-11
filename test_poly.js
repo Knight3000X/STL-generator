@@ -144,7 +144,7 @@ console.log('=== бин: full-size rounded-rect container (gridfinity-bin look) 
       latticeWalls:'all',latticeFloor:true,latticeCell:8,latticeRib:1.6,latticeBorder:3,latticePattern:'hex',latticeRes:100,
       taperXPlus:-9,taperXMinus:-9,taperZPlus:-9,taperZMinus:-9}));
     const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
-    chk('round tapered basket + hex net walls/floor wt', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('round tapered basket + hex net walls/floor wt', __mc.watertight, __mc); }
     chk('basket flares open (top wider than base)', (b.maxX-b.minX)>110+10, {top:b.maxX-b.minX}); }
 }
 paramState.box.latticeWalls='none';

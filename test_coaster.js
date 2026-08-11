@@ -817,7 +817,7 @@ console.log('=== отступ кольца отсчитывается от КР�
   logos.push({id:1, face:'-Y', u0:0, v0:0, w:50, h:50, depth:-0.8, threshold:0.5,
               invert:false, rotation:0, heightmap:HM, levels:2});
   const body = buildTrisForShape('box', paramState.box);
-  chk('тело с кольцом у края герметично', manifoldCheck(body, 4).watertight, manifoldCheck(body, 4));
+  { const __mc = manifoldCheck(body, 4); chk('тело с кольцом у края герметично', __mc.watertight, __mc); }
   logos.length = 0;
 }
 
@@ -842,9 +842,9 @@ console.log('=== кольцо строится КОЛЬЦОМ, а не клет�
   const tOn  = buildTrisForShape('box', setup({csRingInk:1}));
   chk('кольцо стоит считанные тысячи треугольников, а не сотни тысяч',
       tOn.length - tOff.length < 8000, {без:tOff.length, с:tOn.length});
-  chk('тело с кольцом герметично', manifoldCheck(tOn, 4).watertight, manifoldCheck(tOn, 4));
+  { const __mc = manifoldCheck(tOn, 4); chk('тело с кольцом герметично', __mc.watertight, __mc); }
   const plug = buildTrisForShape('box', setup({csRingInk:1, csPart:'ink1'}));
-  chk('пробка с кольцом герметична', manifoldCheck(plug, 4).watertight, manifoldCheck(plug, 4));
+  { const __mc = manifoldCheck(plug, 4); chk('пробка с кольцом герметична', __mc.watertight, __mc); }
 
   /* Где кольцо стоит — меряется лучом, а не спекой. Луч уводится с оси на радиан-другой: у правильного
      многоугольника с чётным числом сторон луч вдоль оси идёт по вершине и считается то так, то этак. */

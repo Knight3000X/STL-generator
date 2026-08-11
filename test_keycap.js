@@ -112,7 +112,7 @@ function sag(tris){
   chk('профилей столько, сколько на таблице сравнения', PROFILES.length >= 18, PROFILES.length);
   for(const pr of PROFILES){
     const t = base({keyProfile:pr, keyRow:'r3'});
-    chk(pr+': водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk(pr+': водонепроницаем', __mc.watertight && vol(t)>0, __mc); }
     chk(pr+': чаша объявлена', KEYCAP_PROFILES[pr].dish > 0.3, KEYCAP_PROFILES[pr].dish);
     chk(pr+': форма чаши названа', ['cyl','sph'].includes(KEYCAP_PROFILES[pr].dishKind),
         KEYCAP_PROFILES[pr].dishKind);
@@ -171,8 +171,7 @@ function sag(tris){
   // cavity through the top of the cap — watertight, correctly paired edge for edge, and a hole.
   for(const d of [0, 1, 2, 3]) for(const pl of [1, 1.8, 4]){
     const t = base({keyProfile:'custom', keyDish:d, keyPlate:pl});
-    chk('чаша '+d+' плита '+pl+': водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0,
-        manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('чаша '+d+' плита '+pl+': водонепроницаем', __mc.watertight && vol(t)>0, __mc); }
     // one solid run straight down the middle: top plate, then the cavity, then nothing
     const runs = solidRuns(t, 1, 0.29, 0.37);
     chk('чаша '+d+' плита '+pl+': крышка цела', runs.length >= 1 && runs[runs.length-1][1] > 1, runs);
@@ -267,7 +266,7 @@ console.log('=== профили и ряды с таблицы сравнения
   // over the middle 9, so the same offsets that read an alpha would read a spacebar as having no dish.
   for(const pr of ['sa','dsa','kat','cherry']){
     const t = base({keyProfile:pr, keyRow:'space', keySizeU:6.25});
-    chk(pr+'/пробел: водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk(pr+'/пробел: водонепроницаем', __mc.watertight && vol(t)>0, __mc); }
     const g = sag(t);
     chk(pr+'/пробел: вдоль клавиши прямой', Math.abs(g.z) < 0.02, g);
     const c = topAt(t, 0.37, 0.29), farL = topAt(t, -48.37, 0.29), farR = topAt(t, 48.37, 0.29);
@@ -286,8 +285,7 @@ console.log('=== профили и ряды с таблицы сравнения
   for(const pr of Object.keys(KEYCAP_PROFILES)) for(const r of KEYCAP_ROWS){
     const u = r === 'space' ? 6.25 : 1;
     const t = base({keyProfile:pr, keyRow:r, keySizeU:u});
-    chk(pr+'/'+r+' '+u+'u: водонепроницаем', manifoldCheck(t,4).watertight && vol(t)>0,
-        manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk(pr+'/'+r+' '+u+'u: водонепроницаем', __mc.watertight && vol(t)>0, __mc); }
   }
   // rows are the list the UI offers, not a second copy of it
   const opts = SHAPE_PARAMS.box.find(r => r.key === 'keyRow').options.map(o => o.v);
@@ -490,7 +488,7 @@ console.log('=== вставка обходит стем оболочки ===');
     const o = {keyProfile:pr, keyStem:st, keySizeU:u};
     const sh = base(Object.assign({keycapMode:'shell'}, o), true);
     const co = base(Object.assign({keycapMode:'core'},  o), true);
-    chk(pr+'/'+st+'/'+u+'u: вставка замкнута', manifoldCheck(co,4).watertight && vol(co)>0, manifoldCheck(co,4));
+    { const __mc = manifoldCheck(co,4); chk(pr+'/'+st+'/'+u+'u: вставка замкнута', __mc.watertight && vol(co)>0, __mc); }
     base(Object.assign({keycapMode:'core'}, o), true);
     const g = keycapStabSpec(paramState.box);
     let worst = 0;
@@ -544,7 +542,7 @@ console.log('=== вставка обходит стем оболочки ===');
   }
   for(const pl of [1, 1.2, 1.8, 4]){
     const t = base({keycapMode:'core', keyPlate:pl}, true);
-    chk('площадка '+pl+': вставка замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('площадка '+pl+': вставка замкнута', __mc.watertight, __mc); }
   }
   chk('без стема вопрос не стоит', keycapCoreSpec(Object.assign({}, paramState.box, {keyStem:'none'}), 0).xs.length === 0);
 }
@@ -558,6 +556,29 @@ console.log('=== regression: keycapMode none → normal cube ===');
 { logos.length=0; Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,keycapMode:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('cube unaffected', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
+
+/* Кейкап отдаётся УЖЕ сваренным, и на это опирается вызов в buildTrisForShape: внешней сварки там
+   больше нет. Инвариант держится здесь, а не на честном слове — потеряй его правка внутри построителя,
+   и наружу пошла бы несваренная сетка, которую никто больше не сварит. Второй проход обязан не менять
+   ни одного треугольника. */
+console.log('=== кейкап отдаётся уже сваренным ===');
+{
+  let changed = 0, n = 0;
+  for(const pr of ['sa','dsa','cherry','custom']) for(const [r,u] of [['r1',1],['space',6.25]])
+    for(const plate of [0,1]){
+      base({keyProfile:pr, keyRow:r, keySizeU:u, keyPlate:plate});
+      const inner = buildKeycap(paramState.box, 60);
+      if(!inner || !inner.length) continue;
+      n++;
+      const again = snapWeldTris(inner);
+      let same = inner.length === again.length;
+      if(same) for(let i=0;i<inner.length && same;i++) for(let k=0;k<3 && same;k++)
+        for(let c=0;c<3 && same;c++) if(inner[i][k][c] !== again[i][k][c]) same = false;
+      if(!same) changed++;
+    }
+  chk('вторая сварка не меняет ни одной из '+n+' сеток', changed === 0, {изменено:changed, всего:n});
+  chk('и сеток набралось, а не ноль', n >= 12, n);
+}
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

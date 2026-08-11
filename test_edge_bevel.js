@@ -117,7 +117,7 @@ for(const [nm,ov] of Object.entries({squircle:{squircle:60}, шестерня:{g
                                      'скруглённый куб':{filletRadius:5}})){
   const plain = mk(ov);
   const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:1.5});
-  chk(nm+': круглый контур больше не отказ', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  { const __mc = manifoldCheck(t,4); chk(nm+': круглый контур больше не отказ', __mc.watertight, __mc); }
   chk(nm+': и жалобы в сводку не идёт',
       !collectPrintWarnings(paramState.box).some(w=>/слишком круглый/.test(w)), {note:edgeBevelNote});
 }
@@ -132,7 +132,7 @@ for(const [nm,ov] of [['крючок на стену',{hookMount:'wall'}], ['о�
                       ['ласточкин хвост',{mntMode:'dovetail'}], ['темп-башня',{mntMode:'temptower'}]]){
   const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
   chk(nm+': контур больше не считается вогнутым', !/вогнут/.test(edgeBevelNote), {note:edgeBevelNote});
-  chk(nm+': и деталь замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  { const __mc = manifoldCheck(t,4); chk(nm+': и деталь замкнута', __mc.watertight, __mc); }
 }
 // A genuinely concave outline still cannot be followed — hull-tangent planes do not reach into a
 // notch, and no amount of splitting into shells helps. The pipe collar is the honest example: it has
@@ -169,14 +169,13 @@ for(const [nm,ov] of [['полый',{hollow:true,wallThickness:2}],
   const t = mk({...ov, edgeBevelWhere:'bottom', edgeBevel:2});
   chk(nm+': фаска реально снята', vol(t) < vol(plain) - 1e-6,
       {before:+vol(plain).toFixed(1), after:+vol(t).toFixed(1)});
-  chk(nm+': и деталь замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  { const __mc = manifoldCheck(t,4); chk(nm+': и деталь замкнута', __mc.watertight, __mc); }
   chk(nm+': и оболочка не осталась острой', !/не срезалась/.test(edgeBevelNote), {note:edgeBevelNote});
 }
 // the wall thickness decides where the grid lands, so sweep it — this is the case that used to break
 for(const wt of [1.2, 2, 2.5, 3, 4]){
   const t = mk({hollow:true, wallThickness:wt, edgeBevelWhere:'both', edgeBevel:2});
-  chk('полый, стенка '+wt+': замкнут и срезан', manifoldCheck(t,4).watertight &&
-      vol(t) < vol(mk({hollow:true, wallThickness:wt})) - 1e-6, manifoldCheck(t,4));
+  { const __mc = manifoldCheck(t,4); chk('полый, стенка '+wt+': замкнут и срезан', __mc.watertight && vol(t) < vol(mk({hollow:true, wallThickness:wt})) - 1e-6, __mc); }
 }
 
 console.log('=== off by default, and off means untouched ===');

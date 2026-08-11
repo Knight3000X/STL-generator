@@ -150,7 +150,7 @@ console.log('\n=== дуга и цилиндр: ширина это ДЛИНА Д
      ЧИСЛУ различных X-координат на лице — дублирующий шов дал бы две, отличающиеся на 1e-16. */
   const p = setup({ltMode:'cylinder', ltW:120, ltH:80, ltFrame:0, ltRes:80});
   const t = buildTrisForShape('box', p);
-  chk('цилиндр герметичен', manifoldCheck(t, 4).watertight, manifoldCheck(t, 4));
+  { const __mc = manifoldCheck(t, 4); chk('цилиндр герметичен', __mc.watertight, __mc); }
   const g = lithoSpec(p);
   const R = g.R;
   let onSeam = 0;

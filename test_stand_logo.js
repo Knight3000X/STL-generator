@@ -248,8 +248,7 @@ console.log('=== поверхность берётся с КАРТОЧКИ, и �
   for (const which of STAND_LOGO_SURFACES){
     put(which);
     const t = buildTrisForShape('box', p);
-    chk('«'+which+'»: подставка с вдавленным рисунком герметична', manifoldCheck(t,4).watertight,
-        manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('«'+which+'»: подставка с вдавленным рисунком герметична', __mc.watertight, __mc); }
     chk('«'+which+'»: рисунок вдавлен в саму панель', sunk(t, standLogoFrame(p, which), -0.6) > 50,
         sunk(t, standLogoFrame(p, which), -0.6));
     for (const other of STAND_LOGO_SURFACES){
@@ -263,7 +262,7 @@ console.log('=== поверхность берётся с КАРТОЧКИ, и �
     const t = buildTrisForShape('box', p);
     chk('выпуклый рисунок выходит наружу тем же механизмом',
         sunk(t, standLogoFrame(p, 'back'), 0.8) > 50, sunk(t, standLogoFrame(p, 'back'), 0.8));
-    chk('и деталь остаётся замкнутой', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('и деталь остаётся замкнутой', __mc.watertight, __mc); }
   }
   /* Главное следствие: выемка СНИМАЕТ материал. Накладка его только добавляла — это и было «на
      площадке», и никакой герметичностью такое не отличишь. Меряется объёмом. */
@@ -292,7 +291,7 @@ console.log('=== поверхность берётся с КАРТОЧКИ, и �
     chk('два логотипа мнут две поверхности сразу',
         sunk(t, standLogoFrame(p,'floor'), -0.6) > 50 && sunk(t, standLogoFrame(p,'back'), -0.6) > 50,
         [sunk(t, standLogoFrame(p,'floor'), -0.6), sunk(t, standLogoFrame(p,'back'), -0.6)]);
-    chk('и деталь при этом замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+    { const __mc = manifoldCheck(t,4); chk('и деталь при этом замкнута', __mc.watertight, __mc); }
   }
   /* Вырез под кабель и выемка на дне не уживаются: дно с вырезом строится другой машинкой. Приложение в
      этом случае оставляет дно ровным — и обязано сказать это вслух, а не промолчать. */
@@ -376,7 +375,7 @@ console.log('=== цветная печать (AMS) на подставке ===')
     const inks = logoInks(logos[0]);
     chk(face+': тонов у рисунка три', inks.levels.length === 3, inks.levels.length);
     const body = buildTrisForShape('box', P({logoAms:'body'}));
-    chk(face+': тело с карманом герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    { const __mc = manifoldCheck(body,4); chk(face+': тело с карманом герметично', __mc.watertight, __mc); }
     const parts = [];
     for (let k = 1; k <= inks.levels.length; k++) parts.push(buildTrisForShape('box', P({logoAms:'ink'+k})));
     chk(face+': ни один цвет не пуст', parts.every(t => t.length > 0), parts.map(t=>t.length));
@@ -433,7 +432,7 @@ console.log('=== цветная печать (AMS) на подставке ===')
                 rotation:0, heightmap:three, levels:4, chan:'detail', tones:['#101010','#404040','#BB1828']});
     const body = buildTrisForShape('box', P({logoAms:'body'}));
     const p1 = buildTrisForShape('box', P({logoAms:'ink1'}));
-    chk('выпуклый + цвет: тело герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    { const __mc = manifoldCheck(body,4); chk('выпуклый + цвет: тело герметично', __mc.watertight, __mc); }
     /* И панель при этом НЕ выдавлена: выпуклый рисунок печатает пробка, а два одинаковых бугра на одном
        месте — это два тела в одном объёме. Меряется объёмом против детали без логотипа. */
     {
@@ -466,7 +465,7 @@ console.log('=== цветная печать (AMS) на подставке ===')
     const Q = ov => Object.assign({}, defaultBoxParams(), {psOn:true, psSlot:24}, ov);
     const body = buildTrisForShape('box', Q({logoAms:'body'}));
     const p1 = buildTrisForShape('box', Q({logoAms:'ink1'}));
-    chk('дно с вырезом: тело с накладкой герметично', manifoldCheck(body,4).watertight, manifoldCheck(body,4));
+    { const __mc = manifoldCheck(body,4); chk('дно с вырезом: тело с накладкой герметично', __mc.watertight, __mc); }
     chk('дно с вырезом: цвет построился и замкнут',
         p1.length > 0 && manifoldCheck(p1,4).watertight, [p1.length, manifoldCheck(p1,4)]);
     const fr = standLogoFrame(Q({}), 'floor');
@@ -528,7 +527,7 @@ console.log('=== край мозаики у цветной детали идёт
   chk('и идёт по окружности, а не лесенкой (лесенка это 1.27)', peri/truth < 1.12,
       {периметр:+peri.toFixed(2), истинный:+truth.toFixed(2), отношение:+(peri/truth).toFixed(3)});
   chk('и не короче истинного — срезать углы тоже нельзя', peri/truth > 0.97, +(peri/truth).toFixed(3));
-  chk('пробка замкнута', manifoldCheck(t,4).watertight, manifoldCheck(t,4));
+  { const __mc = manifoldCheck(t,4); chk('пробка замкнута', __mc.watertight, __mc); }
   logos.length = 0;
 }
 

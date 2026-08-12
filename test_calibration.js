@@ -20,7 +20,11 @@
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 
-const MODES = ['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'];
+const MODES = ['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall',
+               'fan','string','spiral'];
+function bb(t){ const b={x0:1e9,x1:-1e9,y0:1e9,y1:-1e9,z0:1e9,z1:-1e9};
+  for(const T of t) for(const v of T){ if(v[0]<b.x0)b.x0=v[0]; if(v[0]>b.x1)b.x1=v[0];
+    if(v[1]<b.y0)b.y0=v[1]; if(v[1]>b.y1)b.y1=v[1]; if(v[2]<b.z0)b.z0=v[2]; if(v[2]>b.z1)b.z1=v[2]; } return b; }
 function build(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), ov);
   return buildTrisForShape('box', paramState.box); }
@@ -501,6 +505,77 @@ console.log('=== форма «Тесты» стоит в панели нарав
     if(r.group !== 'Тесты печати' || !r.w || r.w === '*') continue;
     chk(r.key+': относится только к живым образцам', r.w.every(v => MODES.includes(v)), r.w);
   }
+}
+
+/* ТРИ НОВЫХ ОБРАЗЦА меряются той же меркой, что и остальные: величина берётся из сетки и сравнивается с
+   той, что заказана ручкой. Строителя никто не спрашивает, что он собирался построить. */
+/* Границы берутся ПАРАМИ через `spansX`, а не группировкой соседних вершин. У призмы вершины есть только
+   на двух торцах, поэтому «сгустки координат» дают по два сгустка на одно рёбрышко, а не по одному:
+   первая версия этих проверок насчитала 2N рёбрышек вместо N и нулевую сторону у каждого столбика. */
+console.log('=== веер нависаний: вылет растёт и совпадает с дугой ===');
+for(const N of [4, 8]) for(const aMax of [50, 80]){
+  const t = build({tstMode:'fan', tstN:N, tstAngMax:aMax, tstH:12});
+  const b = bb(t), yMin = b.y0 + 4 + 1.5;
+  const sp = spansX(t, yMin);
+  chk('веер N='+N+' до '+aMax+'°: рёбрышек ровно столько, сколько станций', sp.pairs.length === N,
+      sp.pairs.length);
+  const runs = sp.pairs.map(([x0, x1]) => { let lo = 1e9, hi = -1e9;
+    for(const T of t) for(const v of T) if(v[1] > yMin && v[0] >= x0 - 1e-6 && v[0] <= x1 + 1e-6){
+      if(v[2] < lo) lo = v[2]; if(v[2] > hi) hi = v[2]; }
+    return hi - lo; });
+  chk('веер N='+N+' до '+aMax+'°: вылет растёт от станции к станции',
+      runs.every((v, i) => i === 0 || v > runs[i-1] + 0.1), runs.map(r => +r.toFixed(2)));
+  // Вылет крайнего обязан лечь на дугу: R = H/sin A, средняя линия уходит на R(1−cos A), плюс полстенки
+  // у корня (нормаль там горизонтальна) и полстенки·cos A у кончика.
+  const A = aMax*Math.PI/180, want = 12*(1 - Math.cos(A))/Math.sin(A) + 1.5 + 1.5*Math.cos(A);
+  chk('веер N='+N+' до '+aMax+'°: вылет крайнего лёг на дугу', Math.abs(runs[N-1] - want) < 0.35,
+      {есть:+runs[N-1].toFixed(2), надо:+want.toFixed(2)});
+}
+console.log('=== стрункость: перелёты и берега ===');
+for(const N of [3, 7]) for(const g of [20, 80]){
+  const t = build({tstMode:'string', tstN:N, tstStrGap:g, tstStrPost:2.5, tstH:14});
+  const sp = spansX(t, bb(t).y0 + 4 + 2);
+  chk('стрункость N='+N+' до '+g+': столбиков на один больше, чем перелётов', sp.pairs.length === N + 1,
+      sp.pairs.length + ' вместо ' + (N + 1));
+  chk('стрункость N='+N+' до '+g+': столбик — заданной стороны',
+      sp.pairs.every(q => Math.abs((q[1] - q[0]) - 2.5) < 0.02), sp.pairs.map(q => +(q[1]-q[0]).toFixed(2)));
+  const gaps = []; for(let i = 1; i < sp.pairs.length; i++) gaps.push(sp.pairs[i][0] - sp.pairs[i-1][1]);
+  chk('стрункость N='+N+' до '+g+': перелёты растут',
+      gaps.every((v, i) => i === 0 || v > gaps[i-1] + 0.3), gaps.map(v => +v.toFixed(1)));
+  chk('стрункость N='+N+' до '+g+': самый длинный — заказанный',
+      Math.abs(gaps[gaps.length-1] - g) < 1.2, {есть:+gaps[gaps.length-1].toFixed(2), надо:g});
+}
+console.log('=== спираль: кольца, их число и стенка ===');
+for(const N of [3, 8]) for(const dMax of [40, 120]) for(const w of [0.4, 1.2]){
+  const t = build({tstMode:'spiral', tstN:N, tstSpiMax:dMax, tstSpiWall:w, tstH:10});
+  const b = bb(t);
+  // луч вдоль X через центр на высоте колец: сколько кусков материала он встретит
+  const y = b.y0 + 4 + 5;
+  const segs = [];
+  {
+    const hits = [];
+    for(const T of t){ const [a,c,d] = T;
+      const dd1=(c[1]-a[1])*(0-a[2])-(c[2]-a[2])*(y-a[1]);
+      const dd2=(d[1]-c[1])*(0-c[2])-(d[2]-c[2])*(y-c[1]);
+      const dd3=(a[1]-d[1])*(0-d[2])-(a[2]-d[2])*(y-d[1]);
+      if(!((dd1>=0&&dd2>=0&&dd3>=0)||(dd1<=0&&dd2<=0&&dd3<=0))) continue;
+      const A2=(c[1]-a[1])*(d[2]-a[2])-(c[2]-a[2])*(d[1]-a[1]); if(Math.abs(A2)<1e-12) continue;
+      const e1=[c[0]-a[0],c[1]-a[1],c[2]-a[2]], e2=[d[0]-a[0],d[1]-a[1],d[2]-a[2]];
+      const nx=e1[1]*e2[2]-e1[2]*e2[1]; if(Math.abs(nx)<1e-12) continue;
+      const w1=((c[1]-y)*(d[2]-0)-(c[2]-0)*(d[1]-y))/A2, w2=((d[1]-y)*(a[2]-0)-(d[2]-0)*(a[1]-y))/A2;
+      hits.push([w1*a[0]+w2*c[0]+(1-w1-w2)*d[0], nx<0?1:-1]); }
+    hits.sort((a,c)=>a[0]-c[0]);
+    let dep=0, st=null;
+    for(const [x,q] of hits){ const pr=dep; dep+=q;
+      if(pr<=0&&dep>0) st=x; else if(pr>0&&dep<=0){ if(st!==null&&x-st>1e-9) segs.push([st,x]); st=null; } }
+  }
+  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': колец ровно столько, сколько станций',
+      segs.length === 2*N, segs.length + ' пересечений вместо ' + 2*N);
+  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': крайнее кольцо — заказанного Ø',
+      Math.abs((segs[segs.length-1][1] - segs[0][0]) - (dMax + w)) < 0.06,
+      {есть:+(segs[segs.length-1][1]-segs[0][0]).toFixed(3), надо:dMax + w});
+  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': стенка — заказанной толщины',
+      segs.every(q => Math.abs((q[1]-q[0]) - w) < 0.05), segs.map(q=>+(q[1]-q[0]).toFixed(3)));
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

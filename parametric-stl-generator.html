@@ -1182,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.7.0';
+const APP_VERSION = 'v18.8.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5744,7 +5744,12 @@ function sliceActiveModel(){
 // importedMeshes; the model's params carry importId + a scale spec, so Width/Height/Depth (fit-box mode)
 // or a uniform % rescale it live. Sits centred on the origin like every other shape; may be non-watertight
 // (a scan) — that's fine for preview / export / grip raycasting; slicing needs a closed mesh.
-const MAX_IMPORT_TRIS = 1200000;
+/* Предел стоит не от лени, а от памяти: треугольник здесь — три массива по три числа, и полтора миллиона
+   таких — сотни мегабайт в куче вкладки. Предпросмотр с v18.8.0 упрощается сам (`displayTris`), поэтому
+   плавность больше не упирается в размер, а вот память упирается по-прежнему — отсюда и потолок, и
+   предупреждение выше `HEAVY_IMPORT_TRIS`. */
+const MAX_IMPORT_TRIS = 2000000;
+const HEAVY_IMPORT_TRIS = 1200000;
 /* Одна деталь файла — одна модель сборки. Для STL и OBJ деталь всегда одна; 3MF несёт их сколько
    угодно, каждую со своим местом, и ради этого формат и взят. Место 3MF отдаёт МАТРИЦЕЙ, уже вшитой в
    координаты, поэтому детали приходят стоящими друг относительно друга правильно — а вот собственный
@@ -5782,6 +5787,9 @@ function importMeshFile(file){
       const total = parts.reduce((n, p) => n + p.tris.length, 0);
       if (total > MAX_IMPORT_TRIS){ alert('Слишком много треугольников: '+total.toLocaleString('ru')+
         ' (лимит '+MAX_IMPORT_TRIS.toLocaleString('ru')+'). Упростите/дециммируйте меш в Blender/Meshmixer.'); return; }
+      if (total > HEAVY_IMPORT_TRIS && !confirm('Треугольников: '+total.toLocaleString('ru')+
+        '. Экспорт пойдёт полной сеткой, предпросмотр — упрощённой, но столько граней займут сотни мегабайт '+
+        'памяти вкладки: на телефоне она может закрыться. Продолжить?')) return;
       const room = MAX_MODELS - models.length;
       if (parts.length > room){
         alert('В файле '+parts.length+' деталей, а мест в сборке осталось '+room+'. Загружены первые '+room+'.');
@@ -19250,7 +19258,76 @@ function computeGeometry() {
   return bbox;
 }
 
+/* ---- УПРОЩЕНИЕ ДЛЯ ПРЕДПРОСМОТРА ---------------------------------------------------------------------
+
+   Импортированная скульптура бывает в полтора миллиона треугольников. Показывать её целиком незачем: на
+   экране в тысячу точек поперёк модели от миллиона граней видно ровно столько же, сколько от сотни тысяч,
+   а вкладка на телефоне от такой сетки закрывается.
+
+   УПРОЩАЕТСЯ ТОЛЬКО ПОКАЗ. Экспорт идёт мимо: он берёт `rawTris`, а сюда попадает лишь то, что уходит в
+   Three.js. Это не соглашение, а устройство — упрощение врезано в единственную дверь, через которую
+   геометрия попадает на экран, и добраться до неё из экспорта неоткуда.
+
+   КЛАСТЕРИЗАЦИЯ ПО СЕТКЕ, а не схлопывание рёбер по квадрикам. Квадрики дают заметно лучший силуэт, но
+   это на порядок больше кода и времени, а нужен предпросмотр, а не подготовка к печати. Представителем
+   клетки берётся СРЕДНЕЕ попавших в неё точек, а не центр клетки: центр превращает тонкую мачту в
+   лесенку, среднее оставляет её мачтой.
+
+   Шаг сетки считается от ПЛОЩАДИ, а не от объёма. Поверхность занимает оболочку клеток, а не их объём:
+   при сетке в N клеток занятых будет порядка N^⅔, и объёмная прикидка на бюджете в четверть миллиона
+   оставила бы четыре тысячи треугольников вместо двухсот пятидесяти. */
+const PREVIEW_TRI_BUDGET = 260000;
+const previewLite = new WeakMap();                        // полная сетка → её упрощённая копия
+function clusterDecimate(tris, budget){
+  const b = computeBBox(tris);
+  const ex = [Math.max(1e-6, b.maxX-b.minX), Math.max(1e-6, b.maxY-b.minY), Math.max(1e-6, b.maxZ-b.minZ)];
+  let area = 0;
+  for(const T of tris){
+    const e1 = [T[1][0]-T[0][0], T[1][1]-T[0][1], T[1][2]-T[0][2]];
+    const e2 = [T[2][0]-T[0][0], T[2][1]-T[0][1], T[2][2]-T[0][2]];
+    area += 0.5*Math.hypot(e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]);
+  }
+  let cell = Math.sqrt(Math.max(1e-12, area)/Math.max(1, budget*0.6));
+  let out = tris;
+  // Прикидка по площади даёт мимо на кривых поверхностях, поэтому шаг подтягивается: не сошлось — крупнее.
+  for(let pass = 0; pass < 6; pass++){
+    const n = ex.map(e => Math.max(1, Math.min(1024, Math.ceil(e/cell))));
+    const sum = new Map();
+    const idx = v => {
+      const i = Math.min(n[0]-1, Math.max(0, Math.floor((v[0]-b.minX)/ex[0]*n[0])));
+      const j = Math.min(n[1]-1, Math.max(0, Math.floor((v[1]-b.minY)/ex[1]*n[1])));
+      const k = Math.min(n[2]-1, Math.max(0, Math.floor((v[2]-b.minZ)/ex[2]*n[2])));
+      return i + n[0]*(j + n[1]*k);
+    };
+    for(const T of tris) for(const v of T){
+      const key = idx(v), a = sum.get(key);
+      if (a) { a[0]+=v[0]; a[1]+=v[1]; a[2]+=v[2]; a[3]++; }
+      else sum.set(key, [v[0], v[1], v[2], 1]);
+    }
+    const rep = new Map();
+    for(const [k2, a] of sum) rep.set(k2, [a[0]/a[3], a[1]/a[3], a[2]/a[3]]);
+    out = [];
+    for(const T of tris){
+      const k0 = idx(T[0]), k1 = idx(T[1]), k2 = idx(T[2]);
+      if (k0 === k1 || k1 === k2 || k0 === k2) continue;   // треугольник схлопнулся в клетку — выбросить
+      out.push([rep.get(k0), rep.get(k1), rep.get(k2)]);
+    }
+    if (out.length <= budget) break;
+    cell *= Math.max(1.15, Math.sqrt(out.length/budget));
+  }
+  return out;
+}
+/* Что показать вместо этой сетки. Уложилась в бюджет — ОНА САМА, тот же массив: упрощать то, что и так
+   мелкое, значит портить вид на ровном месте. Результат запоминается по самому массиву, поэтому
+   перерисовки без пересборки модели упрощение не повторяют. */
+function displayTris(tris){
+  if (!tris || tris.length <= PREVIEW_TRI_BUDGET) return tris;
+  let lite = previewLite.get(tris);
+  if (!lite){ lite = clusterDecimate(tris, PREVIEW_TRI_BUDGET); previewLite.set(tris, lite); }
+  return lite;
+}
 function setMeshTrisGeometry(threeMesh, tris) {
+  tris = displayTris(tris);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(trisToPositions(tris), 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(computeWeldedNormals(tris), 3));

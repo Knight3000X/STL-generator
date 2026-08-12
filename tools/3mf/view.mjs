@@ -8,22 +8,27 @@
    обратно к полному габариту, либо исчезают вместе с плитой, оставляя висеть одни станции. */
 import { chromium } from '/tmp/claude-0/-home-user-STL-generator/4f14327a-0b0f-5dcc-bfdf-fc2e448c7233/scratchpad/node_modules/playwright/index.mjs';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const [stl, out, W = '1200', H = '440', ...win] = process.argv.slice(2);
 const box = win.length === 4 ? win.map(Number) : null;
 const html = fs.readFileSync('parametric-stl-generator.html', 'utf8');
 const m = html.match(/<script>([\s\S]*?)<\/script>/);          // первый <script> — это инлайновая Three.js
 const three = m[1];
-const data = fs.readFileSync(stl).toString('base64');
+/* Сетка отдаётся ФАЙЛОМ, а не base64 внутри страницы. Присланный Benchy — 1.8 млн треугольников, это
+   90 МБ STL и 120 МБ base64: `setContent` с таким телом просто роняет вкладку. Файл рядом со страницей
+   Chromium читает без разговоров, если разрешить file:// доступ к соседям. */
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'view-'));
+fs.copyFileSync(stl, path.join(tmp, 'model.stl'));
 const WIN = box ? JSON.stringify(box) : 'null';
 
 const page = `<!doctype html><html><head><meta charset="utf-8"><style>
 body{margin:0;background:#12161c;display:flex}canvas{display:block}</style></head><body>
 <script>${three}<\/script>
 <script>
-const b64 = "${data}";
-const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-const dv = new DataView(bin.buffer);
+fetch('model.stl').then(r => r.arrayBuffer()).then(BUF => {
+const dv = new DataView(BUF);
 const n = dv.getUint32(80, true), pos = new Float32Array(n*9);
 for(let i=0;i<n;i++){ const o = 84 + i*50;
   for(let v=0;v<3;v++) for(let k=0;k<3;k++) pos[i*9+v*3+k] = dv.getFloat32(o+12+v*12+k*4, true); }
@@ -66,13 +71,17 @@ for(const [dx,dy,dz] of views){
   rn.setSize(w, h); rn.render(sc, cam); document.body.appendChild(rn.domElement);
 }
 document.title = 'ready';
+});
 <\/script></body></html>`;
 
+fs.writeFileSync(path.join(tmp, 'page.html'), '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+fs.writeFileSync(path.join(tmp, 'page.html'), page);
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--allow-file-access-from-files'] });
 const pg = await browser.newPage({ viewport: { width: +W, height: +H } });
-await pg.setContent(page, { waitUntil: 'load' });
-await pg.waitForFunction(() => document.title === 'ready', null, { timeout: 30000 });
+await pg.goto('file://' + path.join(tmp, 'page.html'), { waitUntil: 'load' });
+await pg.waitForFunction(() => document.title === 'ready', null, { timeout: 180000 });
 await pg.screenshot({ path: out });
 await browser.close();
+fs.rmSync(tmp, {recursive:true, force:true});
 console.log('снимок: ' + out);

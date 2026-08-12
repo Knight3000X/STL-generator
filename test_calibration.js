@@ -21,7 +21,7 @@ let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}els
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 
 const MODES = ['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall',
-               'fan','string','spiral'];
+               'fan','string','spiral','infill'];
 function bb(t){ const b={x0:1e9,x1:-1e9,y0:1e9,y1:-1e9,z0:1e9,z1:-1e9};
   for(const T of t) for(const v of T){ if(v[0]<b.x0)b.x0=v[0]; if(v[0]>b.x1)b.x1=v[0];
     if(v[1]<b.y0)b.y0=v[1]; if(v[1]>b.y1)b.y1=v[1]; if(v[2]<b.z0)b.z0=v[2]; if(v[2]>b.z1)b.z1=v[2]; } return b; }
@@ -415,9 +415,15 @@ console.log('=== ручки и правда управляют деталью ==
     const c = f(computeBBox(build(Object.assign({tstMode:m}, hi))));
     chk(m+': своя ручка меняет деталь', c > a + 1, {lo:+a.toFixed(1), hi:+c.toFixed(1)});
   }
+  /* «Линейка» и «ячейка заполнения» станций не имеют вовсе, и это не пропуск: у линейки станция — это
+     миллиметровое деление, их число задаёт длина; у ячейки заполнения станций ровно столько, сколько
+     узоров у OrcaSlicer, и меняться от ручки они не могут. Обе обязаны игнорировать `tstN` — что здесь и
+     проверяется, а не обходится. */
+  const NO_STATIONS = ['ruler', 'infill'];
   for(const m of MODES){
     const a = build({tstMode:m, tstN:4}).length, c = build({tstMode:m, tstN:12}).length;
-    chk(m+': число образцов меняет деталь', m === 'ruler' ? a === c : c > a, {n4:a, n12:c});
+    chk(m+': число образцов меняет деталь',
+        NO_STATIONS.indexOf(m) >= 0 ? a === c : c > a, {n4:a, n12:c});
   }
 }
 
@@ -483,7 +489,7 @@ console.log('=== форма «Тесты» стоит в панели нарав
       !sectionRelevant('Тесты печати','mount',false));
   chk('а крепёж на ней не виден', !sectionRelevant('Крепёж / монтаж','test',false));
   const opts = SHAPE_PARAMS.box.find(r => r.key === 'tstMode').options.map(o => o.v);
-  chk('в списке ровно десять образцов и «нет»', opts.length === MODES.length + 1, opts);
+  chk('в списке ровно четырнадцать образцов и «нет»', opts.length === MODES.length + 1, opts);
   for(const m of MODES){
     chk(m+': есть плитка', opts.includes(m), opts);
     chk(m+': справка на месте', !!MODEL_HELP['test:'+m], m);
@@ -626,6 +632,52 @@ for(const pitch of [3, 6]) for(const dMax of [50, 100]){
       S2.map(v=>+v.toFixed(1)));
   chk('спираль шаг '+pitch+' Ø'+dMax+': не вылезла за заказанный Ø',
       (bb(sp).x1 - bb(sp).x0) <= dMax + 12 + 1e-6, +(bb(sp).x1 - bb(sp).x0).toFixed(2));
+}
+
+/* НАБОР ЗАПОЛНЕНИЙ. Проверяется то, ради чего он затеян: ячеек ровно столько, сколько узоров у
+   OrcaSlicer, они РАЗНЫЕ по номеру, не налезают друг на друга и все влезают в сборку. Раскладка вынесена
+   в отдельную функцию именно чтобы её можно было померить без DOM. */
+console.log('=== набор заполнений: раскладка ===');
+{
+  const plan = infillSwatchPlan(defaultBoxParams());
+  chk('ячеек столько же, сколько узоров', plan.length === ORCA_INFILL.length, plan.length);
+  chk('и все влезают в сборку', plan.length <= MAX_MODELS, {надо:plan.length, мест:MAX_MODELS});
+  chk('номера идут подряд с единицы', plan.every((c, k) => c.no === k + 1));
+  chk('имена не повторяются', new Set(plan.map(c => c.name)).size === plan.length);
+  // Габарит берётся у ПОСТРОЕННОЙ ячейки: при включённом замке плита шире заказанной стороны, и проверка
+  // по заказанной пропустила бы ровно тот нахлёст, из-за которого раскладку и переписали.
+  const cellBox = (ov) => { const b = computeBBox(buildInfillCell(1, Object.assign(defaultBoxParams(), ov||{})));
+    return {w: b.maxX - b.minX, d: b.maxZ - b.minZ}; };
+  for(const ov of [{}, {tstJoin:true}, {tstInfSide:50}, {tstInfSide:18, tstJoin:true}]){
+    const pl = infillSwatchPlan(Object.assign(defaultBoxParams(), ov)), cb = cellBox(ov);
+    let clash = 0;
+    for(let i = 0; i < pl.length; i++) for(let j = i + 1; j < pl.length; j++)
+      if(Math.abs(pl[i].px - pl[j].px) < cb.w - 1e-6 && Math.abs(pl[i].pz - pl[j].pz) < cb.d - 1e-6) clash++;
+    chk('ячейки не налезают ('+JSON.stringify(ov)+')', clash === 0, clash);
+  }
+  chk('раскладка близка к квадрату, а не в строку',
+      Math.max(...plan.map(c=>c.px)) - Math.min(...plan.map(c=>c.px)) < ORCA_INFILL.length*30*0.5);
+  // сторона ячейки правит и раскладку — иначе набор разъедется при другом размере
+  const big = infillSwatchPlan(Object.assign(defaultBoxParams(), {tstInfSide: 50}));
+  chk('шаг раскладки следует за стороной ячейки',
+      Math.max(...big.map(c=>c.px)) > Math.max(...plan.map(c=>c.px)) + 10);
+}
+console.log('=== набор заполнений: сама ячейка ===');
+for(const no of [1, 7, 20]) for(const side of [15, 30, 60]){
+  const t = buildInfillCell(no, Object.assign(defaultBoxParams(), {tstInfSide:side, tstInfH:12}));
+  const mc = manifoldCheck(t, 4);
+  chk('ячейка '+no+' сторона '+side+': герметична', mc.watertight && mc.badEdges === 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  const b = computeBBox(t);
+  chk('ячейка '+no+' сторона '+side+': сторона заказанная',
+      Math.abs((b.maxX - b.minX) - side) < 1e-6, +(b.maxX-b.minX).toFixed(2));
+  // верх ОТКРЫТ — ради этого всё и делается: луч сверху по центру обязан дойти до дна
+  const yTop = b.maxY, hits = [];
+  for(const T of t) if(T.every(v => Math.abs(v[1] - yTop) < 1e-6)) hits.push(T);
+  let covers = false;
+  for(const T of hits){ const xs = T.map(v=>v[0]), zs = T.map(v=>v[2]);
+    if(Math.min(...xs) <= 0 && Math.max(...xs) >= 0 && Math.min(...zs) <= 0 && Math.max(...zs) >= 0) covers = true; }
+  chk('ячейка '+no+' сторона '+side+': верх открыт', !covers);
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

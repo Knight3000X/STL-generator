@@ -262,5 +262,53 @@ console.log('\n=== вентрешётка в стенке ===');
   base({});
 }
 
+/* ВВОДЫ ПОД ПРОВОДКУ. Механика раскладки по граням та же, что у решётки, поэтому и проверяется то же:
+   сколько граней заказано, столько отверстий и прорезано. Мерится объёмом — предупреждения о том, что
+   отверстие ДЕЙСТВИТЕЛЬНО прорезано, не знают ничего. */
+console.log('=== вводы под проводку ===');
+{
+  const vol = t => { let v = 0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
+    v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; }
+    return Math.abs(v); };
+  base({pbCable:'none'}); const v0 = vol(buildTrisForShape('box', paramState.box));
+  base({pbCable:'-Z', pbCableD:8, pbCableN:1}); const v1 = vol(buildTrisForShape('box', paramState.box));
+  base({pbCable:'ZZ', pbCableD:8, pbCableN:1}); const v2 = vol(buildTrisForShape('box', paramState.box));
+  base({pbCable:'all', pbCableD:8, pbCableN:1}); const v4 = vol(buildTrisForShape('box', paramState.box));
+  chk('один ввод убирает материал', v1 < v0 - 0.5, {без:+v0.toFixed(0), один:+v1.toFixed(0)});
+  chk('два ввода убирают примерно вдвое больше',
+      Math.abs((v0 - v2) - 2*(v0 - v1)) < (v0 - v1)*0.2, {один:+(v0-v1).toFixed(1), два:+(v0-v2).toFixed(1)});
+  chk('четыре — больше двух', (v0 - v4) > (v0 - v2) + 0.5);
+  chk('и деталь остаётся герметичной',
+      manifoldCheck(buildTrisForShape('box', paramState.box), 4).watertight);
+  // столько отверстий, сколько заказано на стенку
+  for(const n of [1, 3]){
+    base({pbCable:'-Z', pbCableD:6, pbCableN:n});
+    const g = pboxCableSpec(paramState.box);
+    chk('на стенке ровно '+n+' ввод(а)', g[0].cs.length === n, g[0].cs.length);
+    chk('и они разложены ровно, а не от края',
+        Math.abs(g[0].cs.reduce((a,b)=>a+b, 0)) < 1e-6, g[0].cs.map(v=>+v.toFixed(2)));
+  }
+  // Ø и высота слушаются, и отверстие не съедает дно
+  for(const d of [4, 20]) for(const y of [2, 200]){
+    base({pbCable:'-Z', pbCableD:d, pbCableN:1, pbCableY:y, pbH:40});
+    const g = pboxCableSpec(paramState.box);
+    if(!g) continue;
+    chk('Ø '+d+' высота '+y+': Ø заказанный', Math.abs(g[0].d - d) < 1e-9, g[0].d);
+    chk('Ø '+d+' высота '+y+': ось не выходит за стенку',
+        g[0].cy - d/2 > 0 && g[0].cy + d/2 < 40, +g[0].cy.toFixed(2));
+  }
+  base({pbCable:'-Z', pbCableD:30, pbCableN:8});
+  chk('когда не влезает — сказано, а не построено молча',
+      collectPrintWarnings(paramState.box).some(x => /вводы/.test(x)),
+      collectPrintWarnings(paramState.box));
+  base({pbPart:'lid', pbCable:'ZZ'});
+  chk('на крышке вводов нет, и это сказано',
+      collectPrintWarnings(paramState.box).some(x => /вводы: у крышки/.test(x)));
+  // решётка и вводы уживаются на одной стенке
+  base({pbCable:'ZZ', pbCableD:6, pbCableN:2, pbCableY:6, pbVent:'ZZ', pbH:40});
+  chk('вводы и решётка на одной стенке — деталь цела',
+      manifoldCheck(buildTrisForShape('box', paramState.box), 4).watertight);
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

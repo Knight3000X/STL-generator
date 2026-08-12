@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.13.0';
+const APP_VERSION = 'v18.14.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4914,6 +4914,16 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbClear', label:'Корпус: зазор посадки крышки', min:0.1, max:1, step:0.05, default:0.35, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLidT', label:'Крышка: толщина', min:1, max:10, step:0.1, default:2.4, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbLipH', label:'Крышка: высота внутреннего борта (заходит в лоток)', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Корпус (электроника)', key:'pbCable', label:'Корпус: вводы под проводку', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'-Z',t:'задняя стенка'},{v:'+Z',t:'передняя стенка'},
+               {v:'-X',t:'левая стенка'},{v:'+X',t:'правая стенка'},
+               {v:'ZZ',t:'задняя + передняя'},{v:'XX',t:'левая + правая'},{v:'all',t:'все четыре стенки'}]},
+    {group:'Корпус (электроника)', key:'pbCableD', label:'Вводы: Ø отверстия', min:2, max:40, step:0.5, default:8, unit:'мм',
+      only:{pbCable:['-Z','+Z','-X','+X','ZZ','XX','all']}},
+    {group:'Корпус (электроника)', key:'pbCableN', label:'Вводы: сколько на стенку', min:1, max:8, step:1, default:1, int:true,
+      only:{pbCable:['-Z','+Z','-X','+X','ZZ','XX','all']}},
+    {group:'Корпус (электроника)', key:'pbCableY', label:'Вводы: высота оси над дном', min:2, max:120, step:1, default:12, unit:'мм',
+      only:{pbCable:['-Z','+Z','-X','+X','ZZ','XX','all']}},
     {group:'Корпус (электроника)', key:'pbVent', label:'Корпус: вентрешётка на стенке', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'-Z',t:'задняя стенка'},{v:'+Z',t:'передняя стенка'},
                {v:'-X',t:'левая стенка'},{v:'+X',t:'правая стенка'},
@@ -15222,6 +15232,41 @@ function pboxVentOne(p, face){
   const slot = (along - (n - 1)*bar)/n;
   return {face, acrossZ, vert, u, v, n, bar, slot, cv:(wy0 + H)/2};
 }
+/* ---- ВВОДЫ ПОД ПРОВОДКУ ------------------------------------------------------------------------------
+
+   Те же наборы граней, что у вентиляции, и это не подражание: причина общая. Провода в корпус заходят и
+   выходят — питание с одной стороны, шлейф с другой, — и выбор «какая ОДНА стенка» заставлял бы тащить
+   всё через один борт. Набор граней берётся из `PBOX_VENT_FACES`: две таблицы разошлись бы при первой же
+   правке.
+
+   Отверстия КРУГЛЫЕ и без перемычек — этим они и отличаются от решётки. Решётка держит перемычками, чтобы
+   в неё не лез палец; вводу перемычка мешает, туда лезет провод.
+
+   Вводы раскладываются по пролёту стенки РОВНО, а не от края: провод входит посередине, а смещённый к
+   углу ввод упирается в стойку под винт. */
+function pboxCableSpec(p){
+  const faces = PBOX_VENT_FACES[String(p.pbCable)] || null;
+  if (!faces) return null;
+  if ((p.pbPart || 'tray') === 'lid') return null;        // у крышки стенок нет — резать нечем
+  const {H, wall, floorT, emb, Ww, Dw} = pboxDims(p);
+  const d = Math.max(2, Math.min(40, p.pbCableD != null ? p.pbCableD : 8));
+  const n = Math.max(1, Math.min(8, Math.round(p.pbCableN || 1)));
+  const wy0 = floorT - emb;
+  if (!(H - wy0 > d + 3)) return null;                    // стенка ниже отверстия — вводов не будет
+  // По высоте: заданная отметка от дна, зажатая так, чтобы отверстие не съело ни дно, ни верхнюю кромку.
+  const cyWant = wy0 + (p.pbCableY != null ? p.pbCableY : (H - wy0)/2);
+  const cy = Math.max(wy0 + d/2 + 1, Math.min(H - d/2 - 1, cyWant));
+  const out = [];
+  for (const face of faces){
+    const acrossZ = (face === '-X' || face === '+X');
+    const span = (acrossZ ? Dw : Ww) - 2*Math.max(1.5, wall) - 4;
+    if (!(span > n*(d + 2))) continue;                    // столько вводов в эту стенку не влезет
+    const step = span/n, cs = [];
+    for (let k = 0; k < n; k++) cs.push(-span/2 + step*(k + 0.5));
+    out.push({face, acrossZ, d, n, cs, cy});
+  }
+  return out.length ? out : null;
+}
 /* ---- Логотип на электрокорпусе: мнётся сама стенка ----------------------------------------------
    Раньше корпус стоял в LOGO_PLATE_MODES, и обёртка клала поверх него плиту-накладку: надпись сидела на
    выпуклой площадке, а не в теле. Лечится тем же, чем лечилась подставка в v17.3.0 — панель строится
@@ -15362,6 +15407,12 @@ function buildProjectBox(p){
     /* HOLE_AXIS_PQ[0] = [Y, Z], а HOLE_AXIS_PQ[2] = [X, Y]: у ±X стенки первая ось окна ВЕРТИКАЛЬНАЯ, у
        ±Z — горизонтальная. Перепутать их легко и незаметно — окно тогда просто не режется, а деталь
        остаётся герметичной; поймано разницей объёмов, а не глазами. */
+    /* Вводы под проводку — те же наборы граней, что у решётки, и та же ловушка с осями: у ±X стенки
+       первая ось окна вертикальная, у ±Z — горизонтальная. */
+    for (const cab of (pboxCableSpec(p) || []))
+      for (const c of cab.cs) userHoles.push(cab.acrossZ
+        ? { face: cab.face, axis: 0, cp: cab.cy, cq: c, r: cab.d/2 }
+        : { face: cab.face, axis: 2, cp: c, cq: cab.cy, r: cab.d/2 });
     for (const vent of vents) userHoles.push(vent.acrossZ
       ? { face: vent.face, axis: 0, cp: vent.cv, cq: 0, ap: vent.v/2, aq: vent.u/2, rc: Math.min(1.2, vent.v/2 - 0.1) }
       : { face: vent.face, axis: 2, cp: 0, cq: vent.cv, ap: vent.u/2, aq: vent.v/2, rc: Math.min(1.2, vent.v/2 - 0.1) });
@@ -19199,6 +19250,18 @@ function collectPrintWarnings(p){
       Math.max(0, p.psSlot != null ? p.psSlot : 18) > 1 &&
       logos.some(l => l.heightmap && (l.depth||0) && standLogoSurface(l, p) === 'floor'))
     w.push('логотип на дне: вырез под кабель и вдавленный рисунок не уживаются — рисунок ляжет накладкой поверх дна; поставьте вырез в 0, чтобы он вдавился');
+  if (p.pbPart && p.pbPart !== 'none' && p.pbCable && p.pbCable !== 'none') {
+    const cs = pboxCableSpec(p);
+    if (!cs && (p.pbPart === 'lid')) w.push('вводы: у крышки стенок нет — вводы бывают только на лотке');
+    else if (!cs) w.push('вводы: столько отверстий такого Ø в стенку не помещается');
+    else {
+      const want = (PBOX_VENT_FACES[String(p.pbCable)] || []).length;
+      if (cs.length < want) w.push('вводы: на узкие стенки они не влезли — сделано ' + cs.length + ' из ' + want);
+      /* Отверстие впритык к кабелю не пролезет: печать сужает круглые проёмы, и провод Ø8 в дырку Ø8
+         не войдёт. Молчать нельзя — это узнаётся уже с деталью в руках. */
+      if ((p.pbCableD || 8) < 3) w.push('вводы: Ø меньше 3 мм — печать сузит проём, провод не пройдёт');
+    }
+  }
   if (p.pbPart && p.pbPart !== 'none' && p.pbVent && p.pbVent !== 'none') {
     const gs = pboxVentSpec(p);
     if (!gs && (p.pbPart === 'lid'))

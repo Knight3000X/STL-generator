@@ -574,7 +574,7 @@
     cursor:pointer; margin-bottom:10px;
   }
   #btn-add-model:hover, #btn-add-lid:hover, #btn-add-mate:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg, #btn-infill-swatch, #btn-surface-swatch{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
+  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg, #btn-infill-swatch, #btn-surface-swatch, #btn-plate{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
     border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
     font-size:12px; cursor:pointer; }
   #btn-add-baseplate:hover, #btn-slice-model:hover, #btn-import-mesh:hover, #btn-sheet-svg:hover, #btn-infill-swatch, #btn-surface-swatch:hover{ border-color:var(--ink); }
@@ -969,6 +969,8 @@
     <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью. С «Регистрационными штифтами» на срезах появятся штифт и ответное гнездо — фрагменты собираются без подгонки на глаз.">✂ Разрезать на фрагменты</button>
     <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL, OBJ или 3MF) в сборку. 3MF несёт НЕСКОЛЬКО деталей со своими местами — каждая приходит отдельной моделью и встаёт туда, где стояла. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ / 3MF</button>
     <input type="file" id="mesh-import-input" accept=".stl,.obj,.3mf,model/stl,model/obj,model/3mf" style="display:none">
+    <select id="plate-recipe" title="Готовая раскладка: несколько образцов сразу, каждый отдельной моделью, с зубьями по краям."></select>
+    <button id="btn-plate" title="Кладёт все образцы выбранного рецепта отдельными моделями, разложенными по столу и с зубьями по краям, чтобы состыковать их в плиту.">⊞ Плита образцов</button>
     <button id="btn-surface-swatch" title="Кладёт все восемь площадок под рисунок верхней корки отдельными моделями: в 3MF каждая уйдёт своим объектом, и в слайсере каждой можно назначить свой рисунок поверхности.">⊞ Набор корки (OrcaSlicer)</button>
     <button id="btn-infill-swatch" title="Кладёт все двадцать ячеек OrcaSlicer отдельными моделями: в 3MF каждая уйдёт своим объектом, и в слайсере каждой можно назначить свой узор заполнения. Одной деталью сравнить нельзя — настройка живёт на объекте.">⊞ Набор заполнений (OrcaSlicer)</button>
     <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
@@ -1184,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.11.0';
+const APP_VERSION = 'v18.12.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -14311,6 +14313,61 @@ function infillSwatchPlan(p){ return swatchPlan(ORCA_INFILL, buildInfillCell, p)
 function buildTestInfill(p){
   return buildInfillCell(Math.round(tstNum(p.tstInfNo, 1, ORCA_INFILL.length, 1)), p);
 }
+/* ---- ПЛИТЫ ИЗ ОБРАЗЦОВ ------------------------------------------------------------------------------
+
+   Присланные файлы — готовые плиты: на одной сразу шесть рядов. Собрать такую из наших образцов можно
+   было и раньше, руками, но раскладывать десяток деталей по столу — работа, которую машина делает лучше.
+
+   Плита это РЕЦЕПТ, а не отдельная фигура: список «какой образец с какими ручками». Строить её единой
+   деталью было бы неверно вдвойне. Рецепт повторил бы арифметику, уже написанную в образцах, и плита
+   перестала бы чиниться вместе с ними; а главное, в 3MF единая деталь ушла бы ОДНИМ объектом, и настройки
+   слайсера — то самое, ради чего половина образцов и существует — легли бы на все сразу.
+
+   Раскладка ПОЛОЧНАЯ, по измеренным габаритам. Образцы разной ширины: линейка 200 мм, ячейка 40 — по
+   общей клетке полстола осталось бы пустым. Ширина полки берётся от самого широкого образца рецепта, а
+   не задаётся числом: заданное однажды с ним разойдётся. */
+const PLATE_RECIPES = [
+  /* Числа станций в рецептах ЗАНИЖЕНЫ против одиночных образцов, и это не придирка к красоте. Каждый наш
+     образец несёт собственную плиту с полем под подписи, поэтому шесть полноразмерных занимают 253 × 340
+     мм — глубже любого стола. У присланной плиты ряды лежат на ОДНОМ основании и полей между ними нет;
+     цена нашей разборности — площадь, и платится она числом станций. */
+  {key:'measure', name:'Мерительная', items:[
+    {mode:'fit', ov:{tstN:5}}, {mode:'dim', ov:{tstN:4}}, {mode:'sphere', ov:{tstN:5}},
+    {mode:'overhang', ov:{tstN:6}}, {mode:'chamfer', ov:{tstN:6}}, {mode:'radius', ov:{tstN:6}}]},
+  {key:'quality', name:'Качество печати', items:[
+    {mode:'bridge', ov:{tstN:5}}, {mode:'fan', ov:{tstN:6}}, {mode:'string', ov:{tstN:5}},
+    {mode:'wall', ov:{tstN:6}}]},
+  {key:'pocket',  name:'Карманная', items:[
+    {mode:'radius', ov:{tstN:5}}, {mode:'chamfer', ov:{tstN:5}}, {mode:'overhang', ov:{tstN:5}},
+    {mode:'bridge', ov:{tstN:4}}, {mode:'wall', ov:{tstN:5}}]}
+];
+/* Что и где стоит на плите. Габарит каждого образца МЕРИТСЯ, а не берётся из его формул: раскладка не
+   должна повторять арифметику образца, иначе однажды разойдётся с ней молча. Зубья включаются всем, кому
+   они полагаются: плита на то и плита, чтобы куски держались друг за друга. */
+function platePlan(key, p){
+  const rec = PLATE_RECIPES.find(r => r.key === key) || PLATE_RECIPES[0];
+  const base = p || defaultBoxParams(), gap = 5;
+  const built = rec.items.map(it => {
+    const q = Object.assign({}, base, {tstMode: it.mode, tstJoin: true}, it.ov || {});
+    const tris = buildTestPrint(q), b = computeBBox(tris);
+    return {mode: it.mode, tris: tris, w: b.maxX - b.minX, d: b.maxZ - b.minZ};
+  });
+  /* Ширина полки — не «самый широкий образец», как в первой версии: тогда каждый широкий занимает свою
+     полку целиком, и мерительная плита вышла 184 × 389 мм, глубже любого стола. Полка считается от
+     ПЛОЩАДИ всех образцов, чтобы раскладка стремилась к квадрату, но не уже самого широкого — иначе он
+     не влезет никуда. */
+  const area = built.reduce((a, o) => a + o.w*o.d, 0);
+  const rowW = Math.max(Math.max.apply(null, built.map(o => o.w)), Math.sqrt(area)*1.25);
+  const out = []; let x = 0, z = 0, rowD = 0;
+  for(const o of built){
+    if(x > 0 && x + o.w > rowW + 1e-6){ z += rowD + gap; x = 0; rowD = 0; }
+    out.push({mode:o.mode, tris:o.tris, px: x + o.w/2, pz: z + o.d/2, w:o.w, d:o.d});
+    x += o.w + gap; rowD = Math.max(rowD, o.d);
+  }
+  const totW = Math.max.apply(null, out.map(c => c.px + c.w/2)), totD = z + rowD;
+  for(const c of out){ c.px -= totW/2; c.pz -= totD/2; }
+  return {name: rec.name, cells: out, width: totW, depth: totD};
+}
 /* Одна дверь во все тесты печати. Разновидность выбирает `tstMode`, и никакой другой ключ на это не
    влияет: до v18.0.0 калибровки висели на `mntMode` вперемешку с кронштейнами, и вопрос «печатаем деталь
    или меряем принтер» решался перебором двадцати значений одного поля. */
@@ -17977,7 +18034,30 @@ function attachModelEventListeners() {
   document.getElementById('btn-infill-swatch').addEventListener('click', () =>
     spawnSwatch(infillSwatchPlan(paramState.box), buildInfillCell, 'Заполнение'));
   document.getElementById('btn-surface-swatch').addEventListener('click', () =>
-    spawnSwatch(surfaceSwatchPlan(paramState.box), buildSurfacePad, 'Корка'));  document.getElementById('mesh-import-input').addEventListener('change', (e) => {
+    spawnSwatch(surfaceSwatchPlan(paramState.box), buildSurfacePad, 'Корка'));
+  {
+    const sel = document.getElementById('plate-recipe');
+    sel.innerHTML = PLATE_RECIPES.map(r => '<option value="'+r.key+'">'+r.name+'</option>').join('');
+  }
+  document.getElementById('btn-plate').addEventListener('click', () => {
+    const plan = platePlan(document.getElementById('plate-recipe').value, paramState.box);
+    if (models.length + plan.cells.length > MAX_MODELS){
+      alert('В рецепте '+plan.cells.length+' образцов, а мест в сборке осталось '+
+            (MAX_MODELS - models.length)+'. Уберите лишние модели и повторите.'); return; }
+    if (pendingChanges) applyPendingNow();
+    saveActiveModel();
+    let last = null;
+    for (const c of plan.cells){
+      const rec = makeModelRecord(plan.name + ' — ' + c.mode, defaultBoxParams());
+      const id = nextFrozenId++; frozenMeshes.set(id, c.tris);
+      rec.params.frozenId = id; rec.px = c.px; rec.pz = c.pz;
+      models.push(rec); last = rec;
+    }
+    if (last) loadModel(last);
+    regenerate();
+    if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
+    renderModelCards(); updateExportTotal();
+  });  document.getElementById('mesh-import-input').addEventListener('change', (e) => {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     importMeshFile(file);
   });

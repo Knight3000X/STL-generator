@@ -712,5 +712,38 @@ for(const side of [20, 40]){
   chk('площадка '+side+': герметична', mc.watertight && mc.badEdges === 0, {open:mc.openEdges, bad:mc.badEdges});
 }
 
+/* ПЛИТЫ. Проверяется то, ради чего они собраны: образцы не налезают друг на друга, все влезают в сборку,
+   каждый настоящий, и у каждого есть зубья — иначе плита рассыплется на столе. Габариты берутся у
+   ПОСТРОЕННЫХ деталей: раскладка их же и мерит, так что тест не повторяет её арифметику, а сверяет
+   результат с самими сетками. */
+console.log('=== плиты из образцов ===');
+for(const rec of PLATE_RECIPES){
+  const plan = platePlan(rec.key, defaultBoxParams());
+  chk(rec.name+': образцов столько, сколько в рецепте', plan.cells.length === rec.items.length,
+      plan.cells.length + ' из ' + rec.items.length);
+  chk(rec.name+': все влезают в сборку', plan.cells.length <= MAX_MODELS, plan.cells.length);
+  chk(rec.name+': каждый образец — живой режим',
+      plan.cells.every(c => MODES.indexOf(c.mode) >= 0), plan.cells.map(c=>c.mode));
+  let clash = 0;
+  for(let i = 0; i < plan.cells.length; i++) for(let j = i + 1; j < plan.cells.length; j++){
+    const a = plan.cells[i], b = plan.cells[j];
+    if(Math.abs(a.px - b.px) < (a.w + b.w)/2 - 1e-6 && Math.abs(a.pz - b.pz) < (a.d + b.d)/2 - 1e-6) clash++;
+  }
+  chk(rec.name+': образцы не налезают друг на друга', clash === 0, clash);
+  chk(rec.name+': плита отцентрована',
+      Math.abs(Math.max.apply(null, plan.cells.map(c=>c.px + c.w/2)) +
+               Math.min.apply(null, plan.cells.map(c=>c.px - c.w/2))) < 1e-6);
+  // зубья: у образца с замком габарит по X кратен шагу сетки плюс вылет зуба
+  for(const c of plan.cells){
+    if(['ruler','tower','spiral'].indexOf(c.mode) >= 0) continue;   // этим замок не полагается
+    chk(rec.name+'/'+c.mode+': зубья на месте', Math.abs((c.w - 4)/20 - Math.round((c.w - 4)/20)) < 1e-6,
+        +c.w.toFixed(2));
+  }
+  // и сами сетки настоящие
+  chk(rec.name+': сетки непустые и герметичные',
+      plan.cells.every(c => c.tris.length > 50 && manifoldCheck(c.tris, 4).watertight));
+}
+chk('неизвестный рецепт даёт первый, а не исключение', platePlan('нетакой').cells.length > 0);
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

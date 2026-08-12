@@ -574,11 +574,11 @@
     cursor:pointer; margin-bottom:10px;
   }
   #btn-add-model:hover, #btn-add-lid:hover, #btn-add-mate:hover{ border-color:var(--ink); color:var(--ink); }
-  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg, #btn-infill-swatch{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
+  #btn-add-baseplate, #btn-slice-model, #btn-import-mesh, #btn-sheet-svg, #btn-infill-swatch, #btn-surface-swatch{ width:100%; margin-bottom:8px; padding:9px 0; background:transparent;
     border:1.5px solid var(--ink-soft); border-radius:2px; color:var(--ink); font-family:inherit;
     font-size:12px; cursor:pointer; }
-  #btn-add-baseplate:hover, #btn-slice-model:hover, #btn-import-mesh:hover, #btn-sheet-svg:hover, #btn-infill-swatch:hover{ border-color:var(--ink); }
-  #btn-add-baseplate:disabled, #btn-slice-model:disabled, #btn-import-mesh:disabled, #btn-sheet-svg:disabled, #btn-infill-swatch:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btn-add-baseplate:hover, #btn-slice-model:hover, #btn-import-mesh:hover, #btn-sheet-svg:hover, #btn-infill-swatch, #btn-surface-swatch:hover{ border-color:var(--ink); }
+  #btn-add-baseplate:disabled, #btn-slice-model:disabled, #btn-import-mesh:disabled, #btn-sheet-svg:disabled, #btn-infill-swatch, #btn-surface-swatch:disabled{ opacity:0.4; cursor:not-allowed; }
   #lid-row{ display:flex; gap:6px; margin-bottom:8px; }
   #lid-row #btn-add-lid{ flex:0 0 auto; width:auto; padding:9px 14px; margin-bottom:0; }
   #lid-kind{
@@ -969,6 +969,7 @@
     <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью. С «Регистрационными штифтами» на срезах появятся штифт и ответное гнездо — фрагменты собираются без подгонки на глаз.">✂ Разрезать на фрагменты</button>
     <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL, OBJ или 3MF) в сборку. 3MF несёт НЕСКОЛЬКО деталей со своими местами — каждая приходит отдельной моделью и встаёт туда, где стояла. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ / 3MF</button>
     <input type="file" id="mesh-import-input" accept=".stl,.obj,.3mf,model/stl,model/obj,model/3mf" style="display:none">
+    <button id="btn-surface-swatch" title="Кладёт все восемь площадок под рисунок верхней корки отдельными моделями: в 3MF каждая уйдёт своим объектом, и в слайсере каждой можно назначить свой рисунок поверхности.">⊞ Набор корки (OrcaSlicer)</button>
     <button id="btn-infill-swatch" title="Кладёт все двадцать ячеек OrcaSlicer отдельными моделями: в 3MF каждая уйдёт своим объектом, и в слайсере каждой можно назначить свой узор заполнения. Одной деталью сравнить нельзя — настройка живёт на объекте.">⊞ Набор заполнений (OrcaSlicer)</button>
     <button id="btn-sheet-svg" title="Задать контур плоского листа/грип-пада произвольной формой из SVG (силуэт заливкой). Включает режим «Лист» → форма «контур из SVG». Растягивается в Ширину×Глубину.">⤓ SVG-контур листа / грип-пада</button>
     <input type="file" id="sheet-svg-input" accept=".svg,image/svg+xml" style="display:none">
@@ -1183,7 +1184,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.10.0';
+const APP_VERSION = 'v18.11.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4734,14 +4735,18 @@ const SHAPE_PARAMS = {
                {v:'wall',t:'тонкие стенки'},
                {v:'fan',t:'веер нависаний (угол растёт непрерывно)'},
                {v:'string',t:'стрункость (перелёты)'},{v:'spiral',t:'кольца / спираль (шов по Z)'},
-               {v:'infill',t:'ячейка под рисунок заполнения'}]},
-    {group:'Тесты печати', key:'tstJoin', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill'], label:'Тест: зубья по краям (собирать плиту как пазл)', type:'bool', default:false},
-    {group:'Тесты печати', key:'tstJoinW', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill'], label:'Тест: ширина зуба', min:3, max:12, step:0.5, default:5, unit:'мм'},
-    {group:'Тесты печати', key:'tstJoinD', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill'], label:'Тест: вылет зуба', min:2, max:10, step:0.5, default:4, unit:'мм'},
-    {group:'Тесты печати', key:'tstJoinAng', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill'], label:'Тест: развал зуба', min:5, max:30, step:1, default:15, unit:'°'},
-    {group:'Тесты печати', key:'tstJoinClr', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill'], label:'Тест: зазор в замке', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+               {v:'infill',t:'ячейка под рисунок заполнения'},
+               {v:'surface',t:'площадка под рисунок верхней корки'}]},
+    {group:'Тесты печати', key:'tstJoin', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill','surface'], label:'Тест: зубья по краям (собирать плиту как пазл)', type:'bool', default:false},
+    {group:'Тесты печати', key:'tstJoinW', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill','surface'], label:'Тест: ширина зуба', min:3, max:12, step:0.5, default:5, unit:'мм'},
+    {group:'Тесты печати', key:'tstJoinD', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill','surface'], label:'Тест: вылет зуба', min:2, max:10, step:0.5, default:4, unit:'мм'},
+    {group:'Тесты печати', key:'tstJoinAng', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill','surface'], label:'Тест: развал зуба', min:5, max:30, step:1, default:15, unit:'°'},
+    {group:'Тесты печати', key:'tstJoinClr', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall','fan','string','infill','surface'], label:'Тест: зазор в замке', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
     {group:'Тесты печати', key:'tstStrGap', w:['string'], label:'Стрункость: самый длинный перелёт', min:6, max:120, step:1, default:50, unit:'мм'},
     {group:'Тесты печати', key:'tstStrPost', w:['string'], label:'Стрункость: сторона столбика', min:1.2, max:6, step:0.1, default:2.5, unit:'мм'},
+    {group:'Тесты печати', key:'tstSrfNo', w:['surface'], label:'Корка: номер рисунка (список — в справке)', min:1, max:8, step:1, default:1},
+    {group:'Тесты печати', key:'tstSrfSide', w:['surface'], label:'Корка: сторона площадки', min:15, max:60, step:1, default:30, unit:'мм'},
+    {group:'Тесты печати', key:'tstSrfH', w:['surface'], label:'Корка: высота площадки', min:1.2, max:12, step:0.2, default:3, unit:'мм'},
     {group:'Тесты печати', key:'tstInfNo', w:['infill'], label:'Заполнение: номер узора (список — в справке)', min:1, max:20, step:1, default:1},
     {group:'Тесты печати', key:'tstInfSide', w:['infill'], label:'Заполнение: сторона ячейки', min:15, max:60, step:1, default:30, unit:'мм'},
     {group:'Тесты печати', key:'tstInfH', w:['infill'], label:'Заполнение: высота ячейки', min:4, max:40, step:1, default:12, unit:'мм'},
@@ -4751,7 +4756,7 @@ const SHAPE_PARAMS = {
     {group:'Тесты печати', key:'tstSpiPitch', w:['spiral'], label:'Спираль: шаг витка', min:1, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Тесты печати', key:'tstSpiMax', w:['spiral'], label:'Спираль: Ø самого большого кольца', min:20, max:160, step:1, default:70, unit:'мм'},
     {group:'Тесты печати', key:'tstSpiWall', w:['spiral'], label:'Спираль: толщина стенки (одна нитка)', min:0.3, max:2, step:0.05, default:0.45, unit:'мм'},
-    {group:'Тесты печати', key:'tstT', w:['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall','fan','string','spiral','infill'],
+    {group:'Тесты печати', key:'tstT', w:['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall','fan','string','spiral','infill','surface'],
       label:'Тест: толщина основания', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Тесты печати', key:'tstN', w:['radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall','fan','string','spiral'],
       label:'Тест: число образцов в ряду', min:3, max:14, step:1, default:8, unit:'', int:true,
@@ -6367,6 +6372,7 @@ const MODEL_HELP = {
   'test:string':    {what:'Столбики, между которыми сопло ходит вхолостую всё дальше. Меряет не столбики, а ПЕРЕЛЁТ: паутина тянется, когда сопло идёт над пустотой с расплавом внутри, и длина перелёта — единственное, что здесь меняется.', how:'Плашмя. Столбики нарочно тонкие и высокие: толстый успевает остыть и обрывает нитку сам, пряча настоящую границу. Если паутина есть на всех промежутках — дело не в откате, а в температуре.', mat:['pla','petg','tpu']},
   'test:spiral':    {what:'Две фигуры под одной ручкой. КОЛЬЦА — замкнутые витки: на каждом сопло начинает и кончает виток в одной точке, и вертикальная строчка этих точек есть шов, портящий вид у ваз и цилиндров. СПИРАЛЬ — одна непрерывная стенка, шва у неё нет вовсе, и смотрят на ней не шов, а ровность потока: сбой подачи виден утолщением на ленте.', how:'Плашмя. Кольца — обычным режимом, спираль — вазовым, так она и задумана. Толщину стенки выставьте равной ширине экструзии вашего сопла: не совпав, она заставит слайсер класть две нитки или бросить стенку вовсе. Шаг витка должен быть шире стенки, иначе витки сольются в блин. Одна фигура не заменяет другую: первая показывает шов, вторая его отсутствие.', mat:['pla','petg']},
   'test:infill':    {what:'Открытая сверху коробка под рисунок заполнения. Рисунок кладёт СЛАЙСЕР, а не модель: гироид и молния это настройка печати, и нарисовать их сеткой значило бы показать не то, что напечатает ваш слайсер. Номера по порядку OrcaSlicer: 01 Concentric, 02 Rectilinear, 03 Aligned Rectilinear, 04 Grid, 05 Line, 06 Cubic, 07 Triangles, 08 Tri-hexagon, 09 Gyroid, 10 Honeycomb, 11 3D Honeycomb, 12 Adaptive Cubic, 13 Quarter Cubic, 14 Support Cubic, 15 Lightning, 16 Hilbert Curve, 17 Archimedean Chords, 18 Octagram Spiral, 19 Cross Hatch, 20 Zig Zag.', how:'Кнопка «⊞ Набор заполнений» кладёт сразу все двадцать ячеек отдельными моделями: в 3MF каждая уходит своим объектом, и в слайсере каждой назначается свой узор. Одной деталью со всеми ячейками сравнить нельзя — настройка заполнения живёт на объекте, и все ячейки зальются одинаково. Верх открыт нарочно, чтобы видеть нутро; крышку задайте в слайсере нулём верхних слоёв.', mat:['pla','petg']},
+  'test:surface':   {what:'Сплошная низкая площадка под рисунок ВЕРХНЕЙ КОРКИ. Как и у заполнения, рисунок кладёт слайсер: это настройка печати, а не геометрия. В отличие от ячейки заполнения площадка сплошная — смотреть надо на поверхность, а не внутрь. Номера по порядку OrcaSlicer: 01 Concentric, 02 Rectilinear, 03 Monotonic, 04 Monotonic Line, 05 Aligned Rectilinear, 06 Hilbert Curve, 07 Archimedean Chords, 08 Octagram Spiral.', how:'Кнопка «⊞ Набор корки» кладёт все восемь площадок отдельными моделями — в 3MF каждая уходит своим объектом, и в слайсере каждой назначается свой рисунок верхней поверхности. Площадку меньше 20 мм делать бесполезно: на пятачке монотонная укладка и концентрическая отличаются одним витком.', mat:['pla','petg']},
   box:      {what:'Прямоугольная коробка или призма: сплошная, полая (контейнер) или с неглубоким карманом (лоток). Отсюда же растут Gridfinity, перегородки, крышка на защёлках и рельеф на любой грани.', how:'Дном на стол — так и задумано. Полость печатается без поддержек, если верх открыт.', mat:['pla','petg']},
   die:      {what:'Игральная кость или правильный многогранник, D4–D100, с утопленными или выпуклыми числами.', how:'Гранью на стол. Для честной кости важна равномерность заполнения — печатать со 100 % или с одинаковой стенкой.', mat:['pla','petg']},
   sheet:    {what:'Плоский лист или панель: прямоугольник, круг, N-угольник или контур из SVG. Основа для табличек, накладок, грип-падов и панелей приборов.', how:'Плашмя. Первый слой решает всё: тонкий лист поведёт, если стол не выровнен.', mat:['petg','pla']},
@@ -14257,25 +14263,51 @@ function buildInfillCell(n, p){
   push(seg7TrisXZ(String(n).padStart(2, '0'), 0, -D/2 + TST_LAB + 1.5, TST_LAB, t));
   return tstCenterY(tris);
 }
-/* Раскладка набора: где какая ячейка стоит. Отдельно от постройки, потому что раскладку надо ПРОВЕРЯТЬ, а
-   постройка моделей сборки тянет за собой DOM. Сетка близка к квадрату — ряд из двадцати ячеек не влезет
-   ни на один стол. */
-function infillSwatchPlan(p){
-  /* Шаг берётся из ГОТОВОЙ ячейки, а не из заданной стороны. При включённом замке плита округляется вверх
-     до шага сетки зубьев — сторона 30 превращается в 40, — и раскладка по заказанной стороне поставила бы
-     ячейки внахлёст. Одна ячейка стоит полсотни треугольников, так что мерить дешевле, чем повторять
-     арифметику округления и однажды с ней разойтись. */
-  const one = computeBBox(buildInfillCell(1, p || defaultBoxParams()));
-  const gap = 4, cols = Math.max(1, Math.round(Math.sqrt(ORCA_INFILL.length)));
-  const rows = Math.ceil(ORCA_INFILL.length/cols);
+/* ---- ТЕКСТУРНЫЕ ПЛОЩАДКИ ----------------------------------------------------------------------------
+
+   То же устройство, что у заполнения, и по той же причине: РИСУНОК ВЕРХНЕЙ КОРКИ кладёт слайсер. Разница
+   в том, куда смотреть: у коробки под заполнение верх открыт, чтобы видеть нутро, а здесь нутро не при
+   чём — важна корка, поэтому площадка СПЛОШНАЯ и низкая.
+
+   Площадка нарочно шире, чем высока. Рисунок верхней корки виден только на достаточной площади: на
+   пятачке 10 × 10 монотонная укладка и концентрическая отличаются одним витком, и сравнивать нечего. */
+const ORCA_SURFACE = ['Concentric', 'Rectilinear', 'Monotonic', 'Monotonic Line', 'Aligned Rectilinear',
+  'Hilbert Curve', 'Archimedean Chords', 'Octagram Spiral'];
+function buildSurfacePad(n, p){
+  const S = tstNum(p.tstSrfSide, 15, 60, 30);
+  const H = tstNum(p.tstSrfH, 1.2, 12, 3);
+  const t = tstPlateT(p), lab = TST_LAB + 5, D = S + lab;
+  const tris = tstPlate(S, D, t, p);
+  const push = a => { for(const T of a) tris.push(T); };
+  const z0 = -D/2 + lab;
+  push(boxSpanTris(-S/2, S/2, t - 0.4, t + H, z0, z0 + S));
+  push(seg7TrisXZ(String(n).padStart(2, '0'), 0, -D/2 + TST_LAB + 1.5, TST_LAB, t));
+  return tstCenterY(tris);
+}
+function buildTestSurface(p){
+  return buildSurfacePad(Math.round(tstNum(p.tstSrfNo, 1, ORCA_SURFACE.length, 1)), p);
+}
+/* Раскладка у обоих наборов одна, разнятся только список и строитель. Две копии значили бы, что нахлёст
+   однажды починят в одной и забудут о другой. */
+function swatchPlan(names, build1, p){
+  const one = computeBBox(build1(1, p || defaultBoxParams()));
+  const gap = 4, cols = Math.max(1, Math.round(Math.sqrt(names.length)));
+  const rows = Math.ceil(names.length/cols);
   const stepX = (one.maxX - one.minX) + gap, stepZ = (one.maxZ - one.minZ) + gap, out = [];
-  for(let k = 0; k < ORCA_INFILL.length; k++){
+  for(let k = 0; k < names.length; k++){
     const c = k % cols, r = Math.floor(k/cols);
-    out.push({no: k + 1, name: ORCA_INFILL[k],
+    out.push({no: k + 1, name: names[k],
               px: (c - (cols - 1)/2)*stepX, pz: (r - (rows - 1)/2)*stepZ});
   }
   return out;
 }
+function surfaceSwatchPlan(p){ return swatchPlan(ORCA_SURFACE, buildSurfacePad, p); }
+/* Раскладка набора. Отдельно от постройки, потому что её надо ПРОВЕРЯТЬ, а постройка моделей сборки
+   тянет за собой DOM. Шаг берётся из ГОТОВОЙ ячейки, а не из заданной стороны: при включённом замке плита
+   округляется вверх до шага сетки зубьев — сторона 30 превращается в 40, — и раскладка по заказанной
+   стороне поставила бы ячейки внахлёст. Ячейка стоит полсотни треугольников, так что мерить дешевле, чем
+   повторять арифметику округления и однажды с ней разойтись. */
+function infillSwatchPlan(p){ return swatchPlan(ORCA_INFILL, buildInfillCell, p); }
 function buildTestInfill(p){
   return buildInfillCell(Math.round(tstNum(p.tstInfNo, 1, ORCA_INFILL.length, 1)), p);
 }
@@ -14298,6 +14330,7 @@ function buildTestPrint(p){
     case 'string':   return buildTestString(p);
     case 'spiral':   return buildTestSpiral(p);
     case 'infill':   return buildTestInfill(p);
+    case 'surface':  return buildTestSurface(p);
   }
   return [];
 }
@@ -17916,21 +17949,22 @@ function attachModelEventListeners() {
   document.getElementById('btn-add-baseplate').addEventListener('click', addGridfinityBaseplate);
   document.getElementById('btn-slice-model').addEventListener('click', sliceActiveModel);
   document.getElementById('btn-import-mesh').addEventListener('click', () => document.getElementById('mesh-import-input').click());
-  document.getElementById('btn-infill-swatch').addEventListener('click', () => {
-    const plan = infillSwatchPlan(paramState.box);
+  /* Оба набора кладутся одним ходом: разнятся только список, строитель и слово в имени модели. Держать
+     два обработчика значило бы однажды починить один и забыть о другом. */
+  const spawnSwatch = (plan, build1, prefix) => {
     if (models.length + plan.length > MAX_MODELS){
       alert('Набор это '+plan.length+' моделей, а мест в сборке осталось '+(MAX_MODELS - models.length)+
             '. Уберите лишние модели и повторите.'); return; }
     if (pendingChanges) applyPendingNow();
     saveActiveModel();
-    /* Ячейки кладутся ЗАМОРОЖЕННЫМИ сетками, а не параметрами: иначе двадцать записей несли бы по копии
-       всех параметров образца, и правка любой ручки перестроила бы только активную — набор разъехался бы
-       по размеру ячейки. Замороженная сетка одинакова по построению. */
+    /* Ячейки кладутся ЗАМОРОЖЕННЫМИ сетками, а не параметрами: иначе каждая запись несла бы копию всех
+       параметров образца, и правка любой ручки перестроила бы только активную — набор разъехался бы по
+       размеру ячейки. Замороженная сетка одинакова по построению. */
     let last = null;
     for (const c of plan){
-      const rec = makeModelRecord('Заполнение ' + String(c.no).padStart(2,'0') + ' — ' + c.name,
+      const rec = makeModelRecord(prefix + ' ' + String(c.no).padStart(2,'0') + ' — ' + c.name,
                                   defaultBoxParams());
-      const id = nextFrozenId++; frozenMeshes.set(id, buildInfillCell(c.no, paramState.box));
+      const id = nextFrozenId++; frozenMeshes.set(id, build1(c.no, paramState.box));
       rec.params.frozenId = id;
       rec.px = c.px; rec.pz = c.pz;
       models.push(rec); last = rec;
@@ -17939,8 +17973,11 @@ function attachModelEventListeners() {
     regenerate();
     if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
     renderModelCards(); updateExportTotal();
-  });
-  document.getElementById('mesh-import-input').addEventListener('change', (e) => {
+  };
+  document.getElementById('btn-infill-swatch').addEventListener('click', () =>
+    spawnSwatch(infillSwatchPlan(paramState.box), buildInfillCell, 'Заполнение'));
+  document.getElementById('btn-surface-swatch').addEventListener('click', () =>
+    spawnSwatch(surfaceSwatchPlan(paramState.box), buildSurfacePad, 'Корка'));  document.getElementById('mesh-import-input').addEventListener('change', (e) => {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     importMeshFile(file);
   });
@@ -18721,7 +18758,7 @@ function activeShapeLabel() {
   if (p.tstMode && p.tstMode !== 'none') return 'тест печати: ' +
     ({ruler:'линейка', radius:'скругления', chamfer:'фаски', overhang:'нависания', bridge:'мосты',
       sphere:'купола', fit:'посадка', tower:'башня диаметров', dim:'проверка размеров',
-      wall:'тонкие стенки', fan:'веер нависаний', string:'стрункость', spiral:'кольца / спираль', infill:'ячейка заполнения'})[p.tstMode];
+      wall:'тонкие стенки', fan:'веер нависаний', string:'стрункость', spiral:'кольца / спираль', infill:'ячейка заполнения', surface:'площадка корки'})[p.tstMode];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
   if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
     return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +

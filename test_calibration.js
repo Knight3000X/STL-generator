@@ -21,7 +21,7 @@ let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}els
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 
 const MODES = ['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall',
-               'fan','string','spiral','infill'];
+               'fan','string','spiral','infill','surface'];
 function bb(t){ const b={x0:1e9,x1:-1e9,y0:1e9,y1:-1e9,z0:1e9,z1:-1e9};
   for(const T of t) for(const v of T){ if(v[0]<b.x0)b.x0=v[0]; if(v[0]>b.x1)b.x1=v[0];
     if(v[1]<b.y0)b.y0=v[1]; if(v[1]>b.y1)b.y1=v[1]; if(v[2]<b.z0)b.z0=v[2]; if(v[2]>b.z1)b.z1=v[2]; } return b; }
@@ -419,7 +419,7 @@ console.log('=== ручки и правда управляют деталью ==
      миллиметровое деление, их число задаёт длина; у ячейки заполнения станций ровно столько, сколько
      узоров у OrcaSlicer, и меняться от ручки они не могут. Обе обязаны игнорировать `tstN` — что здесь и
      проверяется, а не обходится. */
-  const NO_STATIONS = ['ruler', 'infill'];
+  const NO_STATIONS = ['ruler', 'infill', 'surface'];
   for(const m of MODES){
     const a = build({tstMode:m, tstN:4}).length, c = build({tstMode:m, tstN:12}).length;
     chk(m+': число образцов меняет деталь',
@@ -489,7 +489,7 @@ console.log('=== форма «Тесты» стоит в панели нарав
       !sectionRelevant('Тесты печати','mount',false));
   chk('а крепёж на ней не виден', !sectionRelevant('Крепёж / монтаж','test',false));
   const opts = SHAPE_PARAMS.box.find(r => r.key === 'tstMode').options.map(o => o.v);
-  chk('в списке ровно четырнадцать образцов и «нет»', opts.length === MODES.length + 1, opts);
+  chk('в списке ровно пятнадцать образцов и «нет»', opts.length === MODES.length + 1, opts);
   for(const m of MODES){
     chk(m+': есть плитка', opts.includes(m), opts);
     chk(m+': справка на месте', !!MODEL_HELP['test:'+m], m);
@@ -678,6 +678,38 @@ for(const no of [1, 7, 20]) for(const side of [15, 30, 60]){
   for(const T of hits){ const xs = T.map(v=>v[0]), zs = T.map(v=>v[2]);
     if(Math.min(...xs) <= 0 && Math.max(...xs) >= 0 && Math.min(...zs) <= 0 && Math.max(...zs) >= 0) covers = true; }
   chk('ячейка '+no+' сторона '+side+': верх открыт', !covers);
+}
+
+console.log('=== набор корки: те же правила, что у заполнения ===');
+{
+  const plan = surfaceSwatchPlan(defaultBoxParams());
+  chk('площадок столько же, сколько рисунков', plan.length === ORCA_SURFACE.length, plan.length);
+  chk('и все влезают в сборку', plan.length <= MAX_MODELS, {надо:plan.length, мест:MAX_MODELS});
+  chk('имена не повторяются', new Set(plan.map(c => c.name)).size === plan.length);
+  for(const ov of [{}, {tstJoin:true}, {tstSrfSide:50}]){
+    const pl = surfaceSwatchPlan(Object.assign(defaultBoxParams(), ov));
+    const b = computeBBox(buildSurfacePad(1, Object.assign(defaultBoxParams(), ov)));
+    const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
+    let clash = 0;
+    for(let i = 0; i < pl.length; i++) for(let j = i + 1; j < pl.length; j++)
+      if(Math.abs(pl[i].px - pl[j].px) < w - 1e-6 && Math.abs(pl[i].pz - pl[j].pz) < d - 1e-6) clash++;
+    chk('площадки не налезают ('+JSON.stringify(ov)+')', clash === 0, clash);
+  }
+}
+/* Площадка СПЛОШНАЯ — этим она и отличается от ячейки заполнения, у которой верх открыт. Проверяется
+   прямо: над центром площадки материал есть, над центром ячейки его нет. */
+console.log('=== площадка сплошная, ячейка открыта ===');
+for(const side of [20, 40]){
+  const P = Object.assign(defaultBoxParams(), {tstSrfSide:side, tstInfSide:side});
+  const covered = t => { const b = computeBBox(t); let yes = false;
+    for(const T of t) if(T.every(v => Math.abs(v[1] - b.maxY) < 1e-6)){
+      const xs = T.map(v=>v[0]), zs = T.map(v=>v[2]);
+      if(Math.min(...xs) <= 0 && Math.max(...xs) >= 0 && Math.min(...zs) <= 0 && Math.max(...zs) >= 0) yes = true; }
+    return yes; };
+  chk('площадка '+side+': верх сплошной', covered(buildSurfacePad(1, P)));
+  chk('ячейка '+side+': верх открыт', !covered(buildInfillCell(1, P)));
+  const mc = manifoldCheck(buildSurfacePad(1, P), 4);
+  chk('площадка '+side+': герметична', mc.watertight && mc.badEdges === 0, {open:mc.openEdges, bad:mc.badEdges});
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

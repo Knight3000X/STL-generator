@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.15.0';
+const APP_VERSION = 'v18.16.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4495,10 +4495,10 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamfer', label:'Лист: фаска тыльной стороны (ширина, 0 = без фаски)', min:0, max:15, step:0.5, default:0, unit:'мм'},
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер со сквозным каналом)'},{v:'anchor',t:'дюбель под гипсокартон (спиральный, вкручивается)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
+      options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер с цангой)'},{v:'glandcap',t:'накидная гайка ввода (с конусом)'},{v:'anchor',t:'дюбель под гипсокартон (спиральный, вкручивается)'}]},
+    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','gland'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadClear', w:['cap','nut','wingnut'], label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadLead', w:['cap','jar','stud','bolt','gland'], label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
@@ -4543,6 +4543,9 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'glandStd', w:['gland'], label:'Ввод: ряд типоразмеров', type:'select', default:'m',
       options:[{v:'m',t:'метрический (M12…M32)'},{v:'pg',t:'PG (PG7…PG29)'},{v:'off',t:'свои числа'}]},
     {group:'Резьба (крышка / штуцер)', key:'glandSize', w:['gland'], label:'Ввод: типоразмер (номер в ряду)', min:0, max:6, step:1, default:1, int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadCapOut', w:['glandcap'], label:'Накидная гайка: Ø выхода под кабель', min:1, max:40, step:0.5, default:6, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadCapThread', w:['glandcap'], label:'Накидная гайка: длина резьбы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadBackLen', w:['gland'], label:'Ввод: резьба под фланцем (0 = без)', min:0, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:10, step:1, default:4, int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadColletLen', w:['gland'], label:'Ввод: длина цанги (0 = без)', min:0, max:40, step:0.5, default:8, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
@@ -5461,6 +5464,14 @@ function assemblyMate(p){
       const L = Math.max(Math.max(0.5, pp.threadPitch||3), pp.threadLen||16) + 2;
       return tubeYTris(0, 0, rB+wall, rB, -L/2, L/2, Math.max(48, Math.round(rB*4))); },
     seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
+  /* У кабельного ввода ответная гайка садится СНИЗУ, на резьбу под фланцем, а не сверху на рабочую.
+     Сверху её место занято цангой — гайка там не «стоит на резьбе», а надета на лепестки, и в
+     предпросмотре это выглядело бы взаимным прошиванием деталей. Снизу же она и по делу: это контргайка,
+     которой ввод крепится к стенке. Без хвостовика (`threadBackLen` = 0) сажать её снизу некуда, и тогда
+     остаётся прежнее место — над фланцем. */
+  if (th === 'gland' && (p.threadBackLen == null || p.threadBackLen > 0))
+    return { name:'Контргайка', over:{threadMode:'nut'}, back:+1,
+      seat:(A,B,S)=>({px:S.px, py:A.minY - seatGap(p) - (B.maxY - B.minY) - B.minY, pz:S.pz}) };
   if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
   // AMS keycap: the shell and the core are the same cap built twice, and they go in the same place — the
@@ -6471,6 +6482,7 @@ const MODEL_HELP = {
   'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
   'thread:wingnut':  {what:'Барашковая гайка: та же резьба плюс два крыла под пальцы.', how:'Плашмя. Крылья тонкие в основании — увеличьте их толщину, если гайку будут дёргать часто.', mat:['petg','abs']},
   'thread:gland':    {what:'Кабельный ввод (сальник): фланец, наружная резьба, сквозной канал под кабель и ЦАНГА — венчик лепестков над резьбой. Лепестки расходятся кнаружу, поэтому обжимает их обычная гайка того же Ø и шага: у неё внутренний Ø по впадине меньше, чем цанга у кончика. Накидная гайка с конусом держала бы крепче, но это ещё одна деталь и ещё одна посадка.', how:'Фланцем на стол, без поддержек. Печатайте ДВЕ гайки: одна законтрит ввод в стенке, вторая обожмёт цангу. PETG или TPU: жёсткий PLA на лепестках трескается, они работают на разжим. Канал ставьте на 0.4–0.6 мм больше кабеля — печать сужает круглые проёмы.', mat:['petg','tpu']},
+  'thread:glandcap': {what:'Накидная гайка кабельного ввода: внутри не сквозной цилиндр, а КОНУС, сходящийся к выходу под кабель. Обычная гайка обжимает цангу одним пояском — тем местом, где её впадина резьбы уже кончика лепестков; конус ведёт лепестки по всей длине, усилие распределяется, и кабель зажимается ровно.', how:'Гранями на стол, без поддержек: конус смотрит вверх и печатается сам. Ø и шаг возьмите те же, что у ввода. Выход делайте на 0.3–0.5 мм меньше кабеля — именно этим кабель и держится, а не трением о канал ввода.', mat:['petg','tpu']},
   'thread:anchor':   {what:'Дюбель по гипсокартону, спиральный (тип «Дрива»): крупный режущий виток на тонком сердечнике, потайная головка со шлицем и заходное остриё. Вкручивается прямо в лист отвёрткой — сверлить не нужно, — а держит не трением, а ПЛОЩАДЬЮ витка, врезанного в гипс. Внутри слепое отверстие под саморез: остриё остаётся сплошным, иначе оно смялось бы о лист вместо того, чтобы его проколоть.',
                       how:'Головкой на стол, остриём вверх — так шлиц печатается открытым отверстием, а не нависанием, и опорная плоскость головки выходит самой гладкой поверхностью, какую даёт принтер. Поддержки не нужны: виток сам себе опора, его наклон к горизонту примерно 10°, и каждый следующий слой ложится на предыдущий с большим перекрытием. Материал обязан быть ЖЁСТКИМ — PETG или ABS; PLA хрупок и виток скалывается при вкручивании, TPU сомнётся и не врежется вовсе. Заполнение 40–60 % и не меньше трёх периметров: тонкая стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке. Слой 0,15–0,2 мм: на 0,3 виток выходит ступенчатым и режет хуже. Вкручивать без нажима, сам затянется; саморез брать на 0,5–1 мм длиннее суммы «толщина листа + то, что вешаете».',
                       mat:['petg','abs']},
@@ -8287,6 +8299,8 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
     const flangeR   = Math.max(majorR+1.5, p.threadFlangeR>0 ? p.threadFlangeR : majorR+4);
     const bored = mode === 'gland';
     const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
+    const backLen = bored ? Math.max(0, Math.min(40, p.threadBackLen != null ? p.threadBackLen : 6)) : 0;
+    const bBot = -backLen;
     const y0=flangeThk, y1=flangeThk+len, Ny=Math.max(8, Math.round(len/P*spp));
     const V=(i,j)=>{ const y=y0+(y1-y0)*j/Ny, a=th(i);
       const r=minorR+lead(y1-y)*h*threadProfile(phase(i,y),flat);
@@ -8300,8 +8314,8 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
     } else { for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
         tris.push(orient([V(i,Ny),B(y1,i),B(y1,i2)],[0,1,0]));      // top annulus: thread crest → bore
         tris.push(orient([V(i,Ny),B(y1,i2),V(i2,Ny)],[0,1,0]));
-        tris.push(orient([B(0,i),B(0,i2),B(y1,i2)],rin));           // cable bore, right through the flange
-        tris.push(orient([B(0,i),B(y1,i2),B(y1,i)],rin)); }
+        tris.push(orient([B(bBot,i),B(bBot,i2),B(y1,i2)],rin));     // канал насквозь, от низа резьбы доверху
+        tris.push(orient([B(bBot,i),B(y1,i2),B(y1,i)],rin)); }
       const cn = Math.max(0, Math.min(10, Math.round(p.threadColletN != null ? p.threadColletN : 4)));
       const cl = Math.max(0, Math.min(40, p.threadColletLen != null ? p.threadColletLen : Math.max(5, len*0.5)));
       if (cn >= 2 && cl > 1){
@@ -8313,14 +8327,39 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
       } }
     const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
     const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
+    /* РЕЗЬБА ПОД ФЛАНЦЕМ. Ввод крепится к стенке так: нижняя резьба проходит сквозь отверстие, изнутри её
+       ловит тонкая гайка, фланец остаётся снаружи и прижимается к стенке. Без неё ввод держался бы только
+       тем, во что вкручен, а в тонкой пластиковой стенке держаться там нечему.
+
+       Резьба та же по Ø и шагу, что верхняя: разная означала бы две разные гайки и две ошибки при сборке.
+       Заход сглажен у СВОБОДНОГО конца, снизу, — им резьбу и ловят. `bBot` — докуда снизу доходит канал:
+       без нижней резьбы это низ фланца, с ней её торец. */
+    if(backLen > 0){
+      const Nb = Math.max(8, Math.round(backLen/P*spp));
+      const VB=(i,j)=>{ const y=bBot+(0-bBot)*j/Nb, a=th(i);
+        const r=minorR+lead(y-bBot)*h*threadProfile(phase(i,y),flat);
+        return [r*Math.cos(a), y, r*Math.sin(a)]; };
+      for(let j=0;j<Nb;j++) for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, A=VB(i,j),Bv=VB(i2,j),C=VB(i2,j+1),Dd=VB(i,j+1);
+        const ref=[A[0]+Bv[0],0,A[2]+Bv[2]];
+        tris.push(orient([A,Bv,C],ref)); tris.push(orient([A,C,Dd],ref)); }
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
+        tris.push(orient([VB(i,Nb),outB(i2),outB(i)],[0,-1,0]));            // низ фланца → гребень резьбы
+        tris.push(orient([VB(i,Nb),VB(i2,Nb),outB(i2)],[0,-1,0]));
+        tris.push(orient([B(bBot,i),VB(i2,0),VB(i,0)],[0,-1,0]));           // нижний торец: гребень → канал
+        tris.push(orient([B(bBot,i),B(bBot,i2),VB(i2,0)],[0,-1,0])); }
+    }
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rref=[Math.cos(mid),0,Math.sin(mid)];
       tris.push(orient([V(i,0),outT(i),outT(i2)],[0,1,0]));         // flange top annulus (wavy → flangeR)
       tris.push(orient([V(i,0),outT(i2),V(i2,0)],[0,1,0]));
       tris.push(orient([outT(i),outB(i),outB(i2)],rref));           // flange side
       tris.push(orient([outT(i),outB(i2),outT(i2)],rref));
-      if(bored){ tris.push(orient([B(0,i),outB(i2),outB(i)],[0,-1,0]));   // flange bottom annulus (bore → flangeR)
+      // Низ фланца закрывается только когда под ним ничего нет: с нижней резьбой его закрывает она сама.
+      if(bored && backLen <= 0){ tris.push(orient([B(0,i),outB(i2),outB(i)],[0,-1,0]));
                  tris.push(orient([B(0,i),B(0,i2),outB(i2)],[0,-1,0])); }
-      else tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }      // flange bottom disc
+      /* Сплошной диск — только у НЕсверлёного штуцера. Условие «иначе» ловило и ввод с резьбой под
+         фланцем: диск ложился поверх кольцевой грани и канала, давая сотню лишних граней на ребро при
+         нулевом числе открытых рёбер — то есть герметичность не страдала, а деталь была бракованной. */
+      else if(!bored) tris.push(orient([[0,0,0],outB(i2),outB(i)],[0,-1,0])); }   // flange bottom disc
   } else if (mode === 'leadscrew'){
     // Lead screw (ходовой винт): a plain trapezoidal-threaded rod with a smooth journal out each end for
     // the bearings. Nothing here is new machinery — it is the same male thread the stud and bolt carry,
@@ -8456,6 +8495,39 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     const ct=[0,y1,0]; for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([ct,V(i,Ny),V(i2,Ny)],[0,1,0])); }
     const cb=[0,y0,0]; for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cb,V(i2,0),V(i,0)],[0,-1,0])); }
+  } else if (mode === 'glandcap'){
+    /* НАКИДНАЯ ГАЙКА КАБЕЛЬНОГО ВВОДА — гайка, у которой канал не сквозной цилиндр, а КОНУС, сходящийся к
+       выходу под кабель. Обычная гайка обжимает цангу только тем, что у неё внутренний Ø по впадине резьбы
+       меньше кончика лепестков: сжатие получается на одном пояске и зависит от того, докуда докрутили.
+       Конус ведёт лепестки по всей длине — усилие распределяется, и кабель зажимается ровно.
+
+       Конус начинается ВЫШЕ резьбы, а не с её начала: пока гайка наживляется, лепестки не должны ни во что
+       упираться, иначе резьбу перекосит с первого оборота. */
+    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2;
+    const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
+    const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
+    const thH = Math.max(1.5, Math.min(nutH - 1.2, p.threadCapThread>0 ? p.threadCapThread : nutH*0.6));
+    const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
+    const Hx=(y,i)=>{ const a=th(i), r=hexR(a); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    const Bo=(y,i)=>{ const a=th(i), r=minorR+h*threadProfile(phase(i,y),flat)+clr; return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    const rAtCone = y => { const u = Math.max(0, Math.min(1, (y - thH)/Math.max(1e-6, nutH - thH)));
+      return (minorR + clr) + (rOut - (minorR + clr))*u; };
+    const Co=(y,i)=>{ const a=th(i), r=rAtCone(y); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    const Nn=Math.max(8, Math.min(320, Math.round(thH/P*spp))), Nc=Math.max(6, Math.round((nutH-thH)/0.6));
+    for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i);
+      const ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
+      tris.push(orient([Hx(0,i),Hx(0,i2),Hx(nutH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(nutH,i2),Hx(nutH,i)],ro));
+      for(let j=0;j<Nn;j++){ const ya=thH*j/Nn, yb=thH*(j+1)/Nn;                        // резьбовая часть канала
+        tris.push(orient([Bo(ya,i),Bo(ya,i2),Bo(yb,i2)],ri)); tris.push(orient([Bo(ya,i),Bo(yb,i2),Bo(yb,i)],ri)); }
+      for(let j=0;j<Nc;j++){ const ya=thH+(nutH-thH)*j/Nc, yb=thH+(nutH-thH)*(j+1)/Nc;  // конус
+        tris.push(orient([Co(ya,i),Co(ya,i2),Co(yb,i2)],ri)); tris.push(orient([Co(ya,i),Co(yb,i2),Co(yb,i)],ri)); }
+      // стык резьбы с конусом: у резьбы гребень волнистый, у конуса кромка ровная — закрывается кольцом
+      tris.push(orient([Bo(thH,i),Bo(thH,i2),Co(thH,i2)],[0,1,0]));
+      tris.push(orient([Bo(thH,i),Co(thH,i2),Co(thH,i)],[0,1,0]));
+      tris.push(orient([Co(nutH,i),Hx(nutH,i),Hx(nutH,i2)],[0,1,0]));                   // верхнее кольцо
+      tris.push(orient([Co(nutH,i),Hx(nutH,i2),Co(nutH,i2)],[0,1,0]));
+      tris.push(orient([Bo(0,i),Hx(0,i2),Hx(0,i)],[0,-1,0]));                           // нижнее кольцо
+      tris.push(orient([Bo(0,i),Bo(0,i2),Hx(0,i2)],[0,-1,0])); }
   } else if (mode === 'nut' || mode === 'wingnut'){  // hex prism with a through internal thread (+ wings)
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2, nutH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.8);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
@@ -19029,7 +19101,7 @@ function activeShapeLabel() {
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
   if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
-  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',anchor:'дюбель'})[p.threadMode] || 'резьба')
+  if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',glandcap:'накидная гайка ввода',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
   if ((p.squircle||0) > 0) return 'squircle / круглый (' + (p.squircle|0) + '%)';

@@ -160,10 +160,11 @@ for(const D of [10,16,25,40]) for(const bore of [0,4,10]) for(const hand of ['ri
   chk('gland Ø'+D+' bore'+bore+' '+hand+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
 }
 /* Ввод сравнивается со штуцером БЕЗ ЦАНГИ: с v18.15.0 у него сверху венчик лепестков, и «легче штуцера»
-   он теперь не обязан быть — материал канала уходит, материал цанги приходит. Сравнивать надо
-   сопоставимое, иначе проверка ловит не полость, а наличие цанги. */
+   он теперь не обязан быть — материал канала уходит, материал цанги приходит. С v18.16.0 к ним прибавилась
+   резьба под фланцем, которую тоже надо снять: сравнивать нужно сопоставимое, иначе проверка ловит не
+   полость, а наличие цанги и хвостовика. */
 { const stud=vol(base({threadMode:'stud',threadD:20,threadPitch:2.5,threadLen:12}));
-  const gl=vol(base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8,threadColletN:0}));
+  const gl=vol(base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8,threadColletN:0,threadBackLen:0}));
   chk('gland is hollow (less material than the solid stud)', gl<stud, {stud:+stud.toFixed(0),gland:+gl.toFixed(0)}); }
 /* ЦАНГА. Проверяется то, ради чего она есть: лепестки прибавляют материала, их ровно столько, сколько
    заказано, и кончик ШИРЕ корня — иначе обычная гайка их не обожмёт и держать кабель будет нечем. */
@@ -266,6 +267,54 @@ console.log('=== gating + regression ===');
   const t2 = base({threadMode:'gland', glandStd:'off', glandSize:0, threadLen:10});
   let r2 = 0; for(const T of t2) for(const v of T) r2 = Math.max(r2, Math.hypot(v[0], v[2]));
   chk('«свои числа» таблицу не применяют', r2 > 14, +r2.toFixed(2));
+}
+
+/* НАКИДНАЯ ГАЙКА С КОНУСОМ и РЕЗЬБА ПОД ФЛАНЦЕМ — то, чего вводу не хватало до сборки. Проверяется не то,
+   что построилось, а что получилось: канал гайки СУЖАЕТСЯ кверху (иначе конуса нет и лепестки некому
+   вести), а у ввода под фланцем есть материал ниже нуля. */
+{
+  for(const D of [12, 20, 32]) for(const out of [4, 8]){
+    const t = base({threadMode:'glandcap', threadD:D, threadPitch:1.5, threadCapOut:out, threadHeadH:D*0.9});
+    chk('гайка Ø'+D+' выход '+out+': герметична и с объёмом',
+        manifoldCheck(t,4).watertight && vol(t) > 0, manifoldCheck(t,4).badEdges);
+    // канал: радиус на разной высоте — внизу по резьбе, вверху по выходу
+    let ylo=1e9, yhi=-1e9; for(const T of t) for(const v of T){ ylo=Math.min(ylo,v[1]); yhi=Math.max(yhi,v[1]); }
+    /* Мерить надо ПО САМОМУ ТОРЦУ: конус сходится к выходу только на вершине, и проба на полмиллиметра
+       ниже даёт радиус на её уклон больше — первая версия так и требовала от конуса быть цилиндром. */
+    const rAt = (y, tol) => { let m = 1e9;
+      for(const T of t) for(const v of T) if(Math.abs(v[1]-y) < (tol || 0.05)) m = Math.min(m, Math.hypot(v[0], v[2]));
+      return m; };
+    const rBot = rAt(ylo, 0.3), rTop = rAt(yhi);
+    chk('гайка Ø'+D+' выход '+out+': канал сужается кверху', rTop < rBot - 0.5,
+        {низ:+rBot.toFixed(2), верх:+rTop.toFixed(2)});
+    chk('гайка Ø'+D+' выход '+out+': выход — заказанного Ø', Math.abs(rTop - out/2) < 0.35,
+        {надо:out/2, есть:+rTop.toFixed(2)});
+    chk('гайка Ø'+D+' выход '+out+': внизу канал шире цанги ввода', rBot > out/2,
+        {низ:+rBot.toFixed(2)});
+  }
+  // резьба под фланцем: материал уходит НИЖЕ нуля, и его тем больше, чем длиннее хвостовик
+  /* Мерится ВЫСОТА, а не низ: готовая деталь отдаётся центрированной, поэтому хвостовик в 6 мм опускает
+     нижнюю точку лишь на три. Первая версия проверки требовала от неё полных шести и падала на верной
+     детали. */
+  const hgt = t => { let lo = 1e9, hi = -1e9;
+    for(const T of t) for(const v of T){ if(v[1] < lo) lo = v[1]; if(v[1] > hi) hi = v[1]; } return hi - lo; };
+  const low = t => { let m = 1e9; for(const T of t) for(const v of T) m = Math.min(m, v[1]); return m; };
+  const a = base({threadMode:'gland', threadD:20, threadPitch:2.5, threadLen:12, threadBore:8, threadBackLen:0});
+  const b = base({threadMode:'gland', threadD:20, threadPitch:2.5, threadLen:12, threadBore:8, threadBackLen:6});
+  const c = base({threadMode:'gland', threadD:20, threadPitch:2.5, threadLen:12, threadBore:8, threadBackLen:14});
+  chk('хвостовик прибавляет ровно свою длину', Math.abs((hgt(b) - hgt(a)) - 6) < 0.05,
+      {без:+hgt(a).toFixed(2), с6:+hgt(b).toFixed(2)});
+  chk('и длиннее хвостовик — выше деталь', Math.abs((hgt(c) - hgt(a)) - 14) < 0.05,
+      {без:+hgt(a).toFixed(2), с14:+hgt(c).toFixed(2)});
+  for(const t of [b, c]) chk('ввод с хвостовиком герметичен',
+      manifoldCheck(t,4).watertight && manifoldCheck(t,4).badEdges === 0, manifoldCheck(t,4).badEdges);
+  chk('и материала в нём больше, чем без него', vol(c) > vol(b) && vol(b) > vol(a),
+      [+vol(a).toFixed(0), +vol(b).toFixed(0), +vol(c).toFixed(0)]);
+  // канал проходит НАСКВОЗЬ, включая хвостовик: снизу по оси материала быть не должно
+  const onAxis = (t, y) => { for(const T of t){ const c2 = [(T[0][0]+T[1][0]+T[2][0])/3,
+      (T[0][1]+T[1][1]+T[2][1])/3, (T[0][2]+T[1][2]+T[2][2])/3];
+      if(Math.abs(c2[1]-y) < 0.6 && Math.hypot(c2[0], c2[2]) < 1.2) return true; } return false; };
+  chk('канал идёт сквозь хвостовик', !onAxis(c, low(c) + 1));
 }
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');

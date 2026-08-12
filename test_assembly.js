@@ -113,7 +113,11 @@ const CASES = {
   'болт → гайка':    {threadMode:'bolt', threadD:12, threadPitch:1.75, threadLen:25, mate:'Гайка',             axis:1},
   'гайка → болт':    {threadMode:'nut',  threadD:12, threadPitch:1.75, threadLen:25, mate:'Болт',              axis:1},
   'штуцер → гайка':  {threadMode:'stud', threadD:16, threadPitch:2,    threadLen:14, mate:'Гайка',             axis:1},
-  'ввод → гайка':    {threadMode:'gland',threadD:16, threadPitch:2,    threadLen:14, mate:'Гайка',             axis:1},
+  // У ввода ответная деталь называется КОНТРГАЙКОЙ и садится снизу, на резьбу под фланцем: сверху её место
+  // занято цангой. Ввод без хвостовика по-прежнему получает обычную гайку сверху — проверяется ниже.
+  'ввод → контргайка':{threadMode:'gland',threadD:16, threadPitch:2,   threadLen:14, mate:'Контргайка',        axis:1},
+  'ввод без хвоста':  {threadMode:'gland',threadD:16, threadPitch:2,   threadLen:14, threadBackLen:0,
+                       mate:'Гайка',            axis:1},
   'шестерня Z20':    {gearMode:'spur', gearModule:2, gearTeeth:20, gearThick:6, mate:'Ответная шестерня',      axis:0},
   'шестерня Z21':    {gearMode:'spur', gearModule:2, gearTeeth:21, gearThick:6, mate:'Ответная шестерня',      axis:0},
   'червяк → колесо': {gearMode:'worm', gearModule:2, gearTeeth:20, mate:'Червячное колесо',                    axis:0},

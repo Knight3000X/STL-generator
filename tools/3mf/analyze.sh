@@ -10,6 +10,8 @@
 #   tools/3mf/analyze.sh feat    FILE PART [ШАГ]          — выступы, сквозные отверстия и карманы списком
 #   tools/3mf/analyze.sh profile FILE PART x|y ФИКС A0 A1 [ШАГ]  — профиль поверхности вдоль прямой
 #
+#   tools/3mf/analyze.sh dump    FILE PART OUT.stl [X0 X1 Y0 Y1] — выгрузить в STL, чтобы посмотреть
+#
 # PART — номер детали из `parts` (с нуля).
 #
 # ВВЕРХ У 3MF — ЭТО Z. Импорт осей не переставляет (как и у STL), поэтому все замеры здесь по Z, а X и Y —

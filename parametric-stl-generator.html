@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.14.0';
+const APP_VERSION = 'v18.15.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4540,6 +4540,11 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBodyW', w:['jar'], label:'Банка: корпус — размер по X (0 = как Z)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBodyH', w:['jar'], label:'Банка: высота корпуса (до плеча)', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFloor', w:['jar'], label:'Банка: толщина дна', min:0.8, max:10, step:0.2, default:2.5, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'glandStd', w:['gland'], label:'Ввод: ряд типоразмеров', type:'select', default:'m',
+      options:[{v:'m',t:'метрический (M12…M32)'},{v:'pg',t:'PG (PG7…PG29)'},{v:'off',t:'свои числа'}]},
+    {group:'Резьба (крышка / штуцер)', key:'glandSize', w:['gland'], label:'Ввод: типоразмер (номер в ряду)', min:0, max:6, step:1, default:1, int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:10, step:1, default:4, int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadColletLen', w:['gland'], label:'Ввод: длина цанги (0 = без)', min:0, max:40, step:0.5, default:8, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadH', w:['bolt','nut','wingnut'], label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
@@ -5130,6 +5135,29 @@ let nextModelId = 1;
 
    В v18.13.0 поднято ещё раз, до 32: узоров у OrcaSlicer оказалось 26, а не 20, как я насчитал по памяти.
    Число подпирает набор, а не наоборот, — оно и растёт следом за ним. */
+/* ---- ТИПОРАЗМЕРЫ КАБЕЛЬНЫХ ВВОДОВ -------------------------------------------------------------------
+
+   Метрический ряд — числа стандартные и точные. Ряд PG — общеупотребительные: шаг там дробный, диаметры
+   некруглые, и такие таблицы по памяти врут. Поэтому размер только ПОДСТАВЛЯЕТ умолчания в Ø, шаг и
+   канал, а не запирает их: сверив с железом в руках, любое число можно поправить, и подпись под
+   выбранным размером покажет, что стоит на самом деле.
+
+   Канал берётся по ВЕРХНЕЙ границе кабеля плюс запас: печать сужает круглые проёмы, и канал впритык не
+   пропустит даже тот кабель, на который рассчитан. Зажимает цанга, а не канал, — ей и оставлено поле. */
+const GLAND_SIZES = {
+  m: [['M12', 12, 1.5, 3, 6.5], ['M16', 16, 1.5, 5, 10], ['M20', 20, 1.5, 7, 13],
+      ['M25', 25, 1.5, 11, 17], ['M32', 32, 1.5, 15, 21]],
+  pg:[['PG7', 12.5, 1.27, 3, 6.5], ['PG9', 15.2, 1.27, 4, 8], ['PG11', 18.6, 1.27, 5, 10],
+      ['PG13.5', 20.4, 1.27, 6, 12], ['PG16', 22.5, 1.27, 10, 14], ['PG21', 28.3, 1.5875, 13, 18],
+      ['PG29', 37.0, 1.5875, 18, 25]]
+};
+function glandSizeRow(p){
+  const std = (String(p.glandStd) === 'pg') ? 'pg' : 'm';
+  const rows = GLAND_SIZES[std];
+  const k = Math.max(0, Math.min(rows.length - 1, Math.round(p.glandSize || 0)));
+  const r = rows[k];
+  return {std, name:r[0], D:r[1], pitch:r[2], cMin:r[3], cMax:r[4], bore:+(r[4] + 0.8).toFixed(1)};
+}
 const MAX_MODELS = 32;
 function deepCopyParams(o){ return JSON.parse(JSON.stringify(o)); }
 function defaultBoxParams(){ const o = {}; for (const p of SHAPE_PARAMS.box) o[p.key] = p.default; return o; }
@@ -6442,7 +6470,7 @@ const MODEL_HELP = {
   'thread:bolt':     {what:'Болт с шестигранной головкой и метрической резьбой.', how:'Головкой на стол. Печатный болт держит момент, но не любит рывок — затягивать пальцами.', mat:['petg','abs']},
   'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
   'thread:wingnut':  {what:'Барашковая гайка: та же резьба плюс два крыла под пальцы.', how:'Плашмя. Крылья тонкие в основании — увеличьте их толщину, если гайку будут дёргать часто.', mat:['petg','abs']},
-  'thread:gland':    {what:'Кабельный ввод (сальник): корпус с резьбой и внутренним отверстием под кабель.', how:'Фланцем на стол.', mat:['petg','tpu']},
+  'thread:gland':    {what:'Кабельный ввод (сальник): фланец, наружная резьба, сквозной канал под кабель и ЦАНГА — венчик лепестков над резьбой. Лепестки расходятся кнаружу, поэтому обжимает их обычная гайка того же Ø и шага: у неё внутренний Ø по впадине меньше, чем цанга у кончика. Накидная гайка с конусом держала бы крепче, но это ещё одна деталь и ещё одна посадка.', how:'Фланцем на стол, без поддержек. Печатайте ДВЕ гайки: одна законтрит ввод в стенке, вторая обожмёт цангу. PETG или TPU: жёсткий PLA на лепестках трескается, они работают на разжим. Канал ставьте на 0.4–0.6 мм больше кабеля — печать сужает круглые проёмы.', mat:['petg','tpu']},
   'thread:anchor':   {what:'Дюбель по гипсокартону, спиральный (тип «Дрива»): крупный режущий виток на тонком сердечнике, потайная головка со шлицем и заходное остриё. Вкручивается прямо в лист отвёрткой — сверлить не нужно, — а держит не трением, а ПЛОЩАДЬЮ витка, врезанного в гипс. Внутри слепое отверстие под саморез: остриё остаётся сплошным, иначе оно смялось бы о лист вместо того, чтобы его проколоть.',
                       how:'Головкой на стол, остриём вверх — так шлиц печатается открытым отверстием, а не нависанием, и опорная плоскость головки выходит самой гладкой поверхностью, какую даёт принтер. Поддержки не нужны: виток сам себе опора, его наклон к горизонту примерно 10°, и каждый следующий слой ложится на предыдущий с большим перекрытием. Материал обязан быть ЖЁСТКИМ — PETG или ABS; PLA хрупок и виток скалывается при вкручивании, TPU сомнётся и не врежется вовсе. Заполнение 40–60 % и не меньше трёх периметров: тонкая стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке. Слой 0,15–0,2 мм: на 0,3 виток выходит ступенчатым и режет хуже. Вкручивать без нажима, сам затянется; саморез брать на 0,5–1 мм длиннее суммы «толщина листа + то, что вешаете».',
                       mat:['petg','abs']},
@@ -8170,6 +8198,15 @@ function buildDrywallAnchor(p){
 }
 function buildThread(p){
   const mode  = p.threadMode;
+  /* У кабельного ввода размер ПОДСТАВЛЯЕТ Ø, шаг и канал — но только когда ручка на своём умолчании.
+     Тронутая ручка сильнее таблицы: PG-ряд снят не с чертежа, и поправить его должно быть можно. */
+  if (mode === 'gland' && p.glandSize != null && String(p.glandStd) !== 'off'){
+    const g = glandSizeRow(p);
+    p = Object.assign({}, p);
+    if (p.threadD == null || p.threadD === 30) p.threadD = g.D;
+    if (p.threadPitch == null || p.threadPitch === 3) p.threadPitch = g.pitch;
+    if (!(p.threadBore > 0)) p.threadBore = g.bore;
+  }
   const D     = Math.max(4, p.threadD||30);              // male major diameter
   const P     = Math.max(0.5, p.threadPitch||3);         // pitch (crest-to-crest, per start)
   const S     = Math.max(1, Math.round(p.threadStarts||1));
@@ -8196,6 +8233,52 @@ function buildThread(p){
   const lead = d => leadLen>0 ? Math.max(0, Math.min(1, d/leadLen)) : 1;   // d = distance INTO the thread from the entry
 
   if (mode === 'anchor') return buildDrywallAnchor(p);      // своя деталь, а не штуцер с конусом
+/* ---- ЦАНГА КАБЕЛЬНОГО ВВОДА -------------------------------------------------------------------------
+
+   Чего вводу не хватало до этой сборки: он был штуцером со сквозным каналом — вкрутить и законтрить, но
+   кабель в нём болтался. Держит кабель ЦАНГА: венчик лепестков над резьбой, который сжимается, когда на
+   него наворачивают гайку.
+
+   ЛЕПЕСТКИ РАСХОДЯТСЯ КНАРУЖУ, а не сходятся. Это и позволяет обойтись ОБЫЧНОЙ гайкой вместо накидной с
+   внутренним конусом: у гайки внутренний диаметр по впадине резьбы меньше, чем цанга у кончика, поэтому
+   гайка, наворачиваясь, сама обжимает лепестки. Накидная с конусом держала бы лучше, но это ещё одна
+   деталь и ещё одна посадка; расходящаяся цанга даёт то же самое имеющимися средствами, а `nut` того же
+   Ø и шага у нас уже есть — их и надо напечатать две: одну под контргайку, одну на цангу.
+
+   Каждый лепесток — ОТДЕЛЬНАЯ ЗАМКНУТАЯ оболочка, а не прорези в общем конусе. Прорезать конус нечем
+   (булевой операции нет), а лепестки сектором строятся прямо: шесть граней, все плоские или линейчатые.
+   Внизу лепесток на 0.6 мм утоплен в тело штуцера — перекрытие, а не стык, иначе получилась бы склейка по
+   общей грани, которой `manifoldCheck` не видит. */
+function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
+  const out = [], step = 2*Math.PI/n, gap = step*Math.max(0.05, Math.min(0.5, gapFrac));
+  const ns = Math.max(2, Math.round(seg/n));
+  for(let k = 0; k < n; k++){
+    const a0 = k*step + gap/2, a1 = (k + 1)*step - gap/2;
+    const P = (a, y, r) => [r*Math.cos(a), y, r*Math.sin(a)];
+    for(let i = 0; i < ns; i++){
+      const b0 = a0 + (a1 - a0)*i/ns, b1 = a0 + (a1 - a0)*(i + 1)/ns;
+      const mid = (b0 + b1)/2, rout = [Math.cos(mid), 0, Math.sin(mid)], rin = [-rout[0], 0, -rout[2]];
+      // наружная (коническая) и внутренняя (цилиндрическая) поверхности
+      out.push(orient([P(b0,y0,rOut0), P(b1,y0,rOut0), P(b1,y1,rOut1)], rout));
+      out.push(orient([P(b0,y0,rOut0), P(b1,y1,rOut1), P(b0,y1,rOut1)], rout));
+      out.push(orient([P(b0,y0,rIn), P(b1,y0,rIn), P(b1,y1,rIn)], rin));
+      out.push(orient([P(b0,y0,rIn), P(b1,y1,rIn), P(b0,y1,rIn)], rin));
+      // торцы сверху и снизу
+      out.push(orient([P(b0,y1,rIn), P(b1,y1,rIn), P(b1,y1,rOut1)], [0,1,0]));
+      out.push(orient([P(b0,y1,rIn), P(b1,y1,rOut1), P(b0,y1,rOut1)], [0,1,0]));
+      out.push(orient([P(b0,y0,rIn), P(b1,y0,rIn), P(b1,y0,rOut0)], [0,-1,0]));
+      out.push(orient([P(b0,y0,rIn), P(b1,y0,rOut0), P(b0,y0,rOut0)], [0,-1,0]));
+    }
+    // боковые стенки прорези — по одной с каждого края лепестка
+    for(const [a, sgn] of [[a0,-1],[a1,1]]){
+      const nrm = [-Math.sin(a)*sgn, 0, Math.cos(a)*sgn];
+      const P = (y, r) => [r*Math.cos(a), y, r*Math.sin(a)];
+      out.push(orient([P(y0,rIn), P(y0,rOut0), P(y1,rOut1)], nrm));
+      out.push(orient([P(y0,rIn), P(y1,rOut1), P(y1,rIn)], nrm));
+    }
+  }
+  return out;
+}
   if (mode === 'stud' || mode === 'gland'){
     // 'gland' (кабельный ввод) is the stud with a cable bore straight through it: the solid top fan and the
     // solid flange disc become annuli closed by a bore wall. Screw it through an enclosure wall and lock it
@@ -8218,7 +8301,16 @@ function buildThread(p){
         tris.push(orient([V(i,Ny),B(y1,i),B(y1,i2)],[0,1,0]));      // top annulus: thread crest → bore
         tris.push(orient([V(i,Ny),B(y1,i2),V(i2,Ny)],[0,1,0]));
         tris.push(orient([B(0,i),B(0,i2),B(y1,i2)],rin));           // cable bore, right through the flange
-        tris.push(orient([B(0,i),B(y1,i2),B(y1,i)],rin)); } }
+        tris.push(orient([B(0,i),B(y1,i2),B(y1,i)],rin)); }
+      const cn = Math.max(0, Math.min(10, Math.round(p.threadColletN != null ? p.threadColletN : 4)));
+      const cl = Math.max(0, Math.min(40, p.threadColletLen != null ? p.threadColletLen : Math.max(5, len*0.5)));
+      if (cn >= 2 && cl > 1){
+        /* Кончик шире корня — на это и наворачивается гайка. Разбег зажат остатком до наружного Ø:
+           лепесток, вылезший за резьбу, гайка просто не наденет. */
+        const grow = Math.max(0.3, Math.min(majorR - minorR - 0.2, cl*0.12));
+        for(const T of colletFingersTris(y1 - 0.6, y1 + cl, rBore, minorR, minorR + grow,
+                                         cn, 0.22, Nth)) tris.push(T);
+      } }
     const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
     const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rref=[Math.cos(mid),0,Math.sin(mid)];

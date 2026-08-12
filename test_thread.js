@@ -159,9 +159,49 @@ for(const D of [10,16,25,40]) for(const bore of [0,4,10]) for(const hand of ['ri
   const mc=manifoldCheck(t,4);
   chk('gland Ø'+D+' bore'+bore+' '+hand+' watertight (+vol)', mc.watertight&&vol(t)>0, {wt:mc.watertight,bad:mc.badEdges});
 }
+/* Ввод сравнивается со штуцером БЕЗ ЦАНГИ: с v18.15.0 у него сверху венчик лепестков, и «легче штуцера»
+   он теперь не обязан быть — материал канала уходит, материал цанги приходит. Сравнивать надо
+   сопоставимое, иначе проверка ловит не полость, а наличие цанги. */
 { const stud=vol(base({threadMode:'stud',threadD:20,threadPitch:2.5,threadLen:12}));
-  const gl=vol(base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8}));
+  const gl=vol(base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8,threadColletN:0}));
   chk('gland is hollow (less material than the solid stud)', gl<stud, {stud:+stud.toFixed(0),gland:+gl.toFixed(0)}); }
+/* ЦАНГА. Проверяется то, ради чего она есть: лепестки прибавляют материала, их ровно столько, сколько
+   заказано, и кончик ШИРЕ корня — иначе обычная гайка их не обожмёт и держать кабель будет нечем. */
+{
+  const P = {threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8};
+  const v0 = vol(base(Object.assign({}, P, {threadColletN:0})));
+  for(const n of [3, 4, 6]){
+    const t = base(Object.assign({}, P, {threadColletN:n, threadColletLen:8}));
+    chk('цанга '+n+' лепестков: герметична', manifoldCheck(t,4).watertight);
+    chk('цанга '+n+' лепестков: прибавила материала', vol(t) > v0 + 1,
+        {без:+v0.toFixed(0), с:+vol(t).toFixed(0)});
+    // лепестков ровно n: считаем куски материала на луче вокруг оси на высоте цанги
+    const b = (function(){ let hi=-1e9; for(const T of t) for(const v of T) if(v[1]>hi) hi=v[1]; return hi; })();
+    const yc = b - 2;
+    let runs = 0, was = false;
+    for(let k = 0; k <= 720; k++){
+      const a = 2*Math.PI*k/720, r = 8.6;                  // между каналом и наружным Ø лепестка
+      let inside = false;
+      for(const T of t){                                   // грубая проба: есть ли треугольник рядом
+        const c = [(T[0][0]+T[1][0]+T[2][0])/3, (T[0][1]+T[1][1]+T[2][1])/3, (T[0][2]+T[1][2]+T[2][2])/3];
+        if(Math.abs(c[1]-yc) < 1.2 && Math.hypot(c[0]-r*Math.cos(a), c[2]-r*Math.sin(a)) < 0.9){ inside = true; break; }
+      }
+      if(inside && !was) runs++;
+      was = inside;
+    }
+    chk('цанга '+n+' лепестков: их ровно столько', runs === n, runs);
+  }
+  // кончик шире корня — на этом держится вся затея с обычной гайкой
+  for(const cl of [4, 12]){
+    const t = base(Object.assign({}, P, {threadColletN:4, threadColletLen:cl}));
+    let hi=-1e9; for(const T of t) for(const v of T) if(v[1]>hi) hi=v[1];
+    const at = y => { let m = 0;
+      for(const T of t) for(const v of T) if(Math.abs(v[1]-y) < 0.05) m = Math.max(m, Math.hypot(v[0], v[2]));
+      return m; };
+    chk('цанга длиной '+cl+': кончик шире корня', at(hi) > at(hi - cl + 0.7) + 0.2,
+        {корень:+at(hi-cl+0.7).toFixed(2), кончик:+at(hi).toFixed(2)});
+  }
+}
 { // the cable channel must be open end to end: nothing may sit inside the bore radius at any height
   const t=base({threadMode:'gland',threadD:20,threadPitch:2.5,threadLen:12,threadBore:8,threadFlange:3});
   let minR=1e9; for(const T of t)for(const v of T){ const r=Math.hypot(v[0],v[2]); if(r<minR) minR=r; }
@@ -196,6 +236,37 @@ console.log('=== gating + regression ===');
 { Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,threadMode:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('threadMode none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
+
+/* ТИПОРАЗМЕРЫ. Проверяется, что таблица ПОДСТАВЛЯЕТ, а не запирает: на умолчаниях размер правит Ø, шаг и
+   канал, а тронутая ручка сильнее таблицы. Ряд PG снят не с чертежа, и возможность его поправить — не
+   удобство, а условие, при котором им вообще можно пользоваться. */
+{
+  for(const std of ['m','pg']){
+    const rows = GLAND_SIZES[std];
+    for(let k = 0; k < rows.length; k++){
+      const g = glandSizeRow({glandStd:std, glandSize:k});
+      chk(std+'['+k+'] '+g.name+': Ø и шаг из таблицы', g.D === rows[k][1] && g.pitch === rows[k][2]);
+      chk(std+'['+k+'] '+g.name+': канал шире верхней границы кабеля', g.bore > rows[k][4],
+          {канал:g.bore, кабель:rows[k][4]});
+      const t = base({threadMode:'gland', glandStd:std, glandSize:k, threadLen:10});
+      chk(std+'['+k+'] '+g.name+': строится и герметичен',
+          manifoldCheck(t,4).watertight && vol(t) > 0);
+      // наружный Ø детали обязан отвечать таблице, а не умолчанию 30
+      let rmax = 0; for(const T of t) for(const v of T) rmax = Math.max(rmax, Math.hypot(v[0], v[2]));
+      chk(std+'['+k+'] '+g.name+': резьба того Ø, что в таблице', rmax > g.D/2 - 0.6,
+          {надо:g.D/2, есть:+rmax.toFixed(2)});
+    }
+  }
+  chk('номер за пределами ряда зажимается, а не роняет',
+      glandSizeRow({glandStd:'m', glandSize:99}).name === 'M32');
+  // тронутая ручка сильнее таблицы
+  const t1 = base({threadMode:'gland', glandStd:'m', glandSize:0, threadD:40, threadLen:10});
+  let r1 = 0; for(const T of t1) for(const v of T) r1 = Math.max(r1, Math.hypot(v[0], v[2]));
+  chk('заданный Ø сильнее таблицы', r1 > 19, +r1.toFixed(2));
+  const t2 = base({threadMode:'gland', glandStd:'off', glandSize:0, threadLen:10});
+  let r2 = 0; for(const T of t2) for(const v of T) r2 = Math.max(r2, Math.hypot(v[0], v[2]));
+  chk('«свои числа» таблицу не применяют', r2 > 14, +r2.toFixed(2));
+}
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

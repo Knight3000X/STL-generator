@@ -545,9 +545,9 @@ for(const N of [3, 7]) for(const g of [20, 80]){
   chk('стрункость N='+N+' до '+g+': самый длинный — заказанный',
       Math.abs(gaps[gaps.length-1] - g) < 1.2, {есть:+gaps[gaps.length-1].toFixed(2), надо:g});
 }
-console.log('=== спираль: кольца, их число и стенка ===');
+console.log('=== кольца: их число и стенка ===');
 for(const N of [3, 8]) for(const dMax of [40, 120]) for(const w of [0.4, 1.2]){
-  const t = build({tstMode:'spiral', tstN:N, tstSpiMax:dMax, tstSpiWall:w, tstH:10});
+  const t = build({tstMode:'spiral', tstSpiKind:'rings', tstN:N, tstSpiMax:dMax, tstSpiWall:w, tstH:10});
   const b = bb(t);
   // луч вдоль X через центр на высоте колец: сколько кусков материала он встретит
   const y = b.y0 + 4 + 5;
@@ -569,13 +569,63 @@ for(const N of [3, 8]) for(const dMax of [40, 120]) for(const w of [0.4, 1.2]){
     for(const [x,q] of hits){ const pr=dep; dep+=q;
       if(pr<=0&&dep>0) st=x; else if(pr>0&&dep<=0){ if(st!==null&&x-st>1e-9) segs.push([st,x]); st=null; } }
   }
-  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': колец ровно столько, сколько станций',
+  chk('кольца N='+N+' Ø'+dMax+' стенка '+w+': колец ровно столько, сколько станций',
       segs.length === 2*N, segs.length + ' пересечений вместо ' + 2*N);
-  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': крайнее кольцо — заказанного Ø',
+  chk('кольца N='+N+' Ø'+dMax+' стенка '+w+': крайнее кольцо — заказанного Ø',
       Math.abs((segs[segs.length-1][1] - segs[0][0]) - (dMax + w)) < 0.06,
       {есть:+(segs[segs.length-1][1]-segs[0][0]).toFixed(3), надо:dMax + w});
-  chk('спираль N='+N+' Ø'+dMax+' стенка '+w+': стенка — заказанной толщины',
+  chk('кольца N='+N+' Ø'+dMax+' стенка '+w+': стенка — заказанной толщины',
       segs.every(q => Math.abs((q[1]-q[0]) - w) < 0.05), segs.map(q=>+(q[1]-q[0]).toFixed(3)));
+}
+
+/* НАСТОЯЩАЯ СПИРАЛЬ отличается от колец НЕСИММЕТРИЧНОСТЬЮ, и это самый дешёвый способ их различить.
+   Кольцо пересекает луч через центр на одном и том же радиусе слева и справа. У спирали радиус растёт
+   непрерывно, поэтому за пол-оборота он успевает подрасти на полшага: справа витки стоят на r₀+p·k,
+   слева — на r₀+p·(k+½).
+
+   Первая версия считала оболочки выше плиты и падала: отбор «весь треугольник выше порога» режет стенку
+   по её нижней кромке, а бруски подписи считаются отдельными телами. Считать надо не куски, а геометрию. */
+console.log('=== спираль: витки идут непрерывно, а не кольцами ===');
+for(const pitch of [3, 6]) for(const dMax of [50, 100]){
+  const mk = kind => build({tstMode:'spiral', tstSpiKind:kind, tstN:6, tstSpiPitch:pitch,
+                            tstSpiMax:dMax, tstSpiWall:0.8, tstH:10});
+  /* Луч пускается НЕ через самый центр, а со сдвигом на полмиллиметра. Кольца нарезаны с первой вершиной
+     на нуле градусов, и луч по z = 0 приходит ровно в вершину: пересечение вырождается и с одной стороны
+     теряется, отчего симметричные кольца выглядят несимметричными. Сдвиг эту вырожденность убирает, а на
+     радиус влияет на пять микрон. */
+  const radii = t => {
+    const b = bb(t), y = b.y0 + 4 + 5, zc = 0.5;
+    const xs = hitsX(byZ(t, zc), y, zc).map(x => Math.sign(x)*Math.hypot(x, zc));
+    return {rt: xs.filter(x => x > 0.5).sort((a,c)=>a-c),
+            lf: xs.filter(x => x < -0.5).map(x => -x).sort((a,c)=>a-c)};
+  };
+  const sp = mk('spiral'), rg = mk('rings');
+  chk('спираль шаг '+pitch+' Ø'+dMax+': герметична',
+      manifoldCheck(sp, 4).watertight, manifoldCheck(sp, 4).openEdges);
+  /* Начальный участок отбрасывается: лента начинается ТОРЦОМ на радиусе r₀, и вокруг него луч ловит
+     лишние близкие пересечения, которых у витка нет. Стороны потом равняются по короткой — иначе
+     сравниваются разные витки и «смещение» выходит в полтора шага вместо половины. */
+  const r0 = Math.max(pitch, 4), cut = r0 + pitch*1.5;
+  const pair = A => { const rt = A.rt.filter(v => v > cut), lf = A.lf.filter(v => v > cut);
+    const n = Math.min(rt.length, lf.length), d = [];
+    for(let k = 0; k < n; k++) d.push(Math.abs(rt[k] - lf[k]));
+    return d; };
+  /* Смещение берётся ПО МОДУЛЮ ШАГА. Стороны могут начаться с разных витков, и тогда разность выходит не
+     полшага, а полтора — но по модулю шага это одно и то же число. Кольца дают ноль, спираль — половину,
+     и спутать их нельзя ни при каком сдвиге нумерации. */
+  const fold = d => { const m = ((d % pitch) + pitch) % pitch; return Math.min(m, pitch - m); };
+  const mean = a => a.length ? a.reduce((x, y) => x + fold(y), 0)/a.length : NaN;
+  const dR = pair(radii(rg)), dS = pair(radii(sp));
+  chk('кольца симметричны относительно центра', dR.length > 2 && mean(dR) < 0.05, +mean(dR).toFixed(4));
+  chk('спираль шаг '+pitch+' Ø'+dMax+': НЕсимметрична — витки смещены на полшага',
+      dS.length > 1 && Math.abs(mean(dS) - pitch/2) < pitch*0.3,
+      {смещение:+mean(dS).toFixed(2), полшага:pitch/2});
+  const S2 = radii(sp).rt.filter(v => v > cut);
+  chk('спираль шаг '+pitch+' Ø'+dMax+': соседние витки отстоят на шаг',
+      S2.length > 3 && S2.slice(2).every((v, k) => Math.abs((v - S2[k]) - pitch) < 0.25),
+      S2.map(v=>+v.toFixed(1)));
+  chk('спираль шаг '+pitch+' Ø'+dMax+': не вылезла за заказанный Ø',
+      (bb(sp).x1 - bb(sp).x0) <= dMax + 12 + 1e-6, +(bb(sp).x1 - bb(sp).x0).toFixed(2));
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

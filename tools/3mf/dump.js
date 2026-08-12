@@ -62,7 +62,10 @@ function blobs(m, pred){
    получается рваной — для взгляда это неважно, а для замеров есть `profile`. */
 const out = process.argv[4];
 loadParts(process.argv[2]).then(parts => {
-  const p = parts[+(process.argv[3]||0)];
+  // `all` — все детали разом: сборку надо смотреть собранной, а не по одной.
+  const p = process.argv[3] === 'all'
+    ? {tris: parts.reduce((a, q) => a.concat(q.tris), [])}
+    : parts[+(process.argv[3]||0)];
   const c = [5,6,7,8].map(i => process.argv[i] === undefined ? null : +process.argv[i]);
   let tris = p.tris;
   if (c[0] !== null) tris = tris.filter(T => {

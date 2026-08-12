@@ -156,7 +156,9 @@ console.log('\n=== вентрешётка в стенке ===');
   }
   // щель не может стать тоньше того, что пропечатается: толщина перемычки зажимается тем, что осталось
   {
-    const g = pboxVentSpec({pbVent:'-Z', pbVentN:24, pbVentBar:6, pbVentW:40, pbVentH:16});
+    /* Спецификация теперь отдаёт СПИСОК решёток — по одной на каждую выбранную стенку: одна решётка это
+       не вентиляция, воздуху нужен и приток, и отток. Здесь мерится одна, поэтому берётся первая. */
+    const g = pboxVentSpec({pbVent:'-Z', pbVentN:24, pbVentBar:6, pbVentW:40, pbVentH:16})[0];
     chk('щель не тоньше 0.8 мм даже при 24 щелях и толстой перемычке', g.slot >= 0.8 - 1e-9, g.slot);
     chk('и перемычка при этом ужалась, а не окно', g.bar < 6, g.bar);
     const t = base({pbVent:'-Z', pbVentN:24, pbVentBar:6});
@@ -188,8 +190,42 @@ console.log('\n=== вентрешётка в стенке ===');
     base({pbVent:'-Z', pbVentDir:'horiz'});
     chk('горизонтальные щели — сказано про мосты',
         collectPrintWarnings(paramState.box).some(x => /мостами/.test(x)));
+    /* СКВОЗНЯК проверяется отдельно и первым: одна решётка это не вентиляция — тёплый воздух упирается в
+       глухие стенки и остаётся внутри. Приложение обязано сказать это вслух, иначе корпус выйдет исправным
+       и бесполезным. */
     base({pbVent:'-Z', pbVentDir:'vert', pbVentN:7, pbVentBar:1.6});
-    chk('а на разумных настройках решётка молчит',
+    chk('одна решётка — сказано, что нужен и приток, и отток',
+        collectPrintWarnings(paramState.box).some(x => /приток/.test(x)),
+        collectPrintWarnings(paramState.box));
+    for(const v of ['ZZ','XX','all']){
+      base({pbVent:v, pbVentDir:'vert', pbVentN:7, pbVentBar:1.6});
+      chk(v+': про приток больше не говорится',
+          collectPrintWarnings(paramState.box).every(x => !/приток/.test(x)));
+      const g = pboxVentSpec(paramState.box);
+      chk(v+': решёток столько, сколько стенок', g.length === (v === 'all' ? 4 : 2), g.length);
+      chk(v+': все грани разные', new Set(g.map(q=>q.face)).size === g.length, g.map(q=>q.face));
+    }
+    /* И РЕЖЕТСЯ ли вторая решётка на самом деле — предупреждения об этом не знают. Мерится объёмом:
+       две решётки обязаны убрать примерно вдвое больше материала, чем одна. */
+    {
+      const vol = t => { let v = 0; for(const T of t){ const a=T[0],b=T[1],c=T[2];
+        v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; }
+        return Math.abs(v); };
+      base({pbVent:'none'});   const v0 = vol(buildTrisForShape('box', paramState.box));
+      base({pbVent:'-Z'});     const v1 = vol(buildTrisForShape('box', paramState.box));
+      base({pbVent:'ZZ'});     const v2 = vol(buildTrisForShape('box', paramState.box));
+      base({pbVent:'all'});    const v4 = vol(buildTrisForShape('box', paramState.box));
+      chk('одна решётка убирает материал', v1 < v0 - 1, {без:+v0.toFixed(0), одна:+v1.toFixed(0)});
+      chk('сквозняк убирает примерно вдвое больше',
+          Math.abs((v0 - v2) - 2*(v0 - v1)) < (v0 - v1)*0.15,
+          {одна:+(v0-v1).toFixed(0), две:+(v0-v2).toFixed(0)});
+      chk('четыре стенки убирают больше двух', (v0 - v4) > (v0 - v2) + 1,
+          {две:+(v0-v2).toFixed(0), четыре:+(v0-v4).toFixed(0)});
+      chk('и деталь при этом остаётся герметичной',
+          manifoldCheck(buildTrisForShape('box', paramState.box), 4).watertight);
+    }
+    base({pbVent:'ZZ', pbVentDir:'vert', pbVentN:7, pbVentBar:1.6});
+    chk('а на разумных настройках и сквозняке решётка молчит',
         collectPrintWarnings(paramState.box).every(x => !/вентрешётк/.test(x)),
         collectPrintWarnings(paramState.box));
     base({pbVent:'none'});

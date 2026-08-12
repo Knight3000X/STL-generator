@@ -72,7 +72,7 @@ add test_logo_zone.js test_logo_zone.js
 for t in test_paramrows.js test_keycap.js test_thread.js test_battery.js test_hook_styles.js test_vase.js test_slice.js test_funnel.js test_squircle.js test_wormwheel.js test_poly.js test_funnel_cap.js test_winding.js test_cycloidal.js test_leadscrew.js test_bevelpair.js test_neck_adapter.js test_auger.js test_corkscrew.js test_barb.js test_snap.js test_balljoint.js test_chain.js test_livinghinge.js test_telescope.js test_geneva.js test_roots.js test_gauge.js test_radgauge.js test_polygauge.js test_cablecomb.js test_edgeclip.js test_cupholder.js test_loft.js test_earclip.js test_groups.js test_pan.js test_submodel.js test_headings.js test_help.js test_gauges2.js test_logo_channel.js test_coaster.js test_logo_ams.js test_litho.js test_anchor.js test_source.js test_stand_logo.js test_light_settings.js test_version.js test_panel_layout.js \
           test_logo_plate.js test_gear.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js \
           test_dice.js test_squircle_rport.js test_mount_fastener.js test_lattice_floor.js \
-          test_logo3d.js test_lattice_walls.js test_calibration.js test_fillet_logo_hollow.js \
+          test_logo3d.js test_lattice_walls.js test_calibration.js test_tstjoin.js test_fillet_logo_hollow.js \
           test_wall_bulge.js test_assembly.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js test_e2e_full.js test_rim_box.js test_ujoint.js \
           test_fillet_logo.js test_hollow_taper.js test_stand.js test_pip_hinge.js test_scoop.js \
           test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js \

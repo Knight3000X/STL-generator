@@ -1182,7 +1182,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.5.1';
+const APP_VERSION = 'v18.6.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4731,6 +4731,11 @@ const SHAPE_PARAMS = {
                {v:'sphere',t:'купола'},{v:'fit',t:'посадка (отверстия + штырь)'},
                {v:'tower',t:'башня диаметров'},{v:'dim',t:'проверка размеров'},
                {v:'wall',t:'тонкие стенки'}]},
+    {group:'Тесты печати', key:'tstJoin', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall'], label:'Тест: зубья по краям (собирать плиту как пазл)', type:'bool', default:false},
+    {group:'Тесты печати', key:'tstJoinW', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall'], label:'Тест: ширина зуба', min:3, max:12, step:0.5, default:5, unit:'мм'},
+    {group:'Тесты печати', key:'tstJoinD', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall'], label:'Тест: вылет зуба', min:2, max:10, step:0.5, default:4, unit:'мм'},
+    {group:'Тесты печати', key:'tstJoinAng', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall'], label:'Тест: развал зуба', min:5, max:30, step:1, default:15, unit:'°'},
+    {group:'Тесты печати', key:'tstJoinClr', w:['radius','chamfer','overhang','bridge','sphere','fit','dim','wall'], label:'Тест: зазор в замке', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
     {group:'Тесты печати', key:'tstT', w:['ruler','radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'],
       label:'Тест: толщина основания', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Тесты печати', key:'tstN', w:['radius','chamfer','overhang','bridge','sphere','fit','tower','dim','wall'],
@@ -13718,6 +13723,77 @@ function tstCenterY(tris){
   const dy = -(lo + hi)/2;
   return tris.map(T => T.map(v => [v[0], v[1] + dy, v[2]]));
 }
+/* ---- ЗАМОК ОБРАЗЦОВ: собирать плиту как пазл ---------------------------------------------------------
+
+   Присланные плиты — это готовые раскладки: на одной плите сразу шесть рядов. Наши образцы печатаются по
+   одному, и это правильнее — каждый со своими ручками, — но тогда «плиту как на картинке» собрать не из
+   чего. Замок и есть недостающее звено: любой образец можно выпустить с зубьями по краям и состыковать с
+   любым другим.
+
+   ЛАСТОЧКИН ХВОСТ В ПЛАНЕ, а не круглая головка от картонного пазла. Причины две. Трапеция строится
+   четырьмя точками и остаётся простым многоугольником при любых числах, а круглая головка на тонкой шее
+   при крупном зубе сама себя пересекает. И печатается трапеция стенками строго вертикальными: зуб
+   прорезан насквозь через всю толщину плиты, нависаний нет ни одного.
+
+   ЗУБЬЯ СИДЯТ НА СЕТКЕ, а не по центру кромки. По центру — значит стыкуются только образцы одинаковой
+   ширины, а у нас ширина берётся из числа станций и подписей и у каждого своя. Шаг `TST_MOD` считается от
+   края, поэтому стыкуется всё, чья сторона кратна шагу; ради этого сторона при включённом замке
+   округляется ВВЕРХ до целого числа шагов. Фигуры внутри стоят по центру и от этого не двигаются.
+
+   ЗУБЬЯ НА «+», ГНЁЗДА НА «−». Одно правило на все четыре кромки: правая и дальняя дают зуб, левая и
+   ближняя — гнездо. Значит любая плитка подходит к любой, и различать «мужскую» и «женскую» не нужно.
+
+   Разъединяется соединение ВВЕРХ, и это не недоделка. Трапеция держит в плоскости стола — за то её и
+   выбрали, — а вверх плитки снимаются, как в настоящем пазле: класть их иначе всё равно нечем. */
+const TST_MOD = 20;                                       // шаг сетки зубьев, мм
+function tstJoinOn(p){ return !!p.tstJoin; }
+function tstSnap(v){ return Math.max(TST_MOD, Math.ceil(v/TST_MOD - 1e-9)*TST_MOD); }
+/* Точки одной кромки: идём от (x0,z0) в направлении (dx,dz) на длину len и на каждом шаге сетки выдаём
+   либо зуб наружу, либо гнездо внутрь. Внешняя нормаль при обходе против часовой стрелки — (dz, −dx). */
+function tstEdgePts(out, x0, z0, dx, dz, len, male, J){
+  const nx = dz, nz = -dx;                                // наружу
+  const n = Math.floor(len/TST_MOD + 1e-9);
+  const at = (s, o) => out.push([x0 + dx*s + nx*o, z0 + dz*s + nz*o]);
+  at(0, 0);
+  for(let k = 0; k < n; k++){
+    const c = k*TST_MOD + TST_MOD/2;
+    if(male){ at(c - J.r, 0); at(c - J.t, J.h); at(c + J.t, J.h); at(c + J.r, 0); }
+    else    { at(c - J.r - J.c, 0); at(c - J.t - J.c, -(J.h + J.c));
+              at(c + J.t + J.c, -(J.h + J.c)); at(c + J.r + J.c, 0); }
+  }
+}
+/* Контур основания. Отдельно от `tstPlate`, потому что «посадка» вырезает в своей плите отверстия и
+   протягивает контур сама — ей нужен именно многоугольник, а не готовые треугольники. */
+function tstPlateLoop(W, D, p){
+  const Wj = tstSnap(W), Dj = tstSnap(D);
+  const ang = tstNum(p.tstJoinAng, 5, 30, 15)*Math.PI/180;
+  const J = {r: tstNum(p.tstJoinW, 3, 12, 5)/2, h: tstNum(p.tstJoinD, 2, 10, 4),
+             c: fitTuned(p, tstNum(p.tstJoinClr, 0, 1, 0.25))};
+  J.t = J.r + J.h*Math.tan(ang);
+  const P = [];
+  tstEdgePts(P, -Wj/2, -Dj/2,  1,  0, Wj, false, J);      // ближняя (−Z): гнёзда
+  tstEdgePts(P,  Wj/2, -Dj/2,  0,  1, Dj, true,  J);      // правая  (+X): зубья
+  tstEdgePts(P,  Wj/2,  Dj/2, -1,  0, Wj, true,  J);      // дальняя (+Z): зубья
+  tstEdgePts(P, -Wj/2,  Dj/2,  0, -1, Dj, false, J);      // левая   (−X): гнёзда
+  return P;
+}
+// Прямоугольник ровно там, где он был бы без замка, — чтобы у обеих веток `tstPlateRect` был один вид.
+function tstPlateRect(W, D, p){
+  if(!tstJoinOn(p)) return [[-W/2,-D/2],[W/2,-D/2],[W/2,D/2],[-W/2,D/2]];
+  return tstPlateLoop(W, D, p);
+}
+/* Основание образца. Замок выключен — ровно та же коробка, что и раньше, до треугольника: включать зубья
+   тем, кто их не просил, значит менять все десять образцов разом.
+
+   ЗАМОК ЕСТЬ НЕ У ВСЕХ, и это не пропуск. Линейка — планка 200 × 20, её незачем состыковывать: она не
+   плитка, а мерительный инструмент, и зуб на её торце только мешал бы. Башня диаметров стоит на круглом
+   основании, а круг не мостится. Обеим замок не предлагается вовсе — вместо того, чтобы предложить и
+   построить бессмыслицу. */
+function tstPlate(W, D, t, p){
+  if(!tstJoinOn(p)) return boxSpanTris(-W/2, W/2, 0, t, -D/2, D/2);
+  return extrudePolyYTris([tstPlateLoop(W, D, p)], 0, t);
+}
+
 /* Купол: ВЕРХНЯЯ полусфера радиуса r с плоским дном на y0, замкнутая диском основания.
    Не `sphereTris`, и это не придирка: шар с центром в толще плиты вылезает НИЖЕ её дна, как только его
    радиус превышает утопление, — на плите 4 мм это любой шар крупнее Ø8. Купол не вылезает никогда. */
@@ -13750,7 +13826,7 @@ function buildTestRadius(p){
     R.push(r); labels.push(fmtNum(+r.toFixed(2))); sizes.push(r + 8); }
   const row = tstRow(labels, sizes), Dz = 2*Rmax + 6, D = Dz + TST_LAB + 9;
   const z0 = -D/2, z1 = z0 + Dz;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const r = R[k], c = row.cols[k], yB = t - 0.4, yT = t + r + 4;
@@ -13776,7 +13852,7 @@ function buildTestChamfer(p){
     C.push(c); labels.push(fmtNum(+c.toFixed(2))); sizes.push(c + 8); }
   const row = tstRow(labels, sizes), Dz = 2*Cmax + 6, D = Dz + TST_LAB + 9;
   const z0 = -D/2, z1 = z0 + Dz;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const ch = C[k], c = row.cols[k], yB = t - 0.4, yT = t + ch + 4;
@@ -13800,7 +13876,7 @@ function buildTestOverhang(p){
   const row = tstRow(labels, sizes);
   const runMax = H*Math.tan(aMax*Math.PI/180), D = TST_LAB + 6 + runMax + s + 4;
   const z0 = -D/2 + TST_LAB + 6;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const c = row.cols[k], run = H*Math.tan(A[k]*Math.PI/180), yB = t - 0.4, yT = yB + H;
@@ -13823,7 +13899,7 @@ function buildTestBridge(p){
     S.push(s); labels.push(fmtNum(+s.toFixed(1))); sizes.push(14); }
   const row = tstRow(labels, sizes);
   const D = spanMax + 2*pd + 2*(TST_LAB + 5);
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const c = row.cols[k], sp = S[k], xa = c.x0 + 1.5, xb = c.x1 - 1.5;
@@ -13846,7 +13922,7 @@ function buildTestSphere(p){
     R.push(d/2); labels.push(fmtNum(+d.toFixed(2))); sizes.push(d + 4); }
   const row = tstRow(labels, sizes);
   const rMax = Dmax/2, D = 2*rMax + 4 + TST_LAB + 9, zc = -D/2 + rMax + 3;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const c = row.cols[k];
@@ -13873,7 +13949,7 @@ function buildTestFit(p){
   G.push(null); labels.push(fmtNum(pin)); sizes.push(pin + 8);      // последняя станция — сам штырь
   const row = tstRow(labels, sizes);
   const D = pin + gMax + 8 + TST_LAB + 9, zc = -D/2 + (pin + gMax)/2 + 4;
-  const rect = [[-row.W/2, -D/2], [row.W/2, -D/2], [row.W/2, D/2], [-row.W/2, D/2]];
+  const rect = tstPlateRect(row.W, D, p);
   const holes = [];
   for(let k = 0; k < N; k++){ const r = (pin + G[k])/2, c = row.cols[k], loop = [];
     for(let j = 0; j < 64; j++){ const a = 2*Math.PI*j/64;
@@ -13930,7 +14006,7 @@ function buildTestDim(p){
     S.push(s); labels.push(fmtNum(+s.toFixed(2))); sizes.push(s + 3); }
   const row = tstRow(labels, sizes);
   const D = 2*dHi + TST_LAB + 12, zA = -D/2 + 3 + dHi/2, zB = zA + dHi + 4;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const s = S[k], c = row.cols[k];
@@ -13954,7 +14030,7 @@ function buildTestWall(p){
     W.push(w); labels.push(fmtNum(+w.toFixed(2))); sizes.push(w + 2); }
   const row = tstRow(labels, sizes, 2);
   const D = Lz + TST_LAB + 10, zc = -D/2 + Lz/2 + 2;
-  const tris = boxSpanTris(-row.W/2, row.W/2, 0, t, -D/2, D/2);
+  const tris = tstPlate(row.W, D, t, p);
   const push = a => { for(const T of a) tris.push(T); };
   for(let k = 0; k < N; k++){
     const w = W[k], c = row.cols[k];

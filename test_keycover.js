@@ -121,5 +121,35 @@ for(const W of [16, 30]) for(const H of [20, 34]) for(const T of [1.6, 3]){
   chk('и стоят рядом, а не друг на друге', (b.x1-b.x0) > (b.z1-b.z0), {ширина:+(b.x1-b.x0).toFixed(1)});
 }
 
+/* МЕБЕЛЬНЫЙ КЛЮЧ. Проверяется то, что делает его ключом: бородка есть и вылезает за стержень, прорезей
+   ровно столько, сколько заказано, деталь плоская (иначе её не напечатать плашмя), и момент до слома
+   считается, а не берётся с потолка. */
+console.log('=== мебельный ключ ===');
+function fk(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  Object.assign(paramState.box, defaultBoxParams(), {mntMode:'furnkey'}, ov);
+  return buildTrisForShape('box', paramState.box); }
+for(const d of [3, 5, 9]) for(const n of [0, 1, 3]){
+  const t = fk({mntFkShaft:d, mntFkWards:n, mntFkBitH:12, mntFkBitW:16, mntFkBowH:18}), mc = manifoldCheck(t, 4);
+  chk('Ø'+d+' прорезей '+n+': герметичен', mc.watertight && vol(t) > 0, {open:mc.openEdges, bad:mc.badEdges});
+  const b = bb(t);
+  chk('Ø'+d+' прорезей '+n+': плоский — толщина много меньше длины', (b.y1-b.y0) < (b.x1-b.x0)/4,
+      {толщина:+(b.y1-b.y0).toFixed(2), длина:+(b.x1-b.x0).toFixed(1)});
+  /* Луч пускается ВЫШЕ кромки головки: бородка и головка лежат в одной плоскости, и проба на общей
+     высоте считала головку лишним бруском — всегда на один больше, чем прорезей. */
+  const r = runsX(t, (b.y0+b.y1)/2, b.z1 - 1);
+  chk('Ø'+d+' прорезей '+n+': брусков на один больше, чем прорезей', r.length === n + 1, r.length);
+}
+{
+  const s1 = furnKeySpec(Object.assign(defaultBoxParams(), {mntMode:'furnkey', mntFkShaft:5}));
+  const s2 = furnKeySpec(Object.assign(defaultBoxParams(), {mntMode:'furnkey', mntFkShaft:10}));
+  chk('момент считается и растёт как куб Ø', Math.abs(s2.torque/s1.torque - 8) < 0.05,
+      {'Ø5':+s1.torque.toFixed(2), 'Ø10':+s2.torque.toFixed(2)});
+  chk('тонкий стержень назван слабым', furnKeySpec(Object.assign(defaultBoxParams(),
+      {mntMode:'furnkey', mntFkShaft:3})).weak);
+  chk('и Ø5 уже не слабый', !s1.weak, +s1.torque.toFixed(2));
+  chk('бородка вылезает за стержень', bb(fk({mntFkShaft:5, mntFkBitW:9})).z1 > 5/2 + 4);
+  chk('справка на месте', !!MODEL_HELP['mount:furnkey']);
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

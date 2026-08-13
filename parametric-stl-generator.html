@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.17.0';
+const APP_VERSION = 'v18.18.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4548,6 +4548,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadFlangeHex', w:['gland'], label:'Ввод: шестигранный фланец', type:'bool', default:true},
     {group:'Резьба (крышка / штуцер)', key:'threadBackLen', w:['gland'], label:'Ввод: резьба под фланцем (0 = без)', min:0, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:10, step:1, default:4, int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadColletWall', w:['gland'], label:'Ввод: стенка лепестка (0 = авто)', min:0, max:5, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletLen', w:['gland'], label:'Ввод: длина цанги (0 = без)', min:0, max:40, step:0.5, default:8, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
@@ -8265,7 +8266,7 @@ function buildThread(p){
    (булевой операции нет), а лепестки сектором строятся прямо: шесть граней, все плоские или линейчатые.
    Внизу лепесток на 0.6 мм утоплен в тело штуцера — перекрытие, а не стык, иначе получилась бы склейка по
    общей грани, которой `manifoldCheck` не видит. */
-function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
+function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
   const out = [], step = 2*Math.PI/n, gap = step*Math.max(0.05, Math.min(0.5, gapFrac));
   const ns = Math.max(2, Math.round(seg/n));
   for(let k = 0; k < n; k++){
@@ -8277,20 +8278,20 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
       // наружная (коническая) и внутренняя (цилиндрическая) поверхности
       out.push(orient([P(b0,y0,rOut0), P(b1,y0,rOut0), P(b1,y1,rOut1)], rout));
       out.push(orient([P(b0,y0,rOut0), P(b1,y1,rOut1), P(b0,y1,rOut1)], rout));
-      out.push(orient([P(b0,y0,rIn), P(b1,y0,rIn), P(b1,y1,rIn)], rin));
-      out.push(orient([P(b0,y0,rIn), P(b1,y1,rIn), P(b0,y1,rIn)], rin));
+      out.push(orient([P(b0,y0,rIn0), P(b1,y0,rIn0), P(b1,y1,rIn1)], rin));
+      out.push(orient([P(b0,y0,rIn0), P(b1,y1,rIn1), P(b0,y1,rIn1)], rin));
       // торцы сверху и снизу
-      out.push(orient([P(b0,y1,rIn), P(b1,y1,rIn), P(b1,y1,rOut1)], [0,1,0]));
-      out.push(orient([P(b0,y1,rIn), P(b1,y1,rOut1), P(b0,y1,rOut1)], [0,1,0]));
-      out.push(orient([P(b0,y0,rIn), P(b1,y0,rIn), P(b1,y0,rOut0)], [0,-1,0]));
-      out.push(orient([P(b0,y0,rIn), P(b1,y0,rOut0), P(b0,y0,rOut0)], [0,-1,0]));
+      out.push(orient([P(b0,y1,rIn1), P(b1,y1,rIn1), P(b1,y1,rOut1)], [0,1,0]));
+      out.push(orient([P(b0,y1,rIn1), P(b1,y1,rOut1), P(b0,y1,rOut1)], [0,1,0]));
+      out.push(orient([P(b0,y0,rIn0), P(b1,y0,rIn0), P(b1,y0,rOut0)], [0,-1,0]));
+      out.push(orient([P(b0,y0,rIn0), P(b1,y0,rOut0), P(b0,y0,rOut0)], [0,-1,0]));
     }
     // боковые стенки прорези — по одной с каждого края лепестка
     for(const [a, sgn] of [[a0,-1],[a1,1]]){
       const nrm = [-Math.sin(a)*sgn, 0, Math.cos(a)*sgn];
       const P = (y, r) => [r*Math.cos(a), y, r*Math.sin(a)];
-      out.push(orient([P(y0,rIn), P(y0,rOut0), P(y1,rOut1)], nrm));
-      out.push(orient([P(y0,rIn), P(y1,rOut1), P(y1,rIn)], nrm));
+      out.push(orient([P(y0,rIn0), P(y0,rOut0), P(y1,rOut1)], nrm));
+      out.push(orient([P(y0,rIn0), P(y1,rOut1), P(y1,rIn1)], nrm));
     }
   }
   return out;
@@ -8326,8 +8327,17 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
         /* Кончик шире корня — на это и наворачивается гайка. Разбег зажат остатком до наружного Ø:
            лепесток, вылезший за резьбу, гайка просто не наденет. */
         const grow = Math.max(0.3, Math.min(majorR - minorR - 0.2, cl*0.12));
-        for(const T of colletFingersTris(y1 - 0.6, y1 + cl, rBore, minorR, minorR + grow,
-                                         cn, 0.22, Nth)) tris.push(T);
+        /* Лепесток — ТОНКАЯ СТЕНКА, а не сплошной сектор от канала до корня резьбы. Сектор не гнётся
+           вовсе: жёсткость консоли идёт как куб толщины, и на умолчаниях (стенка 6.7 мм) прогнуть его на
+           миллиметр стоит триста килограммов силы. Гайка такую цангу не обожмёт — она её сломает у корня
+           или сорвёт себе резьбу.
+
+           Стенка постоянной толщины, а лепесток РАСКРЫТ: и наружная, и внутренняя поверхности расходятся
+           к кончику. Так и работает настоящая цанга — в покое она шире кабеля, и обжимает его гайка. */
+        const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
+                    p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
+        for(const T of colletFingersTris(y1 - 0.6, y1 + cl, minorR - cw, minorR + grow - cw,
+                                         minorR, minorR + grow, cn, 0.22, Nth)) tris.push(T);
       } }
     /* ФЛАНЕЦ ШЕСТИГРАННЫЙ по умолчанию: круглый не за что взять, а контргайку под ним надо держать от
        проворота — иначе, затягивая её, крутишь весь ввод вместе с кабелем. Размер «под ключ» берётся
@@ -19444,6 +19454,31 @@ function collectPrintWarnings(p){
       Math.max(0, p.psSlot != null ? p.psSlot : 18) > 1 &&
       logos.some(l => l.heightmap && (l.depth||0) && standLogoSurface(l, p) === 'floor'))
     w.push('логотип на дне: вырез под кабель и вдавленный рисунок не уживаются — рисунок ляжет накладкой поверх дна; поставьте вырез в 0, чтобы он вдавился');
+  /* ЦАНГА, КОТОРАЯ НЕ ГНЁТСЯ. Лепесток работает консолью, а её жёсткость идёт как КУБ толщины и обратно
+     кубу длины: короткий толстый лепесток не обжимается, а ломается у корня. Считается сила на миллиметр
+     прогиба — δ = F·L³/(3EI), I = b·t³/12 — и называется вслух, потому что на глаз толстая цанга от
+     тонкой не отличается ничем, а на столе разница между «зажало» и «треснуло».
+     E взят по PETG (≈1700 МПа): у PLA он вдвое выше, и там же, где PETG гнётся, PLA колется. */
+  if (p.threadMode === 'gland'){
+    const D = Math.max(4, p.threadD||30), P2 = Math.max(0.5, p.threadPitch||3), majorR = D/2;
+    const hh = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P2*0.55);
+    const minorR = Math.max(0.5, majorR - hh);
+    const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
+    const cn = Math.round(p.threadColletN != null ? p.threadColletN : 4);
+    const cl = p.threadColletLen != null ? p.threadColletLen : Math.max(5, (p.threadLen||16)*0.5);
+    if (cn >= 2 && cl > 1){
+      const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
+                  p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
+      const b = 2*Math.PI*(minorR - cw/2)/cn*0.78, I = b*Math.pow(cw,3)/12;
+      const F = 3*1700*I/Math.pow(cl,3);
+      if (F > 250) w.push('цанга: чтобы прогнуть лепесток на 1 мм, нужно ' + Math.round(F/9.8) +
+        ' кгс — она не обожмётся, а треснет у корня; тоньше стенка или длиннее лепестки');
+      else if (F > 120) w.push('цанга: лепесток жёсткий (' + Math.round(F/9.8) +
+        ' кгс на 1 мм прогиба) — затягивать придётся с усилием');
+      if (cw < 1.0) w.push('цанга: стенка лепестка ' + cw.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4');
+      if (cl < minorR) w.push('цанга: лепестки короче своего радиуса — рычага почти нет, гнуться будет корень');
+    }
+  }
   if (p.pbPart && p.pbPart !== 'none' && p.pbCable && p.pbCable !== 'none') {
     const cs = pboxCableSpec(p);
     if (!cs && (p.pbPart === 'lid')) w.push('вводы: у крышки стенок нет — вводы бывают только на лотке');

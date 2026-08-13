@@ -324,5 +324,38 @@ console.log('=== gating + regression ===');
   chk('канал идёт сквозь хвостовик', !onAxis(c, low(c) + 1));
 }
 
+/* ЖЁСТКОСТЬ ЦАНГИ. Лепесток обязан гнуться — иначе гайке нечего обжимать, а деталь трескается у корня.
+   Проверяется и геометрия (стенка тонкая, а не сплошной сектор), и то, что о жёсткой цанге СКАЗАНО. */
+{
+  const wallOf = t => {                                    // толщина лепестка = наружный минус внутренний
+    let hi = -1e9; for(const T of t) for(const v of T) hi = Math.max(hi, v[1]);
+    let rmin = 1e9, rmax = 0;
+    for(const T of t) for(const v of T) if(Math.abs(v[1] - hi) < 0.05){
+      const r = Math.hypot(v[0], v[2]); rmin = Math.min(rmin, r); rmax = Math.max(rmax, r); }
+    return rmax - rmin;
+  };
+  for(const D of [16, 30]){
+    const t = base({threadMode:'gland', threadD:D, threadPitch:D>20?3:1.5, threadLen:12, threadColletN:4, threadColletLen:9});
+    chk('Ø'+D+': лепесток — тонкая стенка, а не сплошной сектор', wallOf(t) < 3.0, +wallOf(t).toFixed(2));
+    chk('Ø'+D+': и не тоньше двух проходов сопла', wallOf(t) > 0.8, +wallOf(t).toFixed(2));
+    chk('Ø'+D+': деталь герметична', manifoldCheck(t,4).watertight && manifoldCheck(t,4).badEdges === 0);
+  }
+  // заданная стенка слушается
+  for(const cw of [1.2, 2.4]){
+    const t = base({threadMode:'gland', threadD:24, threadPitch:2, threadLen:12, threadColletN:4,
+                    threadColletLen:9, threadColletWall:cw});
+    chk('стенка '+cw+' мм соблюдена', Math.abs(wallOf(t) - cw) < 0.15, +wallOf(t).toFixed(2));
+  }
+  // и о жёсткой цанге сказано вслух
+  const stiff = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:30, threadPitch:3,
+                  threadColletN:4, threadColletLen:3, threadColletWall:4});
+  chk('жёсткая цанга названа', collectPrintWarnings(stiff).some(x => /цанга/.test(x)),
+      collectPrintWarnings(stiff).filter(x => /цанга/.test(x)));
+  const ok = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:20, threadPitch:1.5,
+                  threadBore:9, threadColletN:4, threadColletLen:10, threadColletWall:1.6});
+  chk('разумная — молчит', !collectPrintWarnings(ok).some(x => /цанга/.test(x)),
+      collectPrintWarnings(ok).filter(x => /цанга/.test(x)));
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

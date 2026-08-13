@@ -319,20 +319,20 @@ console.log('=== the active model is not disturbed ===');
       Math.abs(b.px-a.px-17)<1e-9 && Math.abs(b.py-a.py+4)<1e-9 && Math.abs(b.pz-a.pz-9)<1e-9,
       {a:[a.px,a.py,a.pz], b:[b.px,b.py,b.pz]}); }
 
-/* ЧИСЛА ОТВЕТНОЙ ДЕТАЛИ. Ввод берёт Ø и шаг из таблицы типоразмеров, и до v18.16.1 таблица была СКРЫТЫМ
-   слоем внутри строителя: гайка читала параметры мимо него и выходила Ø30 с шагом 3 против ввода Ø20 с
-   шагом 1.5 — не наворачивалась, а проходила насквозь. Проверяется теперь буквально: у пары те же числа,
-   что у ввода. */
+/* ЧИСЛА ОТВЕТНОЙ ДЕТАЛИ. Ввод и его гайка обязаны иметь один Ø и один шаг — иначе гайка не наворачивается,
+   а проходит насквозь, как и было, пока таблица типоразмеров подставляла числа втихую мимо панели. С
+   v18.17.0 таблица — пресет: строится по тому, что в полях, поэтому проверяется просто, что пара берёт
+   те же поля. */
 console.log('=== ответная деталь ввода строится по тем же числам ===');
-for(const std of ['m','pg']) for(const k of [0, 2, 4]){
-  const P = Object.assign(defaultBoxParams(), {threadMode:'gland', glandStd:std, glandSize:k});
-  const g = glandResolved(P), plan = assemblyPlacement(P, {});
-  chk(std+'['+k+']: пара нашлась', !!plan, plan && plan.name);
+for(const D of [12, 20, 32]) for(const P of [1.5, 2.5]){
+  const q = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:D, threadPitch:P});
+  const plan = assemblyPlacement(q, {});
+  chk('Ø'+D+' шаг '+P+': пара нашлась', !!plan, plan && plan.name);
   if(!plan) continue;
-  chk(std+'['+k+']: Ø пары совпадает с вводом', Math.abs(plan.params.threadD - g.threadD) < 1e-9,
-      {ввод:g.threadD, пара:plan.params.threadD});
-  chk(std+'['+k+']: шаг пары совпадает с вводом', Math.abs(plan.params.threadPitch - g.threadPitch) < 1e-9,
-      {ввод:g.threadPitch, пара:plan.params.threadPitch});
+  chk('Ø'+D+' шаг '+P+': Ø пары совпадает с вводом', Math.abs(plan.params.threadD - D) < 1e-9,
+      {ввод:D, пара:plan.params.threadD});
+  chk('Ø'+D+' шаг '+P+': шаг пары совпадает с вводом', Math.abs(plan.params.threadPitch - P) < 1e-9,
+      {ввод:P, пара:plan.params.threadPitch});
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

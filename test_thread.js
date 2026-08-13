@@ -242,6 +242,9 @@ console.log('=== gating + regression ===');
    канал, а тронутая ручка сильнее таблицы. Ряд PG снят не с чертежа, и возможность его поправить — не
    удобство, а условие, при котором им вообще можно пользоваться. */
 {
+  /* Таблица — ПРЕСЕТ: она отдаёт числа, а строит деталь то, что стоит в полях. Поэтому проверяется сама
+     таблица и то, что по её числам получается верная деталь, — а не то, что размер что-то подменяет
+     втихую. Скрытая подстановка и была причиной гайки, которая не наворачивалась. */
   for(const std of ['m','pg']){
     const rows = GLAND_SIZES[std];
     for(let k = 0; k < rows.length; k++){
@@ -249,24 +252,28 @@ console.log('=== gating + regression ===');
       chk(std+'['+k+'] '+g.name+': Ø и шаг из таблицы', g.D === rows[k][1] && g.pitch === rows[k][2]);
       chk(std+'['+k+'] '+g.name+': канал шире верхней границы кабеля', g.bore > rows[k][4],
           {канал:g.bore, кабель:rows[k][4]});
-      const t = base({threadMode:'gland', glandStd:std, glandSize:k, threadLen:10});
-      chk(std+'['+k+'] '+g.name+': строится и герметичен',
+      const t = base({threadMode:'gland', threadD:g.D, threadPitch:g.pitch, threadBore:g.bore, threadLen:10});
+      chk(std+'['+k+'] '+g.name+': по её числам деталь строится и герметична',
           manifoldCheck(t,4).watertight && vol(t) > 0);
-      // наружный Ø детали обязан отвечать таблице, а не умолчанию 30
       let rmax = 0; for(const T of t) for(const v of T) rmax = Math.max(rmax, Math.hypot(v[0], v[2]));
       chk(std+'['+k+'] '+g.name+': резьба того Ø, что в таблице', rmax > g.D/2 - 0.6,
           {надо:g.D/2, есть:+rmax.toFixed(2)});
     }
   }
+  // Размер САМ ПО СЕБЕ деталь не меняет: числа приходят из полей, а их пишет пресет в панели.
+  const vA = vol(base({threadMode:'gland', glandStd:'m', glandSize:0, threadLen:10}));
+  const vB = vol(base({threadMode:'gland', glandStd:'m', glandSize:4, threadLen:10}));
+  chk('размер сам по себе деталь не подменяет', Math.abs(vA - vB) < 1e-6, {n0:+vA.toFixed(1), n4:+vB.toFixed(1)});
   chk('номер за пределами ряда зажимается, а не роняет',
       glandSizeRow({glandStd:'m', glandSize:99}).name === 'M32');
-  // тронутая ручка сильнее таблицы
-  const t1 = base({threadMode:'gland', glandStd:'m', glandSize:0, threadD:40, threadLen:10});
-  let r1 = 0; for(const T of t1) for(const v of T) r1 = Math.max(r1, Math.hypot(v[0], v[2]));
-  chk('заданный Ø сильнее таблицы', r1 > 19, +r1.toFixed(2));
-  const t2 = base({threadMode:'gland', glandStd:'off', glandSize:0, threadLen:10});
-  let r2 = 0; for(const T of t2) for(const v of T) r2 = Math.max(r2, Math.hypot(v[0], v[2]));
-  chk('«свои числа» таблицу не применяют', r2 > 14, +r2.toFixed(2));
+  // Шестигранный фланец: у него углы дальше от оси, чем у круглого того же размера.
+  const far = t => { let m = 0; for(const T of t) for(const v of T) if(Math.abs(v[1]) < 1e9) m = Math.max(m, Math.hypot(v[0], v[2])); return m; };
+  const hx = base({threadMode:'gland', threadD:20, threadLen:10, threadFlangeHex:true,  threadFlangeR:14});
+  const rd = base({threadMode:'gland', threadD:20, threadLen:10, threadFlangeHex:false, threadFlangeR:14});
+  chk('шестигранный фланец шире круглого по углам', far(hx) > far(rd) + 0.5,
+      {круг:+far(rd).toFixed(2), шестигранник:+far(hx).toFixed(2)});
+  chk('и оба герметичны', manifoldCheck(hx,4).watertight && manifoldCheck(rd,4).watertight);
+  chk('под ключ у шестигранника — прежний размер круга', Math.abs(far(rd) - 14) < 0.1, +far(rd).toFixed(2));
 }
 
 /* НАКИДНАЯ ГАЙКА С КОНУСОМ и РЕЗЬБА ПОД ФЛАНЦЕМ — то, чего вводу не хватало до сборки. Проверяется не то,

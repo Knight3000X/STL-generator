@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.16.1';
+const APP_VERSION = 'v18.17.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4545,6 +4545,7 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'glandSize', w:['gland'], label:'Ввод: типоразмер (номер в ряду)', min:0, max:6, step:1, default:1, int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadCapOut', w:['glandcap'], label:'Накидная гайка: Ø выхода под кабель', min:1, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadCapThread', w:['glandcap'], label:'Накидная гайка: длина резьбы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadFlangeHex', w:['gland'], label:'Ввод: шестигранный фланец', type:'bool', default:true},
     {group:'Резьба (крышка / штуцер)', key:'threadBackLen', w:['gland'], label:'Ввод: резьба под фланцем (0 = без)', min:0, max:40, step:0.5, default:6, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:10, step:1, default:4, int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadColletLen', w:['gland'], label:'Ввод: длина цанги (0 = без)', min:0, max:40, step:0.5, default:8, unit:'мм'},
@@ -5154,25 +5155,16 @@ const GLAND_SIZES = {
       ['PG13.5', 20.4, 1.27, 6, 12], ['PG16', 22.5, 1.27, 10, 14], ['PG21', 28.3, 1.5875, 13, 18],
       ['PG29', 37.0, 1.5875, 18, 25]]
 };
-/* Таблица применяется ЗДЕСЬ, а не внутри строителя, и это исправление ошибки, а не перестановка.
+/* Таблица типоразмеров — ПРЕСЕТ, а не слой поверх параметров.
 
-   В v18.15.0 размер подставлялся прямо в `buildThread`, то есть был СКРЫТЫМ слоем: сам ввод строился по
-   таблице, а всё остальное — ответная гайка в сборке, подписи габаритов, предупреждения — читало
-   `p.threadD` и видело умолчание 30. Гайка выходила Ø30 с шагом 3 против ввода Ø20 с шагом 1.5: она не
-   наворачивалась, а проходила насквозь, и в предпросмотре это выглядело как деталь, надетая на воздух.
+   В v18.15.0 размер подставлялся внутри `buildThread`: сам ввод строился по таблице, а всё остальное —
+   ответная гайка, подписи габаритов, предупреждения — читало `p.threadD` и видело умолчание. Гайка
+   выходила Ø30 против ввода Ø20 и не наворачивалась, а проходила насквозь. В v18.16.1 разрешение вынесли
+   в общую функцию, но слой остался СКРЫТЫМ: панель показывала не то, что строилось.
 
-   Скрытый слой лжёт всякому, кто читает параметры мимо строителя, и найти это можно только глазами на
-   готовой сцене. Поэтому разрешение вынесено в отдельную функцию, и её обязаны звать ВСЕ, кому нужны
-   настоящие числа ввода. Правильнее было бы сделать таблицу пресетом, который вписывает числа прямо в
-   панель, — тогда и подписи бы не врали; это следующий шаг, и он потребует UI, а не только геометрии. */
-function glandResolved(p){
-  if (!p || p.threadMode !== 'gland' || p.glandSize == null || String(p.glandStd) === 'off') return p;
-  const g = glandSizeRow(p), q = Object.assign({}, p);
-  if (q.threadD == null || q.threadD === 30) q.threadD = g.D;
-  if (q.threadPitch == null || q.threadPitch === 3) q.threadPitch = g.pitch;
-  if (!(q.threadBore > 0)) q.threadBore = g.bore;
-  return q;
-}
+   Теперь выбор размера ВПИСЫВАЕТ числа в поля Ø, шага и канала — их видно, их можно поправить, и всякий,
+   кто читает параметры, видит ровно то, что построится. `glandSizeRow` служит только источником чисел для
+   пресета; ни один строитель её больше не зовёт. */
 function glandSizeRow(p){
   const std = (String(p.glandStd) === 'pg') ? 'pg' : 'm';
   const rows = GLAND_SIZES[std];
@@ -5489,12 +5481,9 @@ function assemblyMate(p){
      которой ввод крепится к стенке. Без хвостовика (`threadBackLen` = 0) сажать её снизу некуда, и тогда
      остаётся прежнее место — над фланцем. */
   if (th === 'gland' && (p.threadBackLen == null || p.threadBackLen > 0)){
-    const g = glandResolved(p);
-    return { name:'Контргайка', over:{threadMode:'nut', threadD:g.threadD, threadPitch:g.threadPitch}, back:+1,
+    return { name:'Контргайка', over:{threadMode:'nut'}, back:+1,
       seat:(A,B,S)=>({px:S.px, py:A.minY - seatGap(p) - (B.maxY - B.minY) - B.minY, pz:S.pz}) }; }
-  if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка',
-    over:Object.assign({threadMode:'nut'}, th === 'gland'
-      ? {threadD:glandResolved(p).threadD, threadPitch:glandResolved(p).threadPitch} : {}), back:+1,
+  if (th === 'stud' || th === 'gland' || th === 'leadscrew') return { name:'Гайка', over:{threadMode:'nut'}, back:+1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadFlangeThickness(p) + seatGap(p) - B.minY, pz:S.pz}) };
   // AMS keycap: the shell and the core are the same cap built twice, and they go in the same place — the
   // core drops into the shell's own cavity, so the seat is simply the active model's origin. Being a pair
@@ -8234,7 +8223,6 @@ function buildThread(p){
   const mode  = p.threadMode;
   /* У кабельного ввода размер ПОДСТАВЛЯЕТ Ø, шаг и канал — но только когда ручка на своём умолчании.
      Тронутая ручка сильнее таблицы: PG-ряд снят не с чертежа, и поправить его должно быть можно. */
-  p = glandResolved(p);
   const D     = Math.max(4, p.threadD||30);              // male major diameter
   const P     = Math.max(0.5, p.threadPitch||3);         // pitch (crest-to-crest, per start)
   const S     = Math.max(1, Math.round(p.threadStarts||1));
@@ -8341,8 +8329,16 @@ function colletFingersTris(y0, y1, rIn, rOut0, rOut1, n, gapFrac, seg){
         for(const T of colletFingersTris(y1 - 0.6, y1 + cl, rBore, minorR, minorR + grow,
                                          cn, 0.22, Nth)) tris.push(T);
       } }
-    const outT=i=>{ const a=th(i); return [flangeR*Math.cos(a),y0,flangeR*Math.sin(a)]; };
-    const outB=i=>{ const a=th(i); return [flangeR*Math.cos(a),0, flangeR*Math.sin(a)]; };
+    /* ФЛАНЕЦ ШЕСТИГРАННЫЙ по умолчанию: круглый не за что взять, а контргайку под ним надо держать от
+       проворота — иначе, затягивая её, крутишь весь ввод вместе с кабелем. Размер «под ключ» берётся
+       равным прежнему диаметру круга, поэтому углы выступают наружу ровно настолько, насколько у покупных
+       вводов. Круглый остаётся выбором: под тонкую стенку он аккуратнее. */
+    // Только у ВВОДА: ветка общая со штуцером, а штуцеру шестигранник никто не заказывал — на нём эта
+    // правка молча раздвинула бы фланец на 6 мм по углам, что и поймала проверка его габарита.
+    const hexFl = bored && ((p.threadFlangeHex == null) ? true : !!p.threadFlangeHex);
+    const flR = a => hexFl ? flangeR/Math.cos(((a + Math.PI/6) % (Math.PI/3)) - Math.PI/6) : flangeR;
+    const outT=i=>{ const a=th(i), r=flR(a); return [r*Math.cos(a),y0,r*Math.sin(a)]; };
+    const outB=i=>{ const a=th(i), r=flR(a); return [r*Math.cos(a),0, r*Math.sin(a)]; };
     /* РЕЗЬБА ПОД ФЛАНЦЕМ. Ввод крепится к стенке так: нижняя резьба проходит сквозь отверстие, изнутри её
        ловит тонкая гайка, фланец остаётся снаружи и прижимается к стенке. Без неё ввод держался бы только
        тем, во что вкручен, а в тонкой пластиковой стенке держаться там нечему.
@@ -18256,6 +18252,24 @@ function attachModelEventListeners() {
   });
   document.getElementById('btn-add-baseplate').addEventListener('click', addGridfinityBaseplate);
   document.getElementById('btn-slice-model').addEventListener('click', sliceActiveModel);
+  /* ПРЕСЕТ ТИПОРАЗМЕРА. Выбор ряда или номера вписывает Ø, шаг и канал прямо в поля панели — через тот же
+     путь, которым их правит рука (событие `input`), поэтому дальше всё идёт обычным чередом: пересчёт,
+     отмена, сохранение в конфиг. Числа читаются С САМОГО СОБЫТИЯ, а не из `paramState`: общий обработчик
+     полей может ещё не успеть записать туда новое значение, и пресет подставил бы предыдущее. */
+  document.addEventListener('input', (e) => {
+    const el = e.target, k = el && el.getAttribute && el.getAttribute('data-key');
+    if (k !== 'glandStd' && k !== 'glandSize') return;
+    if (!paramState.box || paramState.box.threadMode !== 'gland') return;
+    const std = (k === 'glandStd') ? el.value : paramState.box.glandStd;
+    if (String(std) === 'off') return;                     // «свои числа» — пресет молчит
+    const idx = (k === 'glandSize') ? +el.value : paramState.box.glandSize;
+    const g = glandSizeRow({glandStd: std, glandSize: idx});
+    for (const [key, val] of [['threadD', g.D], ['threadPitch', g.pitch], ['threadBore', g.bore]]){
+      const f = document.querySelector('input[data-key="'+key+'"]');
+      if (f && +f.value !== val){ f.value = val; f.dispatchEvent(new Event('input', {bubbles:true})); }
+      else if (!f && paramState.box) paramState.box[key] = val;
+    }
+  });
   document.getElementById('btn-import-mesh').addEventListener('click', () => document.getElementById('mesh-import-input').click());
   /* Оба набора кладутся одним ходом: разнятся только список, строитель и слово в имени модели. Держать
      два обработчика значило бы однажды починить один и забыть о другом. */

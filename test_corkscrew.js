@@ -14,8 +14,13 @@ let pass=0, fail=0;
 function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 function setp(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  /* Размеры у штопора СВОИ (с v18.22.1): раньше он брал Ø, шаг и длину у резьбы, а пруток выводил из
+     ШАГА — и на умолчаниях резьбы получалась пружина. Здесь 4 витка по 11.25 мм дают те же 45 мм
+     спирали, на которых написаны проверки ниже, и притом ПРОПОРЦИИ настоящего штопора: шаг 0.7 от Ø.
+     Прежние 6 мм шага на Ø16 давали пруток толщиной в две трети шага — витки почти смыкались. */
   Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false, threadMode:'corkscrew',
-    threadD:16, threadPitch:6, threadLen:45, threadWireD:0, threadHandleW:0, threadJournal:0}, ov);
+    threadCorkD:16, threadCorkPitch:11.25, threadCorkTurns:4, threadWireD:0, threadHandleW:0,
+    threadJournal:0}, ov);
   return paramState.box; }
 const mk = ov => buildTrisForShape('box', setp(ov));
 
@@ -98,12 +103,12 @@ console.log('=== sweepTube3D: the paths the planar sweep cannot carry ===');
 
 console.log('=== builds across the range ===');
 for(const D of [10,16,30]) for(const P of [4,6,10]){
-  const t = mk({threadD:D, threadPitch:P}), mc = manifoldCheck(t,4);
+  const t = mk({threadCorkD:D, threadCorkPitch:P}), mc = manifoldCheck(t,4);
   chk('Ø'+D+' шаг '+P+': замкнут', mc.watertight && vol(t)>0, {open:mc.openEdges, bad:mc.badEdges});
 }
-for(const ov of [{threadWireD:0.8}, {threadWireD:5}, {threadLen:15}, {threadLen:120},
+for(const ov of [{threadWireD:0.8}, {threadWireD:5}, {threadCorkTurns:2}, {threadCorkTurns:12},
                  {threadHand:'left'}, {threadHandleW:70}, {threadHandleW:200},
-                 {threadJournal:40}, {threadPitch:2}, {threadD:6}]){
+                 {threadJournal:40}, {threadCorkPitch:2}, {threadCorkD:4}, {threadCorkD:40}]){
   const t = mk(ov), mc = manifoldCheck(t,4);
   chk('крайние параметры '+JSON.stringify(ov), mc.watertight && vol(t)>0, {open:mc.openEdges, bad:mc.badEdges});
 }
@@ -157,11 +162,11 @@ console.log('=== it is a spiral of the ordered size, and one turn per pitch ==='
 { const t = mk({}), B = computeBBox(t);
   chk('наружный Ø спирали — заказанный', Math.abs((B.maxX-B.minX) - 16) < 0.4, {d:+(B.maxX-B.minX).toFixed(2)});
   // A line parallel to the axis at the centreline radius meets the wire once per pitch.
-  const rw = 6*0.18, Rh = 8 - rw, ang = 0.8;
+  const CS = corkscrewSpec(paramState.box), rw = CS.rw, Rh = CS.Rh, ang = 0.8;
   const hits = solidRuns(t, 1, Rh*Math.sin(ang), Rh*Math.cos(ang)).map(r => (r[0]+r[1])/2);
-  chk('витков — по одному на шаг', hits.length === 7 || hits.length === 8, {hits:hits.length});
+  chk('витков — по одному на шаг', hits.length === 4 || hits.length === 5, {hits:hits.length});
   const gaps = hits.slice(1).map((v,k)=>v-hits[k]);
-  chk('и они разнесены ровно на шаг', gaps.every(g=>Math.abs(g-6)<0.3), gaps.map(v=>+v.toFixed(2)));
+  chk('и они разнесены ровно на шаг', gaps.every(g=>Math.abs(g-CS.P)<0.3), gaps.map(v=>+v.toFixed(2)));
   // Consecutive turns must not touch: the wire is thinner than the pitch, and the gap is what a cork
   // actually grips. A wire as thick as the pitch would fuse the spiral into a solid cone.
   const runs = solidRuns(t, 1, Rh*Math.sin(ang), Rh*Math.cos(ang));
@@ -174,10 +179,16 @@ console.log('=== it is a spiral of the ordered size, and one turn per pitch ==='
   chk('Ø прутка следует за параметром',
       Math.abs(wires[0]-1.2)<0.3 && Math.abs(wires[1]-2.4)<0.4 && Math.abs(wires[2]-4)<0.55,
       wires.map(v=>+v.toFixed(2)));
-  const hs = [4,6,10].map(P => {
-    const t = mk({threadPitch:P}), rw=Math.min(P*0.45,P*0.18), Rh=8-rw;
-    return solidRuns(t,1,Rh*Math.sin(0.8),Rh*Math.cos(0.8)).length; });
-  chk('мельче шаг — больше витков на той же длине', hs[0] > hs[1] && hs[1] > hs[2], hs);
+  /* Витков теперь СТОЛЬКО, СКОЛЬКО ЗАКАЗАНО, поэтому «мельче шаг — больше витков» больше не про эту
+     деталь: при том же числе витков мельче шаг делает спираль КОРОЧЕ. Это и проверяется — и заодно то,
+     что пруток от шага не зависит вовсе, ради чего вся правка и делалась. */
+  const hs = [4,6,10].map(P => { const t = mk({threadCorkPitch:P}); return computeBBox(t); });
+  chk('мельче шаг — короче спираль при том же числе витков',
+      (hs[0].maxY-hs[0].minY) < (hs[1].maxY-hs[1].minY) && (hs[1].maxY-hs[1].minY) < (hs[2].maxY-hs[2].minY),
+      hs.map(b=>+(b.maxY-b.minY).toFixed(1)));
+  const wAt = P => { const t = mk({threadCorkPitch:P}), B = computeBBox(t); return radialBand(t, B.minY+22, 0.3); };
+  chk('Ø прутка от шага НЕ зависит — он доля Ø спирали', Math.abs(wAt(6) - wAt(10)) < 0.15,
+      {'шаг6':+wAt(6).toFixed(2), 'шаг10':+wAt(10).toFixed(2)});
 }
 { // The point. The wire thins toward the tip, so the lowest turn is thinner than the ones above it.
   const t = mk({threadWireD:3}), B = computeBBox(t);
@@ -188,8 +199,8 @@ console.log('=== it is a spiral of the ordered size, and one turn per pitch ==='
 { // Handedness: the spiral climbs the other way. Measured off the seam — at θ = 0 the handed term is
   // zero and both hands read alike, the trap test_auger.js walked into.
   const R = mk({threadHand:'right'}), L = mk({threadHand:'left'});
-  const at = (t,ang) => { const rw=6*0.18, Rh=8-rw;
-    return solidRuns(t,1,Rh*Math.sin(ang),Rh*Math.cos(ang)).map(r=>(r[0]+r[1])/2); };
+  const CS = corkscrewSpec(paramState.box);
+  const at = (t,ang) => solidRuns(t,1,CS.Rh*Math.sin(ang),CS.Rh*Math.cos(ang)).map(r=>(r[0]+r[1])/2);
   const slope = t => at(t,2.4)[2] - at(t,1.6)[2];
   chk('правый и левый закручены в разные стороны', slope(R)*slope(L) < 0,
       {right:+slope(R).toFixed(2), left:+slope(L).toFixed(2)});
@@ -214,13 +225,73 @@ console.log('=== one path, one shell — and the handle crossing it ===');
 
 console.log('=== no triangle is inside-out ===');
 for(const [nm,ov] of [['штопор',{}], ['левый',{threadHand:'left'}], ['с ручкой',{threadHandleW:70}],
-                      ['толстый пруток',{threadWireD:4}], ['мелкий шаг',{threadPitch:3}]]){
+                      ['толстый пруток',{threadWireD:4}], ['мелкий шаг',{threadCorkPitch:3}]]){
   const t = mk(ov), B = computeBBox(t);
   let worst = 0, at = null;
   for(let k=1;k<14;k++){ const y = B.minY + (B.maxY-B.minY)*(k+0.37)/14;
     for(const z of [0.31, -0.44, 0.83]){ const d = minDepth(t, 0, y, z);
       if(d < worst){ worst = d; at = [+y.toFixed(2), z]; } } }
   chk(nm+': глубина по лучу нигде не уходит в минус', worst===0, {depth:worst, at});
+}
+
+/* ЧЕМ ШТОПОР ОТЛИЧАЕТСЯ ОТ ПРУЖИНЫ — и почему этого здесь раньше не было.
+
+   До v18.22.1 штопор брал Ø, шаг и длину у резьбы, а толщину прутка выводил из ШАГА. На умолчаниях
+   резьбы (Ø30, шаг 3) выходил пруток 1.08 мм и просвет в середине 27.8 мм — 93 % наружного диаметра.
+   Это пружина, и выглядела она пружиной. Ни одна проверка этого не поймала, потому что все они задавали
+   свои числа руками и УМОЛЧАНИЙ НЕ ТРОГАЛИ НИ РАЗУ.
+
+   Отличает одно число: ПРОСВЕТ К НАРУЖНОМУ Ø. У настоящего винта около 0.48 — дырка заметно уже самой
+   спирали. Оно и меряется, причём по СЕТКЕ, а не по спецификации: спецификация может врать согласованно
+   с собой. */
+console.log('=== это штопор, а не пружина ===');
+{
+  const dflt = Object.assign(defaultBoxParams(), {threadMode:'corkscrew'});
+  const k = corkscrewSpec(dflt);
+  chk('умолчания дают пропорции настоящего штопора', Math.abs(k.boreRatio - 0.48) < 0.06,
+      {'просвет/наружный':+k.boreRatio.toFixed(3)});
+  chk('и шаг заметно крупнее прутка', k.pitchRatio > 2.2 && k.pitchRatio < 3.4, +k.pitchRatio.toFixed(2));
+  chk('умолчания молчат — придираться не к чему',
+      collectPrintWarnings(dflt).filter(w => /просвет|витки сольются|пруток/.test(w)).length === 0,
+      collectPrintWarnings(dflt));
+}
+for(const D of [6, 8, 16, 30]){
+  // Просвет меряется ПО СЕТКЕ: луч поперёк оси на середине высоты входит в материал не раньше, чем
+  // кончится дырка. Пропорция не зависит от размера — обе величины доли одного Ø.
+  const t = mk({threadCorkD:D, threadCorkPitch:0, threadWireD:0}), B = computeBBox(t);
+  const k = corkscrewSpec(paramState.box);
+  let inner = 1e9;
+  for(let key=0; key<40; key++){
+    const y = B.minY + 3 + (B.minY + k.len - 3 - (B.minY + 3))*key/39;
+    for(const r of solidRuns(t, 0, y, 0)) inner = Math.min(inner, Math.min(Math.abs(r[0]), Math.abs(r[1])));
+  }
+  chk('Ø'+D+': просвет в сетке совпадает с расчётным', Math.abs(2*inner - k.bore) < 0.5,
+      {'по сетке':+(2*inner).toFixed(2), 'расчёт':+k.bore.toFixed(2)});
+  chk('Ø'+D+': и это доля 0.48, а не пружинные 0.9', Math.abs(k.boreRatio - 0.48) < 0.06,
+      +k.boreRatio.toFixed(3));
+}
+{
+  // Прежние числа теперь ОБЪЯВЛЯЮТСЯ пружиной, а не строятся молча.
+  const spring = Object.assign(defaultBoxParams(), {threadMode:'corkscrew',
+    threadCorkD:30, threadCorkPitch:3, threadWireD:1.08});
+  const k = corkscrewSpec(spring);
+  chk('старые числа спецификация зовёт пружиной', k.springy, +k.boreRatio.toFixed(2));
+  const w = collectPrintWarnings(spring).join(' | ');
+  chk('и это сказано словом «пружина» с числом', /пружина/.test(w) && /93%/.test(w), w.slice(0, 140));
+  /* Слипнуться витки не могут — пруток зажат по шагу. Зато зажим срабатывает МОЛЧА, и вот об этом
+     сказать обязаны: попросили 4 мм при шаге 2, получили 1.8. */
+  const fat = Object.assign(defaultBoxParams(), {threadMode:'corkscrew', threadCorkPitch:2, threadWireD:4});
+  const kf = corkscrewSpec(fat);
+  chk('толстый пруток при мелком шаге урезан', kf.wireCut && Math.abs(2*kf.rw - 1.8) < 1e-9, +(2*kf.rw).toFixed(2));
+  chk('и об этом предупреждают', /урезан/.test(collectPrintWarnings(fat).join(' | ')));
+  chk('витки при этом не слипаются никогда', kf.pitchRatio > 1.1, +kf.pitchRatio.toFixed(2));
+}
+{
+  // Резьбовые ручки штопора больше не касаются: он живёт своими.
+  const a = mk({}), b = mk({threadD:60, threadPitch:0.5, threadLen:100});
+  chk('Ø, шаг и длина резьбы штопора не трогают', vol(a) === vol(b),
+      {'свой':+vol(a).toFixed(1), 'с чужими ручками':+vol(b).toFixed(1)});
+  chk('справка на месте', !!MODEL_HELP['thread:corkscrew']);
 }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

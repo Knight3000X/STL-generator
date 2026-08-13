@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.22.0';
+const APP_VERSION = 'v18.22.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4496,10 +4496,10 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (трапецеидальный, под гайку)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер с цангой)'},{v:'glandcap',t:'накидная гайка ввода (с конусом)'},{v:'anchor',t:'дюбель под гипсокартон (спиральный, вкручивается)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','barb','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
-    {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','corkscrew','barb','bolt','gland'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','barb','bolt','gland'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadClear', w:['cap','nut','wingnut'], label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadLead', w:['cap','jar','stud','bolt','gland'], label:'Резьба: заходная фаска у входа (0 = без фаски)', min:0, max:8, step:0.5, default:2, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadDepth', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland'], label:'Резьба: глубина профиля (0 = авто от шага)', min:0, max:8, step:0.1, default:0, unit:'мм'},
@@ -4510,7 +4510,10 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadBarbN', w:['barb'], label:'Ёлочка: число зубцов (0 = авто от длины)', min:0, max:12, step:1, default:0, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadBarbEnd', w:['barb'], label:'Ёлочка: что с другой стороны', type:'select', default:'barb',
       options:[{v:'barb',t:'вторая ёлочка (соединитель шлангов)'},{v:'flange',t:'фланец (упор)'},{v:'thread',t:'наружная резьба (штуцер)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadWireD', w:['corkscrew'], label:'Штопор: Ø прутка (0 = 0.36 от шага)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadCorkD', w:['corkscrew'], label:'Штопор: наружный Ø спирали', min:4, max:40, step:0.5, default:8, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadCorkPitch', w:['corkscrew'], label:'Штопор: шаг (0 = авто, 0.7 от Ø)', min:0, max:20, step:0.1, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadCorkTurns', w:['corkscrew'], label:'Штопор: число витков', min:2, max:12, step:0.5, default:5, unit:''},
+    {group:'Резьба (крышка / штуцер)', key:'threadWireD', w:['corkscrew'], label:'Штопор: Ø прутка (0 = авто, 0.26 от Ø спирали)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadHandleW', w:['corkscrew'], label:'Штопор: ширина Т-ручки (0 = без ручки)', min:0, max:200, step:1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland'], label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: направление', type:'select', default:'right',
@@ -5342,6 +5345,30 @@ function threadTopMode(p){
 //     but never finer than the sampling can carry, so the edge is never finer than the mesh. On a long
 //     screw the row cap forces it wider, and then `tip` — what the blade measures at its outer edge —
 //     is what actually gets printed, which is why it is reported rather than assumed.
+/* ШТОПОР: размеры и число, по которому он отличается от пружины.
+
+   ПРОСВЕТ К НАРУЖНОМУ Ø — вот эта величина. У настоящего винта Ø8 пруток 2.1 мм, значит посередине
+   остаётся 3.8 мм, то есть 0.48 наружного: дырка в спирали заметно уже самой спирали. У пружины пруток
+   тонкий, просвет 0.8 и выше — и деталь читается пружиной, чем бы её ни называли.
+
+   Ø прутка выводится от Ø СПИРАЛИ (0.26), а не от шага, как было раньше. Вывод от шага давал на
+   умолчаниях резьбы (Ø30, шаг 3) пруток 1.08 мм и просвет 0.93 — пружину. И заметить это по проверкам
+   было нельзя: они задавали свои числа руками и умолчаний не трогали ни разу.
+
+   Пруток ЗАЖАТ по шагу (не толще 0.9 шага), иначе соседние витки сольются в трубу и винт перестанет быть
+   винтом. Зажим срабатывает молча, поэтому о нём сказано отдельно: попросили 4 мм при шаге 2 — получите
+   1.8, и знать об этом надо. Отдельного признака «слиплись» нет и быть не может: зажим не пускает. */
+function corkscrewSpec(p){
+  const D  = Math.max(4, Math.min(40, p.threadCorkD>0 ? p.threadCorkD : 8));
+  const P  = Math.max(1, p.threadCorkPitch>0 ? p.threadCorkPitch : D*0.7);
+  const n  = Math.max(2, Math.min(12, p.threadCorkTurns>0 ? p.threadCorkTurns : 5));
+  const want = p.threadWireD>0 ? p.threadWireD/2 : D*0.13;
+  const rw = Math.max(0.35, Math.min(P*0.45, want));
+  const Rh = Math.max(rw + 0.4, D/2 - rw);              // осевая линия: гребень приходит ровно на D/2
+  const bore = Math.max(0, 2*(Rh - rw));                // просвет в середине спирали
+  return {D, P, n, rw, Rh, len: n*P, bore, boreRatio: bore/D, pitchRatio: P/(2*rw),
+          springy: bore/D > 0.65, wireCut: want > rw + 1e-9, thin: 2*rw < 1.2};
+}
 function augerSpec(p){
   if ((p.threadMode||'none') !== 'auger') return null;
   const D=Math.max(4, p.threadD||30), P=Math.max(0.5, p.threadPitch||3), majorR=D/2;
@@ -6540,7 +6567,7 @@ const MODEL_HELP = {
   'thread:stud':     {what:'Штуцер или горловина: наружная резьба на фланце — приклеить, привинтить или вварить в чужую деталь.', how:'Фланцем на стол, резьбой вверх.', mat:['petg','abs']},
   'thread:leadscrew':{what:'Ходовой винт трапецеидального профиля с цапфами под подшипники. Свинчивается с гайкой из этого же списка.', how:'Стоя, вертикально: слои поперёк резьбы дают ровный виток. Длинный винт лучше печатать с юбкой — он тонкий и его качает.', mat:['nylon','petg']},
   'thread:auger':    {what:'Шнек, он же архимедов винт: вал с непрерывной лентой для подачи сыпучего.', how:'Стоя. Лента у корня тоньше всего, что рисует движок, — проверьте предупреждения перед печатью.', mat:['petg','pla']},
-  'thread:corkscrew':{what:'Штопор: спираль круглого сечения с рукоятью.', how:'Стоя, спиралью вверх. Печатать медленно: спираль опирается сама на себя очень небольшой площадкой.', mat:['petg','nylon']},
+  'thread:corkscrew':{what:'Штопор: спираль круглого сечения с остриём и хвостовиком под рукоять. Размеры у него СВОИ — наружный Ø спирали, шаг, число витков и Ø прутка, — а не общие с резьбой: у настоящего винта пруток составляет четверть диаметра спирали, и просвет посередине выходит вдвое уже наружного. Умолчания сняты с обычного винта под пробку: Ø8, шаг 5.6, пять витков, пруток 2.1.', how:'Стоя, спиралью вверх. Печатать медленно: спираль опирается сама на себя очень небольшой площадкой. В предупреждениях выводится ПРОСВЕТ К НАРУЖНОМУ Ø — то число, которым штопор отличается от пружины: у винта около 48 %, у пружины 80 и выше. Тонкий пруток на широкой спирали даёт именно пружину, чем бы она ни называлась. Пруток зажимается по шагу (не толще 0.9 шага), иначе соседние витки слились бы в трубу.', mat:['petg','nylon']},
   'thread:barb':     {what:'Ёлочка на шланг: ступенчатые конусы, которые держат шланг без хомута.', how:'Стоя, ёлочкой вверх — обратные конусы тогда навесные и обходятся без поддержек.', mat:['petg','tpu']},
   'thread:bolt':     {what:'Болт с шестигранной головкой и метрической резьбой.', how:'Головкой на стол. Печатный болт держит момент, но не любит рывок — затягивать пальцами.', mat:['petg','abs']},
   'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
@@ -8530,8 +8557,16 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     // The whole part is ONE path: point → spiral → the turn onto the axis → shank. Sweeping it in a
     // single pass means there are no joints to make watertight, which is the usual cost of a shape like
     // this. The handle is the one separate piece, a bar crossing the shank, interpenetrating as always.
-    const rw = Math.max(0.35, Math.min(P*0.45, p.threadWireD>0 ? p.threadWireD/2 : P*0.18));
-    const Rh = Math.max(rw+0.4, D/2 - rw);               // centreline radius, so the crest reaches D/2
+    //
+    // РАЗМЕРЫ У ШТОПОРА СВОИ, И ЭТО ИСПРАВЛЕНИЕ, А НЕ УДОБСТВО. Раньше он брал Ø, шаг и длину у резьбы, а
+    // толщину прутка выводил из ШАГА (0.36·P). Оба решения неверны по существу. Пруток штопора — доля
+    // диаметра СПИРАЛИ, а не шага: у настоящего винта Ø8 пруток 2.1 мм, и просвет посередине выходит
+    // 3.8 мм, то есть меньше половины наружного. При выводе от шага на умолчаниях резьбы (Ø30, шаг 3)
+    // получался пруток 1.08 мм с просветом 27.8 — 93 % наружного диаметра. Это пружина, и выглядела она
+    // именно пружиной. Число, по которому отличается одно от другого, — ПРОСВЕТ К НАРУЖНОМУ: у штопора
+    // около 0.48, у пружины 0.8 и выше. Оно же выводится в предупреждениях.
+    const CS = corkscrewSpec(p);
+    const len = CS.len, P = CS.P, D = CS.D, rw = CS.rw, Rh = CS.Rh;
     const per = 48, M = Math.max(24, Math.round(len/P*per));
     const seg = Math.max(10, Math.min(24, Math.round(rw*8)));
     const path = [];
@@ -20131,6 +20166,14 @@ function collectPrintWarnings(p){
     // tip is what the taper and the row cap left of it. A long screw thins its own flight.
     if (a && a.blade < 0.8) w.push('виток шнека ' + a.blade.toFixed(1) + ' мм — тоньше 0.8 мм');
     else if (a && a.tip < 0.6) w.push('кромка витка ' + a.tip.toFixed(1) + ' мм — шнек слишком длинный для такого витка'); }
+  if ((p.threadMode || 'none') === 'corkscrew'){
+    const k = corkscrewSpec(p);
+    if (k.springy) w.push('просвет ' + k.bore.toFixed(1) + ' мм — ' + (k.boreRatio*100).toFixed(0) +
+      '% наружного Ø: выйдет пружина, а не штопор (у настоящего около 48 %) — возьмите пруток потолще');
+    if (k.wireCut) w.push('пруток урезан до ' + (2*k.rw).toFixed(1) + ' мм — толще при шаге ' +
+      k.P.toFixed(1) + ' мм витки сольются в трубу');
+    if (k.thin) w.push('пруток ' + (2*k.rw).toFixed(1) + ' мм — тоньше трёх проходов сопла, спираль свернётся при первом же штопорении');
+  }
   // A neck adapter needs a ceiling to open its channel in. When the lower thread's root leaves none, the
   // cap comes out BLIND — correct geometry, and nothing on screen says why the spigot is missing.
   if ((p.threadMode || 'none') === 'cap' && threadTopMode(p) === 'neck'){

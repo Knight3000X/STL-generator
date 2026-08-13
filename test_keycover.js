@@ -151,5 +151,191 @@ for(const d of [3, 5, 9]) for(const n of [0, 1, 3]){
   chk('справка на месте', !!MODEL_HELP['mount:furnkey']);
 }
 
+/* ЦИЛИНДРОВЫЙ КЛЮЧ. Проверяется то, что делает его ключом, и то, что делает его ПРАВДИВЫМ.
+   Первое — бородка: нарезок ровно столько, сколько заказано, и они на своих местах. Второе — момент до
+   слома: он считается для самого слабого сечения и обязан попадать в предупреждения, потому что вся
+   ценность модели в этом числе.
+
+   Отдельная забота — упрощатель контура. Кромка клинка кусочно-линейна, выборка частая, и лишние точки
+   выбрасываются; если выбросить лишнюю, контур пересечёт сам себя, и сетка развалится молча. Поэтому
+   упрощатель проверяется отдельно, на случае, ради которого он и переписан: длинная прямая цепочка,
+   упирающаяся в угол, до которого миллиметровая доля. */
+console.log('=== цилиндровый ключ ===');
+function cy(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  Object.assign(paramState.box, defaultBoxParams(), {mntMode:'cylkey'}, ov);
+  return buildTrisForShape('box', paramState.box); }
+function cyS(ov){ return cylKeySpec(Object.assign(defaultBoxParams(), {mntMode:'cylkey'}, ov)); }
+/* Луч вдоль ЛЮБОЙ оси. runsX умеет только вдоль X, а канавку надо мерить поперёк клинка: переставляем
+   координаты и зовём ту же математику. ax=0 — луч вдоль X в точке (y,z); ax=1 — вдоль Y в точке (z,x);
+   ax=2 — вдоль Z в точке (x,y). Порядок аргументов именно такой — циклический сдвиг, не «оставшиеся». */
+function runsAx(tris, ax, u, v){
+  const A = ax, B = (ax+1)%3, C = (ax+2)%3;
+  return runsX(tris.map(T => T.map(p => [p[A], p[B], p[C]])), u, v);
+}
+
+for(const cuts of [0, 3, 5, 7]) for(const ward of ['none', 'groove']) for(const H of [5, 8.5, 14]){
+  const t = cy({mntCyCuts:cuts, mntCyWard:ward, mntCyH:H}), mc = manifoldCheck(t, 4);
+  chk('нарезок '+cuts+' '+ward+' H'+H+': герметичен', mc.watertight && mc.badEdges === 0 && vol(t) > 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  const b = bb(t);
+  chk('нарезок '+cuts+' '+ward+' H'+H+': плоский — толщина много меньше длины', (b.y1-b.y0) < (b.x1-b.x0)/6,
+      {толщина:+(b.y1-b.y0).toFixed(2), длина:+(b.x1-b.x0).toFixed(1)});
+}
+
+/* Нарезки на месте. Деталь центрируется по габариту, а по высоте габарит задаёт головка, симметричная
+   относительно середины клинка, — поэтому середина габарита и есть середина клинка, считать сдвиг не
+   надо. Мерить нарезки ПЕРЕМЫЧКАМИ на луче вдоль клинка нельзя, и это не мелочь: у V-образной нарезки
+   раствор шире всего наверху (полка + 2·глубина·tg), при шаге 3.9 и глубине 2 это 5 мм на 3.9 мм шага,
+   так что соседние вырезы наверху СЛИВАЮТСЯ — у настоящего ключа тоже. Поэтому профиль кромки снимается
+   лучами вдоль Z и считаются его локальные минимумы с порогом по высоте подъёма. */
+function cyTop(t, zc, x){ const r = runsAx(t, 2, x, 0); return r.length ? r[r.length-1][1] - zc : -1e9; }
+function cyProfile(t, s){
+  const x0 = (s.kW - s.L)/2, out = [], zc = (bb(t).z0 + bb(t).z1)/2;   // x0 — упор в координатах детали
+  for(let x = 0.2; x <= s.L - 0.2; x += 0.1) out.push([x, cyTop(t, zc, x0 + x) + s.H/2]);
+  return out;                                                          // [x от упора, высота кромки]
+}
+/* Ложбины кромки с порогом по высоте подъёма. Дно нарезки — ПЛОЩАДКА, а не точка, поэтому за координату
+   берётся её середина: если запомнить первую точку площадки, ответ уезжает ровно на полполки, и половина
+   нарезок оказывается «не на своей координате» в одну сторону, половина — в другую. */
+function cyMinima(prof, prom){
+  const out = []; let dir = -1, ez = prof[0][1], ea = prof[0][0], eb = prof[0][0];
+  for(const [x, z] of prof){
+    const same = Math.abs(z - ez) <= 1e-6;
+    if(dir < 0){
+      if(z < ez - 1e-6){ ez = z; ea = eb = x; }
+      else if(same){ eb = x; }
+      else if(z - ez > prom){ out.push([(ea + eb)/2, ez]); dir = 1; ez = z; ea = eb = x; }
+    } else {
+      if(z > ez + 1e-6){ ez = z; ea = eb = x; }
+      else if(same){ eb = x; }
+      else if(ez - z > prom){ dir = -1; ez = z; ea = eb = x; }
+    }
+  }
+  return out;
+}
+for(const cuts of [1, 3, 5, 7]){
+  // Клинок берётся с запасом: последняя нарезка, упёршаяся в скос кончика, сливается с ним — и правильно
+  // делает, но мерить на этом нечего.
+  const room = {mntCyCuts:cuts, mntCyLen: Math.max(30, 5 + (cuts-1)*3.9 + 8)};
+  const s = cyS(room), t = cy(room);
+  const mins = cyMinima(cyProfile(t, s), 0.05);
+  chk('нарезок '+cuts+': столько же ложбин на кромке', mins.length === cuts,
+      {надо:cuts, вышло:mins.length, где:mins.map(m => +m[0].toFixed(1))});
+  // каждая — на своём месте и своей глубины
+  let okX = true, okD = true;
+  for(let i = 0; i < Math.min(mins.length, s.cuts.length); i++){
+    if(Math.abs(mins[i][0] - s.cuts[i].x) > 0.12) okX = false;
+    if(Math.abs(mins[i][1] - (s.H - s.cuts[i].d)) > 0.06) okD = false;
+  }
+  chk('нарезок '+cuts+': каждая на своей координате', okX && mins.length === cuts,
+      mins.map(m => +m[0].toFixed(2)));
+  chk('нарезок '+cuts+': каждая своей глубины', okD && mins.length === cuts,
+      {надо:s.cuts.map(c => +(s.H - c.d).toFixed(2)), вышло:mins.map(m => +m[1].toFixed(2))});
+}
+{
+  // Нулевая глубина — не нарезка: кромка остаётся сплошной, ложбин нет ни одной.
+  const s = cyS({mntCyCuts:3, mntCyD1:0, mntCyD2:0, mntCyD3:0});
+  chk('нулевые глубины нарезками не считаются', s.cuts.length === 0 && s.noCuts);
+  chk('и кромка остаётся ровной',
+      cyMinima(cyProfile(cy({mntCyCuts:3, mntCyD1:0, mntCyD2:0, mntCyD3:0}), s), 0.05).length === 0);
+}
+for(const st of [3, 3.9, 6]){
+  const s = cyS({mntCyCuts:2, mntCyStep:st, mntCyD1:2, mntCyD2:2});
+  const mins = cyMinima(cyProfile(cy({mntCyCuts:2, mntCyStep:st, mntCyD1:2, mntCyD2:2}), s), 0.05);
+  chk('шаг '+st+': две ложбины', mins.length === 2, mins.length);
+  if(mins.length === 2) chk('шаг '+st+' виден в сетке', Math.abs((mins[1][0] - mins[0][0]) - st) < 0.12,
+      +(mins[1][0] - mins[0][0]).toFixed(3));
+}
+for(const d of [1.5, 3, 5]){
+  const s = cyS({mntCyCuts:1, mntCyD1:d, mntCyFlat:1.2}), t = cy({mntCyCuts:1, mntCyD1:d, mntCyFlat:1.2});
+  const zc = (bb(t).z0 + bb(t).z1)/2, xc = s.cuts[0].x + (s.kW - s.L)/2;
+  chk('глубина '+d+': дно нарезки на своём месте', Math.abs((cyTop(t, zc, xc) + s.H/2) - (s.H - d)) < 0.05,
+      {надо:+(s.H-d).toFixed(2), вышло:+(cyTop(t, zc, xc) + s.H/2).toFixed(2)});
+}
+
+console.log('=== канавка под вороты ===');
+for(const gd of [0.3, 0.5, 0.8]){
+  const s = cyS({mntCyWard:'groove', mntCyWardD:gd, mntCyT:3, mntCyCuts:0});
+  const t = cy({mntCyWard:'groove', mntCyWardD:gd, mntCyT:3, mntCyCuts:0});
+  const xm = s.L*0.6 - (s.L - s.kW)/2;                       // середина клинка, подальше от головки
+  const thickAt = z => { const r = runsAx(t, 1, z, xm); return r.length ? r[r.length-1][1] - r[0][0] : 0; };
+  chk('глубина '+gd+': на канавке клинок тоньше ровно на две глубины',
+      Math.abs(thickAt(s.gz - s.H/2) - (s.T - 2*gd)) < 0.02, +thickAt(s.gz - s.H/2).toFixed(2));
+  chk('глубина '+gd+': выше канавки полная толщина',
+      Math.abs(thickAt(s.gHi + 0.3 - s.H/2) - s.T) < 0.02, +thickAt(s.gHi + 0.3 - s.H/2).toFixed(2));
+  chk('глубина '+gd+': ниже канавки тоже полная',
+      Math.abs(thickAt(s.gLo - 0.3 - s.H/2) - s.T) < 0.02, +thickAt(s.gLo - 0.3 - s.H/2).toFixed(2));
+}
+{
+  const s = cyS({mntCyWard:'none'});
+  chk('без канавки толщина одна на всю высоту', s.tEff === s.T && s.gd === 0);
+  // Канавка глубже, чем позволяет толщина, урезается: сквозной прорези быть не должно.
+  const q = cyS({mntCyWard:'groove', mntCyT:1.4, mntCyWardD:2});
+  chk('канавка не прорезает клинок насквозь', q.tEff >= 0.79, +q.tEff.toFixed(2));
+}
+
+console.log('=== момент до слома ===');
+{
+  const a = cyS({mntCyT:2.3}), b2 = cyS({mntCyT:4.6});
+  chk('толще — момент больше', b2.torque > a.torque*2.5,
+      {'2.3':+a.torque.toFixed(3), '4.6':+b2.torque.toFixed(3)});
+  // У ТОНКОЙ полосы момент идёт как t², у толстой — медленнее: k падает вместе с ростом t/b.
+  chk('у тонкой полосы вдвое толще — вчетверо',
+      Math.abs(rectTorsionTorque(100,2)/rectTorsionTorque(100,1) - 4) < 0.05,
+      +(rectTorsionTorque(100,2)/rectTorsionTorque(100,1)).toFixed(3));
+  chk('слабое сечение слабее полного', a.torqueMin < a.torque*0.6,
+      {полное:+a.torque.toFixed(3), надне:+a.torqueMin.toFixed(3)});
+  chk('без нарезок слабого сечения нет', Math.abs(cyS({mntCyCuts:0}).torqueMin - cyS({mntCyCuts:0}).torque) < 1e-9);
+  chk('печатный клинок назван слабым', a.weak, +a.torqueMin.toFixed(3));
+  // Формула Роарка: у квадрата k = 0.208, у длинной полосы → 1/3. Иначе это не кручение, а домысел.
+  chk('коэффициент квадратного сечения', Math.abs(rectTorsionTorque(10,10)/(25*10*100/1000) - 0.208) < 0.002,
+      +(rectTorsionTorque(10,10)/(25*10*100/1000)).toFixed(4));
+  chk('коэффициент тонкой полосы стремится к 1/3',
+      Math.abs(rectTorsionTorque(100,1)/(25*100*1/1000) - 1/3) < 0.004,
+      +(rectTorsionTorque(100,1)/(25*100/1000)).toFixed(4));
+  const w = collectPrintWarnings(Object.assign(defaultBoxParams(), {mntMode:'cylkey'})).join(' | ');
+  chk('момент попадает в предупреждения', /Н·м/.test(w) && /до слома/.test(w), w.slice(0, 160));
+  chk('и сказано, что это заготовка, а не рабочий ключ', /заготовка/.test(w));
+  const wf = collectPrintWarnings(Object.assign(defaultBoxParams(), {mntMode:'furnkey'})).join(' | ');
+  chk('у мебельного ключа момент тоже выводится', /Н·м/.test(wf), wf.slice(0, 120));
+}
+
+console.log('=== отверстие под кольцо помещается в головку ===');
+/* Дырка, вылезшая за контур, — это разрез: контур перестаёт быть простым и протяжка выдаёт вывернутую
+   сетку. Ловилось только на редком сочетании «широкое кольцо, узкая головка», поэтому проверяется в лоб. */
+for(const [W, Hh, ring] of [[11, 12, 14], [10, 8, 12], [22, 24, 14], [50, 50, 14], [12, 40, 13]]){
+  const s = cyS({mntCyBowW:W, mntCyBowH:Hh, mntCyRing:ring});
+  const t = cy({mntCyBowW:W, mntCyBowH:Hh, mntCyRing:ring}), mc = manifoldCheck(t, 4);
+  chk('головка '+W+'×'+Hh+' кольцо '+ring+': герметичен', mc.watertight && mc.badEdges === 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  chk('головка '+W+'×'+Hh+' кольцо '+ring+': кольцо не шире головки', s.ring <= Math.min(s.kW, s.kH) - 2.39,
+      {кольцо:+s.ring.toFixed(2), головка:Math.min(s.kW, s.kH)});
+}
+for(const [W, Hh, ring] of [[8, 10, 14], [9, 9, 12], [20, 22, 5]]){
+  const g = furnKeySpec(Object.assign(defaultBoxParams(), {mntMode:'furnkey', mntFkBowW:W, mntFkBowH:Hh, mntFkRing:ring}));
+  const t = fk({mntFkBowW:W, mntFkBowH:Hh, mntFkRing:ring}), mc = manifoldCheck(t, 4);
+  chk('мебельный, головка '+W+'×'+Hh+' кольцо '+ring+': герметичен', mc.watertight && mc.badEdges === 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  chk('мебельный, головка '+W+'×'+Hh+' кольцо '+ring+': кольцо не шире головки',
+      g.ring <= Math.min(W, Hh) - 2.99, +g.ring.toFixed(2));
+}
+
+console.log('=== упрощатель контура не съедает углы ===');
+{
+  // Квадрат, у которого нижняя сторона нарезана на сотню звеньев, а правый нижний угол отстоит от
+  // последнего звена на пять микрон. Именно так и выглядит выход полосы: цепочка вплотную к углу.
+  const pts = [];
+  for(let i = 0; i <= 100; i++) pts.push([i*0.1, 0]);
+  pts.push([10.000005, 0], [10, 6], [0, 6]);
+  const s = polySimplifyXZ(pts, 1e-5);
+  let ar = 0; for(let i = 0; i < s.length; i++){ const a = s[i], b2 = s[(i+1)%s.length]; ar += a[0]*b2[1] - b2[0]*a[1]; }
+  chk('прямая цепочка свернулась', s.length <= 5, s.length);
+  chk('но площадь сохранилась — угол на месте', Math.abs(Math.abs(ar/2) - 60) < 0.001, +(ar/2).toFixed(4));
+  // Замкнутый контур: хвост, совпавший с головой, снимается, а не выбрасывается вместе с головой.
+  const dup = polySimplifyXZ([[0,0],[4,0],[4,3],[0,3],[0,0]], 1e-5);
+  chk('дубль головы в хвосте снят, углов осталось четыре', dup.length === 4, dup.length);
+}
+chk('справка на месте', !!MODEL_HELP['mount:cylkey']);
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

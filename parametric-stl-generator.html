@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.21.0';
+const APP_VERSION = 'v18.22.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4720,7 +4720,7 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'keycover',t:'накладка на головку ключа'},{v:'furnkey',t:'мебельный ключ (сувальдный)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'keycover',t:'накладка на головку ключа'},{v:'furnkey',t:'мебельный ключ (сувальдный)'},{v:'cylkey',t:'цилиндровый ключ (заготовка по вашим замерам)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
@@ -4810,6 +4810,31 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntFkBowH', w:['furnkey'], label:'Мебельный ключ: высота головки', min:8, max:50, step:0.5, default:22, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFkBowT', w:['furnkey'], label:'Мебельный ключ: толщина головки', min:1.2, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntFkRing', w:['furnkey'], label:'Мебельный ключ: Ø отверстия под кольцо (0 = без)', min:0, max:14, step:0.5, default:5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyLen', w:['cylkey'], label:'Цилиндровый ключ: длина клинка от упора', min:10, max:60, step:0.5, default:30, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyH', w:['cylkey'], label:'Цилиндровый ключ: высота клинка', min:4, max:16, step:0.1, default:8.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyT', w:['cylkey'], label:'Цилиндровый ключ: толщина клинка', min:1.2, max:5, step:0.05, default:2.3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyCuts', w:['cylkey'], label:'Цилиндровый ключ: число нарезок', min:0, max:7, step:1, default:5, int:true},
+    {group:'Крепёж / монтаж', key:'mntCyFirst', w:['cylkey'], label:'Цилиндровый ключ: от упора до первой нарезки', min:1, max:20, step:0.1, default:5, unit:'мм', needs:{mntCyCuts:0}},
+    {group:'Крепёж / монтаж', key:'mntCyStep', w:['cylkey'], label:'Цилиндровый ключ: шаг нарезок', min:2, max:8, step:0.1, default:3.9, unit:'мм', needs:{mntCyCuts:1}},
+    {group:'Крепёж / монтаж', key:'mntCyD1', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 1 (от верха)', min:0, max:10, step:0.05, default:2, unit:'мм', needs:{mntCyCuts:0}},
+    {group:'Крепёж / монтаж', key:'mntCyD2', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 2', min:0, max:10, step:0.05, default:3.2, unit:'мм', needs:{mntCyCuts:1}},
+    {group:'Крепёж / монтаж', key:'mntCyD3', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 3', min:0, max:10, step:0.05, default:1.6, unit:'мм', needs:{mntCyCuts:2}},
+    {group:'Крепёж / монтаж', key:'mntCyD4', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 4', min:0, max:10, step:0.05, default:3.8, unit:'мм', needs:{mntCyCuts:3}},
+    {group:'Крепёж / монтаж', key:'mntCyD5', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 5', min:0, max:10, step:0.05, default:2.4, unit:'мм', needs:{mntCyCuts:4}},
+    {group:'Крепёж / монтаж', key:'mntCyD6', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 6', min:0, max:10, step:0.05, default:3, unit:'мм', needs:{mntCyCuts:5}},
+    {group:'Крепёж / монтаж', key:'mntCyD7', w:['cylkey'], label:'Цилиндровый ключ: глубина нарезки 7', min:0, max:10, step:0.05, default:2, unit:'мм', needs:{mntCyCuts:6}},
+    {group:'Крепёж / монтаж', key:'mntCyAng', w:['cylkey'], label:'Цилиндровый ключ: угол нарезки', min:60, max:120, step:5, default:90, unit:'°', needs:{mntCyCuts:0}},
+    {group:'Крепёж / монтаж', key:'mntCyFlat', w:['cylkey'], label:'Цилиндровый ключ: площадка на дне нарезки', min:0, max:3, step:0.1, default:1, unit:'мм', needs:{mntCyCuts:0}},
+    {group:'Крепёж / монтаж', key:'mntCyTip', w:['cylkey'], label:'Цилиндровый ключ: скос кончика', min:0, max:8, step:0.1, default:2.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyWard', w:['cylkey'], label:'Цилиндровый ключ: канавка под вороты', type:'select', default:'none',
+      options:[{v:'none',t:'нет — гладкий клинок'},{v:'groove',t:'продольная канавка с обеих сторон'}]},
+    {group:'Крепёж / монтаж', key:'mntCyWardZ', w:['cylkey'], label:'Цилиндровый ключ: канавка — высота от низа', min:0.5, max:15, step:0.1, default:4.2, unit:'мм', only:{mntCyWard:['groove']}},
+    {group:'Крепёж / монтаж', key:'mntCyWardW', w:['cylkey'], label:'Цилиндровый ключ: канавка — ширина', min:0.4, max:6, step:0.1, default:1.6, unit:'мм', only:{mntCyWard:['groove']}},
+    {group:'Крепёж / монтаж', key:'mntCyWardD', w:['cylkey'], label:'Цилиндровый ключ: канавка — глубина с каждой стороны', min:0.15, max:2, step:0.05, default:0.5, unit:'мм', only:{mntCyWard:['groove']}},
+    {group:'Крепёж / монтаж', key:'mntCyBowW', w:['cylkey'], label:'Цилиндровый ключ: ширина головки', min:10, max:50, step:0.5, default:22, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyBowH', w:['cylkey'], label:'Цилиндровый ключ: высота головки', min:6, max:50, step:0.5, default:24, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyBowT', w:['cylkey'], label:'Цилиндровый ключ: толщина головки', min:1.2, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntCyRing', w:['cylkey'], label:'Цилиндровый ключ: Ø отверстия под кольцо (0 = без)', min:0, max:14, step:0.5, default:5, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntKcMode', w:['keycover'], label:'Накладка: как надевается', type:'select', default:'halves',
       options:[{v:'halves',t:'две половины под склейку'},{v:'sleeve',t:'чехол натягом'}]},
     {group:'Крепёж / монтаж', key:'mntKcW', w:['keycover'], label:'Накладка: ширина головки ключа', min:8, max:60, step:0.5, default:23, unit:'мм'},
@@ -6275,9 +6300,15 @@ function searchSubModelHint(groupName, hitKeys, p){
     // the sub-model alone would leave it hidden and the offer would be a lie, so the named option comes
     // with it. A `needs:` threshold does NOT: that is a number with a meaning («0 = без»), and picking one
     // for the user changes the part. The row's own tooltip says what to turn on.
+    //
+    // Помечено ли предложение как недостаточное — ПРОВЕРЯЕТСЯ, а не выводится из наличия порога. Порог
+    // сплошь и рядом уже перекрыт умолчанием (глубина первой нарезки ждёт, что нарезок больше нуля, а их
+    // по умолчанию пять), и тогда переключения ХВАТАЕТ. Отметка «мало» на таком предложении — такая же
+    // ложь, как её отсутствие там, где действительно мало.
     const extra = {};
     if (r.only) for (const k in r.only) extra[k] = r.only[k][0];
-    return {key: mk, value: t.v, label: t.label, extra, blocked: !!r.needs};
+    const after = Object.assign({}, p, extra, {[mk]: t.v});
+    return {key: mk, value: t.v, label: t.label, extra, blocked: !paramRowRelevant(r, after)};
   }
   return null;
 }
@@ -6558,6 +6589,7 @@ const MODEL_HELP = {
   'mount:fittest':   {what:'Калибровка зазора: набор штырьков и отверстий с шагом, чтобы подобрать посадку именно вашего принтера. Один раз напечатать — и все подвижные модели садятся с первого раза.', how:'Плашмя, без изменения настроек — иначе измеряете не то.', mat:['pla','petg']},
   'mount:battery':   {what:'Батарейный холдер под AA/AAA/C/D/18650/21700 или свой размер: ложе с пружинными язычками.', how:'Ложем вверх. Контактные язычки под пластину печатать не нужно — они металлические.', mat:['petg','abs']},
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
+  'mount:cylkey':   {what:'Цилиндровый (штифтовой) ключ по ВАШИМ замерам: длина и сечение клинка, шаг и глубина нарезок, при желании продольная канавка под вороты скважины. Никакого справочника чужих профилей здесь нет и не будет: вы описываете свой замок числами — генератор строит по ним. Честнее считать это ЗАГОТОВКОЙ И ШАБЛОНОМ, чем ключом: по ней размечают металл, ею сверяют снятые штангенциркулем размеры и проверяют, попадает ли шаг нарезок в шаг штифтов.', how:'ПЛАШМЯ, широкой гранью на стол: нависаний нет, канавка выходит щелью в полтора миллиметра и мостится без поддержек. Момент до слома считается для САМОГО СЛАБОГО сечения — дна глубокой нарезки, где высота клинка падает вдвое — и выводится в предупреждениях. У PLA выходит 0.15–0.2 Н·м, а цилиндровый замок просит 0.3–0.6 Н·м даже смазанный: печатный клинок сломается, и обломок останется в личинке. Толще клинок или выше — момент растёт как t² и как высота, но втрое его не поднять.', mat:['pla','petg','pacf']},
   'mount:keycover': {what:'Накладка на головку ключа, чтобы ключи различались на ощупь и в темноте. ДВЕ ПОЛОВИНЫ клеятся на плоские грани головки — попадать в посадку не нужно, зазор берёт на себя клей, и подходит это к головке любой формы. ЧЕХОЛ натягом — второй вариант, для тех, кто не хочет клеить: у него верх открыт, чтобы кольцо осталось в родном отверстии ключа.', how:'Половинки печатаются плашмя, карманом вверх — слои ложатся поперёк отрыва, и поддержек не нужно. Карман на половину толщины головки нужен не для держания (держит клей), а для совмещения: без него половинки при склейке разъезжаются. Чехол печатается стоймя, устьем вниз. Обмерьте головку штангенциркулем; радиус скругления 0 даёт овал, любое число — прямоугольник с этим радиусом. Клей: цианакрилат по PETG и PLA, по TPU — полиуретановый.', mat:['petg','pla','tpu']},
   'mount:furnkey':  {what:'Мебельный (сувальдный) ключ: головка, круглый стержень, плоская бородка с прорезями. От шкафа, ящика, почтового ящика, старой межкомнатной двери. Все семь размеров снимаются штангенциркулем с имеющегося ключа — угадывать здесь нечего.', how:'ПЛАШМЯ, головкой и бородкой на стол: деталь плоская, нависаний нет ни одного, поддержек не нужно. Стоймя печатать нельзя — слои легли бы поперёк кручения, а ключ именно крутят. Момент до слома считается и выводится в предупреждениях: Ø5 из PLA отдаёт около 0,6 Н·м, мебельному замку хватает, дверному нет. Стержень толще — прочность растёт как четвёртая степень Ø, так что +1 мм даёт вдвое больше.', mat:['pla','petg']},
   'mount:gauge':     {what:'Калибр go/no-go: кольца и пробки под заданный размер с допуском. Пробка «go» должна входить, «no-go» — нет.', how:'Плашмя. Печатать тем же пластиком и профилем, под который калибруете.', mat:['pla','petg']},
@@ -10958,43 +10990,6 @@ function extrudePolyYTris(loops, y0, y1){
       out.push(orient([[u[0],y0,u[1]],[v[0],y1,v[1]],[u[0],y1,u[1]]], ref)); } }
   return out;
 }
-// The same loops swept along Y while being MOVED — every station is the identical loop translated by
-// (dx, dz) = at(y). Not deformed: that is what keeps it easy to be sure of, because the side walls stay
-// ruled quads between corresponding vertices and the caps stay the flat case's own ear-clipping, merely
-// shifted. A straight extrusion is at(y) = [0, 0], and the two agree triangle for triangle there.
-//
-// Two things want exactly this. A gauge blade that CRADLES what it measures instead of balancing on it:
-// dz along an arc, so the blade's shoulders reach the thread and its middle stands off. And a tooth line
-// that LEANS with the helix: dx growing across the thickness, so the tool's teeth lie along the crest's
-// own spiral rather than square across it.
-function extrudePolySweptYTris(loops, y0, y1, steps, at){
-  const clean = loops.map(P=>{ const q=[];
-    for(const v of P){ const l=q[q.length-1]; if(!l || Math.abs(l[0]-v[0])>1e-9 || Math.abs(l[1]-v[1])>1e-9) q.push(v); }
-    while(q.length>1 && Math.abs(q[0][0]-q[q.length-1][0])<1e-9 && Math.abs(q[0][1]-q[q.length-1][1])<1e-9) q.pop();
-    return q; }).filter(P=>P.length>=3);
-  if(!clean.length) return [];
-  const L = clean.map((P,i)=>{ const wantCCW = (i===0); const isCCW = loopArea2(P)>=0;
-    return wantCCW===isCCW ? P : P.slice().reverse(); });
-  const N = Math.max(1, Math.round(steps)), out = [];
-  const ys = []; for(let j=0;j<=N;j++) ys.push(y0 + (y1-y0)*j/N);
-  const off = ys.map(y => at(y));
-  const at3 = (u, j) => [u[0] + off[j][0], ys[j], u[1] + off[j][1]];
-  const flat = bridgeHolesXZ(L[0], L.slice(1));
-  for(const t of earClipXZ(flat)){ const A=flat[t[0]], B=flat[t[1]], C=flat[t[2]];
-    out.push(orient([at3(A,N), at3(B,N), at3(C,N)], [0,1,0]));
-    out.push(orient([at3(A,0), at3(B,0), at3(C,0)], [0,-1,0])); }
-  // Wall facing, as in the straight case: (dz, −dx) for every loop, outer and hole alike, with no winding
-  // sign of its own — normalising the loops above has already accounted for that once, and accounting for
-  // it twice turns every bore inside out in a way no edge count and no depth probe can see.
-  for(const P of L){
-    for(let i=0;i<P.length;i++){ const k=(i+1)%P.length, u=P[i], v=P[k];
-      const ref=[v[1]-u[1], 0, -(v[0]-u[0])];
-      if(Math.abs(ref[0])<1e-12 && Math.abs(ref[2])<1e-12) continue;
-      for(let j=0;j<N;j++){
-        out.push(orient([at3(u,j), at3(v,j), at3(v,j+1)], ref));
-        out.push(orient([at3(u,j), at3(v,j+1), at3(u,j+1)], ref)); } } }
-  return out;
-}
 // Turn a finished triangle list about the Y axis. Same sense as the app's own threads: a point at
 // atan2(z, x) = φ comes out at φ + a.
 function rotTrisY(tris, a){
@@ -14501,6 +14496,11 @@ function buildInfillCell(n, p){
 
    Площадка нарочно шире, чем высока. Рисунок верхней корки виден только на достаточной площади: на
    пятачке 10 × 10 монотонная укладка и концентрическая отличаются одним витком, и сравнивать нечего. */
+/* ЭТОТ список, в отличие от списка заполнений, со слайсера НЕ СНЯТ — он собран по общим знаниям, и потому
+   оставлен по-английски: русские названия пришлось бы выдумывать, а выдуманное название на образце хуже
+   английского. Со списком заполнений ровно так и вышло: написанный по памяти, он разошёлся со слайсером и
+   числом (20 против 26), и названиями, и был переписан по снимку интерфейса. Здесь снимка пока нет.
+   Номер на площадке от этого не страдает — он и есть то, чем площадка сверяется с настройкой. */
 const ORCA_SURFACE = ['Concentric', 'Rectilinear', 'Monotonic', 'Monotonic Line', 'Aligned Rectilinear',
   'Hilbert Curve', 'Archimedean Chords', 'Octagram Spiral'];
 function buildSurfacePad(n, p){
@@ -14648,10 +14648,14 @@ function furnKeySpec(p){
   const hW  = Math.max(8,  Math.min(50, p.mntFkBowW>0 ? p.mntFkBowW : 20));
   const hH  = Math.max(8,  Math.min(50, p.mntFkBowH>0 ? p.mntFkBowH : 22));
   const hT  = Math.max(1.2, Math.min(8, p.mntFkBowT>0 ? p.mntFkBowT : 3));
-  const ring= Math.max(0,  Math.min(14, p.mntFkRing != null ? p.mntFkRing : 5));
+  /* Кольцо должно помещаться в головку целиком: отверстие, вылезшее за контур, — это разрез, и протяжка
+     выдаёт вывернутую сетку. Ø зажимается по меньшей стороне головки с полуторамиллиметровой стенкой. */
+  const ringA = Math.max(0, Math.min(14, p.mntFkRing != null ? p.mntFkRing : 5));
+  const ring = Math.max(0, Math.min(ringA, Math.min(hW, hH) - 3));
   // Момент до слома по межслойному сдвигу: τ_доп ≈ 25 МПа у PLA, J = πd⁴/32, τ = T·r/J.
   const J = Math.PI*Math.pow(dS, 4)/32, tq = 25*J/(dS/2)/1000;                      // Н·м
   return {dS, L, bW, bH, bT, n, slot, hW, hH, hT, ring, torque:tq,
+          ringCut: ringA > ring + 0.05, ringGone: ringA > 0.8 && ring < 0.8,
           weak: tq < 0.35, thinBit: bT < 1.6, noBit: bH <= n*slot + 1};
 }
 function buildFurnKey(p){
@@ -14674,6 +14678,229 @@ function buildFurnKey(p){
     const x0 = -(s.bH) + k*(seg + s.slot), x1 = x0 + seg;
     push(boxSpanTris(x0, x1, yMid - s.bT/2, yMid + s.bT/2, s.dS/2 - 0.4, s.dS/2 - 0.4 + s.bW));
   }
+  let lo = [1e9,1e9,1e9], hi = [-1e9,-1e9,-1e9];
+  for(const T of tris) for(const v of T) for(let k = 0; k < 3; k++){
+    if(v[k] < lo[k]) lo[k] = v[k]; if(v[k] > hi[k]) hi[k] = v[k]; }
+  return tris.map(T => T.map(v => [v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
+}
+/* ---- ЦИЛИНДРОВЫЙ (ШТИФТОВОЙ) КЛЮЧ ------------------------------------------------------------------
+
+   ГЛАВНОЕ ЗДЕСЬ — ЧИСЛО, И ЧИСЛО ПЛОХОЕ. Клинок цилиндрового ключа — полоска сечением около 8×2.3 мм,
+   и крутят её всем усилием кисти. Момент до слома считается по кручению прямоугольного сечения
+   (τ = T/(k·b·t²), k по Роарку), причём в САМОМ СЛАБОМ месте — на дне глубокой нарезки, где высота
+   клинка падает вдвое. У PLA с межслойным сдвигом 25 МПа выходит около 0.15–0.2 Н·м, а цилиндровый
+   замок просит 0.3–0.6 Н·м даже смазанный. Печатный клинок ломается, и обломок остаётся в личинке.
+
+   Поэтому модель честнее считать ЗАГОТОВКОЙ И ШАБЛОНОМ, а не ключом: по ней размечают и опиливают
+   металл, ею проверяют снятые штангенциркулем размеры, на ней видно, попадает ли шаг нарезок в шаг
+   штифтов. Момент выводится в предупреждениях всегда, чтобы это не выяснялось на двери.
+
+   БОРОДКА КАК НИЖНЯЯ ОГИБАЮЩАЯ. Каждая нарезка — это V с плоским дном: скосы под заданным углом и
+   площадка шириной flat. Верхняя кромка клинка берётся как МИНИМУМ по всем нарезкам сразу, и тогда
+   две глубокие рядом сливаются в одну ложбину сами собой, без единой особой ветки в коде. Заодно
+   сразу видно, когда соседняя нарезка съела чужую — об этом предупреждение.
+
+   КАНАВКА ПОД ВОРОТА СДЕЛАНА НЕ ВЫРЕЗОМ, А НАБОРОМ. Вычитать в этом проекте нечем, поэтому клинок
+   собирается тремя полосами по высоте: нижняя и верхняя во всю толщину, средняя тоньше на две глубины
+   канавки. Средняя заходит в соседние на 0.3 мм — пересечение, а не стык, иначе на общих гранях
+   появятся парные рёбра. Канавка симметрична с обеих сторон: это ПОСЛАБЛЕНИЕ, а не упрощение —
+   лишний паз мешать не может, ключ от этого входит в большее число скважин, а не в меньшее.
+
+   ГЛУБОКАЯ НАРЕЗКА РАЗРЫВАЕТ ПОЛОСУ, и это правильно: у настоящего ключа рёбра канавки тоже
+   прерываются глубоким вырезом. Полосоискатель возвращает столько кусков, сколько их получилось.
+
+   ПЕЧАТАТЬ ПЛАШМЯ. Клинок ложится широкой гранью на стол, нависаний нет, канавка выходит щелью
+   шириной в полтора миллиметра — мост, который печатается без поддержек. */
+function cylKeySpec(p){
+  const L    = Math.max(10, Math.min(60, p.mntCyLen>0 ? p.mntCyLen : 30));   // упор → кончик
+  const H    = Math.max(4,  Math.min(16, p.mntCyH>0 ? p.mntCyH : 8.5));      // высота клинка
+  const T    = Math.max(1.2,Math.min(5,  p.mntCyT>0 ? p.mntCyT : 2.3));      // его толщина
+  const n    = Math.max(0,  Math.min(7,  Math.round(p.mntCyCuts != null ? p.mntCyCuts : 5)));
+  const x1   = Math.max(1,  Math.min(20, p.mntCyFirst>0 ? p.mntCyFirst : 5));
+  const st   = Math.max(2,  Math.min(8,  p.mntCyStep>0 ? p.mntCyStep : 3.9));
+  const ang  = Math.max(60, Math.min(120,p.mntCyAng>0 ? p.mntCyAng : 90));
+  const flat = Math.max(0,  Math.min(3,  p.mntCyFlat != null ? p.mntCyFlat : 1));
+  const tip  = Math.max(0,  Math.min(8,  p.mntCyTip != null ? p.mntCyTip : 2.5));
+  // Глубже этого нарезка перекусывает клинок пополам, и «ключ» разваливается на две железки.
+  const dCap = Math.max(0.2, H - 1.5);
+  const raw  = [p.mntCyD1, p.mntCyD2, p.mntCyD3, p.mntCyD4, p.mntCyD5, p.mntCyD6, p.mntCyD7];
+  const cuts = []; let clipped = false, past = false;
+  for(let i = 0; i < n; i++){
+    const xc = x1 + i*st;
+    if(xc > L - 0.5){ past = true; continue; }              // не помещается на клинок
+    let d = Math.max(0, raw[i] != null ? +raw[i] : 0);
+    if(d > dCap){ d = dCap; clipped = true; }
+    if(d > 0.05) cuts.push({x: xc, d});
+  }
+  const dMax = cuts.reduce((m, c) => Math.max(m, c.d), 0);
+  // Канавка под вороты скважины: одна с каждой стороны, размеры снимаются с личинки или со старого ключа.
+  const wardOn = String(p.mntCyWard || 'none') === 'groove';
+  const gd = wardOn ? Math.max(0.15, Math.min((T - 0.8)/2, p.mntCyWardD>0 ? p.mntCyWardD : 0.5)) : 0;
+  const gw = Math.max(0.4, Math.min(H - 1.2, p.mntCyWardW>0 ? p.mntCyWardW : 1.6));
+  const gzA = p.mntCyWardZ>0 ? p.mntCyWardZ : H*0.5;
+  const gz = Math.max(0.6 + gw/2, Math.min(H - 0.6 - gw/2, gzA));
+  const gLo = gz - gw/2, gHi = gz + gw/2;
+  const tEff = T - 2*gd;                                    // канавка идёт во всю длину — она и есть тонкое место
+  const hMin = Math.max(0.5, H - dMax);                     // высота сечения на дне самой глубокой нарезки
+  const tqFull = rectTorsionTorque(H, tEff), tqMin = rectTorsionTorque(hMin, tEff);
+  // Головка. Толщину ниже толщины клинка не берём: тогда клинок вылезет из неё боками.
+  const kW = Math.max(10, Math.min(50, p.mntCyBowW>0 ? p.mntCyBowW : 22));
+  const kHa= Math.max(6,  Math.min(50, p.mntCyBowH>0 ? p.mntCyBowH : 24));
+  const kH = Math.max(kHa, H + 3);
+  const kTa= Math.max(1.2,Math.min(8,  p.mntCyBowT>0 ? p.mntCyBowT : 3));
+  const kT = Math.max(kTa, T);
+  /* Отверстие под кольцо обязано ПОМЕСТИТЬСЯ в головку целиком. Дырка, вылезшая за контур, — это не
+     дырка, а разрез: контур перестаёт быть простым, протяжка выдаёт вывернутую сетку с парными рёбрами,
+     и заметно это только на редком сочетании «широкое кольцо, узкая головка». Поэтому Ø зажимается по
+     меньшей стороне головки, а центр отодвигается и от края, и от утопленного в головку клинка. */
+  const emb = Math.min(3, kW*0.4);
+  const ringA = Math.max(0, Math.min(14, p.mntCyRing != null ? p.mntCyRing : 5));
+  const rrMax = Math.min((Math.min(kW, kH) - 2.4)/2, (kW - emb - 1.7)/2);
+  const ring = (rrMax < 0.4) ? 0 : Math.min(ringA, 2*rrMax);
+  const rr = ring/2;
+  const ringX = ring > 0 ? Math.max(-kW + rr + 1.2, Math.min(-emb - 0.5 - rr, -kW + Math.max(rr + 2.5, 6))) : 0;
+  return {L, H, T, n, x1, st, ang, flat, tip, cuts, dMax, dCap, clipped, past,
+          wardOn, gd, gw, gz, gLo, gHi, tEff, hMin, torque:tqFull, torqueMin:tqMin,
+          kW, kH, kT, ring, ringX, emb,
+          ringCut: ringA > ring + 0.05, ringGone: ringA > 0.8 && ring < 0.8,
+          weak: tqMin < 0.8, thin: tEff < 1.4, noStop: kHa < H + 3, bowThin: kTa < T,
+          noCuts: cuts.length === 0, tight: st < flat + 0.6};
+}
+/* Момент до слома при кручении прямоугольного сечения w×h. Формула Роарка ДЛЯ НАПРЯЖЕНИЯ (табл. 10.1,
+   сплошной прямоугольник со сторонами 2a и 2b): τ_max = T·(3a + 1.8b)/(8a²b²), максимум — на середине
+   ДЛИННОЙ стороны. Её легко перепутать с формулой жёсткости K = a·b³·[1/3 − 0.21·(b/a)(1 − b⁴/12a⁴)],
+   стоящей в той же таблице строкой выше; у квадрата подмена даёт 0.141 вместо 0.208, то есть занижает
+   момент в полтора раза. Проверяется двумя точками, где ответ известен независимо: квадрат — 0.208·s³,
+   тонкая полоса — 1/3·b·t².
+
+   Допускаемые 25 МПа — это МЕЖСЛОЙНЫЙ сдвиг PLA, а не прочность вдоль слоя: при печати плашмя
+   наибольший касательный поток от кручения идёт как раз по границе слоёв. */
+function rectTorsionTorque(w, h){
+  const a = Math.max(w, h)/2, b = Math.min(w, h)/2;
+  return 25*8*a*a*b*b/(3*a + 1.8*b)/1000;                   // Н·м
+}
+/* Кромки клинка, посчитанные точно. Огибающая кусочно-линейна, поэтому частая выборка ложится ТОЧНО на
+   неё, а последующее выбрасывание коллинеарных точек сворачивает выборку обратно к изломам: сетка
+   выходит и точной, и мелкой. Подбирать шаг под каждый угол скоса при этом не приходится. */
+function cylKeyEdges(s){
+  const tanH = Math.tan(s.ang/2*Math.PI/180);
+  const tipDrop = Math.min(Math.max(s.dMax, 1), s.H - 1.5);         // кончик срезан не мельче самой глубокой нарезки
+  const tipB = Math.min(s.tip, 1.5), botDrop = Math.min(0.8, s.H*0.15);
+  const zTop = x => {
+    let z = s.H;
+    for(const c of s.cuts){
+      const over = Math.abs(x - c.x) - s.flat/2;
+      const zc = s.H - c.d + (over > 0 ? over/tanH : 0);
+      if(zc < z) z = zc;
+    }
+    if(s.tip > 0 && x > s.L - s.tip) z = Math.min(z, s.H - tipDrop*(x - (s.L - s.tip))/s.tip);
+    return z;
+  };
+  const zBot = x => (tipB > 0 && x > s.L - tipB) ? botDrop*(x - (s.L - tipB))/tipB : 0;
+  const xs = [-s.emb, 0];
+  for(let x = 0; x <= s.L; x += 0.1) xs.push(x);
+  for(const c of s.cuts) for(const dx of [-1, 1])
+    xs.push(c.x + dx*s.flat/2, c.x + dx*(s.flat/2 + c.d*tanH));
+  xs.push(s.L - s.tip, s.L - tipB, s.L);
+  const uniq = xs.filter(x => x >= -s.emb - 1e-9 && x <= s.L + 1e-9).sort((a, b) => a - b)
+                 .filter((x, i, a) => i === 0 || x - a[i-1] > 1e-6);
+  return {xs: uniq, zt: uniq.map(zTop), zb: uniq.map(zBot)};
+}
+/* Полосы материала между уровнями za и zc. Глубокая нарезка может рассечь полосу на острова — возвращаем
+   столько контуров, сколько их вышло. Точки перехода находятся линейной интерполяцией: обе кромки между
+   соседними выборками линейны, так что пересечение считается, а не угадывается. */
+function cylKeyBand(e, za, zc){
+  const out = [], N = e.xs.length;
+  const lo = i => Math.max(e.zb[i], za), hi = i => Math.min(e.zt[i], zc);
+  let bot = null, top = null;
+  /* Точка, где полоса открывается или закрывается. Порог «жива» и порог интерполяции — ОДНО И ТО ЖЕ
+     число: если ловить открытие по f > 0.15, а точку пересечения считать по f = 0, доля выходит
+     отрицательной и вершина улетает за пределы звена, контур сам себя пересекает, и в сетке появляются
+     парные рёбра. Долю всё равно зажимаем в [0,1] — на случай, если выборки лягут вплотную. */
+  const crossAt = (i, fp, f) => {
+    const t = Math.max(0, Math.min(1, (fp - f) !== 0 ? fp/(fp - f) : 0));
+    return [e.xs[i-1] + t*(e.xs[i] - e.xs[i-1]), lo(i-1) + t*(lo(i) - lo(i-1))];
+  };
+  const close = () => {
+    if(!bot || bot.length < 2) { bot = top = null; return; }
+    const loop = bot.concat(top.slice().reverse()).filter((v, i, a) =>
+      i === 0 || Math.abs(v[0] - a[i-1][0]) > 1e-6 || Math.abs(v[1] - a[i-1][1]) > 1e-6);
+    bot = top = null;
+    if(loop.length < 3) return;
+    const cut = polySimplifyXZ(loop, 1e-5);
+    let ar = 0; for(let i = 0; i < cut.length; i++){ const a = cut[i], b = cut[(i+1)%cut.length];
+      ar += a[0]*b[1] - b[0]*a[1]; }
+    if(cut.length >= 3 && Math.abs(ar)/2 > 0.02) out.push(cut);   // осколки тоньше слоя не строим
+  };
+  for(let i = 0; i < N; i++){
+    const f = hi(i) - lo(i), live = f > 1e-6;
+    if(live && !bot){
+      bot = []; top = [];
+      if(i > 0){ const v = crossAt(i, hi(i-1) - lo(i-1), f); bot.push(v); top.push(v.slice()); }
+    }
+    if(live){ bot.push([e.xs[i], lo(i)]); top.push([e.xs[i], hi(i)]); }
+    else if(bot){
+      const v = crossAt(i, hi(i-1) - lo(i-1), f); bot.push(v); top.push(v.slice());
+      close();
+    }
+  }
+  close();
+  return out;
+}
+/* Выброс точек, лежащих на прямой. Порог — по ПЛОЩАДИ треугольника: она не зависит от того, длинные
+   звенья или короткие.
+
+   ОТСЧЁТ ВЕДЁТСЯ ОТ ПОСЛЕДНЕЙ СОХРАНЁННОЙ ТОЧКИ, а не от соседа слева, и это не мелочь. Если мерить от
+   соседа, длинная прямая цепочка выбрасывается целиком, и вместе с ней уходит СЛЕДУЮЩИЙ за ней угол:
+   на подходе к нему площадь считается по обрубку в сотую миллиметра и не дотягивает до порога. Угол
+   пропадает, прямая проводится наискось через весь контур, контур сам себя пересекает. Ровно это и
+   случалось на полосе, у которой точка выхода легла вплотную к последней выборке.
+
+   Отсчёт от сохранённой точки требует начать с НАСТОЯЩЕГО угла — иначе первый же шаг меряет от
+   случайного места. Поэтому сначала ищется самый острый излом, и обход начинается с него. */
+function polySimplifyXZ(pts, tol){
+  let cur = pts.slice();
+  /* Сначала снять хвост, совпавший с головой. Иначе беда: такая пара коллинеарна сама с собой, и проход
+     выбрасывает ОБЕ точки разом — контур теряет целый угол и начинает сам себя пересекать. Ровно это и
+     случалось на полосе между двумя глубокими нарезками, где вход и выход приходятся на один уровень. */
+  while(cur.length > 1 && Math.abs(cur[0][0] - cur[cur.length-1][0]) < 1e-9
+                       && Math.abs(cur[0][1] - cur[cur.length-1][1]) < 1e-9) cur.pop();
+  const n = cur.length;
+  if(n < 4) return cur;
+  const bend = (a, b, c) => Math.abs((b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]));
+  let start = 0, best = -1;
+  for(let i = 0; i < n; i++){
+    const v = bend(cur[(i-1+n)%n], cur[i], cur[(i+1)%n]);
+    if(v > best){ best = v; start = i; }
+  }
+  cur = cur.slice(start).concat(cur.slice(0, start));
+  const out = [cur[0]];
+  for(let i = 1; i < n; i++)
+    if(bend(out[out.length-1], cur[i], cur[(i+1)%n]) > tol) out.push(cur[i]);
+  return out.length >= 3 ? out : cur;
+}
+function buildCylKey(p){
+  const s = cylKeySpec(p), e = cylKeyEdges(s), tris = [];
+  const push = a => { for(const T of a) tris.push(T); };
+  const plate = (loops, y0, y1) => { for(const lp of loops) push(extrudePolyYTris([lp], y0, y1)); };
+  if(s.wardOn){
+    const tc = s.tEff/2, ov = 0.3;
+    plate(cylKeyBand(e, 0, s.gLo), -s.T/2, s.T/2);                  // ниже канавки — во всю толщину
+    plate(cylKeyBand(e, s.gHi, s.H), -s.T/2, s.T/2);                // выше неё — тоже
+    plate(cylKeyBand(e, s.gLo - ov, s.gHi + ov), -tc, tc);          // сама канавка: тонкая полоса внахлёст
+  } else {
+    plate(cylKeyBand(e, 0, s.H), -s.T/2, s.T/2);
+  }
+  // Головка: плита с отверстием под кольцо. Клинок утоплен в неё на emb — пересечение, а не стык.
+  const r = Math.max(0, Math.min(Math.min(s.kW, s.kH)*0.28, s.kH/2 - s.H/2 - 0.5));
+  const bow = [rrectXZ(s.kW, s.kH, r, 12).map(v => [v[0] - s.kW/2, v[1] + s.H/2])];
+  if(s.ring > 0.8){
+    const rr = s.ring/2, hole = [];
+    for(let i = 0; i < 32; i++){ const a = 2*Math.PI*i/32;
+      hole.push([s.ringX + rr*Math.cos(a), s.H/2 + rr*Math.sin(a)]); }
+    bow.push(hole.reverse());
+  }
+  push(extrudePolyYTris(bow, -s.kT/2, s.kT/2));
   let lo = [1e9,1e9,1e9], hi = [-1e9,-1e9,-1e9];
   for(const T of tris) for(const v of T) for(let k = 0; k < 3; k++){
     if(v[k] < lo[k]) lo[k] = v[k]; if(v[k] > hi[k]) hi[k] = v[k]; }
@@ -15487,6 +15714,7 @@ function buildMount(p){
   if(p.mntMode==='polygauge') return buildPolyGauge(p);
   if(p.mntMode==='pingauge') return buildPinGauge(p);
   if(p.mntMode==='furnkey') return buildFurnKey(p);
+  if(p.mntMode==='cylkey') return buildCylKey(p);
   if(p.mntMode==='keycover') return (String(p.mntKcMode) === 'sleeve') ? buildKeyCover(p) : buildKeyHalves(p);
   if(p.mntMode==='cablecomb') return buildCableComb(p);
   if(p.mntMode==='edgeclip') return buildEdgeClip(p);
@@ -17266,9 +17494,6 @@ function parseMeshFileParts(buf, name){
   if (/\.3mf$/i.test(name||'')) return parse3MF(buf);
   const tris = /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
   return Promise.resolve(tris.length ? [{name:'', tris}] : []);
-}
-function parseMeshFile(buf, name){
-  return /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
 }
 
 /* ---- Edge chamfer / rounding as a general modifier ----------------------------------------------
@@ -19312,6 +19537,8 @@ function activeShapeLabel() {
                     : 'метрический, ' + g.list[0].tag + '…' + g.list[g.n-1].tag + ' мм') + ')' +
       (g.lean !== 0 ? ', ' + (g.lean < 0 ? 'левой' : 'правой') + ' ' + Math.abs(g.lean).toFixed(1) + '°' : ''); })(),
     furnkey:(function(){ const g=furnKeySpec(p); return 'мебельный ключ (Ø' + fmtNum(g.dS) + '×' + fmtNum(g.L) + ', бородка ' + fmtNum(g.bW) + ')'; })(),
+    cylkey:(function(){ const g=cylKeySpec(p); return 'цилиндровый ключ (клинок ' + fmtNum(g.L) + '×' + fmtNum(g.H) + '×' + fmtNum(g.T) +
+      ', нарезок ' + g.cuts.length + (g.wardOn ? ', с канавкой' : '') + ')'; })(),
     keycover:(function(){ const g=keyCoverSpec(p); return 'накладка на ключ ' + (String(p.mntKcMode)==='sleeve' ? 'чехлом' : 'половинками') + ' (' + fmtNum(g.W) + '×' + fmtNum(g.H) + '×' + fmtNum(g.T) + ' мм)'; })(),
     pingauge:(function(){ const g=pinGaugeSpec(p); return 'шаблон диаметров (' + fmtNum(g.d0) + '…' + fmtNum(g.dMax) + ' мм, ' + g.n + ' стоек)'; })(),
     cablecomb:(function(){ const g=cableCombSpec(p); return 'гребёнка кабелей (' + g.n + '×Ø' + g.D + ')'; })(),
@@ -19756,6 +19983,7 @@ function collectPrintWarnings(p){
     if (g.longBridge) w.push('зазор ' + g.gap.toFixed(1) + ' мм — обод придётся мостить над пустотой');
     if (g.thinWall) w.push('стенка ' + g.w.toFixed(1) + ' мм — тоньше одного прохода сопла');
     if (g.squat) w.push('высота ' + g.H.toFixed(0) + ' мм — дно и обод сойдутся, воздушной прослойки не выйдет');
+    if (g.noFloor) w.push('дна нет — выйдет кольцо на стакан, а не подстаканник');
   }
   if (p.mntMode === 'edgeclip'){
     const g = edgeClipSpec(p);
@@ -19779,6 +20007,43 @@ function collectPrintWarnings(p){
     const g = toolRackSpec(p);
     if (g.widened) w.push(g.n + ' гнёзд Ø' + (2*g.r).toFixed(0) + ' мм не влезают в ' + g.wAsked.toFixed(0) + ' мм — полка расширена до ' + g.W.toFixed(0) + ' мм');
     if (g.thin) w.push('гнездо Ø' + (2*g.r).toFixed(1) + ' мм вместо Ø' + (2*g.tr).toFixed(1) + ' — мешает глубина полки');
+  }
+  if (p.mntMode === 'keycover'){
+    const g = keyCoverSpec(p), sleeve = String(p.mntKcMode) === 'sleeve';
+    if (g.thin) w.push('стенка ' + g.wall.toFixed(1) + ' мм — тоньше одного прохода сопла');
+    if (sleeve && g.tight) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол держит трением, при нулевом зазоре он просто не наденется');
+    if (sleeve && g.loose) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол слетит: цепляться на головке ключа не за что');
+    /* Ради открытого верха вся модель и сделана: родное отверстие ключа обязано остаться доступным,
+       иначе накладку не надеть, не сняв ключ с кольца. Полная посадка это ломает молча. */
+    if (sleeve && g.deepAll && !g.cap)
+      w.push('чехол надевается на всю высоту головки и перекроет родное отверстие под кольцо');
+  }
+  // Ключи. Момент до слома печатается ВСЕГДА, а не только когда он мал: это главное число обеих моделей,
+  // и узнавать его полагается до того, как обломок останется в замке.
+  if (p.mntMode === 'furnkey'){
+    const g = furnKeySpec(p);
+    w.push('стержень Ø' + fmtNum(g.dS) + ' мм: до слома по межслойному сдвигу ≈ ' + g.torque.toFixed(2) +
+           ' Н·м' + (g.weak ? ' — мебельному замку впритык, дверному мало; прочность растёт как Ø⁴, +1 мм почти удваивает' : ''));
+    if (g.thinBit) w.push('бородка ' + g.bT.toFixed(1) + ' мм — тоньше двух проходов сопла, сломается раньше стержня');
+    if (g.noBit) w.push('прорези съели бородку целиком — уменьшите их число или ширину');
+    if (g.ringGone) w.push('отверстие под кольцо не помещается в головку — не построено');
+    else if (g.ringCut) w.push('отверстие под кольцо урезано до Ø' + fmtNum(g.ring) + ' мм — иначе не помещается в головку');
+  }
+  if (p.mntMode === 'cylkey'){
+    const g = cylKeySpec(p);
+    w.push('клинок ' + fmtNum(g.H) + '×' + fmtNum(g.tEff) + ' мм: до слома ≈ ' + g.torque.toFixed(2) +
+           ' Н·м, на дне глубокой нарезки ≈ ' + g.torqueMin.toFixed(2) + ' Н·м');
+    if (g.weak) w.push('цилиндровый замок просит 0.3–0.6 Н·м даже смазанный — печатный клинок сломается ' +
+                       'в личинке; это заготовка и шаблон, а не рабочий ключ');
+    if (g.thin) w.push('толщина ' + g.tEff.toFixed(1) + ' мм в тонком месте — тоньше двух проходов сопла');
+    if (g.clipped) w.push('нарезка глубже ' + g.dCap.toFixed(1) + ' мм перекусила бы клинок пополам — ограничена');
+    if (g.past) w.push('нарезки не помещаются на клинок длиной ' + fmtNum(g.L) + ' мм — лишние отброшены');
+    if (g.noCuts) w.push('нарезок нет — это гладкая заготовка, ни один штифт она не поднимет');
+    if (g.tight) w.push('шаг ' + fmtNum(g.st) + ' мм при площадке ' + fmtNum(g.flat) + ' мм — соседние нарезки сливаются');
+    if (g.noStop) w.push('головка ниже клинка + 3 мм — упора не будет, ключ провалится в скважину');
+    if (g.bowThin) w.push('головка тоньше клинка — толщина поднята до ' + fmtNum(g.kT) + ' мм');
+    if (g.ringGone) w.push('отверстие под кольцо не помещается в головку — не построено');
+    else if (g.ringCut) w.push('отверстие под кольцо урезано до Ø' + fmtNum(g.ring) + ' мм — иначе не помещается в головку');
   }
   if (p.mntMode === 'cablecomb'){
     const g = cableCombSpec(p);

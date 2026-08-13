@@ -156,8 +156,10 @@ console.log('=== поиск предлагает переключить разн
         const after = Object.assign({}, st, hint.extra || {}, {[hint.key]:hint.value});
         chk(g+'/'+md+'/'+r.key+': переключение делает параметр видимым (или честно помечено)',
             paramRowRelevant(r, after) === !hint.blocked, {hint, blocked:hint.blocked});
+        /* «Мало переключить» бывает ТОЛЬКО из-за числового порога — но не всякий порог мешает: он часто
+           уже перекрыт умолчанием, и тогда переключения хватает. Поэтому связь односторонняя. */
         chk(g+'/'+md+'/'+r.key+': «blocked» только там, где есть числовой порог',
-            !!hint.blocked === !!r.needs, hint.blocked);
+            !hint.blocked || !!r.needs, hint.blocked);
       }
     }
   }

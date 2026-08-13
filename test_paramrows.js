@@ -1,9 +1,9 @@
 // Какие строки настроек показывать для выбранной подмодели.
 //
-// Four parameter groups are not groups at all but FAMILIES: «Крепёж / монтаж» is twenty different parts
-// behind one `mntMode`, «Шестерня» is eighteen behind `gearMode`, and so on. Together they are 224 rows —
-// half the app — and until now every one of them was on screen at once, so choosing «гребёнка кабелей»
-// meant scrolling past seventy controls that do nothing to a cable comb.
+// Eleven parameter groups are not groups at all but FAMILIES: «Крепёж / монтаж» is twenty-one different
+// parts behind one `mntMode`, «Шестерня» is eighteen behind `gearMode`, and so on. Together they are 365
+// rows of the app's 603, and until this was written every one of them was on screen at once, so choosing
+// «гребёнка кабелей» meant scrolling past a hundred controls that do nothing to a cable comb.
 //
 // Each row now names the sub-models it belongs to (`w:`), plus, where a row is still dead until some other
 // control is set, the condition that wakes it (`only:` for a value, `needs:` for a number over a
@@ -125,8 +125,8 @@ for(const g of Object.keys(FAMILY_MODE)){
     const n = rows.filter(r => paramRowRelevant(r, p)).length;
     worst = Math.max(worst, n);
     /* Правило сворачивания: одна подмодель не должна тащить на экран всю семью. Оно про ТЕСНОТУ и
-       написано под «Крепёж» — двадцать подмоделей в семидесяти девяти строках, где выбор гребёнки
-       кабелей выводил семьдесят чужих контролов.
+       написано под «Крепёж» — двадцать одна подмодель в ста двадцати восьми строках, где выбор гребёнки
+       кабелей выводил больше сотни чужих контролов.
 
        Семье из трёх-четырёх подмоделей оно не подходит и меряет не то. У «Тестов печати» семь строк и три
        подмодели, которые честно делят ширину, толщину, число ступеней и их высоту: у моста на экране
@@ -138,7 +138,7 @@ for(const g of Object.keys(FAMILY_MODE)){
        диапазон каждого параметра и смотрит, двигается ли сетка. Порог здесь — грубая страховка от
        тесноты, и применяется он там, где теснота вообще возможна. */
     /* Порог применяется там, где ТЕСНОТА возможна: строк втрое больше, чем подмоделей. У «Крепежа»
-       79 строк на 20 подмоделей — вчетверо, и выбор гребёнки кабелей выводил семьдесят чужих контролов,
+       128 строк на 21 подмодель — вшестеро, и выбор гребёнки кабелей выводил больше сотни чужих контролов,
        ради чего правило и написано. У «Тестов печати» девять строк на шесть подмоделей: они честно делят
        ширину, толщину, число ступеней и высоту, и у моста на экране шесть строк, каждая из которых им
        используется. Скрыть работающий контрол — ровно та беда, против которой весь этот файл. Что строки

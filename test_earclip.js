@@ -162,8 +162,11 @@ console.log('=== настоящие детали приложения ===');
     for(let i=1;i<=K;i++){ const a=a1-(Math.PI+2*a1)*i/K; CP.push([xc+c.rp*Math.cos(a), zc+c.rp*Math.sin(a)]); }
     CP.push([xc-c.neck/2,c.Hb/2]); }
   CP.push([-c.W/2,c.Hb/2]);
-  audit('гребёнка кабелей', [CP, rev(circleXZ(c.sc/2, 32, -c.xScrew, 0)),
-                                rev(circleXZ(c.sc/2, 32,  c.xScrew, 0))], c.H);
+  /* Отверстий под саморез в этом контуре БОЛЬШЕ НЕТ: с v18.23.0 саморезы вынесены в проушины по торцам,
+     отдельными телами, и `xScrew` лежит уже за краем планки. Контур с дырками здесь не пропал — его
+     держит плита калибра выше; а контур гребёнки ценен другим: полторы сотни вершин, из них половина на
+     пяти вогнутых карманах подряд, — на таком ушное отсечение и спотыкается. */
+  audit('гребёнка кабелей', [CP], c.H);
 
   const e = edgeClipSpec(setp({mntMode:'edgeclip', mntClipT:20, mntClipW:3, mntClipBack:25,
                                mntClipFront:20, mntClipTray:16, mntClipLip:8, mntClipWide:40}));

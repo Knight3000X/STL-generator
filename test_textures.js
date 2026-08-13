@@ -23,11 +23,28 @@ function setBox(over){
 const share = hm => { let d=0; for (const v of hm) d+=v; return d/hm.length; };
 
 console.log('=== Heightmap sanity per kind ===');
+/* ДВА РОДА УЗОРОВ, и мерить их одной меркой нельзя. Резкие несут 0 или 1 — одна полка одной высоты.
+   Плавные несут высоту в каждой точке и РАЗЛОЖЕНЫ ПО СТУПЕНЯМ: обычный логотип режется порогом, и
+   пирамидка в таком конвейере выходила бы квадратной нашлёпкой (замерено: три разных Y на всю плиту).
+   Поэтому у плавных проверяется ровно TEXTURE_LEVELS разных значений, нижнее из которых 0 — низ узора
+   обязан лежать заподлицо с гранью, а не висеть над ней. Требовать «строго 0 или 1» от всех подряд
+   значило бы либо запретить плавные, либо перестать проверять резкие. */
 for (const kind of Object.keys(TEXTURE_KINDS)) {
-  const res = makeTextureLogoResult(kind);
+  const res = makeTextureLogoResult(kind), smooth = !!TEXTURE_KINDS[kind].smooth;
   check(`${kind}: created, aspect 1`, !!res && res.aspect === 1);
-  let sharp = true; for (const v of res.heightmap) if (v!==0 && v!==1) sharp=false;
-  check(`${kind}: sharp 0/1`, sharp);
+  check(`${kind}: у каждого узора есть подпись`, typeof TEXTURE_KINDS[kind].label === 'string'
+        && TEXTURE_KINDS[kind].label.length > 2);
+  const vals = new Set(); let mn = 1e9, mx = -1e9;
+  for (const v of res.heightmap) { vals.add(+v.toFixed(6)); if (v < mn) mn = v; if (v > mx) mx = v; }
+  if (smooth) {
+    check(`${kind}: ступенчатый, ${TEXTURE_LEVELS} ступеней`, res.levels === TEXTURE_LEVELS, res.levels);
+    check(`${kind}: ровно столько разных высот`, vals.size === TEXTURE_LEVELS, vals.size);
+    check(`${kind}: нижняя ступень ровно 0 — низ заподлицо с гранью`, mn === 0, mn);
+    check(`${kind}: верхняя ровно 1 — глубина берётся целиком`, mx === 1, mx);
+  } else {
+    check(`${kind}: резкий 0/1`, vals.size === 2 && mn === 0 && mx === 1, [...vals]);
+    check(`${kind}: один порог, одна ступень`, res.levels === 2, res.levels);
+  }
   const sh = share(res.heightmap);
   check(`${kind}: raised share sane`, sh > 0.15 && sh < 0.85, +sh.toFixed(2));
 }
@@ -49,17 +66,44 @@ for (const kind of Object.keys(TEXTURE_KINDS)) {
   const res = makeTextureLogoResult(kind);
   setBox({});
   logos.push({ id:1, face:'+Z', u0:0, v0:0, w:36, h:36, depth:0.8, threshold:0.5, invert:false,
-    rotation:0, heightmap: res.heightmap, aspect:1 });
+    rotation:0, heightmap: res.heightmap, aspect:1, levels: res.levels });
   const solid = buildTrisForShape('box', paramState.box);
   const mcS = manifoldCheck(solid, 4);
   check(`${kind} on solid face: watertight`, mcS.watertight, mcS);
   setBox({ hollow:true });
   logos.push({ id:1, face:'+X', u0:0, v0:0, w:30, h:30, depth:0.8, threshold:0.5, invert:false,
-    rotation:0, heightmap: res.heightmap, aspect:1 });
+    rotation:0, heightmap: res.heightmap, aspect:1, levels: res.levels });
   const hol = buildTrisForShape('box', paramState.box);
   const mcH = manifoldCheck(hol, 4);
   check(`${kind} on hollow wall: watertight & +vol`, mcH.watertight && sv(hol) > 0, mcH);
 }
+
+/* А ЕСТЬ ЛИ РЕЛЬЕФ ВООБЩЕ. Прежние проверки этого не спрашивали: они мерили герметичность, и узор,
+   который не дошёл до сетки, прошёл бы их все до одной. Именно так плавные узоры и оказались бы
+   плоскими — порог срезал бы пирамидку в полку, а сетка осталась бы законной.
+
+   Меряется по ВЫСОТАМ верхней грани: у резкого узора их три (низ плиты, дно рельефа, полка), у
+   ступенчатого — на TEXTURE_LEVELS больше, по одной на ступень. И грань без узора даёт ровно одну. */
+console.log('\n=== рельеф действительно доходит до сетки ===');
+function topHeights(kind){
+  logos.length = 0; boxHoles.length = 0;
+  setBox({ width:44, depth:44, height:6 });
+  if (kind){ const r = makeTextureLogoResult(kind);
+    logos.push({ id:1, face:'+Y', u0:0, v0:0, w:40, h:40, depth:1.2, threshold:0.5, invert:false,
+      rotation:0, heightmap:r.heightmap, aspect:1, levels:r.levels }); }
+  const t = buildTrisForShape('box', paramState.box), ys = new Set();
+  for (const T of t) for (const v of T) ys.add(v[1].toFixed(3));
+  return { n:t.length, ys:ys.size };
+}
+const bare = topHeights(null);
+check('гладкая плита — две высоты и дюжина треугольников', bare.ys === 2 && bare.n === 12, bare);
+for (const kind of Object.keys(TEXTURE_KINDS)) {
+  const g = topHeights(kind), smooth = !!TEXTURE_KINDS[kind].smooth;
+  check(`${kind}: узор поднял грань`, g.n > bare.n * 100, g.n);
+  check(`${kind}: высот столько, сколько ступеней`, g.ys === (smooth ? TEXTURE_LEVELS + 1 : 3),
+        { высот:g.ys, надо:(smooth ? TEXTURE_LEVELS + 1 : 3) });
+}
+logos.length = 0;
 
 logos.length = 0;
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);

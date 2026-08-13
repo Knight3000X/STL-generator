@@ -8,6 +8,8 @@ function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.lo
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];
   v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return Math.abs(v);}
 function build(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
+  // Режим называется ЯВНО в каждой проверке: с v18.20.0 умолчание — половинки, и молчаливая опора на
+  // умолчание превратила бы замеры чехла в замеры не той детали (они и превратились: «полость 16» → 4).
   Object.assign(paramState.box, defaultBoxParams(), {mntMode:'keycover'}, ov);
   return buildTrisForShape('box', paramState.box); }
 const bb = t => { const b={x0:1e9,x1:-1e9,y0:1e9,y1:-1e9,z0:1e9,z1:-1e9};
@@ -34,14 +36,14 @@ function runsX(tris, y, z){
 
 console.log('=== строится и герметична на всех разумных числах ===');
 for(const W of [12, 23, 45]) for(const T of [1.5, 2.4, 5]) for(const cap of [false, true]){
-  const t = build({mntKcW:W, mntKcT:T, mntKcH:28, mntKcCap:cap}), mc = manifoldCheck(t, 4);
+  const t = build({mntKcMode:'sleeve', mntKcW:W, mntKcT:T, mntKcH:28, mntKcCap:cap}), mc = manifoldCheck(t, 4);
   chk('W'+W+' T'+T+(cap?' с крышкой':' без крышки')+': герметична', mc.watertight && vol(t) > 0,
       {open:mc.openEdges, bad:mc.badEdges});
 }
 
 console.log('=== посадка: полость шире головки ровно на зазор ===');
 for(const W of [16, 30]) for(const T of [2, 4]) for(const clr of [0, 0.25, 0.6]){
-  const t = build({mntKcW:W, mntKcT:T, mntKcH:30, mntKcClr:clr, mntKcWall:1.6});
+  const t = build({mntKcMode:'sleeve', mntKcW:W, mntKcT:T, mntKcH:30, mntKcClr:clr, mntKcWall:1.6});
   const b = bb(t);
   // луч поперёк устья, у самого низа: встретит левую стенку, полость, правую стенку
   const r = runsX(t, b.y0 + 1.5, 0);
@@ -58,7 +60,8 @@ for(const W of [16, 30]) for(const T of [2, 4]) for(const clr of [0, 0.25, 0.6])
 
 console.log('=== верх открыт, если не просили крышку ===');
 for(const H of [20, 40]){
-  const open = build({mntKcH:H, mntKcCap:false}), capd = build({mntKcH:H, mntKcCap:true});
+  const open = build({mntKcMode:'sleeve', mntKcH:H, mntKcCap:false}),
+        capd = build({mntKcMode:'sleeve', mntKcH:H, mntKcCap:true});
   const covered = t => { const b = bb(t);
     for(const T of t) if(T.every(v => Math.abs(v[1] - b.y1) < 1e-6)){
       const xs = T.map(v=>v[0]), zs = T.map(v=>v[2]);
@@ -78,11 +81,45 @@ console.log('=== имя и предупреждения ===');
 {
   chk('размеры головки в имени', /23×25×2.4/.test(activeShapeLabel(Object.assign(paramState.box,
       defaultBoxParams(), {mntMode:'keycover'}))), activeShapeLabel());
+  chk('и режим тоже', /половинками/.test(activeShapeLabel()), activeShapeLabel());
   chk('справка на месте', !!MODEL_HELP['mount:keycover']);
   const S = keyCoverSpec(Object.assign(defaultBoxParams(), {mntMode:'keycover', mntKcClr:0.9}));
   chk('слишком большой зазор виден спецификации', S.loose);
   const S2 = keyCoverSpec(Object.assign(defaultBoxParams(), {mntMode:'keycover', mntKcClr:0}));
   chk('нулевой зазор виден тоже', S2.tight);
 }
+/* ПОЛОВИНКИ ПОД СКЛЕЙКУ. Их две, они одинаковы, лежат плашмя и у каждой карман на ПОЛОВИНУ толщины
+   головки: сойдясь на ключе, они смыкаются по его кромке. Карман нужен для совмещения при склейке, а не
+   для держания — держит клей, и поэтому в посадку попадать не нужно. */
+console.log('=== две половины под склейку ===');
+for(const W of [16, 30]) for(const H of [20, 34]) for(const T of [1.6, 3]){
+  const t = build({mntKcMode:'halves', mntKcW:W, mntKcH:H, mntKcT:T, mntKcWall:1.6});
+  const mc = manifoldCheck(t, 4);
+  chk('W'+W+' H'+H+' T'+T+': герметичны', mc.watertight && mc.badEdges === 0,
+      {open:mc.openEdges, bad:mc.badEdges});
+  /* «Две» считаются ПРОСВЕТОМ, а не оболочками: каждая половинка сложена из подложки и бортика, которые
+     пересекаются, и `meshComponents` насчитает четыре куска на две детали. Луч поперёк подложек встречает
+     две полосы материала с пустотой между ними — вот это и есть две половинки. */
+  chk('W'+W+' H'+H+' T'+T+': их ровно две', runsX(t, bb(t).y0 + 0.5, 0).length === 2,
+      runsX(t, bb(t).y0 + 0.5, 0).length);
+  const b = bb(t);
+  chk('W'+W+' H'+H+' T'+T+': толщина = подложка + полтолщины головки',
+      Math.abs((b.y1-b.y0) - (1.6 + T/2)) < 0.02, +(b.y1-b.y0).toFixed(2));
+  // карман: луч поперёк одной половинки на уровне бортика встретит бортик, карман, бортик
+  const oneX = -(W + 3.2 + 4)/2;
+  const r = runsX(t, b.y1 - 0.2, 0).filter(q => q[1] < 0);
+  chk('W'+W+' H'+H+' T'+T+': у половинки бортик и карман', r.length === 2, r.length);
+  if(r.length === 2) chk('W'+W+' H'+H+' T'+T+': карман по ширине головки',
+      Math.abs((r[1][0] - r[0][1]) - (W + 0.5)) < 0.06, +(r[1][0]-r[0][1]).toFixed(2));
+  void oneX;
+}
+{
+  // Половинки печатаются ПЛАШМЯ: они шире, чем высоки, — иначе слои легли бы поперёк отрыва.
+  const t = build({mntKcMode:'halves', mntKcW:23, mntKcH:25, mntKcT:2.4});
+  const b = bb(t);
+  chk('половинки лежат плашмя', (b.y1-b.y0) < (b.z1-b.z0)/3, {толщина:+(b.y1-b.y0).toFixed(2), высота:+(b.z1-b.z0).toFixed(2)});
+  chk('и стоят рядом, а не друг на друге', (b.x1-b.x0) > (b.z1-b.z0), {ширина:+(b.x1-b.x0).toFixed(1)});
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

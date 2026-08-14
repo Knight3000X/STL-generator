@@ -25,7 +25,7 @@ console.log('=== perforation removes material ===');
   chk('perforation removes material', net<solid, {solid,net}); }
 console.log('=== raised TEXTURE (grip pad) — solid, bumps on top ===');
 for(const sh of ['rect','round','ngon','circle']){
-  for(const pat of ['diamond','square','triangle','hex','brick','stripe','dots','checker','weave']){
+  for(const pat of ['diamond','square','triangle','hex','brick','stripe','dots','checker','weave','knurl','pyramid','scale','wave']){
     const t=base({sheetShape:sh,sheetCut:'texture',sheetPattern:pat,sheetTexH:0.7}); const mc=manifoldCheck(t,4);
     chk(sh+' '+pat+' texture wt (+vol)', mc.watertight&&vol(t)>0, mc);
   }
@@ -94,7 +94,7 @@ console.log('=== gating + regression ===');
 console.log('=== узоры «только текстура»: гладкая плита вместо чужого рисунка ===');
 {
   const solid = vol(base({sheetCut:'none',sheetPattern:'none'}));
-  for(const pat of ['stripe','dots','checker','weave']){
+  for(const pat of ['stripe','dots','checker','weave','knurl','pyramid','scale','wave']){
     const t = base({sheetCut:'through',sheetPattern:pat});
     chk(pat+': сквозная решётка не строится — плита гладкая', Math.abs(vol(t)-solid) < 1e-6,
         {объём:+vol(t).toFixed(1), гладкая:+solid.toFixed(1)});
@@ -107,6 +107,59 @@ console.log('=== узоры «только текстура»: гладкая п
   chk('кирпичная кладка насквозь режется', vol(brick) < solid - 100, {кладка:+vol(brick).toFixed(0), гладкая:+solid.toFixed(0)});
   chk('и это не ромб под чужим именем', Math.abs(vol(brick) - vol(base({sheetCut:'through',sheetPattern:'diamond'}))) > 100);
   chk('и не квадратная сетка', Math.abs(vol(brick) - vol(base({sheetCut:'through',sheetPattern:'square'}))) > 100);
+}
+/* ПЛАВНЫЕ УЗОРЫ. Резкий узор несёт «да/нет» — клетка стоит на полную высоту или не стоит вовсе; плавный
+   несёт высоту в каждой точке. Пропусти его через «да/нет», и пирамидка выйдет квадратной нашлёпкой одной
+   высоты — ровно это уже случилось с текстурами логотипов (v18.23.0), и ни одна из двадцати трёх проверок
+   этого не заметила, потому что все они мерили герметичность. Поэтому здесь меряется, ДОШЁЛ ЛИ РЕЛЬЕФ ДО
+   СЕТКИ: сколько на верхней поверхности разных высот. У гладкой плиты их две, у резкого узора четыре
+   (низ, дно рельефа, полка и верх плиты), у плавного — десятки. */
+console.log('=== плавные узоры: рельеф дошёл до сетки, а не срезан в полку ===');
+{
+  const heights = t => { const ys=new Set(); for(const T of t) for(const v of T) ys.add(+v[1].toFixed(3)); return ys.size; };
+  const sharp = heights(base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8}));
+  chk('у резкого узора высот единицы', sharp <= 6, sharp);
+  for(const pat of ['knurl','pyramid','scale','wave']){
+    const t = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8});
+    chk(pat+': герметичен', manifoldCheck(t,4).watertight);
+    chk(pat+': высот десятки, а не полка', heights(t) > 40, heights(t));
+    const b = computeBBox(t);
+    chk(pat+': рельеф поднялся на заказанную высоту', Math.abs((b.maxY - 1.5) - 0.8) < 0.02, +(b.maxY-1.5).toFixed(3));
+    chk(pat+': объявлен плавным', SHEET_SMOOTH.has(pat));
+    chk(pat+': и только текстурой', SHEET_TEXTURE_ONLY.has(pat));
+    // Карта высот обязана быть не константой и не «почти всё наверху»
+    let mn=1e9, mx=-1e9, sum=0, n=0;
+    for(let x=0;x<40;x+=0.37) for(let z=0;z<40;z+=0.41){
+      const h = sheetTexHeight(x, z, 8, 1.6, pat); mn=Math.min(mn,h); mx=Math.max(mx,h); sum+=h; n++; }
+    chk(pat+': карта идёт от нуля до единицы', mn < 0.05 && mx > 0.95, {mn:+mn.toFixed(3), mx:+mx.toFixed(3)});
+    chk(pat+': и не жмётся к краю', sum/n > 0.15 && sum/n < 0.85, +(sum/n).toFixed(2));
+  }
+  chk('у резких узоров высота — те же 0 и 1',
+      [0,1].includes(sheetTexHeight(0.1, 0.1, 8, 1.6, 'diamond')) &&
+      [0,1].includes(sheetTexHeight(3.3, 2.7, 8, 1.6, 'checker')));
+}
+/* ДЕТАЛИЗАЦИЯ УЗОРА. У плавного узора клетка сетки — это ступень купола, поэтому ручка детализации
+   решает, из скольких ступеней он сложен. Проверяется, что она вообще работает в обе стороны, что при
+   любом её значении сетка остаётся герметичной, и что РЕЗКИЕ узоры от неё по умолчанию не изменились —
+   иначе это была бы тихая правка всех уже напечатанных грип-площадок. */
+console.log('=== детализация узора ===');
+{
+  const heights = t => { const ys=new Set(); for(const T of t) for(const v of T) ys.add(+v[1].toFixed(3)); return ys.size; };
+  const coarse = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:40});
+  const fine   = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:200});
+  chk('выше детализация — больше ступеней', heights(fine) > heights(coarse) + 20,
+      {грубо:heights(coarse), густо:heights(fine)});
+  chk('и больше треугольников', fine.length > 3*coarse.length, {грубо:coarse.length, густо:fine.length});
+  chk('грубая герметична', manifoldCheck(coarse,4).watertight);
+  chk('густая герметична', manifoldCheck(fine,4).watertight);
+  const auto = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:0});
+  chk('авто для плавного узора — не грубее среднего', heights(auto) > heights(coarse), heights(auto));
+  // Резкий узор на авто обязан остаться ровно таким, каким был до появления ручки.
+  const a = base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,sheetPatRes:0});
+  const b = base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,latticeRes:80});
+  chk('резкий узор ручка по умолчанию не трогает', a.length === b.length, {авто:a.length, было:b.length});
+  chk('но слушается, когда её задали',
+      base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,sheetPatRes:200}).length > a.length);
 }
 console.log('=== новые узоры текстуры — каждый свой ===');
 {

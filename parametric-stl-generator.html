@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.25.0';
+const APP_VERSION = 'v18.26.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4568,8 +4568,10 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetCut', label:'Лист: рисунок', type:'select', default:'texture',
       options:[{v:'texture',t:'выпуклая текстура (грип-пад)'},{v:'through',t:'сквозные отверстия (решётка)'},{v:'none',t:'без рисунка (гладкий)'}]},
     {group:'Лист / панель', key:'sheetPattern', label:'Лист: узор', type:'select', default:'diamond',
-      options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'brick',t:'кирпичная кладка'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'},{v:'checker',t:'шахматка (только текстура)'},{v:'weave',t:'плетёнка (только текстура)'}]},
+      options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'brick',t:'кирпичная кладка'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'},{v:'checker',t:'шахматка (только текстура)'},{v:'weave',t:'плетёнка (только текстура)'},{v:'knurl',t:'алмазная накатка (плавная, только текстура)'},{v:'pyramid',t:'пирамидки (плавная, только текстура)'},{v:'scale',t:'чешуя (плавная, только текстура)'},{v:'wave',t:'волна (плавная, только текстура)'}]},
     {group:'Лист / панель', key:'sheetTexH', label:'Лист: высота текстуры (для «выпуклой»)', min:0.1, max:3, step:0.1, default:0.6, unit:'мм'},
+    {group:'Лист / панель', key:'sheetPatRes', label:'Лист: детализация узора (0 = авто)', min:0, max:400, step:5, default:0, unit:'', int:true,
+      hint:'На сколько мелких клеток режется рисунок. У плавных узоров — чешуи, накатки, волны, пирамидок — клетка это СТУПЕНЬ купола, поэтому им авто ставит густо; резкому узору мельче резать нечего. Цена детализации — треугольники: вдвое мельче клетка это вчетверо больше сетки.'},
     {group:'Лист / панель', key:'sheetN', label:'Лист: число сторон (для многоугольника)', min:3, max:64, step:1, default:6, unit:'', int:true},
     {group:'Лист / панель', key:'sheetRound', label:'Лист: скругление углов (для скруглённого)', min:0.5, max:150, step:0.5, default:6, unit:'мм'},
     {group:'Лист / панель', key:'sheetRim', label:'Лист: высота бортика по краю (0 = без бортика)', min:0, max:30, step:0.5, default:0, unit:'мм'},
@@ -8314,8 +8316,40 @@ function buildSheetRim(ring, yt, rimH, rimW){
    ТЕКСТУРНЫЕ УЗОРЫ НАЗВАНЫ СПИСКОМ (`SHEET_TEXTURE_ONLY`), а не подписью «только текстура» в подсказке:
    подпись стояла и раньше, но выбор сквозной решётки с таким узором молча строил ромб — тихая подмена,
    которую никто не видел. */
-const SHEET_TEXTURE_ONLY = new Set(['stripe','dots','checker','weave']);
+const SHEET_TEXTURE_ONLY = new Set(['stripe','dots','checker','weave','knurl','pyramid','scale','wave']);
+/* ПЛАВНЫЕ УЗОРЫ — второй род, и мерить их той же меркой нельзя. Резкий узор несёт «да/нет»: клетка стоит
+   на полную высоту или не стоит вовсе. Плавный несёт ВЫСОТУ В КАЖДОЙ ТОЧКЕ, и если пропустить его через
+   «да/нет», пирамидка выйдет квадратной нашлёпкой одной высоты — ровно это уже случилось однажды с
+   текстурами логотипов (v18.23.0), где порог срезал рельеф, а двадцать три проверки этого не заметили.
+   Здесь порога нет вовсе: у каждой клетки сетки своя высота, то есть РАЗМЕР КЛЕТКИ и есть ступень
+   рельефа. Отсюда и «детализация узора»: она задаёт не гладкость контура, а то, сколькими ступенями
+   выложен купол. Плавные — только текстура: сквозной решёткой высота не выражается ничем. */
+const SHEET_SMOOTH = new Set(['knurl','pyramid','scale','wave']);
+function sheetTexHeight(cx, cz, pitch, rib, pattern){
+  const frac = t => ((t % 1) + 1) % 1;
+  const saw  = t => { const f = frac(t); return Math.min(f, 1 - f); };   // расстояние до ближайшей линии
+  if(pattern==='knurl'){
+    // Алмазная накатка: два семейства под 45°, их сумма и есть ромбовидная пирамидка.
+    return Math.max(0, Math.min(1, saw((cx + cz)/pitch) + saw((cx - cz)/pitch)));
+  }
+  if(pattern==='pyramid'){
+    const fu = frac(cx/pitch) - 0.5, fv = frac(cz/pitch) - 0.5;
+    return Math.max(0, 1 - 2*Math.max(Math.abs(fu), Math.abs(fv)));
+  }
+  if(pattern==='scale'){
+    // Чешуя: ряды со сдвигом на полшага, каждая чешуйка — купол от своего нижнего края.
+    const row = Math.floor(cz/pitch), off = (row & 1) ? 0.5 : 0;
+    const fu = frac(cx/pitch + off) - 0.5, fv = frac(cz/pitch);
+    return Math.max(0, 1 - 1.45*Math.hypot(fu, fv - 0.12));
+  }
+  if(pattern==='wave'){
+    // Волна: гребни, которые сами гуляют поперёк, — гильош, а не синус.
+    return 0.5 + 0.5*Math.sin(2*Math.PI*(cz/pitch + 0.22*Math.sin(2*Math.PI*cx/(3*pitch))));
+  }
+  return sheetTexRaised(cx, cz, pitch, rib, pattern) ? 1 : 0;
+}
 function sheetTexRaised(cx, cz, pitch, rib, pattern){
+  if(SHEET_SMOOTH.has(pattern)) return sheetTexHeight(cx, cz, pitch, rib, pattern) > 1/64;
   if(pattern==='stripe'){ const f=((cx/pitch)%1+1)%1; return f<0.5; }
   if(pattern==='dots'){ const gx=cx/pitch-Math.round(cx/pitch), gz=cz/pitch-Math.round(cz/pitch); return Math.hypot(gx,gz)<0.36; }
   if(pattern==='checker'){ return ((Math.floor(cx/pitch) + Math.floor(cz/pitch)) & 1) === 0; }
@@ -8351,6 +8385,28 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
   const at=(i,j)=>(i>=0&&j>=0&&i<nx&&j<nz)?sol[i][j]:false;
   const yLo=yTop-Math.min(0.5, texH*0.6+0.3), yHi=yTop+texH, tris=[];
   const quad=(A,B,C,D,ref)=>{tris.push(orient([A,B,C],ref));tris.push(orient([A,C,D],ref));};
+  /* ПЛАВНЫЙ УЗОР СТРОИТСЯ ПО ВЕРШИНАМ, А НЕ ПО КЛЕТКАМ, и это не оптимизация, а единственный способ.
+     Первая попытка ставила каждой клетке свою высоту столбиком: соседи по грани сходились верно, но там,
+     где сходятся ЧЕТЫРЕ клетки разной высоты, вертикальные рёбра стыкуются в разных точках — ребро одной
+     стенки против двух чужих, T-стык. Замерено: 9…54 тысячи открытых рёбер на одной плите. Высота,
+     снятая в УЗЛАХ сетки, читается соседними клетками одна и та же на общем ребре, поэтому шва нет вовсе
+     — тот же приём, которым сделан скруглённый профиль ребра у сетчатого дна. Юбка вниз ставится только
+     по краю области, где соседней клетки нет; там обе сходящиеся стенки идут от высоты одного узла. */
+  if(SHEET_SMOOTH.has(pattern)){
+    const H=Array.from({length:nx+1},(_,i)=>Array.from({length:nz+1},(_,j)=>
+      yTop + texH*Math.max(0, Math.min(1, sheetTexHeight(X(i)-c[0], Z(j)-c[1], pitch, rib, pattern)))));
+    for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(!sol[i][j]) continue;
+      const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
+      const A=[x0,H[i][j],z0], B=[x1,H[i+1][j],z0], C=[x1,H[i+1][j+1],z1], D=[x0,H[i][j+1],z1];
+      tris.push(orient([A,B,C],[0,1,0])); tris.push(orient([A,C,D],[0,1,0]));           // купол по узлам
+      quad([x0,yLo,z0],[x0,yLo,z1],[x1,yLo,z1],[x1,yLo,z0],[0,-1,0]);                   // дно, внутри плиты
+      if(!at(i+1,j)) quad([x1,yLo,z0],B,C,[x1,yLo,z1],[1,0,0]);                         // юбка по краю области
+      if(!at(i-1,j)) quad([x0,yLo,z0],[x0,yLo,z1],D,A,[-1,0,0]);
+      if(!at(i,j+1)) quad([x0,yLo,z1],D,C,[x1,yLo,z1],[0,0,1]);
+      if(!at(i,j-1)) quad([x0,yLo,z0],[x1,yLo,z0],B,A,[0,0,-1]);
+    }
+    return polyDropDegen(tris);
+  }
   for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(!sol[i][j]) continue;
     const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
     quad([x0,yHi,z0],[x1,yHi,z0],[x1,yHi,z1],[x0,yHi,z1],[0,1,0]);      // bump top
@@ -9105,7 +9161,13 @@ function buildSheet(p){
   // full-coverage raised texture (grip): appended bump slab over the whole solid plate
   if(!ok && cut==='texture' && pattern && pattern!=='none'){
     const rim=(p.sheetRim||0)>0 ? Math.max(1,p.sheetRimW||2)+0.6 : Math.max(0.8, cell*0.4);
-    out=out.concat(buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6), res, rim));
+    /* ДЕТАЛИЗАЦИЯ УЗОРА — своя ручка листа, а не общая с сетчатым дном. Дно её и раньше не отдавало: его
+       группа на листе не показывается вовсе, так что узор резался тем, что стояло в чужой форме.
+       Ноль — авто, и авто у двух родов узоров разное: резкому хватает прежнего числа (клетка либо стоит,
+       либо нет, мельче резать нечего), а плавному клетка — это СТУПЕНЬ купола, и на прежней сетке
+       пирамидка выходила из трёх ступеней. */
+    out=out.concat(buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6),
+      p.sheetPatRes>0 ? p.sheetPatRes : (SHEET_SMOOTH.has(pattern) ? 140 : res), rim));
   }
   if((p.sheetRim||0)>0) out=out.concat(buildSheetRim(ring, yt, p.sheetRim, Math.max(1,p.sheetRimW||2)));
   return out;

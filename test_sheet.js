@@ -11,7 +11,7 @@ function base(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
 console.log('=== outlines × solid / perforated ===');
 for(const sh of ['rect','round','ngon','circle']){
   chk(sh+' solid wt (+vol)', (()=>{const t=base({sheetShape:sh,sheetPattern:'none'});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), sh);
-  for(const pat of ['diamond','square','triangle','hex']){
+  for(const pat of ['diamond','square','triangle','hex','brick']){
     const t=base({sheetShape:sh,sheetPattern:pat}); const mc=manifoldCheck(t,4);
     chk(sh+' '+pat+' net wt (+vol)', mc.watertight&&vol(t)>0, mc);
   }
@@ -25,7 +25,7 @@ console.log('=== perforation removes material ===');
   chk('perforation removes material', net<solid, {solid,net}); }
 console.log('=== raised TEXTURE (grip pad) — solid, bumps on top ===');
 for(const sh of ['rect','round','ngon','circle']){
-  for(const pat of ['diamond','square','triangle','hex','stripe','dots']){
+  for(const pat of ['diamond','square','triangle','hex','brick','stripe','dots','checker','weave']){
     const t=base({sheetShape:sh,sheetCut:'texture',sheetPattern:pat,sheetTexH:0.7}); const mc=manifoldCheck(t,4);
     chk(sh+' '+pat+' texture wt (+vol)', mc.watertight&&vol(t)>0, mc);
   }
@@ -86,6 +86,55 @@ console.log('=== SVG-contour outline (arbitrary shape) ===');
 console.log('=== gating + regression ===');
 { const a=base({}).length, b=base({scoopDir:'front',gripWall:'front',mountHoles:'4',stackFeet:true,divX:2,divZ:2,hollow:true}).length;
   chk('organizer add-ons skipped on a sheet', a===b, {a,b}); }
+/* УЗОР, КОТОРЫЙ НЕ БЫВАЕТ РЕШЁТКОЙ. Полосы, точки, шахматка и плетёнка распадаются на отдельные острова,
+   если вырезать их насквозь, — держатся они только на сплошной плите под ними. До этой сборки выбор
+   сквозного рисунка с таким узором молча проваливался в ромб: лист выходил с ЧУЖИМ рисунком, и об этом не
+   было сказано нигде. Теперь плита остаётся гладкой, и об этом сказано словом. Проверяется и то и другое:
+   объём ровно как у гладкой плиты, и предупреждение с названием узора. */
+console.log('=== узоры «только текстура»: гладкая плита вместо чужого рисунка ===');
+{
+  const solid = vol(base({sheetCut:'none',sheetPattern:'none'}));
+  for(const pat of ['stripe','dots','checker','weave']){
+    const t = base({sheetCut:'through',sheetPattern:pat});
+    chk(pat+': сквозная решётка не строится — плита гладкая', Math.abs(vol(t)-solid) < 1e-6,
+        {объём:+vol(t).toFixed(1), гладкая:+solid.toFixed(1)});
+    chk(pat+': и об этом сказано словом',
+        /бывает только выпуклой текстурой/.test(collectPrintWarnings(paramState.box).join(' | ')),
+        collectPrintWarnings(paramState.box));
+  }
+  // Кладка — единственный из новых узоров, который решёткой БЫВАЕТ: её швы связаны в одно целое.
+  const brick = base({sheetCut:'through',sheetPattern:'brick'});
+  chk('кирпичная кладка насквозь режется', vol(brick) < solid - 100, {кладка:+vol(brick).toFixed(0), гладкая:+solid.toFixed(0)});
+  chk('и это не ромб под чужим именем', Math.abs(vol(brick) - vol(base({sheetCut:'through',sheetPattern:'diamond'}))) > 100);
+  chk('и не квадратная сетка', Math.abs(vol(brick) - vol(base({sheetCut:'through',sheetPattern:'square'}))) > 100);
+}
+console.log('=== новые узоры текстуры — каждый свой ===');
+{
+  /* Сравнивать узоры по ОБЪЁМУ нельзя, и это выяснилось здесь же: ромб и шахматка поднимают ровно по
+     половине площади, объёмы сошлись до единицы из шестнадцати тысяч, и проверка «узоры разные» прошла бы
+     на двух одинаковых картинках. Сравнивается сама карта — где поднято, а не сколько. */
+  const map = pat => { const m=[]; for(let x=0;x<32;x+=0.5) for(let z=0;z<32;z+=0.5)
+    m.push(sheetTexRaised(x, z, 8, 1.6, pat)); return m; };
+  const pats = ['diamond','square','hex','brick','checker','weave','stripe','dots'];
+  const M = {}; for(const pat of pats) M[pat] = map(pat);
+  for(let i=0;i<pats.length;i++) for(let j=i+1;j<pats.length;j++){
+    let diff=0; for(let k=0;k<M[pats[i]].length;k++) if(M[pats[i]][k] !== M[pats[j]][k]) diff++;
+    /* Порог низкий намеренно: родственные узоры делят половину линий по построению — у кладки те же
+       горизонтальные швы, что у квадратной сетки, и отличают её сдвиг рядов и вдвое более редкий
+       вертикальный шов (7.6 % клеток). Требуется, чтобы ни одна пара не совпала, а не чтобы они были
+       непохожи. */
+    chk(pats[i]+' ≠ '+pats[j]+' по самой карте', diff > 0.03*M[pats[i]].length,
+        +(100*diff/M[pats[i]].length).toFixed(1)+' % клеток'); }
+  for(const pat of pats){ const raised = M[pat].filter(Boolean).length / M[pat].length;
+    chk(pat+': поднято от четверти до трёх четвертей площади', raised > 0.2 && raised < 0.8,
+        +(100*raised).toFixed(0)+' %'); }
+  /* Кладка обязана быть СО СДВИГОМ рядов: без сдвига это просто сетка, и отличить одно от другого можно
+     по самой карте — вертикальный шов на соседних рядах стоит в разных местах. */
+  const seam = (x,z) => latticeSolidAt(x, z, 8, 1.6, 'brick');
+  let shifted = false;
+  for(let x=0;x<16;x+=0.25) if(seam(x, 4) !== seam(x, 12)) shifted = true;
+  chk('кладка сдвинута через ряд, иначе это сетка', shifted);
+}
 { Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,sheetShape:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('sheetShape none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }

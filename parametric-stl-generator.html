@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.24.0';
+const APP_VERSION = 'v18.25.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2402,6 +2402,15 @@ function latticeSolidAt(cx, cz, pitch, rib, pattern){
   if (pattern === 'triangle') {
     const rh = (rib/2)/pitch, s = Math.sqrt(3)/2;             // three families: normals 0°, 60°, 120°
     return near(cz/pitch, rh) || near((cx*s + cz*0.5)/pitch, rh) || near((cx*s - cz*0.5)/pitch, rh);
+  }
+  if (pattern === 'brick') {
+    /* Кладка. Шов горизонтальный через каждый ряд, вертикальный — со сдвигом на полкирпича через ряд:
+       сдвиг и есть кладка, без него это просто сетка. Кирпич вдвое длиннее своей высоты, поэтому по X
+       период удвоен, а полуширина шва в долях периода — вдвое меньше.
+       Единственный из новых узоров, который годится и на СКВОЗНУЮ решётку: швы кладки связаны между собой
+       в одно целое, а шахматка и плетёнка распались бы на отдельные острова. */
+    const rh = (rib/2)/pitch, row = Math.floor(cz/pitch), off = (row & 1) ? 0.5 : 0;
+    return near(cz/pitch, rh) || near(cx/(2*pitch) - off, rh/2);
   }
   if (pattern === 'hex') {
     // honeycomb = Voronoi edges of a triangular point lattice → a cell is a rib if its two nearest
@@ -4559,7 +4568,7 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetCut', label:'Лист: рисунок', type:'select', default:'texture',
       options:[{v:'texture',t:'выпуклая текстура (грип-пад)'},{v:'through',t:'сквозные отверстия (решётка)'},{v:'none',t:'без рисунка (гладкий)'}]},
     {group:'Лист / панель', key:'sheetPattern', label:'Лист: узор', type:'select', default:'diamond',
-      options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'}]},
+      options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'brick',t:'кирпичная кладка'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'},{v:'checker',t:'шахматка (только текстура)'},{v:'weave',t:'плетёнка (только текстура)'}]},
     {group:'Лист / панель', key:'sheetTexH', label:'Лист: высота текстуры (для «выпуклой»)', min:0.1, max:3, step:0.1, default:0.6, unit:'мм'},
     {group:'Лист / панель', key:'sheetN', label:'Лист: число сторон (для многоугольника)', min:3, max:64, step:1, default:6, unit:'', int:true},
     {group:'Лист / панель', key:'sheetRound', label:'Лист: скругление углов (для скруглённого)', min:0.5, max:150, step:0.5, default:6, unit:'мм'},
@@ -4663,7 +4672,23 @@ const SHAPE_PARAMS = {
     {group:'Дюбель по гипсокартону', key:'anDriveDepth', w:['anchor'], label:'Дюбель: глубина шлица (0 = авто)', min:0, max:12, step:0.5, default:0, unit:'мм', only:{anDrive:['pz','slot','hex']}},
     {group:'Дюбель по гипсокартону', key:'anBoard', w:['anchor'], label:'Дюбель: толщина листа (для проверок)', min:6, max:40, step:0.5, default:12.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipMode', label:'Печать в сборе (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'},{v:'telescope',t:'телескопическая труба (печать в сборе)'}]},
+      options:[{v:'none',t:'нет'},{v:'flat',t:'петля: плоская двухлистовая'},{v:'box',t:'контейнер-футляр (две оболочки на петле)'},{v:'clip',t:'клипса-защёлка (кабель / труба)'},{v:'tie',t:'кабель-стяжка (ремешок с храповиком)'},{v:'clamp',t:'разъёмный хомут (две половины на болтах)'},{v:'snap',t:'защёлка-консоль (расчёт по прогибу)'},{v:'ball',t:'шаровой шарнир (печать в сборе)'},{v:'chain',t:'цепь (печать в сборе)'},{v:'living',t:'живой шарнир (тонкая перемычка)'},{v:'telescope',t:'телескопическая труба (печать в сборе)'},{v:'energy',t:'энергоцепь (кабельная гусеница, звенья россыпью)'}]},
+    {group:'Петля (печать в сборе)', key:'ecW', w:['energy'], label:'Энергоцепь: внутренняя ширина (просвет под кабели)', min:4, max:80, step:0.5, default:10, unit:'мм',
+      hint:'Гарантированный просвет — самое узкое место канала, а не габарит. В шарнире языки звеньев расходятся НАРУЖУ от этой ширины, поэтому канал одинаков по всей длине.'},
+    {group:'Петля (печать в сборе)', key:'ecH', w:['energy'], label:'Энергоцепь: внутренняя высота', min:4, max:80, step:0.5, default:10, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'ecWall', w:['energy'], label:'Энергоцепь: толщина стенки', min:1, max:6, step:0.1, default:2, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'ecPitch', w:['energy'], label:'Энергоцепь: шаг звена (0 = авто)', min:0, max:120, step:0.5, default:0, unit:'мм',
+      hint:'Шаг задаёт и радиус, и число деталей на метр. Короче 2.6 высоты звена он не бывает: там перестают расходиться торцы шарнира, и цепь клинит.'},
+    {group:'Петля (печать в сборе)', key:'ecRadius', w:['energy'], label:'Энергоцепь: радиус изгиба (0 = авто, 30° на звено)', min:0, max:400, step:1, default:0, unit:'мм',
+      hint:'Радиус выводится в зазор между торцами перемычек: цепь гнётся, пока они не встретятся. В обратную сторону зазор 0.3 мм — то есть она прямая, и в этом весь смысл энергоцепи.'},
+    {group:'Петля (печать в сборе)', key:'ecLinks', w:['energy'], label:'Энергоцепь: сколько звеньев положить на стол', min:1, max:40, step:1, default:12, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'ecTravel', w:['energy'], label:'Энергоцепь: нужный ход (0 = не считать)', min:0, max:3000, step:10, default:0, unit:'мм',
+      hint:'Сколько звеньев напечатать под этот ход, посчитается и попадёт в предупреждения: цепь укладывается вдвое, плюс полукруг радиуса изгиба.'},
+    {group:'Петля (печать в сборе)', key:'ecPinD', w:['energy'], label:'Энергоцепь: Ø пальца (0 = авто, 1.5 стенки)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'ecGap', w:['energy'], label:'Энергоцепь: зазор в шарнире', min:0.1, max:0.8, step:0.05, default:0.3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'ecMat', w:['energy'], label:'Энергоцепь: материал (для расчёта защёлкивания)', type:'select', default:'petg',
+      options:[{v:'petg',t:'PETG'},{v:'pla',t:'PLA'},{v:'abs',t:'ABS'},{v:'nylon',t:'нейлон'}],
+      hint:'Звенья соединяются защёлкиванием: язык отгибается на высоту пальца. Деформация при этом считается по той же формуле, что у защёлки-консоли, и сверяется с допустимой для материала.'},
     {group:'Петля (печать в сборе)', key:'snapLen', w:['snap'], label:'Защёлка: длина консоли L', min:4, max:120, step:0.5, default:20, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapT', w:['snap'], label:'Защёлка: толщина у корня t', min:0.6, max:12, step:0.1, default:2, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'snapW', w:['snap'], label:'Защёлка: ширина w', min:2, max:80, step:0.5, default:8, unit:'мм'},
@@ -6755,6 +6780,7 @@ const MODEL_HELP = {
   'hinge:chain':    {what:'Цепь из звеньев, печатается в сборе целиком.', how:'Плашмя, все звенья в один слой. Первый слой прижимает звенья к столу — снимайте аккуратно, потом расшевелите.', mat:['petg','nylon']},
   'hinge:living':   {what:'Живой шарнир: тонкая перемычка, которая гнётся вместо петли. Складывается тысячи раз, если материал правильный.', how:'Перемычка обязана лежать ПОПЕРЁК слоёв — то есть плашмя на столе. По слоям она отслоится на первом сгибе.', mat:['petg','tpu']},
   'hinge:telescope':{what:'Телескопическая труба: несколько секций одна в другой, печатается в сборе, выдвигается со стола.', how:'Стоя. Зазор 0,3–0,4 мм на сторону; секции лучше не разъединять до полного остывания.', mat:['petg','pla']},
+  'hinge:energy':   {what:'Энергоцепь — кабельная гусеница на подвижную ось станка или принтера: гнётся в одну сторону до заданного радиуса и в другую стоит прямой. Тем и отличается от цепи, которая гнётся куда угодно. Радиус задан не формой звена, а ЗАЗОРОМ между торцами перемычек, поэтому он выводится числом и печатается в предупреждениях вместе с ходом, который дадут заказанные звенья. Звенья кладутся на стол россыпью и защёлкиваются: длина цепи у каждого своя, печатать её в сборе значило бы печатать заново на каждый лишний сантиметр.', how:'Так, как построено: звенья лежат на боковине, палец смотрит вверх, верхняя перемычка мостится между боковинами — поддержек не нужно. Соединяются нажатием: язык отгибается на высоту пальца, и деформация при этом посчитана и выведена рядом. PLA на этом обычно и колется — берите PETG или нейлон. Концы цепи крепятся за крайние звенья: два звена в расчёте хода уже отданы под заделку.', mat:['petg','nylon']},
 
   'gear:spur':      {what:'Прямозубая шестерня с эвольвентным профилем: модуль, число зубьев, угол зацепления, ступица, шпонка и спицы.', how:'Плашмя. Зуб держит нагрузку слоями поперёк — так и надо.', mat:['nylon','petg']},
   'gear:helical':   {what:'Косозубая: тот же профиль, закрученный по толщине. Тише прямозубой и передаёт плавнее, зато даёт осевую силу.', how:'Плашмя. Угол наклона печатается сам собой — это просто поворот сечения.', mat:['nylon','petg']},
@@ -8281,9 +8307,23 @@ function buildSheetRim(ring, yt, rimH, rimW){
 // Which cells are RAISED for a grip texture (vs the through-net which cuts the ribs): the pattern's cells
 // stand proud and the ribs become the grooves between them — a diamond/hex grip like a mouse side-pad.
 // stripe / dots are texture-only.
+/* Узор выпуклой текстуры. Всё, что умеет быть РЕШЁТКОЙ, приходит сюда из `latticeSolidAt` вывернутым
+   наизнанку: там считается, где стоит перемычка, а выпуклым становится то, что между ними. Здесь же
+   перечислено то, что решёткой быть не может — рисунок, распадающийся на отдельные острова, держится
+   только на сплошной плите под ним. Таких четыре: полосы, точки, шахматка и плетёнка.
+   ТЕКСТУРНЫЕ УЗОРЫ НАЗВАНЫ СПИСКОМ (`SHEET_TEXTURE_ONLY`), а не подписью «только текстура» в подсказке:
+   подпись стояла и раньше, но выбор сквозной решётки с таким узором молча строил ромб — тихая подмена,
+   которую никто не видел. */
+const SHEET_TEXTURE_ONLY = new Set(['stripe','dots','checker','weave']);
 function sheetTexRaised(cx, cz, pitch, rib, pattern){
   if(pattern==='stripe'){ const f=((cx/pitch)%1+1)%1; return f<0.5; }
   if(pattern==='dots'){ const gx=cx/pitch-Math.round(cx/pitch), gz=cz/pitch-Math.round(cz/pitch); return Math.hypot(gx,gz)<0.36; }
+  if(pattern==='checker'){ return ((Math.floor(cx/pitch) + Math.floor(cz/pitch)) & 1) === 0; }
+  if(pattern==='weave'){
+    // Плетёнка: в шахматных клетках прут лежит то поперёк, то вдоль — как прутья корзины.
+    const mid = t => Math.abs((((t/pitch)%1)+1)%1 - 0.5);
+    return ((Math.floor(cx/pitch) + Math.floor(cz/pitch)) & 1) ? mid(cz) < 0.3 : mid(cx) < 0.3;
+  }
   return !latticeSolidAt(cx, cz, pitch, rib, pattern);
 }
 // SOLID plate whose central rect has a RAISED texture on top (grooves between proud cells), solid
@@ -9044,7 +9084,10 @@ function buildSheet(p){
   const rise = chOn ? Math.min(t-0.4, chW*Math.tan(chAng)) : 0;
   const botRing = chOn ? polyInsetRing(ring, chW) : ring, chY = yb + rise;
   let ok=false;
-  if(cut==='through' && pattern && pattern!=='none')   // perforation stays central rect + smooth border
+  if(cut==='through' && pattern && pattern!=='none' && !SHEET_TEXTURE_ONLY.has(pattern))
+    // perforation stays central rect + smooth border. Узор, который не бывает решёткой, сюда не идёт
+    // ВОВСЕ: раньше он проваливался в `latticeSolidAt` и молча получал ромб — лист выходил с чужим
+    // рисунком, и об этом никто не сообщал. Теперь плита остаётся гладкой, а в предупреждениях сказано.
     ok=buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res, botRing);
   if(!ok){   // SOLID smooth plate (for texture / plain): top fan over ring, bottom fan over the inset botRing
     const c=polyRingCentroid(ring), cb=polyRingCentroid(botRing);
@@ -10776,6 +10819,145 @@ function buildLivingHinge(p){
 // Those have a solution only when f > 2·gap: a ring shallower than the clearance on both sides cannot both
 // clear on the way past and catch on the way back. That is why the ring depth is floored on the gap and
 // not on anything to do with the tube's size.
+/* ---- ЭНЕРГОЦЕПЬ (кабельная гусеница) ------------------------------------------------------------
+   Цепь, которая гнётся в ОДНУ сторону до заданного радиуса и в другую стоит прямой. Этим она и
+   отличается от цепи (`pipMode:'chain'`), которая гнётся куда угодно: там звенья продеты друг в друга,
+   здесь — сидят на пальцах и упираются торцами перемычек.
+
+   ЧЕМ ЗАДАН РАДИУС. Не формой звена, а ЗАЗОРОМ между торцами. Соседние звенья повёрнуты друг
+   относительно друга вокруг пальца; перемычка отстоит от оси пальца на Zbar, поэтому поворот на θ
+   закрывает зазор ровно на 2·Zbar·tg(θ/2). Отсюда всё остальное: цепь из звеньев шага p, согнутая по θ
+   на звено, ложится на окружность с хордой p, то есть R = p/(2·sin(θ/2)). Обратно то же самое: задан
+   радиус — известен зазор. У перемычки с ДРУГОЙ стороны зазор 0.3 мм, и это «прямо».
+
+   ПОЧЕМУ ТОРЦЫ ШАРНИРА КРУГЛЫЕ. Задний торец звена — кольцо вокруг отверстия, передний — диск вокруг
+   пальца, и оба описаны радиусом от ОСИ СВОЕГО ШАРНИРА. Круг, вращаемый вокруг собственного центра, не
+   движется вовсе, поэтому языки соседей не задевают друг друга ни при каком угле, и весь упор достаётся
+   перемычкам — тем, что для него и сделаны. Ошибись тут, и упор получался бы случайным.
+
+   ПОЧЕМУ ЗВЕНЬЯ РОССЫПЬЮ, А НЕ ЦЕПЬЮ В СБОРЕ. Длина цепи — это ход механизма, и она у каждого своя;
+   печатать сборку значило бы печатать её заново на каждый лишний сантиметр. Звенья защёлкиваются, и
+   защёлкивание тут — не «на глаз»: язык отгибается на высоту пальца, деформация считается той же
+   формулой, что у защёлки-консоли, тем же материалом и с той же допустимой.
+
+   ПЕЧАТНОЕ ПОЛОЖЕНИЕ ВЫБРАНО ГЕОМЕТРИЕЙ, А НЕ ВКУСОМ. Звено строится в системе, где ось пальца — Y
+   (так контур с отверстием даётся одним `extrudePolyYTris`), и в конце кладётся на бок: ось пальца
+   становится горизонтальной. Иначе ступенька языка — та, которой звенья входят друг в друга, — оказалась
+   бы плоской консолью в воздухе. Положенная набок, она вертикальная стенка и не нависает вовсе, а
+   верхняя перемычка мостится между боковинами. */
+function energyChainSpec(p){
+  const W    = Math.max(3, Math.min(80, p.ecW>0 ? p.ecW : 10));       // гарантированный просвет канала
+  const H    = Math.max(3, Math.min(80, p.ecH>0 ? p.ecH : 10));
+  const wall = Math.max(0.8, Math.min(6, p.ecWall>0 ? p.ecWall : 2));
+  const gap  = fitTuned(p, p.ecGap>0 ? p.ecGap : 0.3);
+  const Zbar = H/2 + wall;                                            // от оси пальца до наружной кромки перемычки
+  /* Шаг снизу ограничен геометрией, а не вкусом: посередине звена стоит полновысотная стенка-переход, и
+     ей нужно место между круглыми торцами обоих шарниров. Короче — переход налезает на язык соседа. */
+  const pMin = Math.max(2.6*Zbar, 4*wall + 6);
+  const pitch= Math.max(pMin, p.ecPitch>0 ? p.ecPitch : Math.max(pMin, 2*Zbar + 6));
+  const pitchCut = (p.ecPitch>0) && p.ecPitch < pMin - 1e-9;
+  // Радиус: минимум — когда зазор съедает половину перемычки. Меньше просить можно, дать нельзя.
+  const gMax = 0.5*pitch;
+  const thMax= 2*Math.atan(gMax/(2*Zbar));
+  const rMin = pitch/(2*Math.sin(thMax/2));
+  const Rwant= p.ecRadius>0 ? p.ecRadius : pitch/(2*Math.sin(15*Math.PI/180));   // авто: 30° на звено
+  const R    = Math.max(rMin, Rwant);
+  const radCut = Rwant < rMin - 1e-9;
+  const theta= 2*Math.asin(Math.min(1, pitch/(2*R)));                 // угол на звено
+  const gBend= 2*Zbar*Math.tan(theta/2);                              // зазор с внутренней стороны изгиба
+  const gStr = 0.3;                                                   // и с наружной — «прямо»
+  const thRev= 2*Math.atan(gStr/(2*Zbar));
+  /* ТОРЕЦ ЯЗЫКА УЖЕ САМОГО ЗВЕНА, и это не косметика. Круглый торец радиуса rEye вращается вокруг
+     собственного центра, то есть стоит на месте при любом угле; но если бы он доставал до кромки, он
+     задевал бы ПЕРЕМЫЧКУ соседа, которая начинается сразу за шарниром. Ужав его на толщину перемычки с
+     запасом, получаем то, ради чего всё и делалось: языки не встречаются ни при каком угле, и упор
+     достаётся только торцам перемычек. */
+  const rEye = Math.max(1.2, Zbar - wall - 0.3);
+  const rPin = Math.max(0.6, Math.min(rEye - 1.2 - gap, (p.ecPinD>0 ? p.ecPinD/2 : wall*0.75)));
+  const pinCut = (p.ecPinD>0) && p.ecPinD/2 > rPin + 1e-9;
+  const rHole= rPin + gap;
+  const eye  = rEye - rHole;                                          // материал вокруг отверстия
+  const hPin = Math.max(0.6, Math.min(wall, wall*0.6));               // на столько палец входит в отверстие
+  // Защёлкивание: язык — консоль от полновысотной стенки до отверстия, и отогнуть его надо на высоту пальца.
+  const arm  = pitch/2;
+  const mat  = SNAP_MATERIALS[p.ecMat] || SNAP_MATERIALS.petg;
+  const eps  = 100*1.5*hPin*wall/(arm*arm);
+  const N    = Math.max(1, Math.min(40, Math.round(p.ecLinks>0 ? p.ecLinks : 8)));
+  /* Ход. Цепь укладывается вдвое: половина лежит, половина едет, между ними полукруг радиуса R. Два звена
+     оставлены на заделку — это не запас «на всякий случай», а те звенья, что стоят в кронштейнах. */
+  const need = k => Math.ceil((k/2 + Math.PI*R)/pitch) + 2;
+  const travel = Math.max(0, 2*(N*pitch - Math.PI*R - 2*pitch));
+  const want   = Math.max(0, p.ecTravel>0 ? p.ecTravel : 0);
+  const linksNeeded = want > 0 ? need(want) : 0;
+  // Раскладка на столе: ряды по X, перенос на 200 мм.
+  const lx = pitch + 2*Zbar, lz = W + 4*wall + 2*gap;
+  const cols = Math.max(1, Math.floor(200/(lx + 3)));
+  const rows = Math.ceil(N/cols);
+  return { W, H, wall, gap, Zbar, rEye, pitch, pitchCut, pMin, R, rMin, radCut, theta, thetaDeg: theta*180/Math.PI,
+           gBend, gStr, thRev, thRevDeg: thRev*180/Math.PI, rPin, pinCut, rHole, eye, hPin, arm, mat, eps,
+           N, travel, want, linksNeeded, lx, lz, cols, rows,
+           over: eps > mat.eps, thinEye: eye < 1.2, thinWall: wall < 1.2, thinPin: 2*rPin < 1.6,
+           bedX: cols*(lx+3) - 3, bedZ: rows*(lz+3) - 3,
+           big: cols*(lx+3) - 3 > 220 || rows*(lz+3) - 3 > 220 };
+}
+/* Одно звено, в системе «ось пальца — Y»: отверстие в (0,0), палец в (pitch,0). Отдельной функцией,
+   потому что по нему считает и проверка: чтобы спросить, на какой угол цепь гнётся, надо взять ДВА
+   звена, повернуть одно вокруг пальца и посмотреть, где они встретятся. */
+function energyLinkTris(s){
+  const tris = [], push = a => { for(const T of a) tris.push(T); };
+  const Z = s.Zbar, p = s.pitch, t = s.wall, g = s.gap;
+  const yF0 = 0,        yF1 = t;                     // передний (внутренний) язык, низ
+  const yF2 = t + s.W,  yF3 = 2*t + s.W;             //   он же сверху — между ними и есть просвет W
+  const yR0 = -g - t,   yR1 = -g;                    // задний (наружный) язык, низ
+  const yR2 = 2*t + s.W + g, yR3 = 2*t + s.W + g + t;
+  const rE = s.rEye, nA = Math.max(20, Math.round(rE*3));
+  const arc = (cx, a0, a1) => { const q=[]; for(let i=0;i<=nA;i++){ const a=a0+(a1-a0)*i/nA;
+    q.push([cx + rE*Math.cos(a), rE*Math.sin(a)]); } return q; };
+  // Торец — круг радиуса rE вокруг своего шарнира, дальше язык расширяется до полной высоты звена.
+  const xJog = p/2, jog = Math.min(2, p*0.08);       // где язык переходит с полосы на полосу
+  const rear  = [...arc(0, Math.PI/2, 3*Math.PI/2), [xJog + jog, -Z], [xJog + jog, Z]];
+  const front = [...arc(p, -Math.PI/2, Math.PI/2), [xJog - jog, Z], [xJog - jog, -Z]];
+  const hole  = []; { const nH = Math.max(16, Math.round(s.rHole*8));
+    for(let i=0;i<nH;i++){ const a = 2*Math.PI*i/nH; hole.push([s.rHole*Math.cos(a), s.rHole*Math.sin(a)]); } }
+  push(extrudePolyYTris([rear,  hole], yR0, yR1));
+  push(extrudePolyYTris([rear,  hole], yR2, yR3));
+  push(extrudePolyYTris([front],       yF0, yF1));
+  push(extrudePolyYTris([front],       yF2, yF3));
+  /* Перемычки. Тонкая часть идёт по всей длине и держит просвет канала; её торцы — те самые упоры, и
+     зазоры у них разные: с внутренней стороны изгиба тот, что даёт радиус, с наружной — 0.3 мм.
+     Полновысотная часть стоит только посередине, где у соседа ничего нет: она связывает наружные полосы
+     с внутренними. Дальше к шарнирам её пускать нельзя — там кольцо соседнего звена. */
+  const mid0 = rE + 0.6, mid1 = p - rE - 0.6;
+  for(const sgn of [1, -1]){
+    const G = sgn < 0 ? s.gBend : s.gStr;            // изгиб идёт в −Z
+    const z0 = sgn > 0 ? Z - t : -Z, z1 = sgn > 0 ? Z : -Z + t;
+    push(boxSpanTris(G/2, p - G/2, yF0, yF3, z0, z1));
+    if(mid1 > mid0) push(boxSpanTris(mid0, mid1, yR0, yR3, z0, z1));
+  }
+  // Палец с заходным конусом: снизу торчит из внутреннего языка, сверху — так же вверх.
+  const seg = Math.max(12, Math.min(28, Math.round(s.rPin*8)));
+  const cone = Math.min(0.6, s.hPin*0.5);
+  push(sweepTube3D([[p, yR1 - s.hPin, 0], [p, yR1 - s.hPin + cone, 0], [p, yF1, 0]],
+                   i => i === 0 ? s.rPin*0.6 : s.rPin, seg));
+  push(sweepTube3D([[p, yR2 + s.hPin, 0], [p, yR2 + s.hPin - cone, 0], [p, yF2, 0]],
+                   i => i === 0 ? s.rPin*0.6 : s.rPin, seg));
+  return polyDropDegen(tris);
+}
+function buildEnergyChain(p){
+  const s = energyChainSpec(p);
+  // Кладём звено набок: ось пальца из Y уходит в Z, ступенька языка становится вертикальной стенкой.
+  const one = rotateTris(energyLinkTris(s), -90, 0, 0);
+  let lo = Infinity, x0 = Infinity, z0 = Infinity;
+  for(const T of one) for(const v of T){ if(v[1] < lo) lo = v[1]; if(v[0] < x0) x0 = v[0]; if(v[2] < z0) z0 = v[2]; }
+  const base = one.map(T => T.map(v => [v[0] - x0, v[1] - lo, v[2] - z0]));
+  const tris = [];
+  for(let k = 0; k < s.N; k++){
+    const col = k % s.cols, row = (k - col)/s.cols;
+    const dx = col*(s.lx + 3) - s.bedX/2, dz = row*(s.lz + 3) - s.bedZ/2;
+    for(const T of base) tris.push(T.map(v => [v[0] + dx, v[1], v[2] + dz]));
+  }
+  return tris;
+}
 function telescopeSpec(p){
   const N    = Math.max(2, Math.min(8, Math.round(p.telN>0 ? p.telN : 3)));
   const w    = Math.max(0.8, p.telWall>0 ? p.telWall : 1.6);
@@ -10806,6 +10988,7 @@ function buildTelescope(p){
   return tris.map(T=>T.map(v=>[v[0], v[1]-s.L/2, v[2]]));
 }
 function buildHinge(p){
+  if (p.pipMode === 'energy') return buildEnergyChain(p);
   if (p.pipMode === 'telescope') return buildTelescope(p);
   if (p.pipMode === 'living') return buildLivingHinge(p);
   if (p.pipMode === 'chain') return buildChain(p);
@@ -19814,7 +19997,7 @@ function activeShapeLabel() {
       return 'переходник ' + (+g.aw.toFixed(0)) + '×' + (+g.ad.toFixed(0)) + ' → ' + (+g.bw.toFixed(0)) + '×' + (+g.bd.toFixed(0)); })()})[p.mntMode] || 'крепёж';
   if (p.gearMode && p.gearMode !== 'none') return ({spur:'шестерня',helical:'косозубая',bevel:'коническая',rack:'рейка',gt2:'шкив GT2',worm:'червяк',wormwheel:({throated:'глобоидное червячное колесо',straight:'червячное колесо'}[p.gearWheelRim]||'червячное колесо (огибанием)'),planetary:'планетарный редуктор',cycloidal:'циклоидальный редуктор',cam:'кулачок',follower:'толкатель',ujoint:'карданчик',geneva:'мальтийский механизм',roots:'роторы Roots',vbelt:'шкив клиновой',roundbelt:'шкив круглый',ratchet:'храповик'})[p.gearMode]
     + (['rack','vbelt','roundbelt','worm','cam','follower','planetary','cycloidal','ujoint','geneva','roots'].includes(p.gearMode) ? '' : ' (' + (p.gearTeeth|0) + ' зуб.)');
-  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут'})[p.pipMode] || 'печать в сборе';
+  if (p.pipMode && p.pipMode !== 'none') return ({flat:'петля (плоская)',box:'контейнер-футляр (на петле)',clip:'клипса-защёлка',tie:'кабель-стяжка',clamp:'разъёмный хомут',energy:'энергоцепь'})[p.pipMode] || 'печать в сборе';
   if (p.threadMode && p.threadMode !== 'none') return (({cap:'резьба: крышка',jar:'резьба: банка',stud:'резьба: штуцер',leadscrew:'ходовой винт',auger:'шнек',corkscrew:'штопор',spring:'пружина сжатия',barb:'ёлочка на шланг',bolt:'резьба: болт',nut:'резьба: гайка',wingnut:'резьба: барашек',gland:'кабельный ввод',glandcap:'накидная гайка ввода',anchor:'дюбель'})[p.threadMode] || 'резьба')
     + (p.threadMode==='cap' ? ({funnel:' с воронкой', spout:' с носиком', neck:' с горловиной'}[threadTopMode(p)] || '') : '');
   if (p.sheetShape && p.sheetShape !== 'none') return 'лист / панель';
@@ -20182,6 +20365,15 @@ function collectPrintWarnings(p){
         w.push('вентрешётка одна: воздуху нужен и приток, и отток — возьмите «сквозняк» или «все четыре», иначе тёплый воздух останется внутри');
     }
   }
+  /* Узор, который не бывает решёткой, выбран вместе со сквозным рисунком. Раньше это молча давало ромб —
+     чужой рисунок без единого слова. Плита остаётся гладкой, и вот почему. */
+  if ((p.sheetShape && p.sheetShape !== 'none') && (p.sheetCut === 'through') &&
+      SHEET_TEXTURE_ONLY.has(p.sheetPattern)){
+    const row = SHAPE_PARAMS.box.find(r => r.key === 'sheetPattern');
+    const opt = row && row.options.find(o => o.v === p.sheetPattern);
+    w.push('узор «' + ((opt && opt.t.replace(/ \(.*\)$/, '')) || p.sheetPattern) + '» бывает только выпуклой' +
+           ' текстурой: сквозной решёткой он рассыпался бы на отдельные острова — лист построен гладким');
+  }
   if (lithoOn(p)) {
     const g = lithoSpec(p);
     // Тонкое место — это стенка, и мерить её надо в проходах сопла: при 0,8 мм это ровно два прохода
@@ -20389,6 +20581,32 @@ function collectPrintWarnings(p){
     if (b.gap < 0.25) w.push('зазор шарнира ' + b.gap.toFixed(2) + ' мм — шар может спечься с чашкой');
     if (!b.captive) w.push('устье шире шара — шар выпадет; увеличьте угол устья');
     if (b.swing < 5) w.push('качание всего ' + b.swing.toFixed(0) + '° — ножка упирается в устье');
+  }
+  if ((p.pipMode || 'none') === 'energy'){
+    const e = energyChainSpec(p);
+    /* Два числа печатаются ВСЕГДА, потому что ни одного из них на экране нет: на что цепь гнётся и
+       переживёт ли она сборку. Ровно та же причина, по которой всегда печатается момент у ключей. */
+    w.push('энергоцепь: радиус изгиба ' + e.R.toFixed(0) + ' мм (' + e.thetaDeg.toFixed(0) +
+           '° на звено, назад ' + e.thRevDeg.toFixed(1) + '° — прямая), канал ' + e.W.toFixed(0) + '×' +
+           e.H.toFixed(0) + ' мм, ' + e.N + ' звеньев дают ход ' + e.travel.toFixed(0) + ' мм');
+    w.push('звенья защёлкиваются: язык отгибается на ' + e.hPin.toFixed(1) + ' мм, деформация ' +
+           e.eps.toFixed(1) + ' % при допустимых ' + e.mat.eps + ' % для ' + e.mat.t);
+    if (e.over) w.push('защёлкивание рвёт язык: ' + e.eps.toFixed(1) + ' % против допустимых ' + e.mat.eps +
+      ' % — возьмите шаг подлиннее или палец потоньше, либо материал повязче');
+    if (e.travel <= 0) w.push(e.N + ' звеньев не хватает даже на полукруг радиуса ' + e.R.toFixed(0) +
+      ' мм: на любой ход нужно от ' + (Math.ceil(Math.PI*e.R/e.pitch) + 3) + ' звеньев');
+    if (e.want > 0) w.push('на ход ' + e.want.toFixed(0) + ' мм нужно ' + e.linksNeeded + ' звеньев' +
+      (e.linksNeeded > e.N ? ' — в модели ' + e.N + ', напечатайте ещё ' + (e.linksNeeded - e.N) : ''));
+    if (e.pitchCut) w.push('шаг звена поднят до ' + e.pitch.toFixed(1) + ' мм — короче торцы шарниров' +
+      ' сходятся с перемычкой посередине и звено не собрать');
+    if (e.radCut) w.push('радиус изгиба поднят до ' + e.R.toFixed(0) + ' мм — меньше зазор между' +
+      ' перемычками съел бы их целиком (при шаге ' + e.pitch.toFixed(0) + ' мм)');
+    if (e.pinCut) w.push('палец урезан до Ø' + (2*e.rPin).toFixed(1) + ' мм — толще не остаётся тела вокруг отверстия');
+    if (e.thinPin) w.push('палец Ø' + (2*e.rPin).toFixed(1) + ' мм — тоньше 1.6 мм, срежется при первом рывке');
+    if (e.thinEye) w.push('вокруг отверстия ' + e.eye.toFixed(1) + ' мм — ушко вырвет на первом же рывке');
+    if (e.thinWall) w.push('стенка энергоцепи ' + e.wall.toFixed(1) + ' мм — тоньше трёх проходов сопла');
+    if (e.big) w.push('раскладка ' + e.bedX.toFixed(0) + '×' + e.bedZ.toFixed(0) + ' мм — шире обычного стола;' +
+      ' печатайте звенья в несколько заходов');
   }
   if ((p.pipMode || 'none') === 'snap'){
     const sp = snapSpec(p);

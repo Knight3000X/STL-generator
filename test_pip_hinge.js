@@ -142,6 +142,27 @@ function triOverlap(A,B){                                  // Möller, same test
   return !!(i1&&i2) && (Math.min(i1[1],i2[1]) - Math.max(i1[0],i2[0])) > 1e-6;
 }
 const nCross=(X,Y)=>{ let n=0; for(const a of X) for(const b of Y) if(triOverlap(a,b)) n++; return n; };
+  /* Перегородок между гнёздами ровно на одну меньше, чем гнёзд. Считается ЛУЧОМ вдоль X под самым бортом
+     корпусной половины: там стоят только перегородки и две боковые стенки, а фаски дна и пол — ниже. */
+const runsAlongX = (tris, y, z) => {
+    const hits=[];
+    for(const T of tris){ const [a,b,c]=T;
+      const d1=(b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]);
+      const d2=(c[1]-b[1])*(z-b[2])-(c[2]-b[2])*(y-b[1]);
+      const d3=(a[1]-c[1])*(z-c[2])-(a[2]-c[2])*(y-c[1]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[1]-y)*(c[2]-z)-(b[2]-z)*(c[1]-y))/A, w2=((c[1]-y)*(a[2]-z)-(c[2]-z)*(a[1]-y))/A;
+      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      const nx=e1[1]*e2[2]-e1[2]*e2[1]; if(Math.abs(nx)<1e-12) continue;
+      hits.push([w1*a[0]+w2*b[0]+(1-w1-w2)*c[0], nx<0 ? 1 : -1]); }
+    hits.sort((A,B)=>A[0]-B[0]);
+    const runs=[]; let depth=0, start=null;
+    for(const [t0,d] of hits){ const prev=depth; depth+=d;
+      if(prev<=0&&depth>0) start=t0; else if(prev>0&&depth<=0){ if(start!==null&&t0-start>1e-6) runs.push([start,t0]); start=null; } }
+    return runs;
+  };
+
 
 for(const n of [0,1,2,3,4,6])
   for(const bh of [8,14,22]){
@@ -275,26 +296,6 @@ console.log('=== футляр под элементы ===');
     chk(type+'×'+n+': длина — гнёзда плюс перегородки',
         Math.abs(s.L - (2*s.bw + n*(D+2*s.bclr) + (n-1)*s.bw)) < 1e-9, +s.L.toFixed(2));
   }
-  /* Перегородок между гнёздами ровно на одну меньше, чем гнёзд. Считается ЛУЧОМ вдоль X под самым бортом
-     корпусной половины: там стоят только перегородки и две боковые стенки, а фаски дна и пол — ниже. */
-  const runsAlongX = (tris, y, z) => {
-    const hits=[];
-    for(const T of tris){ const [a,b,c]=T;
-      const d1=(b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]);
-      const d2=(c[1]-b[1])*(z-b[2])-(c[2]-b[2])*(y-b[1]);
-      const d3=(a[1]-c[1])*(z-c[2])-(a[2]-c[2])*(y-c[1]);
-      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
-      const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
-      const w1=((b[1]-y)*(c[2]-z)-(b[2]-z)*(c[1]-y))/A, w2=((c[1]-y)*(a[2]-z)-(c[2]-z)*(a[1]-y))/A;
-      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
-      const nx=e1[1]*e2[2]-e1[2]*e2[1]; if(Math.abs(nx)<1e-12) continue;
-      hits.push([w1*a[0]+w2*b[0]+(1-w1-w2)*c[0], nx<0 ? 1 : -1]); }
-    hits.sort((A,B)=>A[0]-B[0]);
-    const runs=[]; let depth=0, start=null;
-    for(const [t0,d] of hits){ const prev=depth; depth+=d;
-      if(prev<=0&&depth>0) start=t0; else if(prev>0&&depth<=0){ if(start!==null&&t0-start>1e-6) runs.push([start,t0]); start=null; } }
-    return runs;
-  };
   for(const n of [1,2,4,6]){
     const H = halves({pipBoxKind:'batt', pipBattN:n});
     const s = clamshellSpec(paramState.box);
@@ -331,6 +332,62 @@ console.log('=== футляр под элементы ===');
     const H = halves({pipBoxKind:'batt', pipBattN:3});
     chk('плоско половины с гнёздами нигде не соприкасаются', nCross(H.body, H.lid) === 0);
   }
+}
+/* СТОЙМЯ, СЕТКОЙ. Вторая раскладка: элементы стоят вертикально, гнездо становится колодцем, а стенка
+   между соседними колодцами — одна на двоих. Половины и здесь зеркальны (петля требует, чтобы обе кромки
+   пришли на ось пальца), поэтому колодец каждой ровно в половину элемента.
+
+   ГЛАВНОЕ ЗДЕСЬ — НЕ ФОРМА, А КАСАНИЕ. Наружный радиус трубы ровно в половину шага сетки означал бы, что
+   соседние трубы соприкасаются ПО ЛИНИИ, а линия в сетке треугольников не объединяет, а рвёт. Поймано это
+   было ровно на одном сочетании из семидесяти двух (18650 2×2): у остальных вершины случайно совпадали и
+   шов не открывался. Поэтому проверка идёт СПЛОШНЫМ ПЕРЕБОРОМ размеров и сеток, а не тремя образцами. */
+console.log('=== футляр под элементы: стоймя, сеткой ===');
+{
+  const stand = ov => halves(Object.assign({pipBoxKind:'batt', pipBattLay:'stand'}, ov));
+  let bad = [];
+  for(const type of ['aaa','aa','c','d','18650','21700'])
+    for(const n of [1,2,3,5])
+      for(const r of [1,2,4]){
+        const H = stand({pipBattType:type, pipBattN:n, pipBattRows:r});
+        const mc = manifoldCheck(H.t,4);
+        if(!(mc.watertight && vol(H.t) > 0)) bad.push(type+' '+n+'×'+r+' ('+mc.openEdges+'/'+mc.badEdges+')');
+      }
+  chk('72 сочетания размера и сетки — все замкнуты', bad.length === 0, bad.slice(0,6));
+  const H = stand({});
+  const s = clamshellSpec(paramState.box);
+  chk('колодец — половина элемента, а не весь', Math.abs(s.wh - (s.cellL/2 + s.bclr)) < 1e-9,
+      {борт:+s.wh.toFixed(2), элемент:s.cellL});
+  chk('закрытый футляр держит элемент целиком',
+      Math.abs(2*s.wh - (s.cellL + 2*s.bclr)) < 1e-9, +(2*s.wh).toFixed(2));
+  chk('шаг сетки — элемент с зазором плюс одна стенка',
+      Math.abs(s.gpitch - (s.D + 2*s.bclr + s.bw)) < 1e-9, +s.gpitch.toFixed(2));
+  chk('элементов — произведение сетки', s.cells === s.nCell*s.rows, {n:s.nCell, rows:s.rows, всего:s.cells});
+  /* Соседние трубы обязаны перекрываться ОБЪЁМОМ, а не касаться: половина шага — это касание, и оно рвёт
+     сетку. Проверяется по числам построителя, потому что именно они и разошлись бы. */
+  chk('трубы перекрываются, а не касаются', 2*(s.pocket/2 + s.bw*0.75) > s.gpitch + 1e-9,
+      {диаметр_трубы:+(s.pocket + 1.5*s.bw).toFixed(2), шаг:+s.gpitch.toFixed(2)});
+  // Колодцы по сетке: луч вдоль X под кромкой пересекает столько стенок, сколько их в ряду.
+  const rowsSeen = (H2, s2, cz) => {
+    const runs = runsAlongX(H2.t, H2.rimY - 1.0, cz);
+    return runs.length;
+  };
+  for(const n of [2,3,5]){
+    const Hn = stand({pipBattN:n, pipBattRows:2});
+    const sn = clamshellSpec(paramState.box);
+    const zc = -( (sn.zIn + sn.zOut)/2 ) - (0.5)*sn.gpitch;      // по центрам первого ряда
+    chk('в ряду '+n+' колодцев — стенок '+(n+1), rowsSeen(Hn, sn, zc) === n+1,
+        {found: rowsSeen(Hn, sn, zc)});
+  }
+  chk('плоско половины с колодцами нигде не соприкасаются', nCross(H.body, H.lid) === 0);
+  // Состояние перед чтением предупреждений выставляется заново: цикл выше оставил в нём свою сетку.
+  const H0 = stand({}), s0 = clamshellSpec(paramState.box); void H0;
+  chk('раскладка названа в предупреждениях', /стоймя/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  chk('и число элементов в ней — произведение сетки',
+      new RegExp(s0.nCell+'×'+s0.rows+' стоймя \\('+s0.cells+' шт').test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box)[0]);
+  // Лёжа и стоймя — разные детали, а не одна с другим числом
+  const flat = halves({pipBoxKind:'batt', pipBattLay:'flat'}).t.length;
+  chk('стоймя строится не тем же, чем лёжа', H.t.length !== flat, {стоймя:H.t.length, лёжа:flat});
 }
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');

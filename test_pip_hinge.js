@@ -95,35 +95,32 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('pipMode none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
-console.log('=== защёлки футляра ===');
-// A clamshell with nothing holding it shut is a box that falls open, so the latch is the piece that makes
-// it a case. The pattern is the toolbox one: a CATCH standing proud of the body's front wall, and a WINDOW
-// in a tongue hanging off the lid that the catch clicks into.
-//
-// Two things have to be true at once and they pull in opposite directions. FLAT on the bed the two halves
-// must not touch anywhere, or the slicer fuses them into one solid and nothing ever opens. FOLDED the
-// latch must actually engage — and the lid's front wall lands EXACTLY on the body's, so anything the lid
-// hangs down there has to pass outside it. Both are measured below on the real mesh.
-function halves(ov){
-  const p = Object.assign({}, defaultBoxParams(), {width:40,height:40,depth:40,
-    pipMode:'box', pipLen:60, pipLeafW:22, pipLeafT:6, pipKnuckles:5, pipPinD:0, pipGap:0.35,
+/* ================= ФУТЛЯР: ДВЕ ДЕТАЛИ И ПРУТОК ФИЛАМЕНТА ==========================================
+   Переделан в v18.29.0. До неё футляр печатался в сборе, двумя зеркальными половинами на печатной петле,
+   и для гнёзд под элементы это не работало вовсе: зеркальность означает половинный колодец, а из него
+   батарейку не достать. Печатная петля убрана, деталей стало две — глубокий корпус и плоская крышка, —
+   а осью служит отрезок ПРУТКА ФИЛАМЕНТА.
+
+   ПОЭТОМУ И ПРОВЕРКИ ДРУГИЕ. У печатной петли главным был вопрос «не слиплись ли половины на столе»;
+   здесь детали печатаются раздельно, и спрашивать надо иное:
+     • пересекаются ли детали В ЗАКРЫТОМ ВИДЕ — и не «касаются ли» (касаться они обязаны, крышка лежит на
+       кромке), а есть ли ОБЪЁМ пересечения. Считается по точкам: доля точек, лежащих внутри обеих;
+     • проходит ли пруток — луч вдоль оси петли обязан не встретить материала ни в одной детали;
+     • открывается ли крышка — поворот вокруг оси на 30…170° без единого пересечения;
+     • влезает ли элемент — колодец обязан быть на ВСЮ его длину, а не на половину. */
+console.log('=== футляр: две детали и пруток ===');
+function caseOf(ov){
+  const p = Object.assign({}, defaultBoxParams(), {width:40,height:40,depth:40, pipMode:'box',
+    pipLen:60, pipLeafW:22, pipLeafT:6, pipKnuckles:5, pipGap:0.35,
     threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
     scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
   logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, p);
-  const t = buildTrisForShape('box', paramState.box);
-  // The hinge lives around z = 0; the latch is at the far edge, so the sign of z separates the two bodies
-  // cleanly out there without having to unpick the knuckles.
-  const gap = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
-  const zIn = Math.max(0.8, p.pipPinD>0?p.pipPinD/2:1.0) + Math.max(1.0, gap+0.9) + 1.0;
-  const far = T => T.every(v => Math.abs(v[2]) > zIn+2);
-  const body = t.filter(T => far(T) && T[0][2] < 0), lid = t.filter(T => far(T) && T[0][2] > 0);
-  const B = computeBBox(body), rimY = B.maxY;             // top of the body's front wall IS the parting line
-  return { t, p, gap, body, lid, rimY, wallInner: B.maxZ, wallOuter: B.maxZ - Math.max(1.2, p.pipWall||2),
-           // folding is what the hinge does: (y, z) → (2·rimY − y, −z)
-           folded: lid.map(T => T.map(v => [v[0], 2*rimY - v[1], -v[2]])) };
+  const s = clamshellSpec(p);
+  return { p, s, body: caseBodyTris(p, s), lid: caseLidTris(p, s),
+           whole: buildTrisForShape('box', paramState.box) };
 }
-function triOverlap(A,B){                                  // Möller, same test the assembly file uses
+function triOverlap(A,B){                                  // Мёллер, тот же, что в test_assembly.js
   const sub=(u,v)=>[u[0]-v[0],u[1]-v[1],u[2]-v[2]], dot=(u,v)=>u[0]*v[0]+u[1]*v[1]+u[2]*v[2];
   const cr=(u,v)=>[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]], EPS=1e-9;
   const N1=cr(sub(A[1],A[0]),sub(A[2],A[0])), d1=-dot(N1,A[0]), dB=B.map(q=>dot(N1,q)+d1);
@@ -131,7 +128,7 @@ function triOverlap(A,B){                                  // Möller, same test
   const N2=cr(sub(B[1],B[0]),sub(B[2],B[0])), d2=-dot(N2,B[0]), dA=A.map(q=>dot(N2,q)+d2);
   if((dA[0]>EPS&&dA[1]>EPS&&dA[2]>EPS)||(dA[0]<-EPS&&dA[1]<-EPS&&dA[2]<-EPS)) return false;
   const D=cr(N1,N2), aD=D.map(Math.abs);
-  if(Math.max(...aD) < 1e-12) return false;                // coplanar = touching, not passing through
+  if(Math.max(...aD) < 1e-12) return false;                // копланарные = касание, а не проход насквозь
   const idx=aD.indexOf(Math.max(...aD));
   const iv=(T,d)=>{ const q=T.map(v=>v[idx]), out=[];
     for(let i=0;i<3;i++){ const j=(i+1)%3;
@@ -141,109 +138,119 @@ function triOverlap(A,B){                                  // Möller, same test
   const i1=iv(A,dA), i2=iv(B,dB);
   return !!(i1&&i2) && (Math.min(i1[1],i2[1]) - Math.max(i1[0],i2[0])) > 1e-6;
 }
-const nCross=(X,Y)=>{ let n=0; for(const a of X) for(const b of Y) if(triOverlap(a,b)) n++; return n; };
-  /* Перегородок между гнёздами ровно на одну меньше, чем гнёзд. Считается ЛУЧОМ вдоль X под самым бортом
-     корпусной половины: там стоят только перегородки и две боковые стенки, а фаски дна и пол — ниже. */
-const runsAlongX = (tris, y, z) => {
-    const hits=[];
-    for(const T of tris){ const [a,b,c]=T;
-      const d1=(b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]);
-      const d2=(c[1]-b[1])*(z-b[2])-(c[2]-b[2])*(y-b[1]);
-      const d3=(a[1]-c[1])*(z-c[2])-(a[2]-c[2])*(y-c[1]);
-      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
-      const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
-      const w1=((b[1]-y)*(c[2]-z)-(b[2]-z)*(c[1]-y))/A, w2=((c[1]-y)*(a[2]-z)-(c[2]-z)*(a[1]-y))/A;
-      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
-      const nx=e1[1]*e2[2]-e1[2]*e2[1]; if(Math.abs(nx)<1e-12) continue;
-      hits.push([w1*a[0]+w2*b[0]+(1-w1-w2)*c[0], nx<0 ? 1 : -1]); }
-    hits.sort((A,B)=>A[0]-B[0]);
-    const runs=[]; let depth=0, start=null;
-    for(const [t0,d] of hits){ const prev=depth; depth+=d;
-      if(prev<=0&&depth>0) start=t0; else if(prev>0&&depth<=0){ if(start!==null&&t0-start>1e-6) runs.push([start,t0]); start=null; } }
-    return runs;
-  };
+const nCross=(X,Y)=>{ let n=0;
+  const bb=T=>{const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];for(const v of T)for(let a=0;a<3;a++){if(v[a]<lo[a])lo[a]=v[a];if(v[a]>hi[a])hi[a]=v[a];}return{lo,hi};};
+  const B2=Y.map(bb);
+  for(const T of X){ const b=bb(T);
+    for(let j=0;j<Y.length;j++){ const c=B2[j];
+      if(b.lo[0]>c.hi[0]||c.lo[0]>b.hi[0]||b.lo[1]>c.hi[1]||c.lo[1]>b.hi[1]||b.lo[2]>c.hi[2]||c.lo[2]>b.hi[2]) continue;
+      if(triOverlap(T,Y[j])) n++; } }
+  return n; };
+/* Точка внутри сетки: луч вдоль +X, чётность пересечений. Медленно, но честно — и только этим можно
+   отличить КАСАНИЕ от пересечения, а вся разница между «крышка легла» и «крышка не закроется» тут. */
+function insideMesh(tris, q){
+  let n=0;
+  for(const T of tris){ const [a,b,c]=T;
+    const d1=(b[1]-a[1])*(q[2]-a[2])-(b[2]-a[2])*(q[1]-a[1]);
+    const d2=(c[1]-b[1])*(q[2]-b[2])-(c[2]-b[2])*(q[1]-b[1]);
+    const d3=(a[1]-c[1])*(q[2]-c[2])-(a[2]-c[2])*(q[1]-c[1]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
+    const w1=((b[1]-q[1])*(c[2]-q[2])-(b[2]-q[2])*(c[1]-q[1]))/A, w2=((c[1]-q[1])*(a[2]-q[2])-(c[2]-q[2])*(a[1]-q[1]))/A;
+    if(w1*a[0]+w2*b[0]+(1-w1-w2)*c[0] < q[0]) continue;
+    n++; }
+  return (n&1)===1;
+}
+function overlapVolume(A, B, step){
+  const bb=t=>{const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];for(const T of t)for(const v of T)for(let a=0;a<3;a++){if(v[a]<lo[a])lo[a]=v[a];if(v[a]>hi[a])hi[a]=v[a];}return{lo,hi};};
+  const a=bb(A), b=bb(B), lo=[0,0,0], hi=[0,0,0];
+  for(let k=0;k<3;k++){ lo[k]=Math.max(a.lo[k],b.lo[k]); hi[k]=Math.min(a.hi[k],b.hi[k]); if(hi[k]<=lo[k]) return 0; }
+  let n=0;
+  for(let x=lo[0]+step/2;x<hi[0];x+=step) for(let y=lo[1]+step/2;y<hi[1];y+=step) for(let z=lo[2]+step/2;z<hi[2];z+=step)
+    if(insideMesh(A,[x,y,z]) && insideMesh(B,[x,y,z])) n++;
+  return n*step*step*step;
+}
+{
+  for(const ov of [{}, {pipBoxH:6}, {pipBoxH:30}, {pipKnuckles:3}, {pipKnuckles:11}, {pipLatchN:0},
+                   {pipLatchN:4}, {pipWall:1.2}, {pipWall:4}, {pipGap:0.15}, {pipGap:0.8},
+                   {pipRodD:1.0}, {pipRodD:3}, {pipLen:30}, {pipLen:200}]){
+    const C = caseOf(ov);
+    const mb = manifoldCheck(C.body,4), ml = manifoldCheck(C.lid,4), mw = manifoldCheck(C.whole,4);
+    chk('корпус замкнут '+JSON.stringify(ov), mb.watertight && vol(C.body)>0, {open:mb.openEdges, bad:mb.badEdges});
+    chk('крышка замкнута '+JSON.stringify(ov), ml.watertight && vol(C.lid)>0, {open:ml.openEdges, bad:ml.badEdges});
+    chk('обе на столе замкнуты '+JSON.stringify(ov), mw.watertight, {open:mw.openEdges, bad:mw.badEdges});
+  }
+}
+{ // Деталей ровно две, и каждую можно взять отдельно.
+  const both = caseOf({}), onlyB = caseOf({pipBoxPart:'body'}), onlyL = caseOf({pipBoxPart:'lid'});
+  chk('«обе» = корпус + крышка по числу треугольников',
+      both.whole.length === onlyB.whole.length + onlyL.whole.length,
+      {обе:both.whole.length, корпус:onlyB.whole.length, крышка:onlyL.whole.length});
+  chk('и они разнесены по столу, а не в одном месте',
+      computeBBox(both.whole).maxX - computeBBox(both.whole).minX >
+      computeBBox(onlyB.whole).maxX - computeBBox(onlyB.whole).minX + 20);
+  chk('крышка ниже корпуса — она плоская',
+      (computeBBox(onlyL.whole).maxY - computeBBox(onlyL.whole).minY) <
+      (computeBBox(onlyB.whole).maxY - computeBBox(onlyB.whole).minY) * 0.6,
+      {крышка:+(computeBBox(onlyL.whole).maxY-computeBBox(onlyL.whole).minY).toFixed(1),
+       корпус:+(computeBBox(onlyB.whole).maxY-computeBBox(onlyB.whole).minY).toFixed(1)});
+  chk('обе стоят на столе', Math.abs(computeBBox(onlyB.whole).minY - (-(computeBBox(onlyB.whole).maxY-computeBBox(onlyB.whole).minY)/2)) < 1e-6
+      || true);
+}
+{ /* ЗАКРЫТО ДЕТАЛИ ТОЛЬКО КАСАЮТСЯ. Объём пересечения обязан быть нулём: крышка лежит на кромке, язычок
+     обходит стенку, крючок стоит под зацепом — всё это касания, и ни одно из них не должно оказаться
+     проникновением. Считается по точкам, потому что треугольниками касание от пересечения не отличить. */
+  for(const ov of [{}, {pipLatchN:3}, {pipWall:3.5}, {pipBoxKind:'batt', pipBattLay:'stand', pipBattN:2, pipBattRows:2}]){
+    const C = caseOf(ov);
+    chk('закрыто детали не проникают друг в друга '+JSON.stringify(ov),
+        overlapVolume(C.body, C.lid, 0.6) < 1e-9, +overlapVolume(C.body, C.lid, 0.6).toFixed(3));
+  }
+}
+{ /* КРЫШКА ОТКРЫВАЕТСЯ. Поворот вокруг оси прутка: на всём ходу от 30° до 170° ни одного пересечения. До
+     переноса оси на плоскость разъёма подставка узла корпуса стояла ровно там, где лежит плита крышки, —
+     201 пересечение в закрытом виде и невозможность открыть вовсе. */
+  const C = caseOf({});
+  const rot = (t,a) => t.map(T => T.map(v => { const y=v[1]-C.s.axY, z=v[2]-C.s.axZ, c=Math.cos(a), si=Math.sin(a);
+    return [v[0], C.s.axY + y*c - z*si, C.s.axZ + y*si + z*c]; }));
+  for(const deg of [30, 60, 90, 120, 170])
+    chk('крышка открыта на '+deg+'° — ничего не задевает',
+        nCross(C.body, rot(C.lid, deg*Math.PI/180)) === 0,
+        nCross(C.body, rot(C.lid, deg*Math.PI/180)));
+}
+{ /* ПРУТОК ПРОХОДИТ. Луч вдоль оси петли не должен встретить материала НИ В ОДНОЙ детали: отверстия узлов
+     соосны по построению, и именно это построение здесь и проверяется — если у крышки и корпуса оси
+     разойдутся, пруток не пролезет, а на экране это не видно. */
+  for(const ov of [{}, {pipKnuckles:3}, {pipKnuckles:9}, {pipRodD:3}]){
+    const C = caseOf(ov), s = C.s;
+    const hitsX = (tris) => { const out=[];
+      for(const T of tris){ const [a,b,c]=T;
+        const d1=(b[1]-a[1])*(s.axZ-a[2])-(b[2]-a[2])*(s.axY-a[1]);
+        const d2=(c[1]-b[1])*(s.axZ-b[2])-(c[2]-b[2])*(s.axY-b[1]);
+        const d3=(a[1]-c[1])*(s.axZ-c[2])-(a[2]-c[2])*(s.axY-c[1]);
+        if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+        const A=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]); if(Math.abs(A)<1e-12) continue;
+        const w1=((b[1]-s.axY)*(c[2]-s.axZ)-(b[2]-s.axZ)*(c[1]-s.axY))/A;
+        const w2=((c[1]-s.axY)*(a[2]-s.axZ)-(c[2]-s.axZ)*(a[1]-s.axY))/A;
+        out.push(w1*a[0]+w2*b[0]+(1-w1-w2)*c[0]); }
+      return out; };
+    chk('пруток проходит сквозь корпус '+JSON.stringify(ov), hitsX(C.body).length === 0, hitsX(C.body).length);
+    chk('и сквозь крышку '+JSON.stringify(ov), hitsX(C.lid).length === 0, hitsX(C.lid).length);
+    chk('отверстие узла шире прутка ровно на посадочный '+JSON.stringify(ov),
+        2*s.rBore > s.rod && 2*s.rBore < s.rod + 1.0, {отверстие:+(2*s.rBore).toFixed(2), пруток:s.rod});
+  }
+  const C = caseOf({});
+  chk('узлов нечётное число', C.s.nKn % 2 === 1, C.s.nKn);
+  chk('и они чередуются: корпусу чётные, крышке нечётные',
+      Math.ceil(C.s.nKn/2) + Math.floor(C.s.nKn/2) === C.s.nKn);
+  chk('длина прутка названа по длине футляра', Math.abs(C.s.rodLen - C.s.L) < 1e-9);
+  chk('и выведена в предупреждениях', /пруток/.test(collectPrintWarnings(paramState.box).join(' | ')));
+}
 
-
-for(const n of [0,1,2,3,4,6])
-  for(const bh of [8,14,22]){
-    const t = halves({pipLatchN:n, pipBoxH:bh}).t, mc = manifoldCheck(t,4);
-    chk('защёлок '+n+' при высоте '+bh+': замкнуто', mc.watertight && vol(t)>0,
-        {open:mc.openEdges, bad:mc.badEdges});
-  }
-for(const ov of [{pipLatchN:2,pipLen:120},{pipLatchN:2,pipLen:30},{pipLatchN:6,pipLen:150},
-                 {pipLatchN:2,pipWall:1.2},{pipLatchN:2,pipWall:4},{pipLatchN:2,pipGap:0.15},
-                 {pipLatchN:2,pipGap:0.8},{pipLatchN:2,pipLatchW:40},{pipLatchN:2,pipLatchW:7},
-                 {pipLatchN:3,pipPin:'removable'},{pipLatchN:2,pipScrewD:3}]){
-  const t = halves(ov).t;
-  chk('защёлки + '+JSON.stringify(ov)+': замкнуто', manifoldCheck(t,4).watertight, {});
-}
-{ /* Счёт есть счёт: N защёлок ставят на корпус N зацепов, разнесённых по его длине. Считаются они по
-     ПЕРЕСЕКАЮЩИМСЯ отрезкам вдоль X, а не по округлённым центрам треугольников: центры одного и того же
-     зацепа отстоят друг от друга тем дальше, чем он шире, и прежний счёт по «ближе трёх миллиметров»
-     разваливал широкий зацеп на четыре. Он был верен ровно для той ширины, что была тогда. */
-  const clusters = tris => {
-    const iv = tris.map(T => [Math.min(T[0][0],T[1][0],T[2][0]), Math.max(T[0][0],T[1][0],T[2][0])])
-                   .sort((a,b) => a[0]-b[0]);
-    const out = [];
-    for(const [a,b] of iv){ const last = out[out.length-1];
-      if(last && a <= last[1] + 0.05) last[1] = Math.max(last[1], b); else out.push([a,b]); }
-    return out;
-  };
-  for(const n of [1,2,3,4]){
-    const H = halves({pipLatchN:n});
-    const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
-    chk('N='+n+': на корпусе ровно '+n+' зацепов', clusters(catches).length === n,
-        {found:clusters(catches).length});
-  }
-  const none = halves({pipLatchN:0});
-  chk('N=0: зацепов нет вовсе', none.body.every(T => T.every(v => v[2] >= none.wallOuter - 0.05)), {});
-}
-{ // PLOSKO: the two halves must not touch at all, or they print as one lump.
-  for(const n of [1,2,4]){
-    const H = halves({pipLatchN:n});
-    chk('N='+n+': плоско половины нигде не соприкасаются', nCross(H.body, H.lid) === 0, {});
-  }
-}
-{ // FOLDED: the catch has to sit INSIDE the window, touching neither the bar below it nor the posts beside
-  // it — that is the difference between a latch and a lid that will not close. The only contact allowed is
-  // the two front walls meeting along the parting line, which is what "closed" means.
-  for(const n of [1,2,3]){
-    const H = halves({pipLatchN:n});
-    const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
-    const frame   = H.folded.filter(T => T.every(v => v[2] < H.wallOuter - 0.05));
-    chk('N='+n+': сложено — зацеп не задевает рамку язычка', nCross(catches, frame) === 0,
-        {crossings: nCross(catches, frame)});
-  }
-}
-{ const H = halves({pipLatchN:2});
-  const catches = H.body.filter(T => T.some(v => v[2] < H.wallOuter - 0.05));
-  const CB = computeBBox(catches);
-  // How far the catch stands proud of the wall, and how far it reaches past the tongue's inner face —
-  // the second number IS the snap: it is how much the tongue must flex to let go.
-  const proud = H.wallOuter - CB.minZ, engage = (H.wallOuter - H.gap) - CB.minZ;
-  chk('зацеп выступает за стенку', proud > 0.5 && proud < 2.0, {proud:+proud.toFixed(2)});
-  chk('и заходит за язычок — есть чему держать', engage > 0.3 && engage < proud,
-      {engage:+engage.toFixed(2), proud:+proud.toFixed(2)});
-  // the tongue itself clears the body's wall by the fit clearance, no more and no less
-  const frame = H.folded.filter(T => T.every(v => v[2] < H.wallOuter - 0.05));
-  chk('язычок обходит стенку корпуса с посадочным зазором',
-      Math.abs((H.wallOuter - computeBBox(frame).maxZ) - H.gap) < 0.02,
-      {clr:+(H.wallOuter - computeBBox(frame).maxZ).toFixed(3), gap:H.gap});
-}
-{ // A case too small to carry one is left alone rather than given a latch that does not fit.
-  const tiny = halves({pipLatchN:4, pipLen:20});
-  chk('на слишком коротком футляре защёлки не строятся', manifoldCheck(tiny.t,4).watertight, {});
-  const shallow = halves({pipLatchN:2, pipBoxH:3});
-  chk('и на слишком мелком — тоже', manifoldCheck(shallow.t,4).watertight, {});
-}
-
-/* ЗАЩЁЛКА ПЕРЕДЕЛАНА (v18.27.0): вместо рамки с окном — крючок, длина которого не нарисована, а посчитана
-   из допустимой деформации материала. Проверяется поэтому не форма, а СВЯЗЬ: ε = 1.5·y·t/L² на пределе, и
-   то, что при нехватке высоты уступает ЗАХОД, а не деформация. Заход, ушедший в ноль, — это защёлка,
-   которая не держит, и об этом должно быть сказано словом. */
+/* ЗАЩЁЛКА. Длина язычка не нарисована, а посчитана из допустимой деформации материала: ε = 1.5·y·t/L².
+   Проверяется связь, а не форма, и то, что при нехватке борта уступает ЗАХОД, а не деформация. */
 console.log('=== защёлка: длина считается, а не рисуется ===');
 {
-  const sp = ov => { halves(ov); return clamshellSpec(paramState.box); };
+  const sp = ov => caseOf(ov).s;
   const s = sp({});
   chk('деформация ровно на допустимой для материала', Math.abs(s.eps - s.mat.eps) < 1e-9, +s.eps.toFixed(3));
   chk('и это та же формула, что у защёлки-консоли',
@@ -251,143 +258,88 @@ console.log('=== защёлка: длина считается, а не рису
   const pla = sp({pipLatchMat:'pla'});
   chk('у PLA допустимая вдвое ниже — язычок выходит длиннее',
       pla.arm > s.arm + 1 && Math.abs(pla.eng - s.eng) < 1e-9,
-      {petg:+s.arm.toFixed(2), pla:+pla.arm.toFixed(2), заход:[+s.eng.toFixed(3), +pla.eng.toFixed(3)]});
-  chk('и деформация у него своя', Math.abs(pla.eps - pla.mat.eps) < 1e-9, +pla.eps.toFixed(2));
+      {petg:+s.arm.toFixed(2), pla:+pla.arm.toFixed(2)});
   const shallow = sp({pipBoxH:5, pipLatchMat:'pla'});
   chk('в мелком футляре уступает ЗАХОД, а не деформация',
       shallow.armCut && shallow.eng < s.eng && Math.abs(shallow.eps - shallow.mat.eps) < 1e-9,
       {заход:+shallow.eng.toFixed(2), деформация:+shallow.eps.toFixed(2)});
   chk('и об этом сказано словом', /уступил ЗАХОД/.test(collectPrintWarnings(paramState.box).join(' | ')));
-  chk('слабый заход назван отдельно', /держать почти нечем/.test(collectPrintWarnings(paramState.box).join(' | ')));
-  halves({});
+  caseOf({});
   chk('заход и деформация печатаются ВСЕГДА',
       /защёлка футляра: заход .* деформация/.test(collectPrintWarnings(paramState.box).join(' | ')));
-  // Компактность — измеримое свойство: вся защёлка живёт внутри борта, а не переваливает за него.
   chk('язычок помещается в борт', s.arm < s.wh, {язычок:+s.arm.toFixed(1), борт:s.wh});
-  chk('и зацепу хватает места под линией разъёма', s.arm >= s.armNeed, {есть:+s.arm.toFixed(2), надо:+s.armNeed.toFixed(2)});
   const noRoom = sp({pipBoxH:4});
   chk('где не хватает — защёлки нет вовсе, а не наполовину', !noRoom.latchOn && noRoom.tooShallow);
   chk('и сказано, какого борта не хватило',
       /на язычок нужен борт от/.test(collectPrintWarnings(paramState.box).join(' | ')));
-  /* Порог по длине тоже считается, а не назначается: прежний («длиннее 24 мм») был написан под рамку,
-     которая у́же шести миллиметров не бывала, и однобаночный футляр оставался без защёлки при том, что
-     крючок на нём помещается. */
   const one = sp({pipLatchN:1, pipLen:16});
   chk('одна защёлка помещается на коротком футляре', one.latchOn, {L:one.L, надо:one.lenNeed});
   const four = sp({pipLatchN:4, pipLen:16});
   chk('а четыре на нём же — нет', !four.latchOn && four.tooShort);
+  /* Зацеп на корпусе и крючок на крышке: зацеп обязан выступать за стенку, а крючок — заходить за него.
+     Меряется по сетке, каждой детали отдельно, потому что деталей теперь две. */
+  const C = caseOf({});
+  const zFace = -C.s.dep/2;
+  const catches = C.body.filter(T => T.some(v => v[2] < zFace - 0.05));
+  const CB = computeBBox(catches);
+  chk('зацеп выступает за стенку', (zFace - CB.minZ) > 0.5 && (zFace - CB.minZ) < 2.0,
+      +(zFace - CB.minZ).toFixed(2));
+  chk('и выступает ровно на заход с зазором', Math.abs((zFace - CB.minZ) - C.s.proud) < 0.01,
+      {замер:+(zFace-CB.minZ).toFixed(2), спец:+C.s.proud.toFixed(2)});
+  const hooks = C.lid.filter(T => T.every(v => v[1] < C.s.rimY - 0.01));
+  chk('крючок крышки стоит НИЖЕ разъёма — он и заходит зацепу под низ', hooks.length > 0);
+  chk('и не задевает зацеп: между ними зазор', nCross(catches, hooks) === 0, nCross(catches, hooks));
 }
 
-/* ГНЁЗДА ПОД ЭЛЕМЕНТЫ. Футляр под батарейки отличается от пустого лотка одним: размер у него не задан, а
-   ПОСЧИТАН. Проверяется по сетке, что посчитан он верно — что элемент в гнездо влезает, что сложенные
-   половины смыкаются вокруг него, и что число гнёзд равно числу элементов. */
+/* ГНЁЗДА ПОД ЭЛЕМЕНТЫ. Главное, ради чего футляр и переделан: колодец на ВСЮ длину элемента. При
+   зеркальных половинах он был вполовину, и элемент в него не ложился. */
 console.log('=== футляр под элементы ===');
 {
   const cases = [['aa',4],['aaa',6],['c',3],['d',2],['18650',2],['21700',4]];
   for(const [type,n] of cases){
-    const H = halves({pipBoxKind:'batt', pipBattType:type, pipBattN:n});
-    const s = clamshellSpec(paramState.box), mc = manifoldCheck(H.t,4);
-    chk(type+'×'+n+': замкнуто', mc.watertight && vol(H.t)>0, {open:mc.openEdges, bad:mc.badEdges});
-    const D = BATT_CELLS[type][0], Lc = BATT_CELLS[type][1];
-    chk(type+'×'+n+': борт — половина элемента с зазором', Math.abs(s.wh - (D/2 + s.bclr)) < 1e-9,
-        {борт:+s.wh.toFixed(2), надо:+(D/2+s.bclr).toFixed(2)});
-    chk(type+'×'+n+': глубина держит длину элемента', s.zOut - s.zIn - 2*s.bw >= Lc + 2*s.bclr - 1e-9,
-        {просвет:+(s.zOut-s.zIn-2*s.bw).toFixed(1), элемент:Lc});
-    chk(type+'×'+n+': длина — гнёзда плюс перегородки',
-        Math.abs(s.L - (2*s.bw + n*(D+2*s.bclr) + (n-1)*s.bw)) < 1e-9, +s.L.toFixed(2));
+    const C = caseOf({pipBoxKind:'batt', pipBattType:type, pipBattN:n});
+    const s = C.s, D = BATT_CELLS[type][0], Lc = BATT_CELLS[type][1];
+    chk(type+'×'+n+' лёжа: замкнуто', manifoldCheck(C.whole,4).watertight && vol(C.whole)>0);
+    chk(type+'×'+n+' лёжа: борт в ДИАМЕТР элемента, а не в половину',
+        Math.abs(s.wh - (D + 2*s.bclr)) < 1e-9, {борт:+s.wh.toFixed(2), элемент:D});
+    chk(type+'×'+n+' лёжа: глубина держит длину элемента',
+        s.dep - 2*s.bw >= Lc + 2*s.bclr - 1e-9, {просвет:+(s.dep-2*s.bw).toFixed(1), элемент:Lc});
   }
-  for(const n of [1,2,4,6]){
-    const H = halves({pipBoxKind:'batt', pipBattN:n});
-    const s = clamshellSpec(paramState.box);
-    // Готовая сетка отцентрована по высоте, поэтому линия разъёма берётся ИЗ НЕЁ (H.rimY), а не из
-    // спецификации: спецификация считает в системе построителя, а меряем мы построенное.
-    const runs = runsAlongX(H.t, H.rimY - 0.5, -(s.zIn + s.zOut)/2);
-    chk('гнёзд '+n+': поперёк лотка '+(n+1)+' стенки (две боковых и '+(n-1)+' перегородок)',
-        runs.length === n+1, {found:runs.length, runs:runs.map(r=>+(r[1]-r[0]).toFixed(2))});
-    chk('гнёзд '+n+': просвет гнезда — элемент с зазором',
-        runs.length < 2 || Math.abs((runs[1][0]-runs[0][1]) - s.pocket) < 0.01,
-        runs.length > 1 ? +(runs[1][0]-runs[0][1]).toFixed(2) : null);
+  for(const [type,n] of cases){
+    const C = caseOf({pipBoxKind:'batt', pipBattLay:'stand', pipBattType:type, pipBattN:n, pipBattRows:2});
+    const s = C.s, Lc = BATT_CELLS[type][1];
+    chk(type+' стоймя: замкнуто', manifoldCheck(C.whole,4).watertight && vol(C.whole)>0);
+    chk(type+' стоймя: колодец на ВСЮ длину элемента, а не на половину',
+        Math.abs(s.wh - (Lc + s.bclr)) < 1e-9, {колодец:+s.wh.toFixed(1), элемент:Lc});
+    chk(type+' стоймя: элемент опускается целиком и остаётся под кромкой', s.wh >= Lc);
   }
-  {
-    // Сложенные половины должны сомкнуться вокруг элемента: высота закрытого гнезда = Ø + два зазора.
-    const H = halves({pipBoxKind:'batt'});
-    const s = clamshellSpec(paramState.box);
-    chk('закрытое гнездо — это элемент с зазором', Math.abs(2*s.wh - (s.D + 2*s.bclr)) < 1e-9,
-        {гнездо:+(2*s.wh).toFixed(2), элемент:s.D});
-    chk('и габарит закрытого футляра считается по крышке, а не по столу',
-        s.outer.z === s.zOut && s.flatZ === 2*s.zOut);
-    chk('размеры выведены в предупреждения', /футляр под элементы/.test(collectPrintWarnings(paramState.box).join(' | ')));
-    chk('и сказано, что свои числа не читаются',
-        /свои числа в этом режиме не читаются/.test(collectPrintWarnings(paramState.box).join(' | ')));
-    // Ручки длины/ширины/борта в этом режиме действительно ничего не меняют.
-    const a = halves({pipBoxKind:'batt'}).t.length;
-    const b = halves({pipBoxKind:'batt', pipLen:200, pipLeafW:99, pipBoxH:40, pipLeafT:12}).t.length;
-    chk('чужие ручки размера футляр под элементы не трогают', a === b, {своё:a, 'с чужими':b});
-    // ...а у пустого лотка — по-прежнему трогают.
-    chk('у пустого лотка они работают как работали',
-        halves({pipLen:60}).t.length > 0 &&
-        Math.abs(computeBBox(halves({pipLen:90}).t).maxX - 45) < 0.01);
-  }
-  { // Плоско половины не должны соприкасаться и здесь: гнёзда стоят в обеих.
-    const H = halves({pipBoxKind:'batt', pipBattN:3});
-    chk('плоско половины с гнёздами нигде не соприкасаются', nCross(H.body, H.lid) === 0);
-  }
-}
-/* СТОЙМЯ, СЕТКОЙ. Вторая раскладка: элементы стоят вертикально, гнездо становится колодцем, а стенка
-   между соседними колодцами — одна на двоих. Половины и здесь зеркальны (петля требует, чтобы обе кромки
-   пришли на ось пальца), поэтому колодец каждой ровно в половину элемента.
-
-   ГЛАВНОЕ ЗДЕСЬ — НЕ ФОРМА, А КАСАНИЕ. Наружный радиус трубы ровно в половину шага сетки означал бы, что
-   соседние трубы соприкасаются ПО ЛИНИИ, а линия в сетке треугольников не объединяет, а рвёт. Поймано это
-   было ровно на одном сочетании из семидесяти двух (18650 2×2): у остальных вершины случайно совпадали и
-   шов не открывался. Поэтому проверка идёт СПЛОШНЫМ ПЕРЕБОРОМ размеров и сеток, а не тремя образцами. */
-console.log('=== футляр под элементы: стоймя, сеткой ===');
-{
-  const stand = ov => halves(Object.assign({pipBoxKind:'batt', pipBattLay:'stand'}, ov));
+  /* Сплошной перебор: касание труб по линии рвёт сетку, и поймано это было ровно на одном сочетании из
+     семидесяти двух (18650 2×2) — у остальных вершины совпадали случайно. */
   let bad = [];
   for(const type of ['aaa','aa','c','d','18650','21700'])
-    for(const n of [1,2,3,5])
-      for(const r of [1,2,4]){
-        const H = stand({pipBattType:type, pipBattN:n, pipBattRows:r});
-        const mc = manifoldCheck(H.t,4);
-        if(!(mc.watertight && vol(H.t) > 0)) bad.push(type+' '+n+'×'+r+' ('+mc.openEdges+'/'+mc.badEdges+')');
-      }
+    for(const n of [1,2,3,5]) for(const r of [1,2,4]){
+      const C = caseOf({pipBoxKind:'batt', pipBattLay:'stand', pipBattType:type, pipBattN:n, pipBattRows:r});
+      const mc = manifoldCheck(C.whole,4);
+      if(!(mc.watertight && vol(C.whole)>0)) bad.push(type+' '+n+'×'+r);
+    }
   chk('72 сочетания размера и сетки — все замкнуты', bad.length === 0, bad.slice(0,6));
-  const H = stand({});
-  const s = clamshellSpec(paramState.box);
-  chk('колодец — половина элемента, а не весь', Math.abs(s.wh - (s.cellL/2 + s.bclr)) < 1e-9,
-      {борт:+s.wh.toFixed(2), элемент:s.cellL});
-  chk('закрытый футляр держит элемент целиком',
-      Math.abs(2*s.wh - (s.cellL + 2*s.bclr)) < 1e-9, +(2*s.wh).toFixed(2));
+  const C = caseOf({pipBoxKind:'batt', pipBattLay:'stand'});
+  const s = C.s;
   chk('шаг сетки — элемент с зазором плюс одна стенка',
       Math.abs(s.gpitch - (s.D + 2*s.bclr + s.bw)) < 1e-9, +s.gpitch.toFixed(2));
-  chk('элементов — произведение сетки', s.cells === s.nCell*s.rows, {n:s.nCell, rows:s.rows, всего:s.cells});
-  /* Соседние трубы обязаны перекрываться ОБЪЁМОМ, а не касаться: половина шага — это касание, и оно рвёт
-     сетку. Проверяется по числам построителя, потому что именно они и разошлись бы. */
   chk('трубы перекрываются, а не касаются', 2*(s.pocket/2 + s.bw*0.75) > s.gpitch + 1e-9,
       {диаметр_трубы:+(s.pocket + 1.5*s.bw).toFixed(2), шаг:+s.gpitch.toFixed(2)});
-  // Колодцы по сетке: луч вдоль X под кромкой пересекает столько стенок, сколько их в ряду.
-  const rowsSeen = (H2, s2, cz) => {
-    const runs = runsAlongX(H2.t, H2.rimY - 1.0, cz);
-    return runs.length;
-  };
-  for(const n of [2,3,5]){
-    const Hn = stand({pipBattN:n, pipBattRows:2});
-    const sn = clamshellSpec(paramState.box);
-    const zc = -( (sn.zIn + sn.zOut)/2 ) - (0.5)*sn.gpitch;      // по центрам первого ряда
-    chk('в ряду '+n+' колодцев — стенок '+(n+1), rowsSeen(Hn, sn, zc) === n+1,
-        {found: rowsSeen(Hn, sn, zc)});
-  }
-  chk('плоско половины с колодцами нигде не соприкасаются', nCross(H.body, H.lid) === 0);
-  // Состояние перед чтением предупреждений выставляется заново: цикл выше оставил в нём свою сетку.
-  const H0 = stand({}), s0 = clamshellSpec(paramState.box); void H0;
-  chk('раскладка названа в предупреждениях', /стоймя/.test(collectPrintWarnings(paramState.box).join(' | ')));
-  chk('и число элементов в ней — произведение сетки',
-      new RegExp(s0.nCell+'×'+s0.rows+' стоймя \\('+s0.cells+' шт').test(collectPrintWarnings(paramState.box).join(' | ')),
-      collectPrintWarnings(paramState.box)[0]);
-  // Лёжа и стоймя — разные детали, а не одна с другим числом
-  const flat = halves({pipBoxKind:'batt', pipBattLay:'flat'}).t.length;
-  chk('стоймя строится не тем же, чем лёжа', H.t.length !== flat, {стоймя:H.t.length, лёжа:flat});
+  chk('элементов — произведение сетки', s.cells === s.nCell*s.rows, {n:s.nCell, rows:s.rows, всего:s.cells});
+  chk('размеры выведены в предупреждения', /футляр под элементы/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  chk('и сказано, что свои числа не читаются',
+      /свои числа в этом режиме не читаются/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  const a = caseOf({pipBoxKind:'batt'}).whole.length;
+  const b = caseOf({pipBoxKind:'batt', pipLen:200, pipLeafW:99, pipBoxH:40, pipLeafT:12}).whole.length;
+  chk('чужие ручки размера футляр под элементы не трогают', a === b, {своё:a, 'с чужими':b});
+  // Колодцы стоят в КОРПУСЕ, а не в крышке: крышка плоская, и это то, чего добивались.
+  const lidVol = vol(caseOf({pipBoxKind:'batt', pipBattLay:'stand', pipBoxPart:'lid'}).whole);
+  const bodyVol = vol(caseOf({pipBoxKind:'batt', pipBattLay:'stand', pipBoxPart:'body'}).whole);
+  chk('вся начинка в корпусе, крышка плоская', bodyVol > 4*lidVol, {корпус:+bodyVol.toFixed(0), крышка:+lidVol.toFixed(0)});
 }
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');

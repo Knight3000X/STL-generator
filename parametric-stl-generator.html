@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.26.1';
+const APP_VERSION = 'v18.27.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4744,7 +4744,19 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipGap', w:['flat','box'], label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewD', w:['flat','clip'], label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewN', w:['flat'], needs:{pipScrewD:0.5}, label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipBoxKind', w:['box'], label:'Футляр: что внутри', type:'select', default:'plain',
+      options:[{v:'plain',t:'пустой лоток'},{v:'batt',t:'гнёзда под батарейки / аккумуляторы'}]},
+    {group:'Петля (печать в сборе)', key:'pipBattType', w:['box'], only:{pipBoxKind:['batt']}, label:'Футляр: типоразмер элемента', type:'select', default:'aa',
+      options:[{v:'aaa',t:'AAA'},{v:'aa',t:'AA'},{v:'c',t:'C'},{v:'d',t:'D'},{v:'18650',t:'18650'},{v:'21700',t:'21700'},{v:'custom',t:'свой размер'}]},
+    {group:'Петля (печать в сборе)', key:'pipBattN', w:['box'], only:{pipBoxKind:['batt']}, label:'Футляр: число элементов', min:1, max:12, step:1, default:4, unit:'', int:true,
+      hint:'Размер футляра под элементы не задаётся, а считается: длина — по числу гнёзд, глубина — по длине элемента, высота борта каждой половины — ровно половина его диаметра с зазором. Габарит закрытого футляра выводится в предупреждениях.'},
+    {group:'Петля (печать в сборе)', key:'pipBattD', w:['box'], only:{pipBattType:['custom']}, label:'Футляр: Ø элемента (свой размер)', min:3, max:60, step:0.1, default:14.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipBattLen', w:['box'], only:{pipBattType:['custom']}, label:'Футляр: длина элемента (свой размер)', min:5, max:140, step:0.5, default:50.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipBattClear', w:['box'], only:{pipBoxKind:['batt']}, label:'Футляр: зазор посадки элемента', min:0, max:1.5, step:0.05, default:0.4, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLatchN', w:['box'], label:'Футляр: число защёлок (0 = без)', min:0, max:6, step:1, default:2, unit:'', int:true},
+    {group:'Петля (печать в сборе)', key:'pipLatchMat', w:['box'], label:'Футляр: материал (для расчёта защёлки)', type:'select', default:'petg',
+      options:[{v:'petg',t:'PETG'},{v:'pla',t:'PLA'},{v:'abs',t:'ABS'},{v:'nylon',t:'нейлон'}],
+      hint:'Длина язычка не рисуется, а считается из допустимой деформации материала: ε = 1.5·y·t/L². У PLA она вдвое ниже, чем у PETG, поэтому язычок под него выходит длиннее при том же заходе.'},
     {group:'Петля (печать в сборе)', key:'pipLatchW', w:['box'], label:'Футляр: ширина защёлки', min:7, max:60, step:1, default:14, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipBoxH', w:['box'], label:'Коробка: высота бортика лотка', min:2, max:60, step:1, default:12, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipWall', w:['box'], label:'Коробка: толщина стенки бортика', min:1.2, max:6, step:0.2, default:2, unit:'мм'},
@@ -6802,7 +6814,7 @@ const MODEL_HELP = {
                       mat:['petg','abs']},
 
   'hinge:flat':     {what:'Плоская двухлистовая петля, печатается в сборе и складывается сразу со стола. Штифт можно сделать несъёмным или заменить прутком (годится кусок филамента 1,75 мм).', how:'Обоими листами на стол, петля раскрыта. Зазор 0,3–0,35 мм: меньше — спечётся, больше — люфт.', mat:['petg','nylon']},
-  'hinge:box':      {what:'Контейнер-футляр: две оболочки на общей петле плюс защёлки. Печатается раскрытым и закрывается со стола.', how:'Раскрытым, дном обеих половин на стол.', mat:['petg','pla']},
+  'hinge:box':      {what:'Контейнер-футляр: две оболочки на общей петле плюс защёлки. Печатается раскрытым и закрывается со стола. Внутри — пустой лоток или ГНЁЗДА ПОД ЭЛЕМЕНТЫ (батарейки и аккумуляторы AAA…D, 18650, 21700 или свой размер): элемент лежит поперёк, гнёзда разделены перегородками, дно гнезда с фасками под 45°, чтобы круглый элемент вставал на две линии касания и не катался. В этом режиме размер футляра не задаётся, а СЧИТАЕТСЯ по элементам — длина по их числу, глубина по длине элемента, борт каждой половины ровно в половину его диаметра с зазором, — поэтому закрытые половины смыкаются вокруг элементов, и в предупреждениях выводится готовый габарит.', how:'Раскрытым, дном обеих половин на стол. Защёлка — крючок на язычке крышки: его длина не нарисована, а посчитана из допустимой деформации материала (ε = 1.5·y·t/L²), поэтому выбор материала в её строке меняет геометрию. Заход, длина и деформация выводятся в предупреждениях; если борт мелкий и нужной длины в нём нет, уступает заход — и об этом сказано числом.', mat:['petg','pla']},
   'hinge:clip':     {what:'Клипса-защёлка под кабель или трубу: обхватывает и держит горловиной уже своего диаметра.', how:'Плашмя, устьем вбок. Именно упругость решает — жёсткий материал разожмётся один раз и треснет.', mat:['petg','tpu']},
   'hinge:tie':      {what:'Кабельная стяжка: ремешок с зубьями и головка с храповиком, печатается целиком.', how:'Плашмя. Ремешок толщиной 1,2–1,6 мм — тоньше рвётся, толще не гнётся.', mat:['tpu','petg']},
   'hinge:clamp':    {what:'Разъёмный хомут: две половины, стягиваемые болтами.', how:'Каждую половину плоскостью разъёма на стол.', mat:['petg','abs']},
@@ -10570,18 +10582,97 @@ function buildHingeKnuckles(p) {
    B = its shell + tubes wrapping the pin with `gap`. Each barrel is welded to its OWN shell by a tongue
    that reaches only to its side of the parting plane, and the walls stand off the barrel so a barrel can
    never touch the opposite shell. */
-function buildClamshell(p){
-  const L      = Math.max(10, p.pipLen||60);
-  const floorT = Math.max(1.2, p.pipLeafT||6);
-  const wh     = Math.max(2, p.pipBoxH||10);            // wall height of EACH half (closed cavity = 2·wh)
+/* ---- ФУТЛЯР: размеры, гнёзда под элементы и защёлка ----------------------------------------------
+   Всё, что у футляра является ЧИСЛОМ, собрано здесь: построитель, предупреждения и проверки читают одно
+   и то же. Раньше числа жили внутри построителя, и сказать о них было нечем.
+
+   ЗАЩЁЛКА ПЕРЕДЕЛАНА (v18.27.0), и вот почему. Прежняя была рамкой с окном по образцу ящика для
+   инструментов: две стойки, донная перекладина и язычок под палец — двенадцать с половиной миллиметров в
+   высоту на футляре со стенкой двенадцать. Рамка держит в обе стороны и жёстче консоли, но её высота была
+   не украшением: язычок обязан ОТОГНУТЬСЯ, чтобы перескочить зацеп, а деформация консоли идёт как
+   ε = 1.5·y·t/L² — короткий язычок при том же заходе лопается. Отсюда и двенадцать миллиметров.
+
+   Теперь длина не рисуется, а СЧИТАЕТСЯ из допустимой деформации: L = √(1.5·y·t/ε). Тонкий язычок (0.6 от
+   стенки) и заход 0.7 мм дают на PETG пять с половиной миллиметров вместо двенадцати — вдвое ниже, и
+   деталей вместо пяти три. А если футляр мелкий и такой длины в нём нет, уступает не деформация, а ЗАХОД:
+   он пересчитывается под то, что есть, и если получилось меньше трети миллиметра — об этом сказано.
+
+   Окно при этом потеряно не зря: крючок держит только на разъём, а рамка держала и вбок. Но вбок футляр
+   держат стенки, которые сходятся по линии разъёма, — рамка страховала то, что и так есть. */
+const CLAM_LATCH_MIN_ARM = 3.5;
+function clamshellSpec(p){
   const bw     = Math.max(1.2, p.pipWall||2);
   const gap    = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
-  const kWall  = Math.max(1.0, gap+0.9);
+  const battOn = p.pipBoxKind === 'batt';
+  /* Дно у футляра под элементы тоже СЧИТАЕТСЯ. Умолчание в шесть миллиметров — от плоской петли, где эта
+     же ручка задаёт толщину листа; на футляре два таких дна съедали бы двенадцать миллиметров высоты у
+     коробки, вся высота которой пятнадцать. */
+  const floorT = battOn ? Math.max(1.6, bw*1.2) : Math.max(1.2, p.pipLeafT||6);
+  const cell   = BATT_CELLS[p.pipBattType] || null;
+  const D      = Math.max(3, cell ? cell[0] : (p.pipBattD>0 ? p.pipBattD : 14.5));
+  const cellL  = Math.max(5, cell ? cell[1] : (p.pipBattLen>0 ? p.pipBattLen : 50.5));
+  const bclr   = Math.max(0, fitTuned(p, p.pipBattClear!=null ? p.pipBattClear : 0.4));
+  const nCell  = Math.max(1, Math.min(12, Math.round(p.pipBattN>0 ? p.pipBattN : 4)));
+  const pocket = D + 2*bclr;
+  /* РАЗМЕР ФУТЛЯРА ПОД ЭЛЕМЕНТЫ НЕ ЗАДАЁТСЯ, А СЧИТАЕТСЯ — иначе это не футляр под элементы, а коробка,
+     в которую они, может быть, влезут. Элемент лежит поперёк (ось вдоль Z), поэтому длина футляра идёт по
+     числу гнёзд, а глубина — по длине элемента. Высота борта каждой половины — ровно половина элемента с
+     зазором: сложенные, две половины дают полный цилиндр вокруг него. */
+  const L      = battOn ? 2*bw + nCell*pocket + (nCell-1)*bw : Math.max(10, p.pipLen||60);
+  const wh     = battOn ? pocket/2 : Math.max(2, p.pipBoxH||10);
+  const rimY   = floorT + wh;
   const pinR   = Math.max(0.8, p.pipPinD>0 ? p.pipPinD/2 : 1.0);
+  const zIn    = pinR + Math.max(1.0, gap+0.9) + 1.0;
+  const zOut   = battOn ? zIn + cellL + 2*bclr + 2*bw : Math.max(zIn+8, p.pipLeafW||22);
+  // ЗАЩЁЛКА. Заход и длина связаны деформацией, и уступает тот, кому есть куда.
+  const mat    = SNAP_MATERIALS[p.pipLatchMat] || SNAP_MATERIALS.petg;
+  const lt     = Math.max(1.0, bw*0.6);                       // толщина язычка
+  const engW   = Math.max(0.4, Math.min(0.9, bw*0.35));       // желаемый заход
+  const armW   = Math.sqrt(1.5*engW*lt/(mat.eps/100));        // длина, при которой деформация ровно допустимая
+  const armMax = Math.max(0, wh - 1.0);
+  const arm    = Math.max(CLAM_LATCH_MIN_ARM, Math.min(armW, armMax));
+  const eng    = Math.min(engW, (mat.eps/100)*arm*arm/(1.5*lt));
+  const eps    = 100*1.5*eng*lt/(arm*arm);
+  const proud  = eng + gap;                                   // на столько зацеп выступает за стенку
+  const hook   = Math.max(1.0, eng*1.8);                      // высота крючка на кончике языка
+  const root   = Math.max(2.2, bw*1.2);                       // плечо над линией разъёма
+  const nLatch = Math.max(0, Math.min(6, Math.round(p.pipLatchN!=null ? p.pipLatchN : 2)));
+  /* Зацеп обязан целиком уместиться на стенке корпуса НИЖЕ линии разъёма: его низ стоит на кончике
+     крючка, а сверху у него скос под 45°, который язычок и наезжает. Отсюда и вся потребная длина
+     язычка — она же условие, при котором защёлка вообще строится. */
+  const armNeed= hook + 0.65 + 2.6*proud;
+  /* Место вдоль длины: на защёлку нужен язычок шириной хотя бы шесть миллиметров и просвет между
+     соседними. Прежний порог стоял числом («длиннее 24 мм») и был написан под рамку, которая у́же шести
+     не бывала; крючок помещается и на однобаночном футляре, поэтому порог теперь считается из числа
+     защёлок, а не назначается. */
+  const lenNeed= 11*nLatch + 2;
+  const latchOn= nLatch > 0 && L >= lenNeed && armMax >= Math.max(CLAM_LATCH_MIN_ARM, armNeed) && arm >= armNeed;
+  return { bw, floorT, gap, L, wh, rimY, zIn, zOut, pinR, battOn, D, cellL, bclr, nCell, pocket,
+           mat, lt, eng, arm, eps, proud, hook, root, nLatch, latchOn,
+           armNeed, armCut: armW > armMax + 1e-9, weak: eng < 0.35,
+           lenNeed,
+           tooShallow: nLatch > 0 && L >= lenNeed && armMax < Math.max(CLAM_LATCH_MIN_ARM, armNeed),
+           tooShort: nLatch > 0 && L < lenNeed,
+           /* Габарит ЗАКРЫТОГО футляра: крышка ложится на корпус, поэтому глубина остаётся одна, а высота
+              складывается из двух половин. Плоско, на столе, он вдвое шире по глубине — это состояние
+              печати, а не пользования, и мерить размер по нему значило бы называть чужое число. */
+           outer: { x: L, y: 2*rimY, z: zOut },
+           flatZ: 2*zOut,
+           big: L > 250 || 2*rimY > 250 || 2*zOut > 250 };
+}
+function buildClamshell(p){
+  const S      = clamshellSpec(p);       // размеры, гнёзда и защёлка — одним источником с предупреждениями
+  const L      = S.L;
+  const floorT = S.floorT;
+  const wh     = S.wh;                                  // wall height of EACH half (closed cavity = 2·wh)
+  const bw     = S.bw;
+  const gap    = S.gap;
+  const kWall  = Math.max(1.0, gap+0.9);
+  const pinR   = S.pinR;
   const rK     = pinR + kWall;                          // knuckle outer radius
-  const zIn    = rK + 1.0;                              // walls stand off the barrel → no cross-body contact
-  const zOut   = Math.max(zIn+8, p.pipLeafW||22);       // shell depth from the parting line
-  const rimY   = floorT + wh, emb = 0.6;
+  const zIn    = S.zIn;                                 // walls stand off the barrel → no cross-body contact
+  const zOut   = S.zOut;                                // shell depth from the parting line
+  const rimY   = S.rimY, emb = 0.6;
   let N = Math.max(3, Math.round(p.pipKnuckles||5)); if(N%2===0) N++;
   const w = L/N, wf = Math.max(2, w-gap), seg = Math.max(20, Math.min(64, Math.round(rK*10)));
   const tris = [];
@@ -10614,6 +10705,26 @@ function buildClamshell(p){
     add(boxSpanTris(-L/2, L/2, y0, y1, s<0 ? zo : zo-bw, s<0 ? zo+bw : zo));   // outer wall
     for(const sx of [-1,1])                                                 // side walls, inset so no face is shared
       add(boxSpanTris(sx<0 ? -L/2 : L/2-bw, sx<0 ? -L/2+bw : L/2, y0, y1-0.15, zLo+0.4, zHi-0.4));
+    /* ГНЁЗДА ПОД ЭЛЕМЕНТЫ. Перегородки поперёк лотка, между ними ложится элемент; в сложенном виде
+       гнездо верхней половины зеркалит нижнее, и элемент оказывается заперт со всех сторон — высота борта
+       для того и считается как половина элемента с зазором.
+
+       Дно гнезда с фасками под 45°: круглый элемент в прямоугольном кармане катается и стучит, а две
+       наклонные грани ставят его на две линии касания и центрируют сами. Сорок пять градусов взяты не для
+       красоты — это ровно тот угол, который печатается без поддержек, а гнездо смотрит вверх. */
+    if(S.battOn){
+      const xIn0 = -L/2 + bw, zc0 = zLo + bw + 0.4, zc1 = zHi - bw - 0.4;
+      for(let k=1;k<S.nCell;k++){                                          // перегородки между гнёздами
+        const xs = xIn0 + k*S.pocket + (k-1)*bw;
+        add(boxSpanTris(xs, xs+bw, y0, y1-0.15, zc0, zc1));
+      }
+      const ch = Math.min(S.pocket*0.25, Math.max(0, wh-0.6));             // катет фаски дна
+      if(ch > 0.4) for(let k=0;k<S.nCell;k++){
+        const xa = xIn0 + k*(S.pocket + bw), xb = xa + S.pocket;
+        for(const T of convexPrismZTris([[xa, floorT-emb], [xa+ch, floorT-emb], [xa, floorT+ch]], zc0+0.2, zc1-0.2)) tris.push(T);
+        for(const T of convexPrismZTris([[xb, floorT-emb], [xb-ch, floorT-emb], [xb, floorT+ch]], zc0+0.2, zc1-0.2)) tris.push(T);
+      }
+    }
   }
   // Separable variant: bore every knuckle and emit no pin, so a rod can be threaded after printing and pulled
   // to split the case in two. A bored A knuckle means A's tongue must clear the axis just like B's.
@@ -10645,66 +10756,49 @@ function buildClamshell(p){
     else { tubeX(x0,x1, rimY,0, rK, pinR+gap);                                                          // B: tube around the pin
       add(convexPrismXTris([[tY1,zBi],[tY1-dropB,zBo],[tY0-dropB,zBo],[tY0,zBi]], x0, x1)); }
   }
-  // ---- Toolbox latches on the front edge (защёлки) ------------------------------------------------
-  // A clamshell with nothing holding it shut is a box that falls open, so this is the piece that makes it
-  // a case. The pattern is the toolbox one and the same one the cube's snap lid already uses: a CATCH that
-  // stands proud of the body's front wall, and a WINDOW in a tongue hanging off the lid that the catch
-  // clicks into. A window rather than a bare hook because it locks in both directions and because a closed
-  // frame is far stiffer than a cantilever of the same thickness — it is the part that gets pulled on.
+  // ---- Защёлка-крючок на переднем ребре ------------------------------------------------------------
+  // Футляр, который нечем держать закрытым, — это коробка, которая раскрывается, поэтому защёлка и есть
+  // то, что делает его футляром. Устройство простое: ЗАЦЕП, выступающий из передней стенки корпуса, и
+  // ЯЗЫЧОК на крышке, кончик которого заходит зацепу под низ.
   //
-  // Everything here is drawn in the frame of the CLOSED case, which is the only frame a latch can be read
-  // in, and the lid's half is then put on the print bed by the very motion the hinge performs:
-  // (y, z) → (2·rimY − y, −z). The body's half needs no mapping — it does not move.
+  // Всё рисуется в системе ЗАКРЫТОГО футляра — единственной, в которой защёлку вообще можно прочитать, —
+  // а половина крышки потом кладётся на стол ровно тем движением, которое делает петля:
+  // (y, z) → (2·rimY − y, −z). Корпусу отображение не нужно, он никуда не едет.
   //
-  // Why the tongue stands off its own wall by the fit clearance: folded, the lid's front wall lands EXACTLY
-  // on the body's, so a tongue flush with it would be inside the body. It has to pass outside, and the
-  // shoulder that carries it out there overhangs the wall — hence the 45° gusset, the same trick the hinge
-  // tongues above use.
-  const nLatch = Math.max(0, Math.min(6, Math.round(p.pipLatchN!=null ? p.pipLatchN : 2)));
+  // Язычок отставлен от своей стенки НЕ на посадочный зазор, а на выступ зацепа с запасом: он обязан
+  // пройти мимо зацепа везде, кроме своего кончика, — иначе он упёрся бы в него всей длиной и остался
+  // отогнутым навсегда. Именно этим крючок отличается от прежней рамки с окном, где зацеп проходил
+  // насквозь. Длина язычка не выбрана, а посчитана из допустимой деформации материала (см. clamshellSpec).
   const zFace = -zOut;                                    // outer face of the front wall, both halves
-  if(nLatch > 0 && L > 24 && (rimY - floorT) > 6){
-    const pitch = L/nLatch;
-    const lw   = Math.max(7, Math.min(p.pipLatchW>0 ? p.pipLatchW : 14, pitch - 5));  // frame width along X
-    const tt   = Math.max(1.2, bw*0.9);                   // tongue thickness
-    const kp   = Math.max(0.6, Math.min(1.5, bw*0.55));   // how far the catch stands proud
-    const pw   = Math.max(1.8, lw*0.2);                   // side posts of the frame
-    const bb   = Math.max(1.8, bw);                       // bottom bar, the part the catch pulls against
-    const reach= Math.min(rimY - floorT - 1.2, bb + 4*kp + 3);   // how far the tongue hangs below the rim
-    const root = Math.max(2.5, bw*1.6);                   // shoulder height, on the lid's own wall
-    const tab  = Math.max(1.2, tt*0.9);                   // thumb tab on the free end
-    const zTo  = zFace - gap - tt, zTi = zFace - gap;      // tongue: outer / inner face
-    const yBar = rimY - reach;                            // bottom bar sits here
+  if(S.latchOn){
+    const pitch = L/S.nLatch;
+    const lw   = Math.max(6, Math.min(p.pipLatchW>0 ? p.pipLatchW : 14, pitch - 4));  // ширина язычка
+    const tt   = S.lt, stand = S.proud + 0.25;            // толщина язычка и его отстояние от стенки
+    const zTi  = zFace - stand, zTo = zTi - tt;           // внутренняя и наружная грани язычка
+    const yTip = rimY - S.arm;                            // кончик язычка
+    const yB   = yTip + S.hook + 0.15;                    // низ зацепа: крючок садится под него
     const fold = T => T.map(v => [v[0], 2*rimY - v[1], -v[2]]);
     const lid  = T => { for(const t of T) tris.push(fold(t)); };
-    // Every piece of the frame overlaps its neighbour in VOLUME and shares no PLANE with it — the frame is
-    // three boxes stacked around the same corner, and letting any two of them end on one plane put four
-    // triangles on the same edge. The 0.25-0.35 mm insets below are exactly that and nothing more.
-    const in_ = 0.35;
-    for(let i=0;i<nLatch;i++){
+    for(let i=0;i<S.nLatch;i++){
       const xc = -L/2 + (i+0.5)*pitch, x0 = xc-lw/2, x1 = xc+lw/2;
-      const xa = x0+in_, xb = x1-in_;
-      // --- lid: two posts. The opening between them IS the window, and it runs from the bar up to the
-      //     shoulder, so nothing has to bridge across the top of it.
-      lid(boxSpanTris(x0, x0+pw, yBar, rimY+root, zTo, zTi));
-      lid(boxSpanTris(x1-pw, x1, yBar, rimY+root, zTo, zTi));
-      // --- lid: the bar the catch pulls against, thickened into a thumb tab, with the 45° that keeps the
-      //     tab printable — on the far side of the bar, because the fold turns "below" into "above".
-      lid(convexPrismXTris([[yBar-0.25, zTi-0.25], [yBar-0.25, zTo-tab], [yBar+bb, zTo-tab],
-                            [yBar+bb+tab, zTo], [yBar+bb+tab, zTi-0.25]], xa, xb));
-      // --- lid: the shoulder that carries the tongue out past the lid's own wall, and the 45° gusset
-      //     under it — without which it starts in mid-air, the wall having ended.
-      // Strictly ABOVE the parting line: below it the wall belongs to the BODY, and a shoulder reaching
-      // down there would hit it on closing — it bites into the lid's own wall in z, never in y.
-      lid(boxSpanTris(xa, xb, rimY+gap, rimY+root+0.35, zTo+0.25, zFace+0.6));
-      lid(convexPrismXTris([[rimY+root+0.1, zFace+0.4], [rimY+root+0.1, zTo+0.25],
-                            [rimY+root+0.1+gap+tt+0.4, zFace+0.4]], xa, xb));
-      // --- body: the catch. Flat underside for the bar to pull against, 45° top so the closing tongue
-      //     rides over it and clicks in.
-      // Above the bar's FULL height — the 45° that keeps the tab printable carries it `tab` higher than the
-      // bar proper, and measuring from the bar alone sat the catch straight on that ramp.
-      const yB = yBar + bb + tab + 0.5, bl = Math.max(4, lw - 2*pw - 1.6);
-      add(convexPrismXTris([[yB, zFace+0.6], [yB, zFace-kp], [yB+kp*1.4, zFace-kp],
-                            [yB+kp*2.6, zFace+0.6]], xc-bl/2, xc+bl/2));
+      const xa = x0+0.35, xb = x1-0.35;
+      // --- крышка: плечо, выносящее язычок за её собственную стенку, и косынка под ним. Строго ВЫШЕ линии
+      //     разъёма: ниже неё стенка принадлежит корпусу, и плечо, дотянувшееся туда, било бы по нему.
+      lid(boxSpanTris(xa, xb, rimY+gap, rimY+S.root+0.35, zTo+0.25, zFace+0.6));
+      lid(convexPrismXTris([[rimY+S.root+0.1, zFace+0.4], [rimY+S.root+0.1, zTo+0.25],
+                            [rimY+S.root+0.1+stand+tt+0.4, zFace+0.4]], xa, xb));
+      // --- крышка: сам язычок, одной пластиной от плеча до кончика.
+      lid(boxSpanTris(x0, x1, yTip, rimY+S.root, zTo, zTi));
+      /* --- крышка: крючок на кончике. Верхняя грань плоская — ею он и держит, упираясь зацепу в низ;
+             нижняя срезана под 45°, чтобы при закрывании наехать на зацеп и отжаться, а не упереться.
+             Сложенная, эта нижняя грань смотрит вверх, так что печати она не мешает вовсе; наверху
+             остаётся плоский свес в один заход — 0.5…0.9 мм, длина моста, которую печать держит. */
+      lid(convexPrismXTris([[yTip+S.hook, zTi], [yTip+S.hook, zFace-gap],
+                            [yTip, zFace-gap-S.eng*0.9], [yTip, zTi]], xa, xb));
+      // --- корпус: зацеп. Низ плоский — за него держит крючок, верх под 45°, чтобы язычок на него наехал.
+      const bl = Math.max(4, lw - 2.4);
+      add(convexPrismXTris([[yB, zFace+0.6], [yB, zFace-S.proud], [yB+S.proud*1.4, zFace-S.proud],
+                            [yB+S.proud*2.6, zFace+0.6]], xc-bl/2, xc+bl/2));
     }
   }
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
@@ -20687,6 +20781,35 @@ function collectPrintWarnings(p){
     if (b.gap < 0.25) w.push('зазор шарнира ' + b.gap.toFixed(2) + ' мм — шар может спечься с чашкой');
     if (!b.captive) w.push('устье шире шара — шар выпадет; увеличьте угол устья');
     if (b.swing < 5) w.push('качание всего ' + b.swing.toFixed(0) + '° — ножка упирается в устье');
+  }
+  if ((p.pipMode || 'none') === 'box'){
+    const c = clamshellSpec(p);
+    if (c.battOn){
+      /* Размер посчитан, а не задан, и сказать об этом надо ЗДЕСЬ: ручки длины, ширины листа и борта в
+         этом режиме не читаются вовсе, а на панели они остаются на своих прежних числах. Молчащая
+         подстановка — ровно та беда, на которой горел кабельный ввод (v18.16.1). */
+      w.push('футляр под элементы: ' + c.nCell + '×' + (BATT_CELLS[p.pipBattType] ? String(p.pipBattType).toUpperCase() : 'свой размер') +
+             ' (Ø' + c.D.toFixed(1) + '×' + c.cellL.toFixed(1) + ' мм), закрытый габарит ' +
+             c.outer.x.toFixed(0) + '×' + c.outer.y.toFixed(0) + '×' + c.outer.z.toFixed(0) +
+             ' мм — длина, глубина, борт и дно посчитаны по элементам, свои числа в этом режиме не читаются');
+      if (c.bclr < 0.15) w.push('зазор посадки элемента ' + c.bclr.toFixed(2) + ' мм — элемент в гнездо не ляжет');
+      if (c.pocket/2 < c.bw) w.push('элемент Ø' + c.D.toFixed(1) + ' мм ниже собственной стенки — борт выходит тоньше ' +
+        c.bw.toFixed(1) + ' мм и гнезда из него не получится');
+    }
+    if (c.latchOn){
+      // Заход и деформация — числа, которых на экране нет, а деталь держится ими.
+      w.push('защёлка футляра: заход ' + c.eng.toFixed(2) + ' мм, язычок ' + c.arm.toFixed(1) +
+             ' мм, деформация при защёлкивании ' + c.eps.toFixed(1) + ' % при допустимых ' + c.mat.eps +
+             ' % для ' + c.mat.t);
+      if (c.armCut) w.push('язычок укорочен до ' + c.arm.toFixed(1) + ' мм по высоте борта, поэтому уступил ЗАХОД: ' +
+        c.eng.toFixed(2) + ' мм вместо ' + Math.max(0.4, Math.min(0.9, c.bw*0.35)).toFixed(2));
+      if (c.weak) w.push('заход защёлки ' + c.eng.toFixed(2) + ' мм — держать почти нечем; борт повыше или материал повязче');
+    } else if (c.tooShallow) w.push('защёлка не построена: на язычок нужен борт от ' +
+        (Math.max(CLAM_LATCH_MIN_ARM, c.armNeed) + 1).toFixed(1) + ' мм, а он ' + c.wh.toFixed(1));
+    else if (c.tooShort) w.push('защёлка не построена: на ' + c.nLatch + ' штуки нужна длина от ' +
+        c.lenNeed.toFixed(0) + ' мм, а футляр ' + c.L.toFixed(0));
+    if (c.big) w.push('футляр ' + c.L.toFixed(0) + '×' + c.flatZ.toFixed(0) +
+      ' мм плоско на столе — больше обычного стола; уменьшите число элементов');
   }
   if ((p.pipMode || 'none') === 'energy'){
     const e = energyChainSpec(p);

@@ -161,6 +161,80 @@ console.log('=== детализация узора ===');
   chk('но слушается, когда её задали',
       base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,sheetPatRes:200}).length > a.length);
 }
+/* ШАГ И ПЕРЕМЫЧКА УЗОРА — свои ручки листа. До этого они читались из `latticeCell` / `latticeRib`, а те
+   живут в группе «Сетчатое дно», которая на листе не показывается вовсе: рисунок задавался числами из
+   чужой формы, недосягаемыми с панели. Ноль обязан означать «ровно как было» — иначе это тихая правка
+   всех уже напечатанных листов. */
+console.log('=== шаг и перемычка узора ===');
+{
+  for(const pat of ['diamond','pyramid']){
+    const a = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8});
+    const b = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8,sheetPatCell:0,sheetPatRib:0});
+    chk(pat+': ноль — это «как было»', a.length === b.length && Math.abs(vol(a)-vol(b)) < 1e-9,
+        {было:a.length, ноль:b.length});
+  }
+  // Шаг меняет ПЕРИОД рисунка, и это видно по самой карте: вдвое крупнее шаг — вдвое реже повторение.
+  /* Луч кладётся на 0.37 ШАГА от линии сетки, а не на 0.37 мм: у квадрата и кладки горизонтальный шов
+     при крупном шаге шире этого отступа, луч идёт по самому шву и не пересекает ничего вовсе — ноль
+     переходов на обоих шагах, и проверка «стало чаще» прошла бы мимо. Длина луча при этом одна и та же,
+     иначе периодов оказалось бы поровну по построению. */
+  const period = (pat, cell) => { let n=0, prev=null;
+    for(let x=0;x<200;x+=0.1){ const h = sheetTexHeight(x, cell*0.37, cell, 1.5, pat) > 0.5;
+      if(prev !== null && h !== prev) n++; prev = h; }
+    return n; };
+  for(const pat of ['diamond','square','brick','knurl','wave']){
+    const wide = period(pat, 20), tight = period(pat, 5);
+    chk(pat+': мельче шаг — чаще рисунок', tight > 1.4*wide && wide > 0, {шаг20:wide, шаг5:tight});
+  }
+  /* Ровно вчетверо частить умеет не всякий узор: у решётчатых перемычка задана в МИЛЛИМЕТРАХ, и на мелком
+     шаге она съедает свою же клетку — у ромба выходит вдвое, а не вчетверо. У накатки перемычек нет
+     вовсе, поэтому на ней период обязан идти строго обратно шагу, и это проверяется отдельно. */
+  { const a = period('knurl', 20), b = period('knurl', 5);
+    chk('у накатки период строго обратен шагу', Math.abs(b/a - 4) < 0.15, {шаг20:a, шаг5:b, отношение:+(b/a).toFixed(2)}); }
+  for(const cell of [3, 25]) for(const pat of ['diamond','scale']){
+    const t = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8,sheetPatCell:cell,sheetPatRes:120});
+    chk(pat+' при шаге '+cell+': герметичен', manifoldCheck(t,4).watertight);
+  }
+  chk('сквозная решётка тоже слушается шага',
+      Math.abs(vol(base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:6})) -
+               vol(base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:12}))) > 100);
+  // Перемычка: у решётчатых узоров это ширина канавки, у плавных её нет вовсе — и не должно быть следа.
+  const thin = base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,sheetPatRib:0.6,sheetPatRes:120});
+  const fat  = base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8,sheetPatRib:4,sheetPatRes:120});
+  chk('толще перемычка — уже бугры', vol(thin) > vol(fat) + 500, {тонкая:+vol(thin).toFixed(0), толстая:+vol(fat).toFixed(0)});
+  const sThin = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRib:0.6,sheetPatRes:120});
+  const sFat  = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRib:4,sheetPatRes:120});
+  chk('на плавном узоре перемычка не меняет ВООБЩЕ ничего — ни формы, ни сетки',
+      sThin.length === sFat.length && Math.abs(vol(sThin)-vol(sFat)) < 1e-9,
+      {тонкая:sThin.length, толстая:sFat.length});
+}
+/* КРУПНЫЙ ШАГ ОТКЛЮЧАЕТ РЕШЁТКУ, и раньше это было недостижимо: шаг стоял в чужой форме. Стал ручкой —
+   значит одним движением лист выходит гладким, и молчать об этом нельзя. Предупреждение считается тем же
+   кольцом и той же функцией, что у построителя, включая обрезку тыльной фаской. */
+console.log('=== шаг, который решётке не по размеру ===');
+{
+  const solid = vol(base({sheetCut:'none',sheetPattern:'none'}));
+  const big = base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:20});
+  chk('решётка не построилась — плита ровно гладкая', Math.abs(vol(big)-solid) < 1e-6,
+      {решётка:+vol(big).toFixed(1), гладкая:+solid.toFixed(1)});
+  chk('и об этом сказано словом', /решётка с таким шагом не ложится/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  const ok2 = base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:20,width:200,depth:200});
+  chk('на большом листе тот же шаг ложится', vol(ok2) < 200*200*3 - 1000);
+  chk('и там молчат', !/не ложится/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box));
+  base({sheetCut:'texture',sheetPattern:'diamond',sheetPatCell:20});
+  chk('о выпуклой текстуре не говорят — ей шаг не мешает',
+      !/не ложится/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  /* Тыльная фаска ужимает кольцо, по которому решётка ищет себе место, — значит и предупреждение обязано
+     считать по ужатому. Шаг 14 без фаски ложится, с фаской 10 мм — уже нет. */
+  const noCh = base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:14});
+  chk('шаг 14 без фаски ложится', vol(noCh) < solid - 100);
+  const wCh = base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:14,sheetChamfer:10});
+  chk('он же с фаской — уже нет', Math.abs(vol(wCh) - vol(base({sheetCut:'none',sheetChamfer:10}))) < 1e-6);
+  base({sheetCut:'through',sheetPattern:'diamond',sheetPatCell:14,sheetChamfer:10});
+  chk('и предупреждение считает по ужатому кольцу, а не по габариту',
+      /не ложится/.test(collectPrintWarnings(paramState.box).join(' | ')));
+}
 console.log('=== новые узоры текстуры — каждый свой ===');
 {
   /* Сравнивать узоры по ОБЪЁМУ нельзя, и это выяснилось здесь же: ромб и шахматка поднимают ровно по

@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.26.0';
+const APP_VERSION = 'v18.26.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4570,6 +4570,10 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetPattern', label:'Лист: узор', type:'select', default:'diamond',
       options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'brick',t:'кирпичная кладка'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'},{v:'checker',t:'шахматка (только текстура)'},{v:'weave',t:'плетёнка (только текстура)'},{v:'knurl',t:'алмазная накатка (плавная, только текстура)'},{v:'pyramid',t:'пирамидки (плавная, только текстура)'},{v:'scale',t:'чешуя (плавная, только текстура)'},{v:'wave',t:'волна (плавная, только текстура)'}]},
     {group:'Лист / панель', key:'sheetTexH', label:'Лист: высота текстуры (для «выпуклой»)', min:0.1, max:3, step:0.1, default:0.6, unit:'мм'},
+    {group:'Лист / панель', key:'sheetPatCell', label:'Лист: шаг узора (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм',
+      hint:'Размер одной клетки рисунка: ромба, кирпича, чешуйки, пирамидки. Мельче шаг — мельче рисунок, и тем гуще нужна детализация, чтобы он не превратился в кашу.'},
+    {group:'Лист / панель', key:'sheetPatRib', label:'Лист: толщина перемычки узора (0 = авто)', min:0, max:20, step:0.1, default:0, unit:'мм',
+      hint:'У сквозной решётки это ширина самой перемычки, у выпуклой текстуры — ширина канавки между буграми. На плавные узоры — чешую, накатку, волну, пирамидки — не влияет вовсе: у них нет перемычек, высота меняется непрерывно.'},
     {group:'Лист / панель', key:'sheetPatRes', label:'Лист: детализация узора (0 = авто)', min:0, max:400, step:5, default:0, unit:'', int:true,
       hint:'На сколько мелких клеток режется рисунок. У плавных узоров — чешуи, накатки, волны, пирамидок — клетка это СТУПЕНЬ купола, поэтому им авто ставит густо; резкому узору мельче резать нечего. Цена детализации — треугольники: вдвое мельче клетка это вчетверо больше сетки.'},
     {group:'Лист / панель', key:'sheetN', label:'Лист: число сторон (для многоугольника)', min:3, max:64, step:1, default:6, unit:'', int:true},
@@ -5346,6 +5350,31 @@ function makeModelRecord(name, params){
   return { id: nextModelId++, name, params: params || deepCopyParams(paramState.box),
     logos: [], holes: [], dieFaces: [], rx:0, ry:0, rz:0, px:0, py:0, pz:0, visible: true, color:'#b9c5cd',
     rawTris: [], bbox: null };
+}
+/* Пачка моделей с ГОТОВЫМИ сетками: наборы OrcaSlicer и плиты образцов. Ячейки кладутся ЗАМОРОЖЕННЫМИ
+   сетками, а не параметрами: иначе каждая запись несла бы копию всех параметров образца, и правка любой
+   ручки перестроила бы только активную — набор разъехался бы по размеру ячейки. Замороженная сетка
+   одинакова по построению.
+
+   СЕТКА ПИШЕТСЯ В САМУ ЗАПИСЬ, а не только в реестр замороженных, и вот на чём это горело. Реестр читает
+   `buildTrisForShape`, а его для НЕАКТИВНЫХ моделей никто не зовёт: показ берёт `rawTris` записи, экспорт
+   берёт `rawTris`, счётчик треугольников и габарит карточки — тоже. Без этой строки из всего набора
+   строилась ОДНА модель, та, которую `loadModel` делал активной; остальные стояли с нулём треугольников
+   и пустым габаритом и в экспорт не попадали вовсе. Молча.
+
+   Обе другие точки, где рождается замороженная модель — превью сборки и резалка, — пишут `rawTris` сразу
+   же. Поэтому и вынесено функцией: три места делают одно и то же, и одно из трёх делало это неверно. */
+function spawnFrozenModels(list){
+  let last = null;
+  for (const it of list){
+    const rec = makeModelRecord(it.name, defaultBoxParams());
+    const id = nextFrozenId++; frozenMeshes.set(id, it.tris);
+    rec.params.frozenId = id;
+    rec.px = it.px || 0; rec.pz = it.pz || 0;
+    rec.rawTris = it.tris; rec.bbox = computeBBox(it.tris);
+    models.push(rec); last = rec;
+  }
+  return last;
 }
 // Copy the ACTIVE globals into the active record (before switching away / exporting).
 function saveActiveModel(){
@@ -8275,10 +8304,18 @@ function sheetOutlineRing(p, hw, hd){
   if(p.sheetShape==='circle') return polyRing(hw, hd, Math.max(24, Math.round(Math.PI*Math.max(hw,hd))), 0, 1);   // ellipse
   return [[hw,hd],[-hw,hd],[-hw,-hd],[hw,-hd]];   // rect
 }
+/* Влезает ли решётка в лист. Отдельной функцией, потому что об этом надо не только решать, но и ГОВОРИТЬ:
+   шаг узора стал ручкой панели, и одним движением его можно завести за предел, после которого решётка не
+   строится вовсе. Раньше это было недостижимо (шаг стоял в чужой форме), а стало — в один клик, и без
+   этой функции лист выходил бы гладким молча. */
+function sheetNetFitsRing(ring, cell){
+  const R=polyInscribedRect(ring, Math.max(cell,2));
+  return !(R.rw<cell || R.rz<cell);
+}
 function buildSheetNet(tris, ring, hw, hd, yb, yt, rib, cell, border, pattern, res, botRing){
   botRing = botRing || ring;                                  // bottom face may be inset by a back chamfer
   const R=polyInscribedRect(botRing, Math.max(cell,2));       // fit the net inside the (possibly smaller) bottom ring
-  if(R.rw<cell || R.rz<cell) return false;
+  if(!sheetNetFitsRing(botRing, cell)) return false;
   const maxDim=2*Math.max(hw,hd), step=netGridStep(maxDim, cell, rib, res);   // resolve cell + rib → clean net
   const nx=Math.max(4,Math.round(2*R.rw/step)), nz=Math.max(4,Math.round(2*R.rz/step));
   const xMid=[],zMid=[]; for(let i=0;i<=nx;i++)xMid.push(R.cx-R.rw+2*R.rw*i/nx); for(let j=0;j<=nz;j++)zMid.push(R.cz-R.rz+2*R.rz*j/nz);
@@ -8371,7 +8408,9 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
   let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
   for(const q of clip){ minx=Math.min(minx,q[0]);maxx=Math.max(maxx,q[0]);minz=Math.min(minz,q[1]);maxz=Math.max(maxz,q[1]); }
   const c=polyRingCentroid(ring), maxDim=Math.max(maxx-minx,maxz-minz);
-  const step=netGridStep(maxDim, pitch, rib, res);   // resolve cell + rib (groove) → clean grip, not aliased
+  /* У плавного узора перемычек нет вовсе, поэтому и в плотность сетки она входить не должна: иначе
+     «толщина перемычки» тихо меняла бы чешую, у которой её нет. Вместо неё берётся сам шаг. */
+  const step=netGridStep(maxDim, pitch, SHEET_SMOOTH.has(pattern) ? pitch/2 : rib, res);
   const nx=Math.max(4,Math.ceil((maxx-minx)/step)), nz=Math.max(4,Math.ceil((maxz-minz)/step));
   const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
   const inPoly=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];
@@ -9130,7 +9169,12 @@ function buildSheet(p){
   const hw=p.width/2, hd=p.depth/2, t=Math.max(0.4, p.sheetThick||3), yb=-t/2, yt=t/2;
   const ring=sheetOutlineRing(p, hw, hd), tris=[];
   const pattern=p.sheetPattern, cut=p.sheetCut||'texture';
-  const rib=Math.max(0.1,p.latticeRib||1.5), cell=Math.max(1,p.latticeCell||8),
+  /* ШАГ И ПЕРЕМЫЧКА УЗОРА — свои ручки листа, как и его детализация, и по той же причине: `latticeCell` и
+     `latticeRib` живут в группе «Сетчатое дно», которая на листе не показывается вовсе, так что рисунок
+     задавался числами из чужой формы, недосягаемыми с панели. Ноль означает «как было» — ровно те же
+     значения, что читались раньше, чтобы ни один уже напечатанный лист не поменялся молча. */
+  const rib=Math.max(0.1, p.sheetPatRib>0 ? p.sheetPatRib : (p.latticeRib||1.5)),
+        cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : (p.latticeCell||8)),
         border=Math.max(1,Math.round(p.latticeBorder||2)), res=p.latticeRes||80;
   // Back (bottom) chamfer: bevel the bottom outer edge. The bottom face insets to botRing@yb, a bevel band
   // rises to the full ring at chY, and the vertical edge runs chY..yt. Works with every cut / outline / rim.
@@ -19204,18 +19248,9 @@ function attachModelEventListeners() {
             '. Уберите лишние модели и повторите.'); return; }
     if (pendingChanges) applyPendingNow();
     saveActiveModel();
-    /* Ячейки кладутся ЗАМОРОЖЕННЫМИ сетками, а не параметрами: иначе каждая запись несла бы копию всех
-       параметров образца, и правка любой ручки перестроила бы только активную — набор разъехался бы по
-       размеру ячейки. Замороженная сетка одинакова по построению. */
-    let last = null;
-    for (const c of plan){
-      const rec = makeModelRecord(prefix + ' ' + String(c.no).padStart(2,'0') + ' — ' + c.name,
-                                  defaultBoxParams());
-      const id = nextFrozenId++; frozenMeshes.set(id, build1(c.no, paramState.box));
-      rec.params.frozenId = id;
-      rec.px = c.px; rec.pz = c.pz;
-      models.push(rec); last = rec;
-    }
+    const last = spawnFrozenModels(plan.map(c => ({
+      name: prefix + ' ' + String(c.no).padStart(2,'0') + ' — ' + c.name,
+      tris: build1(c.no, paramState.box), px: c.px, pz: c.pz })));
     if (last) loadModel(last);
     regenerate();
     if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
@@ -19236,13 +19271,8 @@ function attachModelEventListeners() {
             (MAX_MODELS - models.length)+'. Уберите лишние модели и повторите.'); return; }
     if (pendingChanges) applyPendingNow();
     saveActiveModel();
-    let last = null;
-    for (const c of plan.cells){
-      const rec = makeModelRecord(plan.name + ' — ' + c.mode, defaultBoxParams());
-      const id = nextFrozenId++; frozenMeshes.set(id, c.tris);
-      rec.params.frozenId = id; rec.px = c.px; rec.pz = c.pz;
-      models.push(rec); last = rec;
-    }
+    const last = spawnFrozenModels(plan.cells.map(c => ({
+      name: plan.name + ' — ' + c.mode, tris: c.tris, px: c.px, pz: c.pz })));
     if (last) loadModel(last);
     regenerate();
     if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
@@ -20426,6 +20456,20 @@ function collectPrintWarnings(p){
       if (gs.length < 2)
         w.push('вентрешётка одна: воздуху нужен и приток, и отток — возьмите «сквозняк» или «все четыре», иначе тёплый воздух останется внутри');
     }
+  }
+  /* Шаг узора крупнее, чем лист способен унести: решётке нужен хотя бы один целый шаг в каждую сторону от
+     края, и там, где его нет, она не строится вовсе. Считается тем же кольцом и той же функцией, что у
+     построителя, — включая обрезку тыльной фаской, которая это кольцо ужимает. */
+  if ((p.sheetShape && p.sheetShape !== 'none') && (p.sheetCut === 'through') &&
+      p.sheetPattern && p.sheetPattern !== 'none' && !SHEET_TEXTURE_ONLY.has(p.sheetPattern)){
+    const hw=(p.width||0)/2, hd=(p.depth||0)/2;
+    const ring=sheetOutlineRing(p, hw, hd);
+    const cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : (p.latticeCell||8));
+    const chW=Math.max(0, Math.min(p.sheetChamfer||0, Math.min(hw,hd)*0.4));
+    const bot=(chW>0.1 && ring && ring.length>2) ? polyInsetRing(ring, chW) : ring;
+    if(ring && ring.length>2 && bot && bot.length>2 && !sheetNetFitsRing(bot, cell))
+      w.push('шаг узора ' + cell.toFixed(1) + ' мм — на лист ' + (p.width||0) + '×' + (p.depth||0) +
+             ' мм решётка с таким шагом не ложится, плита построена гладкой: возьмите шаг мельче');
   }
   /* Узор, который не бывает решёткой, выбран вместе со сквозным рисунком. Раньше это молча давало ромб —
      чужой рисунок без единого слова. Плита остаётся гладкой, и вот почему. */

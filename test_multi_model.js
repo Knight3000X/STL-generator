@@ -93,5 +93,44 @@ chk('neighbour state loaded after delete', paramState.box.width === 99); // dup 
 deleteModel(activeModelId);
 chk('the last model cannot be deleted', models.length === 1);
 
+/* ПАЧКА МОДЕЛЕЙ С ГОТОВЫМИ СЕТКАМИ — наборы OrcaSlicer и плита образцов. Нажатие клало записи с
+   `frozenId`, но БЕЗ `rawTris`, и это тот случай, когда всё выглядит правильно: реестр замороженных
+   сеток полон, записи на месте, имена и позиции верные. Только `rawTris` для неактивных моделей не
+   считает никто — их читают и показ, и экспорт, и счётчик треугольников, и габарит карточки. Из набора в
+   двадцать шесть ячеек строилась ОДНА, та, которую `loadModel` делал активной; остальные стояли с нулём
+   треугольников, пустым габаритом и в файл не попадали. Молча.
+
+   Поэтому проверка идёт не по «функция отработала», а по тому, что видит человек: у каждой записи есть
+   сетка и конечный габарит, и в экспорт попадают ВСЕ. */
+console.log('\n=== пачка замороженных моделей: сетка есть у каждой, а не у последней ===');
+{
+  while (models.length > 1) models.pop();
+  const tri = n => [[[0,0,0],[n,0,0],[0,n,0]], [[0,0,0],[0,n,0],[0,0,n]]];
+  const before = models.length, wasTris = mergedExportTris().length;
+  const last = spawnFrozenModels([{name:'Ячейка 1', tris:tri(5), px:0,  pz:0},
+                                  {name:'Ячейка 2', tris:tri(7), px:20, pz:0},
+                                  {name:'Ячейка 3', tris:tri(9), px:40, pz:10}]);
+  const spawned = models.slice(before);
+  chk('положены все три', spawned.length === 3 && last === spawned[2], spawned.length);
+  chk('у каждой своя сетка, а не пустая', spawned.every(m => m.rawTris && m.rawTris.length === 2),
+      spawned.map(m => (m.rawTris||[]).length));
+  chk('и конечный габарит, а не бесконечный',
+      spawned.every(m => m.bbox && Number.isFinite(m.bbox.maxX) && m.bbox.maxX > m.bbox.minX),
+      spawned.map(m => m.bbox && +(m.bbox.maxX - m.bbox.minX).toFixed(1)));
+  // Без страховки на null эта строка не ПАДАЛА БЫ ПРОВЕРКОЙ, а роняла весь файл — а упавший файл
+  // рассказывает про себя меньше, чем красная строка с числами.
+  const span = m => (m.bbox && Number.isFinite(m.bbox.maxX)) ? +(m.bbox.maxX-m.bbox.minX).toFixed(1) : null;
+  chk('габарит у каждой свой', spawned.map(span).join() === '5,7,9', spawned.map(span));
+  chk('позиции разложены как заказано',
+      spawned.map(m => m.px+':'+m.pz).join() === '0:0,20:0,40:10', spawned.map(m => m.px+':'+m.pz));
+  chk('у каждой свой замороженный номер', new Set(spawned.map(m => m.params.frozenId)).size === 3);
+  chk('и по нему строится именно её сетка',
+      spawned.every(m => buildTrisForShape('box', m.params).length === 2));
+  chk('в экспорт попадают ВСЕ, а не только последняя',
+      mergedExportTris().length === wasTris + 6, {было:wasTris, стало:mergedExportTris().length});
+  chk('счётчик треугольников карточки видит их тоже',
+      spawned.every(m => (m.id === activeModelId ? currentTris.length : m.rawTris.length) > 0));
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail > 0 ? 1 : 0);

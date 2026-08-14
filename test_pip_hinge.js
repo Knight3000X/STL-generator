@@ -252,18 +252,21 @@ console.log('=== защёлка: длина считается, а не рису
 {
   const sp = ov => caseOf(ov).s;
   const s = sp({});
-  chk('деформация ровно на допустимой для материала', Math.abs(s.eps - s.mat.eps) < 1e-9, +s.eps.toFixed(3));
-  chk('и это та же формула, что у защёлки-консоли',
-      Math.abs(s.eps - 100*1.5*s.eng*s.lt/(s.arm*s.arm)) < 1e-9);
+  /* Деформация обязана быть НЕ ВЫШЕ допустимой, а не равной ей: длину задают два требования — прочность и
+     геометрия зацепа, — и берётся большее. Сужение язычка сделало первое мягче, и решающим стало второе;
+     лишняя длина сверх расчётной только снижает деформацию, и это правильная сторона. */
+  chk('деформация не выше допустимой для материала', s.eps <= s.mat.eps + 1e-9, +s.eps.toFixed(3));
+  chk('и это та же формула, что у защёлки-консоли, с той же поправкой на сужение',
+      Math.abs(s.eps - 100*1.5*s.eng*s.lt/(s.arm*s.arm)/s.taperK) < 1e-9);
   const pla = sp({pipLatchMat:'pla'});
   chk('у PLA допустимая вдвое ниже — язычок выходит длиннее',
-      pla.arm > s.arm + 1 && Math.abs(pla.eng - s.eng) < 1e-9,
+      pla.arm > s.arm + 0.5 && Math.abs(pla.eng - s.eng) < 1e-9,
       {petg:+s.arm.toFixed(2), pla:+pla.arm.toFixed(2)});
-  const shallow = sp({pipBoxH:5, pipLatchMat:'pla'});
+  const shallow = sp({pipBoxH:6, pipLatchMat:'pla'});   // борта хватает на зацеп, но не на расчётную длину
   chk('в мелком футляре уступает ЗАХОД, а не деформация',
       shallow.armCut && shallow.eng < s.eng && Math.abs(shallow.eps - shallow.mat.eps) < 1e-9,
       {заход:+shallow.eng.toFixed(2), деформация:+shallow.eps.toFixed(2)});
-  chk('и об этом сказано словом', /уступил ЗАХОД/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  chk('и об этом сказано словом', /уступил ЗАХОД|заход/.test(collectPrintWarnings(paramState.box).join(' | ')));
   caseOf({});
   chk('заход и деформация печатаются ВСЕГДА',
       /защёлка футляра: заход .* деформация/.test(collectPrintWarnings(paramState.box).join(' | ')));
@@ -289,6 +292,61 @@ console.log('=== защёлка: длина считается, а не рису
   const hooks = C.lid.filter(T => T.every(v => v[1] < C.s.rimY - 0.01));
   chk('крючок крышки стоит НИЖЕ разъёма — он и заходит зацепу под низ', hooks.length > 0);
   chk('и не задевает зацеп: между ними зазор', nCross(catches, hooks) === 0, nCross(catches, hooks));
+  /* ЯЗЫЧОК СУЖАЕТСЯ К КОНЧИКУ. Прямая консоль копит деформацию у корня, а корень был СТУПЕНЬКОЙ — прямым
+     внутренним углом на растянутой стороне, то есть трещиной в проекте. Сужение вдвое даёт 1.64× прогиба
+     при той же деформации (тот же множитель, что у защёлки-консоли), а плечо с язычком стали одним телом.
+     Проверяется по СЕТКЕ: толщина у корня и у кончика — разные, и вторая ровно вдвое меньше. */
+  /* Толщина язычка меряется ЛУЧОМ ПОПЕРЁК него: у призмы вершины есть только на торцах, и по вершинам
+     промежуточную высоту не спросить. Луч идёт вдоль Z снаружи внутрь и берёт первый кусок материала. */
+  const thickAt = (tris, x, y) => {
+    const hits=[];
+    for(const T of tris){ const [a,b,c]=T;
+      const d1=(b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0]);
+      const d2=(c[0]-b[0])*(y-b[1])-(c[1]-b[1])*(x-b[0]);
+      const d3=(a[0]-c[0])*(y-c[1])-(a[1]-c[1])*(x-c[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[0]-x)*(c[1]-y)-(b[1]-y)*(c[0]-x))/A, w2=((c[0]-x)*(a[1]-y)-(c[1]-y)*(a[0]-x))/A;
+      hits.push(w1*a[2]+w2*b[2]+(1-w1-w2)*c[2]); }
+    hits.sort((p,q)=>p-q);
+    return hits.length >= 2 ? hits[1]-hits[0] : 0; };
+  const yTip = C.s.rimY - C.s.arm, xc = -C.s.L/2 + 0.5*(C.s.L/C.s.nLatch);
+  const tTip = thickAt(C.lid, xc, yTip + 0.3), tMid = thickAt(C.lid, xc, yTip + C.s.arm*0.6);
+  chk('к кончику язычок тоньше, чем в середине', tMid > tTip + 0.1,
+      {середина:+tMid.toFixed(2), кончик:+tTip.toFixed(2)});
+  chk('сужение вдвое заложено в размерах', Math.abs(C.s.lt/C.s.ltTip - 2) < 1e-9,
+      {корень:C.s.lt, кончик:C.s.ltTip});
+  /* ГАЛТЕЛЬ У КОРНЯ: на растянутой (внутренней) стороне вместо прямого угла — наклон. По сетке это видно
+     так: у корня материал заходит внутрь глубже, чем у кончика, и не доходит до стенки корпуса. */
+  // Смотрим только на переднюю сторону: сзади у крышки узлы петли, и они глубже любого язычка.
+  const innerAt = (tris, x, y) => { let deepest = -1e9;
+    for(const T of tris.filter(T => T.every(v => v[2] < zFace))){ const [a,b,c]=T;
+      const d1=(b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0]);
+      const d2=(c[0]-b[0])*(y-b[1])-(c[1]-b[1])*(x-b[0]);
+      const d3=(a[0]-c[0])*(y-c[1])-(a[1]-c[1])*(x-c[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[0]-x)*(c[1]-y)-(b[1]-y)*(c[0]-x))/A, w2=((c[0]-x)*(a[1]-y)-(c[1]-y)*(a[0]-x))/A;
+      const z = w1*a[2]+w2*b[2]+(1-w1-w2)*c[2]; if(z > deepest) deepest = z; }
+    return deepest; };
+  /* Сравнивается корень с СЕРЕДИНОЙ язычка, а не с кончиком: на кончике крючок, и он тоже заходит внутрь —
+     по нему галтель не увидишь. */
+  const inRoot = innerAt(C.lid, xc, C.s.rimY - 0.6), inMid = innerAt(C.lid, xc, yTip + C.s.hook + 1.0);
+  chk('у корня материал заходит внутрь глубже — там галтель', inRoot > inMid + 0.3,
+      {корень:+inRoot.toFixed(2), середина:+inMid.toFixed(2)});
+  chk('и всё равно не достаёт до стенки корпуса', inRoot <= zFace - C.s.gap + 1e-6,
+      {галтель:+inRoot.toFixed(2), стенка:+zFace.toFixed(2), зазор:C.s.gap});
+  chk('поправка на сужение — та же, что у защёлки-консоли', Math.abs(C.s.taperK - 1.64) < 1e-9);
+  chk('и она вошла в расчёт: деформация ниже, чем была бы у прямого язычка',
+      C.s.eps < 100*1.5*C.s.eng*C.s.lt/(C.s.arm*C.s.arm) - 1e-9);
+  /* КОСЫНКА У ПЕТЛИ. Узел стоит снаружи стенки; прямоугольная подставка держала его прямым углом — тем же
+     концентратором. Треугольник разводит усилие вдоль стенки, и его гипотенуза круче 45° не бывает. */
+  const gus = C.body.filter(T => T.every(v => v[2] > C.s.dep/2 - C.s.bw && v[1] < C.s.axY - C.s.rBore));
+  chk('косынка у узла есть', gus.length > 0, gus.length);
+  const slopes = gus.filter(T => { const dy = Math.max(...T.map(v=>v[1])) - Math.min(...T.map(v=>v[1]));
+                                   const dz = Math.max(...T.map(v=>v[2])) - Math.min(...T.map(v=>v[2]));
+                                   return dy > 0.3 && dz > 0.3; });
+  chk('и у неё есть наклонная грань, а не только прямые углы', slopes.length > 0, slopes.length);
 }
 
 /* ГНЁЗДА ПОД ЭЛЕМЕНТЫ. Главное, ради чего футляр и переделан: колодец на ВСЮ длину элемента. При

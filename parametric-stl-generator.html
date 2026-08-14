@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.29.0';
+const APP_VERSION = 'v18.29.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10654,24 +10654,38 @@ function clamshellSpec(p){
   const axY    = rimY;
   const axZ    = dep/2 + rB + 0.2;
   const mat    = SNAP_MATERIALS[p.pipLatchMat] || SNAP_MATERIALS.petg;
-  const lt     = Math.max(1.0, bw*0.6);                        // толщина язычка защёлки
+  /* ЯЗЫЧОК СУЖАЕТСЯ К КОНЧИКУ, и это не косметика. Прямая консоль копит всю деформацию у корня, и корень
+     же был у неё СТУПЕНЬКОЙ — прямым внутренним углом там, где язычок отходит от плеча. Ступенька на
+     растянутой стороне это концентратор: трещина начинается ровно в ней, и никакая расчётная деформация
+     этого не видит, потому что формула знает только гладкую балку.
+     Сужение вдвое к кончику размазывает деформацию по длине и даёт 1.64× прогиба при той же деформации —
+     тот же множитель, что у защёлки-консоли, и взят он оттуда же. Плечо и язычок при этом стали ОДНИМ
+     телом-трапецией: ступеньки нет вовсе, а не «скруглена». */
+  const lt     = Math.max(1.0, bw*0.6);                        // толщина язычка У КОРНЯ
+  const ltTip  = lt/2;                                         // и у кончика
+  const taperK = 1.64;
   const engW   = Math.max(0.4, Math.min(0.9, bw*0.35));
-  const armW   = Math.sqrt(1.5*engW*lt/(mat.eps/100));         // длина, при которой деформация ровно допустимая
+  const armW   = Math.sqrt(1.5*engW*lt/((mat.eps/100)*taperK)); // длина, при которой деформация ровно допустимая
   const armMax = Math.max(0, wh - 1.0);
-  const arm    = Math.max(CLAM_LATCH_MIN_ARM, Math.min(armW, armMax));
-  const eng    = Math.min(engW, (mat.eps/100)*arm*arm/(1.5*lt));
-  const eps    = 100*1.5*eng*lt/(arm*arm);
+  const proud0 = engW + gap, hook0 = Math.max(1.0, engW*1.8);
+  /* Длину задают ДВА требования, и берётся большее. Первое — деформация: короче язычок лопнет. Второе —
+     геометрия зацепа: он весь, вместе со скосом, обязан уместиться на стенке ниже разъёма. Сужение к
+     кончику сделало первое требование мягче (4.4 мм вместо 5.6), и решающим стало второе — что и
+     правильно: лишняя длина сверх расчётной только СНИЖАЕТ деформацию. */
+  const armNeed= hook0 + 0.65 + 2.6*proud0;
+  const arm    = Math.max(CLAM_LATCH_MIN_ARM, Math.min(Math.max(armW, armNeed), armMax));
+  const eng    = Math.min(engW, (mat.eps/100)*taperK*arm*arm/(1.5*lt));
+  const eps    = 100*1.5*eng*lt/(arm*arm)/taperK;
   const proud  = eng + gap;
   const hook   = Math.max(1.0, eng*1.8);
   const nLatch = Math.max(0, Math.min(6, Math.round(p.pipLatchN!=null ? p.pipLatchN : 2)));
-  const armNeed= hook + 0.65 + 2.6*proud;
   const lenNeed= 11*nLatch + 2;
   const latchOn= nLatch > 0 && L >= lenNeed && armMax >= Math.max(CLAM_LATCH_MIN_ARM, armNeed) && arm >= armNeed;
   const part   = (p.pipBoxPart === 'body' || p.pipBoxPart === 'lid') ? p.pipBoxPart : 'both';
   return { bw, floorT, gap, L, dep, wh, rimY, battOn, stand, rows, gpitch,
            cells: stand ? nCell*rows : nCell, D, cellL, bclr, nCell, pocket,
            rod, rBore, rB, kWall, tLid, nKn, knW, knFit, axY, axZ, rodLen: L,
-           mat, lt, eng, arm, eps, proud, hook, nLatch, latchOn, part,
+           mat, lt, ltTip, taperK, eng, arm, eps, proud, hook, nLatch, latchOn, part,
            armNeed, lenNeed, armCut: armW > armMax + 1e-9, weak: eng < 0.35,
            tooShallow: nLatch > 0 && L >= lenNeed && armMax < Math.max(CLAM_LATCH_MIN_ARM, armNeed),
            tooShort: nLatch > 0 && L < lenNeed,
@@ -10733,10 +10747,18 @@ function caseBodyTris(p, s){
      наружу, а её низ это навес в 90°. */
   for(let i=0;i<s.nKn;i+=2){ const xc = -L/2 + (i+0.5)*s.knW;
     add(caseKnuckleTris(s, xc - s.knFit/2, xc + s.knFit/2, null));
-    /* Перемычка проходит ПОД отверстием и не касается его: доведи её до оси, и пруток упрётся в неё же.
+    /* КОСЫНКА, А НЕ ПОДСТАВКА. Узел стоит снаружи стенки, и держаться ему больше не на чем; прямоугольная
+       подставка делала это прямым углом — тем же концентратором, что ступенька у язычка, и на той же
+       растянутой стороне. Треугольник с наклонной гранью разводит усилие вдоль стенки и печатается сам:
+       гипотенуза круче 45° не бывает по построению.
+       Верх косынки проходит ПОД отверстием и не касается его: доведи её до оси, и пруток упрётся в неё же.
        По z она заходит за ось на половину узла — этим и держится за трубу. */
-    add(boxSpanTris(xc - s.knFit/2, xc + s.knFit/2, s.rimY - s.rB - 0.5, s.axY - s.rBore - 0.25,
-                    dep/2 - bw*0.6, s.axZ + s.rB*0.5));
+    const zWall = dep/2 - bw*0.6, zOut = s.axZ + s.rB*0.5;
+    const gTop = s.axY - s.rBore - 0.25;
+    const gH = Math.min((zOut - zWall)*1.2, Math.max(0, gTop - s.floorT - 0.3));
+    if(gH > 0.6) add(convexPrismXTris([[gTop, zWall], [gTop, zOut], [gTop - gH, zWall]],
+                                      xc - s.knFit/2, xc + s.knFit/2));
+    else add(boxSpanTris(xc - s.knFit/2, xc + s.knFit/2, Math.max(s.floorT, gTop - 1.2), gTop, zWall, zOut));
   }
   // Зацепы защёлки на передней стенке.
   if(s.latchOn){
@@ -10770,11 +10792,28 @@ function caseLidTris(p, s){
     const zFace = -dep/2, zTi = zFace - stand, zTo = zTi - tt, yTip = s.rimY - s.arm;
     for(let i=0;i<s.nLatch;i++){
       const xc = -L/2 + (i+0.5)*pitch, x0 = xc-lw/2, x1 = xc+lw/2, xa = x0+0.35, xb = x1-0.35;
-      // Плечо не спускается ниже разъёма: там стенка корпуса, и крышка на неё просто не села бы.
-      add(boxSpanTris(xa, xb, y0, y1, zTo+0.25, zFace+0.6));                      // плечо, выносящее язычок наружу
-      add(boxSpanTris(x0, x1, yTip, y0, zTo, zTi));                               // сам язычок
-      add(convexPrismXTris([[yTip+s.hook, zTi], [yTip+s.hook, zFace-s.gap],
-                            [yTip, zFace-s.gap-s.eng*0.9], [yTip, zTi]], xa, xb)); // крючок
+      /* Плечо и язычок — ОДНА трапеция, а не две коробки со ступенькой между ними: у корня толщина полная,
+         к кончику вдвое меньше. Плечо не спускается ниже разъёма — там стенка корпуса, и крышка на неё
+         просто не села бы. */
+      /* СУЖЕНИЕ ИДЁТ ПО НАРУЖНОЙ ГРАНИ, а внутренняя остаётся плоской на zTi — и это не деталь вкуса.
+         Внутренней гранью язычок проходит мимо зацепа, и стоит наклонить её, как он наезжает на зацеп
+         серединой: замерено, 10 мм³ взаимного проникновения деталей в закрытом виде. Сужать можно только
+         ту сторону, которая ни с чем не встречается.
+         Плечо выносит язычок за плиту и живёт ВЫШЕ разъёма — ниже него стенка корпуса. Язычок заходит в
+         плечо на 0.5 мм: приставленный вплотную, он делил бы с ним грань, а это четыре треугольника на
+         ребре. */
+      add(boxSpanTris(xa, xb, y0, y1-0.4, zTo, zFace+0.6));                       // плечо
+      add(convexPrismXTris([[y0+0.5, zTi], [y0+0.5, zTo], [yTip, zTi - s.ltTip], [yTip, zTi]], x0, x1));
+      /* ГАЛТЕЛЬ У КОРНЯ. Отгибаясь наружу, язычок растянут по ВНУТРЕННЕЙ грани — а на ней у корня стоял
+         прямой угол, ступенька от плеча. Трещина начинается ровно там, и никакая расчётная деформация
+         этого не видит: формула знает гладкую балку. Наклонная грань разводит переход по высоте и
+         остаётся в стороне от стенки корпуса на посадочный зазор. */
+      const fz = zFace - s.gap, fh = 2.5*Math.max(0.2, fz - zTi);
+      add(convexPrismXTris([[y0+0.4, zTi], [y0+0.4, fz], [y0+0.4-fh, zTi]], xa, xb));
+      /* Крючок заходит В язычок на 0.4, а не пристыковывается к нему: приставленный вплотную, он делил бы
+         с ним нижнюю грань по общему ребру — четыре треугольника на ребре, то есть дыра в сетке. */
+      add(convexPrismXTris([[yTip+s.hook, zTi-0.4], [yTip+s.hook, zFace-s.gap],
+                            [yTip, zFace-s.gap-s.eng*0.9], [yTip, zTi-0.4]], xa, xb)); // крючок
     }
   }
   return polyDropDegen(tris);

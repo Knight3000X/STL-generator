@@ -25,7 +25,7 @@ console.log('=== perforation removes material ===');
   chk('perforation removes material', net<solid, {solid,net}); }
 console.log('=== raised TEXTURE (grip pad) — solid, bumps on top ===');
 for(const sh of ['rect','round','ngon','circle']){
-  for(const pat of ['diamond','square','triangle','hex','brick','stripe','dots','checker','weave','knurl','pyramid','scale','wave']){
+  for(const pat of ['diamond','square','triangle','hex','brick','stripe','dots','checker','weave','knurl','pyramid','scale','snake','wave']){
     const t=base({sheetShape:sh,sheetCut:'texture',sheetPattern:pat,sheetTexH:0.7}); const mc=manifoldCheck(t,4);
     chk(sh+' '+pat+' texture wt (+vol)', mc.watertight&&vol(t)>0, mc);
   }
@@ -94,7 +94,7 @@ console.log('=== gating + regression ===');
 console.log('=== узоры «только текстура»: гладкая плита вместо чужого рисунка ===');
 {
   const solid = vol(base({sheetCut:'none',sheetPattern:'none'}));
-  for(const pat of ['stripe','dots','checker','weave','knurl','pyramid','scale','wave']){
+  for(const pat of ['stripe','dots','checker','weave','knurl','pyramid','scale','snake','wave']){
     const t = base({sheetCut:'through',sheetPattern:pat});
     chk(pat+': сквозная решётка не строится — плита гладкая', Math.abs(vol(t)-solid) < 1e-6,
         {объём:+vol(t).toFixed(1), гладкая:+solid.toFixed(1)});
@@ -119,7 +119,7 @@ console.log('=== плавные узоры: рельеф дошёл до сет�
   const heights = t => { const ys=new Set(); for(const T of t) for(const v of T) ys.add(+v[1].toFixed(3)); return ys.size; };
   const sharp = heights(base({sheetCut:'texture',sheetPattern:'diamond',sheetTexH:0.8}));
   chk('у резкого узора высот единицы', sharp <= 6, sharp);
-  for(const pat of ['knurl','pyramid','scale','wave']){
+  for(const pat of ['knurl','pyramid','scale','snake','wave']){
     const t = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8});
     chk(pat+': герметичен', manifoldCheck(t,4).watertight);
     chk(pat+': высот десятки, а не полка', heights(t) > 40, heights(t));
@@ -182,7 +182,7 @@ console.log('=== шаг и перемычка узора ===');
     for(let x=0;x<200;x+=0.1){ const h = sheetTexHeight(x, cell*0.37, cell, 1.5, pat) > 0.5;
       if(prev !== null && h !== prev) n++; prev = h; }
     return n; };
-  for(const pat of ['diamond','square','brick','knurl','wave']){
+  for(const pat of ['diamond','square','brick','knurl','snake','wave']){
     const wide = period(pat, 20), tight = period(pat, 5);
     chk(pat+': мельче шаг — чаще рисунок', tight > 1.4*wide && wide > 0, {шаг20:wide, шаг5:tight});
   }
@@ -191,7 +191,7 @@ console.log('=== шаг и перемычка узора ===');
      вовсе, поэтому на ней период обязан идти строго обратно шагу, и это проверяется отдельно. */
   { const a = period('knurl', 20), b = period('knurl', 5);
     chk('у накатки период строго обратен шагу', Math.abs(b/a - 4) < 0.15, {шаг20:a, шаг5:b, отношение:+(b/a).toFixed(2)}); }
-  for(const cell of [3, 25]) for(const pat of ['diamond','scale']){
+  for(const cell of [3, 25]) for(const pat of ['diamond','scale','snake']){
     const t = base({sheetCut:'texture',sheetPattern:pat,sheetTexH:0.8,sheetPatCell:cell,sheetPatRes:120});
     chk(pat+' при шаге '+cell+': герметичен', manifoldCheck(t,4).watertight);
   }
@@ -261,6 +261,41 @@ console.log('=== новые узоры текстуры — каждый сво�
   let shifted = false;
   for(let x=0;x<16;x+=0.25) if(seam(x, 4) !== seam(x, 12)) shifted = true;
   chk('кладка сдвинута через ряд, иначе это сетка', shifted);
+}
+/* ЗМЕИНАЯ КОЖА — не «чешуя помельче», и меряется это ровно тем, чем они отличаются.
+
+   Чешуя — купол СВОЕГО радиуса: между куполами остаётся поле, и четверть площади лежит ровно на нуле.
+   Змеиная кожа вымощена БЕЗ ПРОСВЕТОВ (граница — там, где два ближайших узла равноудалены), и на нуле у
+   неё только сами швы, то есть почти ничего. Второе отличие — ЧЕРЕПИЦА: чешуйка выше у своего переднего
+   края, а не посередине, поэтому профиль вдоль ряда несимметричен. Ни то ни другое не видно ни по объёму,
+   ни по герметичности — а перепутать два узора местами можно молча, и заметить это было бы негде. */
+console.log('=== змеиная кожа ===');
+{
+  const field = pat => { let z=0, n=0;
+    for(let x=0;x<64;x+=0.13) for(let cz=0;cz<64;cz+=0.11){
+      if(sheetTexHeight(x, cz, 8, 1.6, pat) < 1e-6) z++; n++; }
+    return z/n; };
+  const fSnake = field('snake'), fScale = field('scale');
+  chk('змеиная кожа вымощена без просветов', fSnake < 0.02, +(100*fSnake).toFixed(1)+' % на нуле');
+  chk('а чешуя — купола с полем между ними', fScale > 0.15, +(100*fScale).toFixed(1)+' % на нуле');
+  // Ряды стоят через шаг, значит середина чешуйки — на cz кратном шагу; впереди неё выше, чем позади.
+  const rowMax = cz => { let m=0; for(let x=0;x<64;x+=0.05) m=Math.max(m, sheetTexHeight(x, cz, 8, 1.6, 'snake')); return m; };
+  chk('черепица: впереди середины чешуйка выше, чем позади', rowMax(8+2.8) > rowMax(8-2.8) + 0.15,
+      {впереди:+rowMax(8+2.8).toFixed(2), позади:+rowMax(8-2.8).toFixed(2)});
+  { let top = 0; for(let k=0;k<8;k+=0.1) top = Math.max(top, rowMax(8+k));
+    chk('и полную высоту чешуйка всё-таки набирает', top > 0.99, +top.toFixed(3)); }
+  // Чешуйка ШИРЕ, чем длиннее: по X шов встречается реже, чем по Z.
+  const crossings = (dx, dz) => { let n=0, prev=null;
+    for(let k=0;k<400;k++){ const h = sheetTexHeight(20+k*0.1*dx, 20+k*0.1*dz, 8, 1.6, 'snake') > 0.35;
+      if(prev !== null && h !== prev) n++; prev = h; }
+    return n; };
+  chk('чешуйка широкая и короткая, а не круглая', crossings(0,1) > crossings(1,0),
+      {поперёк:crossings(0,1), вдоль:crossings(1,0)});
+  // И это НЕ чешуя под другим именем: карты высот расходятся на большей части площади.
+  { let diff=0, n=0;
+    for(let x=0;x<64;x+=0.37) for(let cz=0;cz<64;cz+=0.41){
+      if(Math.abs(sheetTexHeight(x,cz,8,1.6,'snake') - sheetTexHeight(x,cz,8,1.6,'scale')) > 0.15) diff++; n++; }
+    chk('и это не чешуя под другим именем', diff > 0.5*n, +(100*diff/n).toFixed(1)+' % точек'); }
 }
 { Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,sheetShape:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);

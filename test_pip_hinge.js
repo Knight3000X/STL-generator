@@ -400,5 +400,91 @@ console.log('=== футляр под элементы ===');
   chk('вся начинка в корпусе, крышка плоская', bodyVol > 4*lidVol, {корпус:+bodyVol.toFixed(0), крышка:+lidVol.toFixed(0)});
 }
 
+/* ЛОГОТИПЫ НА ФУТЛЯРЕ. «Верх футляра» — это КРЫШКА, и проверять тут надо ровно это: раньше футляр шёл
+   общим путём накладок, а тот меряет габаритный ящик ВСЕЙ раскладки — двух деталей рядом, из которых
+   крышка ещё и перевёрнута лицом вниз. «Сверху» попадало на кромку корпуса, и заметить это можно было
+   только глазами на превью.
+
+   Мнётся при этом сама плита, а не кладётся бляшка, и разница меряется знаком объёма: вмятина УБИРАЕТ
+   материал, накладка добавила бы его при любом знаке глубины. Крышка печатается лицом вниз, поэтому
+   выпуклая надпись на ней подняла бы деталь на себе — об этом обязано быть сказано словом. */
+console.log('=== логотипы на футляре ===');
+function art(){ const S=LOGO_HM_SIZE, d=new Float32Array(S*S);
+  for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S, v=j/S;
+    d[j*S+i] = ((u>0.15&&u<0.40&&v>0.25&&v<0.70) || (u>0.55&&u<0.85&&v>0.25&&v<0.70)) ? 1 : 0; }
+  return d; }
+function caseLogo(ov, lg){
+  const C = caseOf(ov);
+  if(lg) logos.push(Object.assign({id:1, face:'+Y', u0:0, v0:0, w:20, h:9, rotation:0, depth:-0.6,
+                                   threshold:0.5, invert:false, heightmap:art(), aspect:1, levels:2}, lg));
+  return buildTrisForShape('box', paramState.box);
+}
+{
+  const FACES = ['+Y','-Y','+X','-X','+Z','-Z'];
+  let bad = [];
+  for(const face of FACES) for(const depth of [-0.6, 0.6]) for(const part of ['both','body','lid']){
+    const t = caseLogo({pipBoxPart:part, pipLen:70, pipLeafW:34, pipBoxH:14}, {face, depth});
+    const mc = manifoldCheck(t,4);
+    if(!(mc.watertight && vol(t) > 0)) bad.push(face+' '+depth+' '+part+' open='+mc.openEdges);
+  }
+  chk('36 сочетаний грани, знака и детали — все замкнуты', bad.length === 0, bad.slice(0,6));
+}
+{
+  const dims = {pipLen:70, pipLeafW:34, pipBoxH:14};
+  const bare = caseLogo(Object.assign({pipBoxPart:'lid'}, dims));
+  const sunk = caseLogo(Object.assign({pipBoxPart:'lid'}, dims), {face:'+Y', depth:-0.6});
+  const proud= caseLogo(Object.assign({pipBoxPart:'lid'}, dims), {face:'+Y', depth:0.6});
+  chk('«верх» — это крышка: надпись на ней и появилась', Math.abs(vol(sunk)-vol(bare)) > 5,
+      {'без надписи':+vol(bare).toFixed(1), 'с надписью':+vol(sunk).toFixed(1)});
+  chk('и это ВМЯТИНА, а не бляшка: материала стало меньше', vol(sunk) < vol(bare) - 5,
+      {'было':+vol(bare).toFixed(1), 'стало':+vol(sunk).toFixed(1)});
+  chk('а выпуклая — ровно на столько же больше', Math.abs((vol(proud)-vol(bare)) + (vol(sunk)-vol(bare))) < 1e-6,
+      {'выпуклая':+(vol(proud)-vol(bare)).toFixed(2), 'вмятина':+(vol(sunk)-vol(bare)).toFixed(2)});
+  // Вмятина не меняет габарита детали, выпуклость поднимает её над столом ровно на свою глубину.
+  const bb = t => computeBBox(t);
+  chk('вмятина габарита не трогает', Math.abs((bb(sunk).maxY-bb(sunk).minY) - (bb(bare).maxY-bb(bare).minY)) < 1e-6);
+  chk('выпуклая поднимает деталь на свою высоту',
+      Math.abs((bb(proud).maxY-bb(proud).minY) - (bb(bare).maxY-bb(bare).minY) - 0.6) < 1e-6,
+      +((bb(proud).maxY-bb(proud).minY) - (bb(bare).maxY-bb(bare).minY)).toFixed(3));
+}
+{
+  /* КОРПУС ЧУЖОЙ ГРАНИ НЕ ПОЛУЧАЕТ, и это не «ничего не изменилось само собой»: общий путь накладок,
+     оставь его включённым, положил бы бляшку на верх габаритного ящика раскладки. Поэтому модель обязана
+     совпасть с безлоготипной ДО ТРЕУГОЛЬНИКА, а о пропавшей надписи — быть сказано словом. */
+  const dims = {pipBoxPart:'body', pipLen:70, pipLeafW:34, pipBoxH:14};
+  const bare = caseLogo(dims);
+  const withTop = caseLogo(dims, {face:'+Y', depth:-0.6});
+  chk('логотип крышки на корпус не налипает', withTop.length === bare.length &&
+      Math.abs(vol(withTop)-vol(bare)) < 1e-9, {'без':bare.length, 'с':withTop.length});
+  chk('и о том, что надпись пропала, сказано словом',
+      /не попадёт ни на одну печатаемую деталь/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x=>/логотип/.test(x)));
+  caseLogo({pipBoxPart:'lid', pipLen:70, pipLeafW:34, pipBoxH:14}, {face:'+Y', depth:0.6});
+  chk('о выпуклой надписи на крышке предупреждают: она ложится на стол',
+      /ложится НА СТОЛ/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x=>/логотип/.test(x)));
+  caseLogo({pipBoxPart:'lid', pipLen:70, pipLeafW:34, pipBoxH:14}, {face:'+Y', depth:-3.4});
+  chk('и о надписи глубже собственной плиты — тоже',
+      /не останется материала/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x=>/логотип/.test(x)));
+}
+{
+  /* ЦВЕТНАЯ ПЕЧАТЬ вмятиной не делается — карман и пробки резались бы разными сетками, — поэтому здесь
+     футляр возвращается к накладке, но к накладке НА СВОЕЙ ДЕТАЛИ. Пробки обязаны стоять там же, где
+     тело прорезало карман: раскладка считается по ТЕЛУ, а не по пробкам. */
+  const dims = {pipBoxPart:'both', pipLen:70, pipLeafW:34, pipBoxH:14};
+  const body = caseLogo(Object.assign({logoAms:'body'}, dims), {face:'+Y', depth:0.8});
+  const ink  = caseLogo(Object.assign({logoAms:'ink1'}, dims), {face:'+Y', depth:0.8});
+  chk('тело с карманом замкнуто', manifoldCheck(body,4).watertight);
+  chk('пробки цвета — своё замкнутое тело', manifoldCheck(ink,4).watertight && vol(ink) > 1, +vol(ink).toFixed(1));
+  chk('и они гораздо меньше самого футляра', vol(ink) < vol(body)/50, {пробки:+vol(ink).toFixed(1), тело:+vol(body).toFixed(1)});
+  const bi = computeBBox(ink), bb = computeBBox(body);
+  chk('пробки стоят на крышке, а не посреди раскладки', bi.minX > 0 && bi.maxX < bb.maxX,
+      {пробки:[+bi.minX.toFixed(1), +bi.maxX.toFixed(1)], раскладка:[+bb.minX.toFixed(1), +bb.maxX.toFixed(1)]});
+  chk('и о том, что это накладка, а не вмятина, сказано словом',
+      /надпись идёт НАКЛАДКОЙ/.test(collectPrintWarnings(paramState.box).join(' | ')));
+}
+logos.length = 0;
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

@@ -65,6 +65,8 @@ add() {  # add <label> <file...>   — concatenate the parts into this job's own
 
 # Self-contained: carries its own copies of the functions under test.
 add test_logo_zone.js test_logo_zone.js
+# Service worker: гоняется в поддельной среде воркера, страницы приложения ему не нужно.
+add test_sw.js test_sw.js
 
 # Extraction tests: real <script> + DOM stubs, then the test appended. Ordered LONGEST FIRST, by measured
 # time: with a fixed pool, total wall time is bounded below by the single longest file, so starting it last

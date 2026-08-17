@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.32.0';
+const APP_VERSION = 'v18.32.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -22077,22 +22077,73 @@ function setupTheme() {
 
 // A fresh build is live. Show a one-tap "update" bar rather than reloading automatically — reloading would
 // throw away the in-memory assembly (which lives only in RAM until exported). Idempotent: shown at most once.
-function showUpdateBanner() {
+function showUpdateBanner(version) {
   if (document.getElementById('update-banner')) return;
   const bar = document.createElement('div');
   bar.id = 'update-banner';
-  bar.innerHTML = '<span>Доступна новая версия</span>' +
+  bar.innerHTML = '<span>Доступна новая версия' + (version ? ' ' + version : '') + '</span>' +
     '<button id="update-reload">Обновить</button>' +
     '<button id="update-dismiss" title="Позже" aria-label="Позже">✕</button>';
   document.body.appendChild(bar);
-  document.getElementById('update-reload').onclick = () => location.reload();
+  /* Перезагрузка идёт ТОЛЬКО ПОСЛЕ того, как воркер перекачал оболочку. Раньше кнопка звала
+     location.reload() сразу — а страница берётся из кэша, значит перезагрузка отдавала ровно ту же
+     старую сборку, и «Обновить» не обновляло ничего. */
+  document.getElementById('update-reload').onclick = () => refreshShellThen(() => location.reload());
   document.getElementById('update-dismiss').onclick = () => bar.remove();
+}
+/* ---- «А не устарел ли я» ------------------------------------------------------------------------
+   Приложение — один файл на 2.5 МБ, поэтому оболочка отдаётся из кэша (см. sw.js): запуск мгновенный и
+   одинаковый онлайн и офлайн. Плата за это — кэш может оказаться прошлой сборкой, и узнать об этом,
+   не скачав те же 2.5 МБ, страница может ровно одним способом: спросить у сервера крохотный `version.json`.
+
+   Дальше — не «показать полоску», а РАЗВИЛКА по тому, есть ли что терять. Пользователь, который только
+   что открыл приложение и ещё ничего не трогал, ничего и не теряет: ему честнее молча получить свежую
+   сборку, чем читать про неё в полоске. Тому, кто уже что-то настроил, перезагрузка стоила бы работы —
+   ему полоска и кнопка.
+   Отсюда `userTouchedApp`: любой pointerdown / keydown / change по странице переводит её во второй режим
+   раз и навсегда. Флаг ставится до всякой проверки версии, поэтому «ещё не трогал» означает буквально это. */
+let userTouchedApp = false;
+function watchUserTouch() {
+  ['pointerdown', 'keydown', 'change'].forEach((ev) =>
+    window.addEventListener(ev, () => { userTouchedApp = true; }, { capture: true, once: true }));
+}
+// Попросить воркер перекачать оболочку и позвать `done`, когда он ответил (или вышло время).
+function refreshShellThen(done) {
+  const sw = navigator.serviceWorker;
+  if (!sw || !sw.controller) { done(); return; }
+  let fired = false;
+  const finish = () => { if (!fired) { fired = true; done(); } };
+  const onMsg = (e) => { if (e.data && e.data.type === 'shell-ready') { sw.removeEventListener('message', onMsg); finish(); } };
+  sw.addEventListener('message', onMsg);
+  try { sw.controller.postMessage({ type: 'refresh-shell' }); } catch (_) { finish(); return; }
+  setTimeout(finish, 20000);      // сеть может и не ответить — перезагрузка всё равно не должна зависнуть
+}
+function checkVersionOnline() {
+  if (!(location.protocol === 'http:' || location.protocol === 'https:')) return;
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then((r) => (r && r.ok) ? r.json() : null)
+    .then((j) => {
+      if (!j || !j.version || j.version === APP_VERSION) return;
+      /* ПЕРЕЗАГРУЗИТЬСЯ САМА — РОВНО ОДИН РАЗ на версию. Если после перезагрузки сборка почему-то осталась
+         прежней (кэш браузера, обрыв сети, воркера нет вовсе), второй попытки не будет: иначе получился бы
+         вечный цикл перезагрузок, из которого пользователю не выйти. Со второго раза — полоска, которую
+         можно нажать или закрыть. */
+      let tried = false;
+      try { tried = sessionStorage.getItem('stl-auto-reload') === j.version; } catch (_) { tried = true; }
+      refreshShellThen(() => {
+        if (userTouchedApp || tried) { showUpdateBanner(j.version); return; }
+        try { sessionStorage.setItem('stl-auto-reload', j.version); } catch (_) {}
+        location.reload();
+      });
+    })
+    .catch(() => {});                 // офлайн — это не ошибка, это штатный режим приложения
 }
 
 // ---- PWA: register the service worker + wire the "Install app" button --------------------------------
 // Installation only works over http(s) (GitHub Pages etc.) — browsers don't install file:// pages. The
 // single HTML still runs fully from a local file; this just adds home-screen/desktop install when hosted.
 function setupPWA() {
+  watchUserTouch();
   const isHttp = location.protocol === 'http:' || location.protocol === 'https:';
   const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const section = document.getElementById('pwa-section');
@@ -22113,9 +22164,12 @@ function setupPWA() {
           });
         });
       }).catch(() => {});
+      checkVersionOnline();
       // Re-check for a new build whenever the app is brought back to the foreground (installed PWA / tab switch).
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+        if (document.visibilityState !== 'visible') return;
+        navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+        checkVersionOnline();      // sw.js мог не поменяться вовсе, а сборка — поменяться
       });
     });
   }

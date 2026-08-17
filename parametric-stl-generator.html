@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.32.2';
+const APP_VERSION = 'v18.32.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4636,6 +4636,8 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetPattern', label:'Лист: узор', type:'select', default:'diamond',
       options:[{v:'diamond',t:'ромб'},{v:'square',t:'квадрат'},{v:'triangle',t:'треугольники'},{v:'hex',t:'соты'},{v:'brick',t:'кирпичная кладка'},{v:'stripe',t:'полосы (только текстура)'},{v:'dots',t:'точки (только текстура)'},{v:'checker',t:'шахматка (только текстура)'},{v:'weave',t:'плетёнка (только текстура)'},{v:'knurl',t:'алмазная накатка (плавная, только текстура)'},{v:'pyramid',t:'пирамидки (плавная, только текстура)'},{v:'scale',t:'чешуя (плавная, только текстура)'},{v:'snake',t:'змеиная кожа (плавная, только текстура)'},{v:'wave',t:'волна (плавная, только текстура)'}]},
     {group:'Лист / панель', key:'sheetTexH', label:'Лист: высота текстуры (для «выпуклой»)', min:0.1, max:3, step:0.1, default:0.6, unit:'мм'},
+    {group:'Лист / панель', key:'sheetTexInset', label:'Лист: отступ текстуры от края (0 = вплотную)', min:0, max:20, step:0.5, default:0, unit:'мм',
+      hint:'Гладкая рамка между краем листа и рисунком. 0 — вплотную: остаётся лишь технический отступ 0.3 мм, без которого стенка текстуры совпала бы со стенкой листа, а общая грань двух тел — это дыра в сетке. До v18.32.3 отступ считался от шага узора и потому рос вместе с ним: при шаге 10 мм по краю оставалась рамка в 4 мм, убрать которую было нечем. При бортике отступ берётся от него — иначе текстура упёрлась бы в его стенку.'},
     {group:'Лист / панель', key:'sheetPatCell', label:'Лист: шаг узора (0 = авто)', min:0, max:80, step:0.5, default:0, unit:'мм',
       hint:'Размер одной клетки рисунка: ромба, кирпича, чешуйки, пирамидки, чешуйки змеиной кожи. Мельче шаг — мельче рисунок, и тем гуще нужна детализация, чтобы он не превратился в кашу.'},
     {group:'Лист / панель', key:'sheetPatRib', label:'Лист: толщина перемычки узора (0 = авто)', min:0, max:20, step:0.1, default:0, unit:'мм',
@@ -8468,6 +8470,39 @@ function sheetAutoCell(pattern, latticeCell){
    Правило простое и снизу ничего не ломает: авто-перемычка не берёт больше трети клетки. На прежнем шаге
    10 мм это по-прежнему 1.5 мм — ровно как было, — а на мелком шаге она ужимается вместе с ним. */
 function sheetAutoRib(cell, latticeRib){ return Math.min(latticeRib || 1.5, cell*0.3); }
+/* ОТСТУП ТЕКСТУРЫ ОТ КРАЯ. Совсем в ноль он не уходит и уйти не может: плита текстуры это ОТДЕЛЬНОЕ
+   замкнутое тело, вставленное в плиту листа, и если довести его борт до самого контура, боковые стенки
+   двух тел лягут в одну плоскость. Общая грань между двумя оболочками — это четыре треугольника на ребре,
+   то есть дыра, которой `manifoldCheck` не увидит. Треть миллиметра меньше прохода сопла и на печати не
+   видна вовсе, а рёбра разводит.
+   ДО v18.32.3 отступ считался как `шаг × 0.4` и потому РОС ВМЕСТЕ С ШАГОМ: при шаге 10 мм по краю листа
+   оставалась гладкая рамка в четыре миллиметра, которую никто не заказывал и убрать было нечем. Теперь
+   это ручка, а её авто — тот самый технический минимум; при бортике отступ по-прежнему считается от него,
+   иначе текстура упёрлась бы в стенку бортика. */
+const SHEET_TEX_MIN_INSET = 0.3;
+/* ПОД НАКЛЕЙКОЙ ТЕКСТУРЫ НЕТ, и это не украшение. Этикетка на листе кладётся ПЛИТОЙ, а плита ищет под
+   собой ровную поверхность (`outermostFlatPlaneAt`, пять проб: центр и четыре угла). На текстурированном
+   листе ровных поверхностей две — верхушки бугров и сама плита между ними, — и попадут ли все пять проб на
+   одну из них, решал случай: сдвиньте сетку бугров на пару миллиметров, и наклейка пропадёт целиком, молча.
+   Поймано ровно так — отступ текстуры от края уехал с 4 мм на 0.3, бугры сдвинулись, и «+ Цвет 1 (AMS)»
+   стал давать модель из НУЛЯ треугольников.
+   Поэтому текстура под наклейку не заходит вовсе: клетки внутри её следа (плюс полтора миллиметра поля)
+   не строятся. Плита получает под собой сплошную ровную площадку, и случайности не остаётся. */
+function sheetLogoKeepouts(p){
+  if (typeof logos === 'undefined' || !logos.length) return [];
+  const out = [];
+  for (const lg of logos){
+    if (!lg || !lg.heightmap || !(lg.depth||0) || lg.face !== '+Y') continue;
+    const ext = logoFaceExtent(lg, lg.w, lg.h, lg.rotation);
+    out.push([lg.u0||0, lg.v0||0, ext.halfX + 1.5, ext.halfY + 1.5]);
+  }
+  return out;
+}
+function sheetTexEdgeGap(p){
+  const rimNeed = (p.sheetRim||0) > 0 ? Math.max(1, p.sheetRimW||2) + 0.6 : 0;
+  const want = p.sheetTexInset > 0 ? p.sheetTexInset : Math.max(SHEET_TEX_MIN_INSET, rimNeed);
+  return Math.max(SHEET_TEX_MIN_INSET, rimNeed, want);
+}
 /* Бюджет УЗЛОВ на плиту. Ограничение у детализации ровно одно и оно не про красоту: каждая клетка сетки
    это четыре треугольника, и предпросмотр надо в чём-то показывать. Четверть миллиона клеток — около
    миллиона треугольников, столько приложение носит и на других формах. */
@@ -8517,8 +8552,8 @@ function sheetTexRaised(cx, cz, pitch, rib, pattern){
 // Full-coverage grip texture: the raised pattern over the WHOLE outline (clipped just inside the edge),
 // appended as ONE watertight extruded-silhouette slab that straddles the plate top (sunk `embed`, proud
 // `texH`). The smooth solid plate carries the shape; the slab adds the bumps (like a mouse side-pad).
-function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
-  const clip=polyInsetRing(ring, Math.max(0.6, edgeGap));   // stop the texture just inside the contour
+function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, keepouts){
+  const clip=polyInsetRing(ring, Math.max(SHEET_TEX_MIN_INSET, edgeGap));  // текстура встаёт чуть внутри контура
   if(clip.length<3) return [];
   let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
   for(const q of clip){ minx=Math.min(minx,q[0]);maxx=Math.max(maxx,q[0]);minz=Math.min(minz,q[1]);maxz=Math.max(maxz,q[1]); }
@@ -8546,9 +8581,11 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap){
      Плавный узор кладётся на ВСЮ область целиком, а где высота ноль — там он просто заподлицо с плитой.
      Никакого контура не рисуется вовсе, значит и рвать нечего; заодно исчезают внутренние юбки вокруг
      каждого щитка, которых было больше, чем самого рельефа. */
+  const ko=keepouts||[];
+  const inKeepout=(x,z)=>{ for(const k of ko) if(Math.abs(x-c[0]-k[0])<k[2] && Math.abs(z-c[1]-k[1])<k[3]) return true; return false; };
   const sol=Array.from({length:nx},()=>new Array(nz).fill(false));
   for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ const cx=(X(i)+X(i+1))/2, cz=(Z(j)+Z(j+1))/2;
-    if(inPoly(cx,cz) && (smooth || sheetTexRaised(cx-c[0], cz-c[1], pitch, rib, pattern))) sol[i][j]=true; }
+    if(inPoly(cx,cz) && !inKeepout(cx,cz) && (smooth || sheetTexRaised(cx-c[0], cz-c[1], pitch, rib, pattern))) sol[i][j]=true; }
   for(let ch=true;ch;){ ch=false;
     for(let i=0;i+1<nx;i++)for(let j=0;j+1<nz;j++){ const a=sol[i][j],bb=sol[i+1][j],c2=sol[i][j+1],d=sol[i+1][j+1];
       if(a&&d&&!bb&&!c2){sol[i+1][j]=true;ch=true;} else if(bb&&c2&&!a&&!d){sol[i][j]=true;ch=true;} } }
@@ -9379,14 +9416,14 @@ function buildSheet(p){
   let out=polyDropDegen(tris);
   // full-coverage raised texture (grip): appended bump slab over the whole solid plate
   if(!ok && cut==='texture' && pattern && pattern!=='none'){
-    const rim=(p.sheetRim||0)>0 ? Math.max(1,p.sheetRimW||2)+0.6 : Math.max(0.8, cell*0.4);
+    const rim=sheetTexEdgeGap(p);
     /* ДЕТАЛИЗАЦИЯ УЗОРА — своя ручка листа, а не общая с сетчатым дном. Дно её и раньше не отдавало: его
        группа на листе не показывается вовсе, так что узор резался тем, что стояло в чужой форме.
        Ноль — авто, и авто у двух родов узоров разное: резкому хватает прежнего числа (клетка либо стоит,
        либо нет, мельче резать нечего), а плавному клетка — это СТУПЕНЬ купола, и на прежней сетке
        пирамидка выходила из трёх ступеней. */
     out=out.concat(buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6),
-      p.sheetPatRes>0 ? p.sheetPatRes : (SHEET_SMOOTH.has(pattern) ? 140 : res), rim));
+      p.sheetPatRes>0 ? p.sheetPatRes : (SHEET_SMOOTH.has(pattern) ? 140 : res), rim, sheetLogoKeepouts(p)));
   }
   if((p.sheetRim||0)>0) out=out.concat(buildSheetRim(ring, yt, p.sheetRim, Math.max(1,p.sheetRimW||2)));
   return out;
@@ -20846,6 +20883,16 @@ function collectPrintWarnings(p){
       if (gs.length < 2)
         w.push('вентрешётка одна: воздуху нужен и приток, и отток — возьмите «сквозняк» или «все четыре», иначе тёплый воздух останется внутри');
     }
+  }
+  /* ОТСТУП ТЕКСТУРЫ, КОТОРЫЙ ПОДНЯЛИ ЗА ПОЛЬЗОВАТЕЛЯ. При бортике текстура обязана держаться от его
+     стенки, иначе она в неё упрётся; заказанное число в этом случае не выполняется, и молчать об этом
+     нельзя — на экране стоит одно, на модели другое. */
+  if ((p.sheetShape && p.sheetShape !== 'none') && p.sheetCut === 'texture' &&
+      p.sheetPattern && p.sheetPattern !== 'none'){
+    const gap = sheetTexEdgeGap(p), want = p.sheetTexInset > 0 ? p.sheetTexInset : 0;
+    if (want > 0 && gap > want + 1e-9) w.push('отступ текстуры поднят до ' + gap.toFixed(1) + ' мм вместо ' +
+      want.toFixed(1) + ': ' + ((p.sheetRim||0) > 0 ? 'иначе она упрётся в стенку бортика'
+                                                    : 'меньше стенка текстуры совпала бы со стенкой листа'));
   }
   /* ПЕРЕМЫЧКА, СЪЕДАЮЩАЯ КЛЕТКУ. Резкий узор — это перемычки и просветы между ними; когда перемычка
      подходит к размеру клетки, просветов не остаётся и рисунок вырождается в россыпь точек. Авто теперь

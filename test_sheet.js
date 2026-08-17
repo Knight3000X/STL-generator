@@ -145,13 +145,19 @@ console.log('=== плавные узоры: рельеф дошёл до сет�
 console.log('=== детализация узора ===');
 {
   const heights = t => { const ys=new Set(); for(const T of t) for(const v of T) ys.add(+v[1].toFixed(3)); return ys.size; };
+  /* МЕРЯЕТСЯ ВЫСОТА СТУПЕНИ, А НЕ ЧИСЛО РАЗНЫХ ВЫСОТ. Считать «сколько разных Y» у плавного узора нельзя:
+     это число говорит не о густоте сетки, а о том, попал ли её шаг в шаг узора. Сетка, точно поделившая
+     клетку, даёт десяток одинаковых уровней на всю плиту, а чуть сбитая — сотни, и грубая при этом легко
+     обгоняет густую (замерено: 70 против 16). Ступень же — прямая мера того, что видно на печати:
+     наибольший перепад высоты между соседними узлами сетки. */
+  const worstStep = (pat, res) => { const pitch = 5, st = sheetSmoothStep(80, 60, pitch, res);
+    let m = 0; for(let x=0;x<20;x+=st) for(let z=0;z<20;z+=st)
+      m = Math.max(m, Math.abs(sheetTexHeight(x+st,z,pitch,1.6,pat) - sheetTexHeight(x,z,pitch,1.6,pat)));
+    return m; };
+  chk('выше детализация — мельче ступень рельефа', worstStep('pyramid',200) < worstStep('pyramid',40)/2,
+      {'res 40':+worstStep('pyramid',40).toFixed(3), 'res 200':+worstStep('pyramid',200).toFixed(3)});
   const coarse = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:40});
   const fine   = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:200});
-  /* Сравнение ОТНОШЕНИЕМ, а не «на двадцать больше»: с v18.32.2 ползунок означает узлы на КЛЕТКУ УЗОРА,
-     а не деления на лист, и абсолютные числа стали другими — при пяти узлах на клетку разных высот у
-     пирамидки и не может быть много. Требование при этом то же: гуще сетка — больше ступеней. */
-  chk('выше детализация — больше ступеней', heights(fine) > heights(coarse)*2,
-      {грубо:heights(coarse), густо:heights(fine)});
   chk('и больше треугольников', fine.length > 3*coarse.length, {грубо:coarse.length, густо:fine.length});
   chk('грубая герметична', manifoldCheck(coarse,4).watertight);
   chk('густая герметична', manifoldCheck(fine,4).watertight);
@@ -326,6 +332,97 @@ console.log('=== змеиная кожа: подушки-ромбы, а не г�
     for(let x=0;x<64;x+=0.37) for(let y=0;y<64;y+=0.41){
       if(Math.abs(sheetTexHeight(x,y,PT,1.6,'snake') - sheetTexHeight(x,y,PT,1.6,'scale')) > 0.15) diff++; n++; }
     chk('и это не чешуя под другим именем', diff > 0.5*n, +(100*diff/n).toFixed(1)+' % точек'); }
+}
+/* ТЕКСТУРА ПОД НАКЛЕЙКУ НЕ ЗАХОДИТ. Этикетка на листе кладётся ПЛИТОЙ, а плита ищет под собой ровную
+   поверхность пятью пробами — центр и четыре угла. На текстурированном листе ровных поверхностей две,
+   верхушки бугров и сама плита между ними, и попадут ли все пять проб на одну из них, решал СЛУЧАЙ.
+
+   Поймано это не рассуждением, а батареей: отступ текстуры от края уехал с 4 мм на 0.3, бугры сдвинулись
+   на пару миллиметров, и «+ Цвет 1 (AMS)» стал давать модель из НУЛЯ треугольников — молча и «герметично»,
+   потому что проверять в ней нечего. Поэтому здесь наклейка проверяется на ПЛАВАЮЩЕЙ сетке: отступ гоняется
+   по десятку значений, и на каждом наклейка обязана быть. Одно значение доказывало бы только везение. */
+console.log('=== текстура уступает место наклейке ===');
+{
+  const art = () => { const S = LOGO_HM_SIZE, d = new Float32Array(S*S);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S, v=j/S;
+      d[j*S+i] = (u>0.2 && u<0.8 && v>0.35 && v<0.65) ? 1 : 0; }
+    return d; };
+  const withLabel = (ov, ams) => {
+    base(Object.assign({sheetShape:'rect', width:60, height:4, depth:60, sheetThick:4,
+                        sheetCut:'texture', sheetPattern:'diamond', sheetTexH:0.6}, ov));
+    logos.push({id:1, face:'+Y', u0:0, v0:0, w:24, h:12, rotation:0, depth:-0.6, threshold:0.5,
+                invert:false, heightmap:art(), aspect:1, levels:2});
+    if (ams) paramState.box.logoAms = ams;
+    return buildTrisForShape('box', paramState.box);
+  };
+  const plain = base({sheetShape:'rect', width:60, height:4, depth:60, sheetThick:4,
+                      sheetCut:'texture', sheetPattern:'diamond', sheetTexH:0.6}).length;
+  let missing = [], leaky = [];
+  for(const ins of [0, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8]){
+    const body = withLabel({sheetTexInset:ins});
+    if (!(manifoldCheck(body,4).watertight)) leaky.push('тело@'+ins);
+    const ink = withLabel({sheetTexInset:ins}, 'ink1');
+    if (!(ink.length > 0 && manifoldCheck(ink,4).watertight)) missing.push(ins);
+  }
+  chk('наклейка строится при любом положении сетки бугров', missing.length === 0, missing);
+  chk('и лист с ней остаётся герметичным', leaky.length === 0, leaky);
+  /* А под самой наклейкой бугров нет — иначе она сидела бы на них верхом. Меряется по сетке: в следе
+     наклейки не должно быть ни одной вершины на высоте верхушек бугров. */
+  { const t = withLabel({sheetTexInset:0});
+    const yTop = 4, yBump = yTop + 0.6;
+    let inside = 0;
+    for(const T of t) for(const v of T)
+      if(Math.abs(v[1] - yBump) < 1e-6 && Math.abs(v[0]) < 12 && Math.abs(v[2]) < 6) inside++;
+    chk('под следом наклейки бугров не осталось', inside === 0, inside); }
+  { const t = withLabel({sheetTexInset:0});
+    chk('а вокруг она по-прежнему есть', t.length > plain*0.5, {'с наклейкой':t.length, 'без':plain}); }
+  logos.length = 0;
+}
+/* ОТСТУП ТЕКСТУРЫ ОТ КРАЯ. Считался как «шаг узора × 0.4» и потому РОС ВМЕСТЕ С ШАГОМ: при шаге 10 мм по
+   краю листа оставалась гладкая рамка в четыре миллиметра, которую никто не заказывал, а убрать было
+   нечем — своей ручки у неё не было вовсе. Стал ручкой, и авто у неё — технический минимум.
+
+   Совсем в ноль он не уходит и уйти не может: плита текстуры это ОТДЕЛЬНОЕ замкнутое тело, вставленное в
+   лист, и доведи её борт до самого контура — боковые стенки двух тел лягут в одну плоскость. Общая грань
+   между оболочками это четыре треугольника на ребре, то есть дыра, которой manifoldCheck не увидит.
+   Поэтому здесь проверяется И то, что рамка ушла, И то, что она не ушла совсем. */
+console.log('=== отступ текстуры от края ===');
+{
+  // Ширина гладкой рамки: докуда по X доходит рельеф, считая от края листа.
+  const frame = (ov) => { const t = base(Object.assign({sheetShape:'rect', width:60, depth:60, sheetThick:2,
+      sheetCut:'texture', sheetPattern:'snake', sheetTexH:0.3, sheetRim:0}, ov));
+    let m = 0; for(const T of t) for(const v of T) if(v[1] > 1.0 + 1e-6) m = Math.max(m, Math.abs(v[0]));
+    return 30 - m; };
+  chk('авто — технический минимум, а не рамка в полсантиметра',
+      Math.abs(frame({}) - SHEET_TEX_MIN_INSET) < 0.02, +frame({}).toFixed(2));
+  chk('и он НЕ растёт вместе с шагом узора — раньше рос',
+      Math.abs(frame({sheetPatCell:10}) - frame({sheetPatCell:2})) < 0.02,
+      {'шаг 2':+frame({sheetPatCell:2}).toFixed(2), 'шаг 10':+frame({sheetPatCell:10}).toFixed(2)});
+  for(const ins of [3, 8]) chk('заказанный отступ ' + ins + ' мм соблюдён',
+      Math.abs(frame({sheetTexInset:ins}) - ins) < 0.05, +frame({sheetTexInset:ins}).toFixed(2));
+  chk('но в ноль не уходит: общая стенка двух тел — это дыра в сетке',
+      sheetTexEdgeGap({sheetTexInset:0.05}) >= SHEET_TEX_MIN_INSET - 1e-9,
+      sheetTexEdgeGap({sheetTexInset:0.05}));
+  /* При БОРТИКЕ отступ считается от него: текстура, доведённая до стенки бортика, в неё упрётся. Заказанное
+     число тогда не выполняется, и об этом обязано быть сказано. */
+  chk('при бортике отступ берётся от его стенки',
+      Math.abs(sheetTexEdgeGap({sheetRim:3, sheetRimW:2, sheetTexInset:1}) - 2.6) < 1e-9,
+      sheetTexEdgeGap({sheetRim:3, sheetRimW:2, sheetTexInset:1}));
+  base({sheetShape:'rect', width:60, depth:60, sheetCut:'texture', sheetPattern:'snake',
+        sheetRim:3, sheetRimW:2, sheetTexInset:1});
+  chk('и о поднятом отступе сказано словом',
+      /отступ текстуры поднят до/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /отступ/.test(x)));
+  base({sheetShape:'rect', width:60, depth:60, sheetCut:'texture', sheetPattern:'snake', sheetTexInset:4});
+  chk('а когда выполнено — молчат',
+      !/отступ текстуры поднят/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  // Любая рамка на любом контуре обязана оставаться герметичной.
+  { let bad = [];
+    for(const pat of ['diamond','hex','snake','pyramid']) for(const ins of [0, 0.5, 6]) for(const shp of ['rect','round','circle']){
+      const t = base({sheetShape:shp, width:60, depth:50, sheetThick:2, sheetCut:'texture',
+                      sheetPattern:pat, sheetTexH:0.4, sheetTexInset:ins});
+      if(!(manifoldCheck(t,4).watertight && t.length > 100)) bad.push(pat+'/'+ins+'/'+shp); }
+    chk('36 сочетаний узора, отступа и контура — все замкнуты', bad.length === 0, bad.slice(0,5)); }
 }
 /* ПЕРЕМЫЧКА, СЪЕДАЮЩАЯ КЛЕТКУ. Авто-перемычка бралась у «сетчатого дна» — 1.5 мм при ЛЮБОМ шаге. На шаге
    10 мм это рисунок, на шаге 2.5 мм — россыпь точек: перемычка съедает клетку целиком, просветов не

@@ -599,5 +599,86 @@ console.log('\n=== край наклейки идёт по рисунку, а н
   logos.length = 0;
 }
 
+/* ЦВЕТ ОДНОТОНОВОГО ЛОГОТИПА. Ступенчатый рельеф свои тона усредняет и отдаёт — трёхцветный герб приезжает
+   тремя своими цветами. Однотоновый возвращал `toneColors: []`, и «Цвет 1 (AMS)» получал запасной
+   `#b9c5cd`. Который, по случайному совпадению, и есть цвет модели по умолчанию: деталь-цвет выходила
+   ровно того же цвета, что тело, и выглядело это как «цвет не сработал». Картинка при этом свой цвет
+   знает — жёлтый череп жёлтый, — и всё дело было в том, чтобы его не выбрасывать. */
+console.log('\n=== цвет однотонового логотипа берётся с картинки ===');
+{
+  const S = 96;
+  const paint = (rgb, alphaBg) => { const d = new Uint8ClampedArray(S*S*4);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5, o=(j*S+i)*4;
+      if(Math.hypot(u,v) < 0.36){ d[o]=rgb[0]; d[o+1]=rgb[1]; d[o+2]=rgb[2]; d[o+3]=255; }
+      else if(alphaBg){ d[o]=d[o+1]=d[o+2]=alphaBg[0]; d[o+3]=255; } }
+    return d; };
+  const near = (hex, rgb, tol) => { if(!hex) return false;
+    const c = [1,3,5].map(k => parseInt(hex.slice(k, k+2), 16));
+    return c.every((v, k) => Math.abs(v - rgb[k]) <= (tol || 24)); };
+
+  const yellow = [255, 222, 0];
+  for(const mode of [undefined, 'alpha', 'detail']){
+    const r = analyzeLogoImageData(paint(yellow), S, mode, 2);
+    check('однотоновый на канале «' + (mode || 'авто') + '» отдаёт свой цвет',
+          near((r.toneColors||[])[0], yellow), r.toneColors);
+  }
+  /* И до самой детали-цвета он доходит: тот же путь, которым пользуется панель — logoInks → amsInkColor. */
+  { const r = analyzeLogoImageData(paint(yellow), S, undefined, 2);
+    logos.length = 0;
+    logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+                invert:false, heightmap:r.heightmap, levels:2, chan:r.stats.chose, tones:r.toneColors});
+    const ink = logoInks(logos[0]);
+    check('logoInks отдаёт ровно один цвет', ink.colors.length === 1 && ink.levels.length === 1, ink);
+    check('и это цвет картинки, а не цвет тела',
+          near(amsInkColor(paramState.box, 1), yellow) && amsInkColor(paramState.box, 1) !== '#b9c5cd',
+          amsInkColor(paramState.box, 1));
+    logos.length = 0; }
+  // Многотоновый как работал, так и работает: каждый цвет свой.
+  { const d = new Uint8ClampedArray(S*S*4);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5, o=(j*S+i)*4;
+      if(Math.hypot(u,v) < 0.40){ const core = Math.hypot(u,v) < 0.20;
+        d[o]=core?200:20; d[o+1]=core?20:20; d[o+2]=core?30:20; d[o+3]=255; } }
+    const r = analyzeLogoImageData(d, S, 'detail', 3);
+    check('у многотонового цветов по числу тонов', (r.toneColors||[]).length >= 2, r.toneColors);
+    check('и они разные', r.toneColors[0] !== r.toneColors[1], r.toneColors); }
+}
+/* «ДЕТАЛИ» НА ОДНОТОНОВОЙ КАРТИНКЕ. Канал растягивает яркость между процентилями непрозрачной части, а у
+   одноцветного рисунка яркость ОДНА на все его пиксели: размах нулевой, и вся карта выходила нулями.
+   Рельеф пропадал целиком и молча — модель строилась без надписи, и понять, что виноват выбор канала, было
+   неоткуда. Теперь размах меряется, при вырожденном берётся силуэт, и об этом сказано словом. */
+console.log('\n=== «детали» на одноцветной картинке ===');
+{
+  const S = 96, d = new Uint8ClampedArray(S*S*4);
+  for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5, o=(j*S+i)*4;
+    if(Math.hypot(u,v) < 0.36){ d[o]=255; d[o+1]=222; d[o+2]=0; d[o+3]=255; } }
+  const r = analyzeLogoImageData(d, S, 'detail', 2);
+  check('вырожденный размах замечен', r.stats.flatDetail === true, r.stats);
+  let up = 0; for(const v of r.heightmap) if(v > 0.5) up++;
+  check('и рисунок не пропал', up > r.heightmap.length*0.15 && up < r.heightmap.length*0.85,
+        {выше_порога:up, всего:r.heightmap.length});
+  // А пустая карта, откуда бы она ни взялась, называется вслух.
+  Object.assign(paramState.box, defaultBoxParams(), {width:40, height:40, depth:40});
+  logos.length = 0;
+  logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+              invert:false, heightmap:new Float32Array(64*64), levels:2, chan:'detail'});
+  check('о пустом рельефе сказано словом',
+        collectPrintWarnings(paramState.box).some(x => /рельефа не выйдет/.test(x)),
+        collectPrintWarnings(paramState.box).filter(x => /рельеф/.test(x)));
+  check('и назван вероятный виновник — канал',
+        collectPrintWarnings(paramState.box).some(x => /возьмите «силуэт»/.test(x)));
+  logos.length = 0;
+  logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+              invert:false, heightmap:new Float32Array(64*64).fill(1), levels:2, chan:'alpha'});
+  check('и о карте, целиком перевалившей порог, — тоже',
+        collectPrintWarnings(paramState.box).some(x => /перевалила ВСЯ картинка/.test(x)));
+  logos.length = 0;
+  logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+              invert:false, heightmap:r.heightmap, levels:2, chan:'detail'});
+  check('а нормальный рельеф молчит',
+        !collectPrintWarnings(paramState.box).some(x => /рельефа не выйдет/.test(x)),
+        collectPrintWarnings(paramState.box).filter(x => /рельеф/.test(x)));
+  logos.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

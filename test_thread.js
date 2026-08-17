@@ -357,5 +357,105 @@ console.log('=== gating + regression ===');
       collectPrintWarnings(ok).filter(x => /цанга/.test(x)));
 }
 
+/* КУПОЛ ВМЕСТО ШЕСТИГРАННОЙ ТУМБЫ. Раньше конус прятался внутри сплошного шестигранника во всю высоту:
+   наружу выходил брусок вдвое выше своей резьбы. Теперь наружная поверхность идёт ЗА внутренним конусом,
+   а под ключ остаётся ровно резьбовая часть.
+
+   Проверяется тем, чем эти две формы отличаются, а не объёмом: наружный радиус на середине высоты. У
+   тумбы он там ещё шестигранный — то есть равен радиусу у самого низа; у купола он уже меньше. И проверяется
+   МОНОТОННОСТЬ: купол обязан сужаться кверху везде выше шестигранника, иначе где-то останется навес. */
+console.log('=== накидная гайка: купол на шестиграннике ===');
+{
+  /* Наружный радиус НА ВЫСОТЕ y — по СЕЧЕНИЮ, а не по вершинам рядом с ней. Грань шестигранника идёт от
+     низа до верха одним четырёхугольником, промежуточных вершин у неё нет вовсе, и проба «вершины в
+     полосе ±0.4» на середине этой грани не находит ничего и возвращает ноль. Так первая версия проверки
+     и «нашла» у шестигранника нулевой радиус на середине его собственной высоты. */
+  const rAtY = (t, y) => { let m = 0;
+    for(const T of t) for(let k=0;k<3;k++){ const A=T[k], B=T[(k+1)%3];
+      if((A[1]-y)*(B[1]-y) > 0 || A[1] === B[1]) continue;
+      const u = (y-A[1])/(B[1]-A[1]);
+      m = Math.max(m, Math.hypot(A[0]+(B[0]-A[0])*u, A[2]+(B[2]-A[2])*u)); }
+    return m; };
+  for(const D of [12, 20, 32]){
+    const t = base({threadMode:'glandcap', threadD:D, threadPitch:1.5, threadCapOut:4, threadHeadH:D*0.9});
+    let ylo=1e9, yhi=-1e9; for(const T of t) for(const v of T){ ylo=Math.min(ylo,v[1]); yhi=Math.max(yhi,v[1]); }
+    const H = yhi - ylo;
+    chk('Ø'+D+': герметична', manifoldCheck(t,4).watertight && manifoldCheck(t,4).badEdges === 0);
+    // Шестигранник = длина резьбы + 0.6; на середине высоты гайки его уже нет.
+    const rBot = rAtY(t, ylo + 0.2), rMid = rAtY(t, ylo + H*0.75), rTop = rAtY(t, yhi - 0.02);
+    chk('Ø'+D+': на середине высоты это уже купол, а не грань под ключ', rMid < rBot - 0.5,
+        {низ:+rBot.toFixed(2), середина:+rMid.toFixed(2)});
+    chk('Ø'+D+': купол доходит до выхода под кабель', rTop < rMid - 0.5 && rTop < rBot*0.55,
+        {середина:+rMid.toFixed(2), верх:+rTop.toFixed(2)});
+    /* Купол сужается кверху ВЕЗДЕ — этим он и печатается без поддержек: каждый слой лежит на предыдущем
+       целиком. Расширься он хоть на одном шаге, там был бы навес, и увидеть это можно только замером. */
+    let grew = null, prev = 1e9;
+    for(let k=0;k<=60;k++){ const y = ylo + 0.05 + (H-0.1)*k/60, r = rAtY(t, y);
+      if(r > prev + 0.05){ grew = [+((y-ylo)/H).toFixed(2), +r.toFixed(2), +prev.toFixed(2)]; break; } prev = r; }
+    chk('Ø'+D+': купол нигде не расширяется кверху — навеса нет', grew === null, grew);
+  }
+  // Шестигранник идёт ровно по резьбе: заказали длиннее резьбу — вырос и он.
+  const hexTop = t => { // высота, выше которой наружный радиус уже меньше, чем у самого низа
+    let ylo=1e9, yhi=-1e9; for(const T of t) for(const v of T){ ylo=Math.min(ylo,v[1]); yhi=Math.max(yhi,v[1]); }
+    const r0 = rAtY(t, ylo + 0.05);
+    for(let y = ylo + 0.05; y <= yhi; y += 0.1) if(rAtY(t, y) < r0 - 0.3) return y - ylo;
+    return yhi - ylo; };
+  const shortT = base({threadMode:'glandcap', threadD:24, threadPitch:2, threadHeadH:24, threadCapThread:4});
+  const longT  = base({threadMode:'glandcap', threadD:24, threadPitch:2, threadHeadH:24, threadCapThread:12});
+  chk('шестигранник растёт вместе с резьбой', hexTop(longT) > hexTop(shortT) + 5,
+      {'резьба 4':+hexTop(shortT).toFixed(1), 'резьба 12':+hexTop(longT).toFixed(1)});
+  chk('и на авто он заметно ниже самой гайки', hexTop(base({threadMode:'glandcap', threadD:30, threadPitch:3})) < 27*0.45,
+      +hexTop(base({threadMode:'glandcap', threadD:30, threadPitch:3})).toFixed(1));
+  // Числа, которых на экране нет, выносятся словом.
+  const cp = Object.assign(defaultBoxParams(), {threadMode:'glandcap', threadD:30, threadPitch:3});
+  chk('высота шестигранника и витки названы вслух',
+      collectPrintWarnings(cp).some(x => /накидная гайка: шестигранник/.test(x)),
+      collectPrintWarnings(cp).filter(x => /накидная гайка/.test(x)));
+  const thin = Object.assign(defaultBoxParams(), {threadMode:'glandcap', threadD:30, threadPitch:3, threadCapThread:2});
+  chk('о слишком короткой резьбе сказано', collectPrintWarnings(thin).some(x => /витка — в пластике держит/.test(x)),
+      collectPrintWarnings(thin).filter(x => /накидная гайка/.test(x)));
+  const wide = Object.assign(defaultBoxParams(), {threadMode:'glandcap', threadD:20, threadPitch:1.5, threadCapOut:19});
+  chk('и о выходе шире собственной резьбы — тоже', collectPrintWarnings(wide).some(x => /шире собственной резьбы/.test(x)),
+      collectPrintWarnings(wide).filter(x => /накидная гайка/.test(x)));
+}
+/* СКОЛЬКО ЛЕПЕСТКОВ. Потолок стоял на десяти без обоснования; поднят до двадцати четырёх, и проверяется
+   не число в поле, а то, что лепестков ДЕЙСТВИТЕЛЬНО столько. Объём для этого не годится: сектор делится
+   на n частей, и сумма от n не зависит вовсе (замерено — совпадает до знака). Считаются боковые стенки
+   прорезей: у каждого лепестка их две, по два треугольника, все три вершины в одной осевой плоскости. */
+console.log('=== цанга: число лепестков ===');
+{
+  const slotWalls = t => { let n = 0;
+    for(const T of t){ const a = T.map(v => Math.atan2(v[2], v[0]));
+      if(Math.abs(a[0]-a[1]) < 1e-6 && Math.abs(a[0]-a[2]) < 1e-6) n++; }
+    return n; };
+  const G = n => base({threadMode:'gland', threadD:30, threadPitch:3, threadLen:16,
+                       threadColletN:n, threadColletLen:14});
+  for(const n of [0, 2, 4, 8, 12, 16, 20, 24]){
+    const t = G(n);
+    chk('лепестков ' + n + ': столько и построено', slotWalls(t) === 4*n, {надо:4*n, есть:slotWalls(t)});
+    chk('лепестков ' + n + ': герметично', manifoldCheck(t,4).watertight && manifoldCheck(t,4).badEdges === 0);
+  }
+  chk('потолок поля и потолок построителя — одно число', COLLET_N_MAX === 24 &&
+      SHAPE_PARAMS.box.find(r => r.key === 'threadColletN').max === COLLET_N_MAX);
+  chk('сверх потолка не строится', slotWalls(G(40)) === 4*COLLET_N_MAX, slotWalls(G(40))/4);
+  /* Ширина лепестка — второе, что ограничивает их число, и на мелком вводе она кончается раньше потолка.
+     Молчать об этом нельзя: в поле стоит одно число на все диаметры. */
+  const small = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:12, threadPitch:1.5,
+                  threadColletN:24, threadColletLen:8});
+  chk('на мелком вводе о ширине лепестка сказано вслух',
+      collectPrintWarnings(small).some(x => /лепесток шириной/.test(x)),
+      collectPrintWarnings(small).filter(x => /цанга/.test(x)));
+  const tiny = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:10, threadPitch:1,
+                  threadColletN:24, threadColletLen:8});
+  chk('а там, где он уже двух проходов сопла, сказано и сколько лепестков влезет',
+      collectPrintWarnings(tiny).some(x => /уже двух проходов сопла/.test(x)),
+      collectPrintWarnings(tiny).filter(x => /цанга/.test(x)));
+  const big = Object.assign(defaultBoxParams(), {threadMode:'gland', threadD:30, threadPitch:3,
+                  threadColletN:24, threadColletLen:14, threadColletWall:1.4});
+  chk('а на М30 те же 24 лепестка проходят молча',
+      !collectPrintWarnings(big).some(x => /уже двух проходов|на пределе/.test(x)),
+      collectPrintWarnings(big).filter(x => /цанга/.test(x)));
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

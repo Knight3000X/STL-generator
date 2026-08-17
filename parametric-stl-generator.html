@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.30.0';
+const APP_VERSION = 'v18.31.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4685,15 +4685,17 @@ const SHAPE_PARAMS = {
       options:[{v:'m',t:'метрический (M12…M32)'},{v:'pg',t:'PG (PG7…PG29)'},{v:'off',t:'свои числа'}]},
     {group:'Резьба (крышка / штуцер)', key:'glandSize', w:['gland'], label:'Ввод: типоразмер (номер в ряду)', min:0, max:6, step:1, default:1, int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadCapOut', w:['glandcap'], label:'Накидная гайка: Ø выхода под кабель', min:1, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadCapThread', w:['glandcap'], label:'Накидная гайка: длина резьбы (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadCapThread', w:['glandcap'], label:'Накидная гайка: длина резьбы = высота шестигранника (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм',
+      hint:'Шестигранник под ключ идёт ровно на длину резьбы: держат за то, что нагружено, остальное — купол. Авто — 2.5 шага резьбы, но не меньше 5 мм: столько принято закладывать на зацепление в пластике.'},
     {group:'Резьба (крышка / штуцер)', key:'threadFlangeHex', w:['gland'], label:'Ввод: шестигранный фланец', type:'bool', default:true},
     {group:'Резьба (крышка / штуцер)', key:'threadBackLen', w:['gland'], label:'Ввод: резьба под фланцем (0 = без)', min:0, max:40, step:0.5, default:6, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:10, step:1, default:4, int:true},
+    {group:'Резьба (крышка / штуцер)', key:'threadColletN', w:['gland'], label:'Ввод: лепестков цанги (0 = без цанги)', min:0, max:24, step:1, default:4, int:true,
+      hint:'Сколько лепестков в венчике. Чем их больше, тем ровнее цанга ложится на кабель — но каждый становится уже, и слишком узкий не пропечатается и сломается. Ширина лепестка у корня считается и выносится в предупреждения.'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletWall', w:['gland'], label:'Ввод: стенка лепестка (0 = авто)', min:0, max:5, step:0.1, default:0, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadColletLen', w:['gland'], label:'Ввод: длина цанги (0 = без)', min:0, max:40, step:0.5, default:8, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadBore', w:['barb','gland'], label:'Кабельный ввод: Ø канала (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
-    {group:'Резьба (крышка / штуцер)', key:'threadHeadH', w:['bolt','nut','wingnut'], label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadAF', w:['bolt','nut','wingnut','glandcap'], label:'Болт/гайка: размер под ключ (0 = авто от Ø)', min:0, max:80, step:0.5, default:0, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadHeadH', w:['bolt','nut','wingnut','glandcap'], label:'Болт/гайка: высота головки/гайки (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     /* Дюбель — своя группа со своими размерами, а не набор чисел от крепёжной резьбы. Причина простая:
        общие threadD/threadPitch/threadLen по умолчанию дают Ø30 с шагом 3, то есть пробку от бутылки, и
        чтобы получить дюбель, пришлось бы вручную переставить пять ползунков. Теперь он дюбель сразу. */
@@ -6852,7 +6854,7 @@ const MODEL_HELP = {
   'thread:nut':      {what:'Гайка под тот же диаметр и шаг, что и болт: свинчиваются по построению.', how:'Плашмя, резьбой вертикально.', mat:['petg','abs']},
   'thread:wingnut':  {what:'Барашковая гайка: та же резьба плюс два крыла под пальцы.', how:'Плашмя. Крылья тонкие в основании — увеличьте их толщину, если гайку будут дёргать часто.', mat:['petg','abs']},
   'thread:gland':    {what:'Кабельный ввод (сальник): фланец, наружная резьба, сквозной канал под кабель и ЦАНГА — венчик лепестков над резьбой. Лепестки расходятся кнаружу, поэтому обжимает их обычная гайка того же Ø и шага: у неё внутренний Ø по впадине меньше, чем цанга у кончика. Накидная гайка с конусом держала бы крепче, но это ещё одна деталь и ещё одна посадка.', how:'Фланцем на стол, без поддержек. Печатайте ДВЕ гайки: одна законтрит ввод в стенке, вторая обожмёт цангу. PETG или TPU: жёсткий PLA на лепестках трескается, они работают на разжим. Канал ставьте на 0.4–0.6 мм больше кабеля — печать сужает круглые проёмы.', mat:['petg','tpu']},
-  'thread:glandcap': {what:'Накидная гайка кабельного ввода: внутри не сквозной цилиндр, а КОНУС, сходящийся к выходу под кабель. Обычная гайка обжимает цангу одним пояском — тем местом, где её впадина резьбы уже кончика лепестков; конус ведёт лепестки по всей длине, усилие распределяется, и кабель зажимается ровно.', how:'Гранями на стол, без поддержек: конус смотрит вверх и печатается сам. Ø и шаг возьмите те же, что у ввода. Выход делайте на 0.3–0.5 мм меньше кабеля — именно этим кабель и держится, а не трением о канал ввода.', mat:['petg','tpu']},
+  'thread:glandcap': {what:'Накидная гайка кабельного ввода: внутри не сквозной цилиндр, а КОНУС, сходящийся к выходу под кабель. Обычная гайка обжимает цангу одним пояском — тем местом, где её впадина резьбы уже кончика лепестков; конус ведёт лепестки по всей длине, усилие распределяется, и кабель зажимается ровно. Снаружи это КУПОЛ на небольшом шестиграннике под ключ, а не шестигранная тумба во всю высоту: наружная поверхность идёт за внутренним конусом, а под ключ остаётся ровно та часть, где есть резьба — за неё и держат. Высота шестигранника не задаётся отдельно, а равна длине резьбы.', how:'Шестигранником на стол, без поддержек: купол сужается кверху, значит каждый слой лежит на предыдущем целиком. Ø и шаг возьмите те же, что у ввода. Выход делайте на 0.3–0.5 мм меньше кабеля — именно этим кабель и держится, а не трением о канал ввода.', mat:['petg','tpu']},
   'thread:anchor':   {what:'Дюбель по гипсокартону, спиральный (тип «Дрива»): крупный режущий виток на тонком сердечнике, потайная головка со шлицем и заходное остриё. Вкручивается прямо в лист отвёрткой — сверлить не нужно, — а держит не трением, а ПЛОЩАДЬЮ витка, врезанного в гипс. Внутри слепое отверстие под саморез: остриё остаётся сплошным, иначе оно смялось бы о лист вместо того, чтобы его проколоть.',
                       how:'Головкой на стол, остриём вверх — так шлиц печатается открытым отверстием, а не нависанием, и опорная плоскость головки выходит самой гладкой поверхностью, какую даёт принтер. Поддержки не нужны: виток сам себе опора, его наклон к горизонту примерно 10°, и каждый следующий слой ложится на предыдущий с большим перекрытием. Материал обязан быть ЖЁСТКИМ — PETG или ABS; PLA хрупок и виток скалывается при вкручивании, TPU сомнётся и не врежется вовсе. Заполнение 40–60 % и не меньше трёх периметров: тонкая стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке. Слой 0,15–0,2 мм: на 0,3 виток выходит ступенчатым и режет хуже. Вкручивать без нажима, сам затянется; саморез брать на 0,5–1 мм длиннее суммы «толщина листа + то, что вешаете».',
                       mat:['petg','abs']},
@@ -8664,6 +8666,18 @@ function buildDrywallAnchor(p){
   band(ring(0, rIn), 0, ring(0, () => g.rHead), 0, 'down');
   return polyDropDegen(tris);
 }
+/* СКОЛЬКО ЛЕПЕСТКОВ БЫВАЕТ. Потолок стоял на десяти без обоснования, а он не оттуда берётся: цанга тем
+   ровнее ложится на кабель, чем больше в ней лепестков, и упирается это не в круглое число, а в ШИРИНУ
+   лепестка — венец делится на n секторов, из каждого прорезь съедает свою долю. Двадцать четыре на вводе
+   М30 дают лепесток 2.8 мм у корня, на М12 — 0.9 мм, то есть два прохода сопла и меньше. Поэтому потолок
+   поднят до двадцати четырёх, а решает не он, а замер ширины: она считается и выносится в предупреждения
+   вместе с жёсткостью, которая и так там считалась. */
+const COLLET_N_MAX = 24;
+const COLLET_GAP_FRAC = 0.22;                 // доля шага, уходящая в прорезь между лепестками
+// Ширина лепестка у корня по дуге — тем же выражением, каким её меряют предупреждения.
+function colletFingerWidth(minorR, cw, n){ return 2*Math.PI*(minorR - cw/2)/n*(1 - COLLET_GAP_FRAC); }
+/* Числа выше стоят СНАРУЖИ buildThread нарочно: их читает не только построитель, но и
+   collectPrintWarnings, а объявленные внутри функции они были бы ему не видны вовсе. */
 function buildThread(p){
   const mode  = p.threadMode;
   /* У кабельного ввода размер ПОДСТАВЛЯЕТ Ø, шаг и канал — но только когда ручка на своём умолчании.
@@ -8765,7 +8779,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
         tris.push(orient([V(i,Ny),B(y1,i2),V(i2,Ny)],[0,1,0]));
         tris.push(orient([B(bBot,i),B(bBot,i2),B(y1,i2)],rin));     // канал насквозь, от низа резьбы доверху
         tris.push(orient([B(bBot,i),B(y1,i2),B(y1,i)],rin)); }
-      const cn = Math.max(0, Math.min(10, Math.round(p.threadColletN != null ? p.threadColletN : 4)));
+      const cn = Math.max(0, Math.min(COLLET_N_MAX, Math.round(p.threadColletN != null ? p.threadColletN : 4)));
       const cl = Math.max(0, Math.min(40, p.threadColletLen != null ? p.threadColletLen : Math.max(5, len*0.5)));
       if (cn >= 2 && cl > 1){
         /* Кончик шире корня — на это и наворачивается гайка. Разбег зажат остатком до наружного Ø:
@@ -8781,7 +8795,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
         const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
                     p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
         for(const T of colletFingersTris(y1 - 0.6, y1 + cl, minorR - cw, minorR + grow - cw,
-                                         minorR, minorR + grow, cn, 0.22, Nth)) tris.push(T);
+                                         minorR, minorR + grow, cn, COLLET_GAP_FRAC, Nth)) tris.push(T);
       } }
     /* ФЛАНЕЦ ШЕСТИГРАННЫЙ по умолчанию: круглый не за что взять, а контргайку под ним надо держать от
        проворота — иначе, затягивая её, крутишь весь ввод вместе с кабелем. Размер «под ключ» берётся
@@ -9012,21 +9026,53 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
        Конус ведёт лепестки по всей длине — усилие распределяется, и кабель зажимается ровно.
 
        Конус начинается ВЫШЕ резьбы, а не с её начала: пока гайка наживляется, лепестки не должны ни во что
-       упираться, иначе резьбу перекосит с первого оборота. */
+       упираться, иначе резьбу перекосит с первого оборота.
+
+       СНАРУЖИ ЭТО КУПОЛ НА НЕБОЛЬШОМ ШЕСТИГРАННИКЕ, а не шестигранная тумба во всю высоту (переделано в
+       v18.31.0). Прежняя прятала конус внутри сплошного шестигранника: наружу выходил брусок вдвое выше
+       своей резьбы, который и материал ел, и на ключ подавался всей высотой без нужды. Наружная
+       поверхность теперь идёт ЗА внутренним конусом — купол сужается туда же, куда сужается канал, — а под
+       ключ остаётся ровно та часть, где есть резьба: за неё и держат, момент идёт по резьбовой стенке.
+
+       Куполу поддержка не нужна ни в одной точке: наружная поверхность СУЖАЕТСЯ кверху, то есть каждый
+       следующий слой целиком лежит на предыдущем. Навес в этой детали ровно один и был всегда — конус
+       внутри, потому что он растёт внутрь; его угол считается и выносится в предупреждения.
+
+       Высота шестигранника не задаётся отдельной ручкой, а РАВНА длине резьбы (плюс 0.6 мм на кромку): под
+       ключ имеет смысл держать ровно то, что нагружено. Одна ручка вместо двух, и она уже есть. */
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2;
     const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
     const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
-    const thH = Math.max(1.5, Math.min(nutH - 1.2, p.threadCapThread>0 ? p.threadCapThread : nutH*0.6));
+    /* Авто-длина резьбы — 2.5 шага (но не меньше 5 мм): столько принято закладывать на зацепление в
+       пластике. Прежнее «0.6 высоты гайки» давало на М30×3 шестнадцать миллиметров резьбы — пять с
+       половиной витков там, где хватает двух с половиной, — и ровно на столько же вырастал шестигранник. */
+    const thH = Math.max(1.5, Math.min(nutH - 2.4, p.threadCapThread>0 ? p.threadCapThread : Math.max(5, 2.5*P)));
+    const flH = Math.min(nutH - 1.8, thH + 0.6);                 // шестигранник — по резьбе
+    const wTop = Math.max(1.2, Math.min(3, 0.08*D));             // стенка у выхода под кабель
+    const rTop = Math.min(afR - 1.2, rOut + wTop);
+    /* Основание купола вписано в шестигранник и ещё на 0.4 мм уже: ровно вписанное касалось бы граней в
+       шести точках, и кольцо между ними вырождалось бы в нулевые треугольники. */
+    const rBase = Math.max(rTop + 0.6, afR - 0.4);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
     const Hx=(y,i)=>{ const a=th(i), r=hexR(a); return [r*Math.cos(a),y,r*Math.sin(a)]; };
     const Bo=(y,i)=>{ const a=th(i), r=minorR+h*threadProfile(phase(i,y),flat)+clr; return [r*Math.cos(a),y,r*Math.sin(a)]; };
     const rAtCone = y => { const u = Math.max(0, Math.min(1, (y - thH)/Math.max(1e-6, nutH - thH)));
       return (minorR + clr) + (rOut - (minorR + clr))*u; };
     const Co=(y,i)=>{ const a=th(i), r=rAtCone(y); return [r*Math.cos(a),y,r*Math.sin(a)]; };
+    // Купол: четверть эллипса. У основания касательная вертикальна — шестигранник переходит в купол без
+    // излома, — а к выходу профиль ложится, и верх детали получается пологим, а не остриём.
+    const rDome = y => { const u = Math.max(0, Math.min(1, (y - flH)/Math.max(1e-6, nutH - flH)));
+      return rTop + (rBase - rTop)*Math.sqrt(Math.max(0, 1 - u*u)); };
+    const Dm=(y,i)=>{ const a=th(i), r=rDome(y); return [r*Math.cos(a),y,r*Math.sin(a)]; };
     const Nn=Math.max(8, Math.min(320, Math.round(thH/P*spp))), Nc=Math.max(6, Math.round((nutH-thH)/0.6));
+    const Nd=Math.max(10, Math.min(120, Math.round((nutH-flH)/0.4)));
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i);
       const ro=[Math.cos(mid),0,Math.sin(mid)], ri=[-Math.cos(mid),0,-Math.sin(mid)];
-      tris.push(orient([Hx(0,i),Hx(0,i2),Hx(nutH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(nutH,i2),Hx(nutH,i)],ro));
+      tris.push(orient([Hx(0,i),Hx(0,i2),Hx(flH,i2)],ro)); tris.push(orient([Hx(0,i),Hx(flH,i2),Hx(flH,i)],ro));  // грани под ключ
+      tris.push(orient([Hx(flH,i),Hx(flH,i2),Dm(flH,i2)],[0,1,0]));                     // кольцо: грань → основание купола
+      tris.push(orient([Hx(flH,i),Dm(flH,i2),Dm(flH,i)],[0,1,0]));
+      for(let j=0;j<Nd;j++){ const ya=flH+(nutH-flH)*j/Nd, yb=flH+(nutH-flH)*(j+1)/Nd;  // купол
+        tris.push(orient([Dm(ya,i),Dm(ya,i2),Dm(yb,i2)],ro)); tris.push(orient([Dm(ya,i),Dm(yb,i2),Dm(yb,i)],ro)); }
       for(let j=0;j<Nn;j++){ const ya=thH*j/Nn, yb=thH*(j+1)/Nn;                        // резьбовая часть канала
         tris.push(orient([Bo(ya,i),Bo(ya,i2),Bo(yb,i2)],ri)); tris.push(orient([Bo(ya,i),Bo(yb,i2),Bo(yb,i)],ri)); }
       for(let j=0;j<Nc;j++){ const ya=thH+(nutH-thH)*j/Nc, yb=thH+(nutH-thH)*(j+1)/Nc;  // конус
@@ -9034,8 +9080,8 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       // стык резьбы с конусом: у резьбы гребень волнистый, у конуса кромка ровная — закрывается кольцом
       tris.push(orient([Bo(thH,i),Bo(thH,i2),Co(thH,i2)],[0,1,0]));
       tris.push(orient([Bo(thH,i),Co(thH,i2),Co(thH,i)],[0,1,0]));
-      tris.push(orient([Co(nutH,i),Hx(nutH,i),Hx(nutH,i2)],[0,1,0]));                   // верхнее кольцо
-      tris.push(orient([Co(nutH,i),Hx(nutH,i2),Co(nutH,i2)],[0,1,0]));
+      tris.push(orient([Co(nutH,i),Dm(nutH,i),Dm(nutH,i2)],[0,1,0]));                   // верхнее кольцо у выхода
+      tris.push(orient([Co(nutH,i),Dm(nutH,i2),Co(nutH,i2)],[0,1,0]));
       tris.push(orient([Bo(0,i),Hx(0,i2),Hx(0,i)],[0,-1,0]));                           // нижнее кольцо
       tris.push(orient([Bo(0,i),Bo(0,i2),Hx(0,i2)],[0,-1,0])); }
   } else if (mode === 'nut' || mode === 'wingnut'){  // hex prism with a through internal thread (+ wings)
@@ -10691,7 +10737,11 @@ function clamshellSpec(p){
      Первая версия ставила ось в срединную плоскость крышки, а подставку узла вела от стенки вверх —
      и подставка оказывалась ровно там, где лежит плита крышки: 201 пересечение в закрытом положении. */
   const axY    = rimY;
-  const axZ    = dep/2 + rB + 0.2;
+  /* ОСЬ УХОДИТ ЗА ЗАДНЮЮ СТЕНКУ (−Z), а не за переднюю. До v18.31.0 петля стояла на +Z — на той стороне,
+     которую всё приложение зовёт ПЕРЕДНЕЙ (см. подписи «передняя стенка (+Z)» у вентиляции и вводов), —
+     и футляр выходил повёрнутым задом наперёд относительно всех прочих форм. Знак здесь один на всю
+     деталь: за ним идут и косынки, и перемычки крышки, а зацепы защёлки становятся на +Z. */
+  const axZ    = -(dep/2 + rB + 0.2);
   const mat    = SNAP_MATERIALS[p.pipLatchMat] || SNAP_MATERIALS.petg;
   /* ЯЗЫЧОК СУЖАЕТСЯ К КОНЧИКУ, и это не косметика. Прямая консоль копит всю деформацию у корня, и корень
      же был у неё СТУПЕНЬКОЙ — прямым внутренним углом там, где язычок отходит от плеча. Ступенька на
@@ -10805,7 +10855,8 @@ function caseKnuckleTris(s, x0, x1, yFloor){
   void yFloor;                                                  // опора узлу — перемычка своей детали
   return out;
 }
-/* КОРПУС: дно, четыре стенки, начинка (колодцы или гнёзда), узлы петли сзади и зацепы защёлки спереди. */
+/* КОРПУС: дно, четыре стенки, начинка (колодцы или гнёзда), узлы петли на ЗАДНЕЙ стенке (−Z) и зацепы
+   защёлки на ПЕРЕДНЕЙ (+Z) — в той же системе «перед/зад», в какой стоит всё остальное приложение. */
 function caseBodyTris(p, s){
   const tris = [], add = T => { for(const t of T) tris.push(t); };
   const L = s.L, dep = s.dep, bw = s.bw, emb = 0.6;
@@ -10849,21 +10900,21 @@ function caseBodyTris(p, s){
        гипотенуза круче 45° не бывает по построению.
        Верх косынки проходит ПОД отверстием и не касается его: доведи её до оси, и пруток упрётся в неё же.
        По z она заходит за ось на половину узла — этим и держится за трубу. */
-    const zWall = dep/2 - bw*0.6, zOut = s.axZ + s.rB*0.5;
+    const zWall = -dep/2 + bw*0.6, zOut = s.axZ - s.rB*0.5;
     const gTop = s.axY - s.rBore - 0.25;
-    const gH = Math.min((zOut - zWall)*1.2, Math.max(0, gTop - s.floorT - 0.3));
+    const gH = Math.min(Math.abs(zOut - zWall)*1.2, Math.max(0, gTop - s.floorT - 0.3));
     if(gH > 0.6) add(convexPrismXTris([[gTop, zWall], [gTop, zOut], [gTop - gH, zWall]],
                                       xc - s.knFit/2, xc + s.knFit/2));
     else add(boxSpanTris(xc - s.knFit/2, xc + s.knFit/2, Math.max(s.floorT, gTop - 1.2), gTop, zWall, zOut));
   }
-  // Зацепы защёлки на передней стенке.
+  // Зацепы защёлки на ПЕРЕДНЕЙ стенке (+Z) — петля ушла на заднюю.
   if(s.latchOn){
     const pitch = L/s.nLatch;
     const lw = Math.max(6, Math.min(p.pipLatchW>0 ? p.pipLatchW : 14, pitch - 4));
-    const zFace = -dep/2, yTip = s.rimY - s.arm, yB = yTip + s.hook + 0.15, bl = Math.max(4, lw - 2.4);
+    const zFace = dep/2, yTip = s.rimY - s.arm, yB = yTip + s.hook + 0.15, bl = Math.max(4, lw - 2.4);
     for(let i=0;i<s.nLatch;i++){ const xc = -L/2 + (i+0.5)*pitch;
-      add(convexPrismXTris([[yB, zFace+0.6], [yB, zFace-s.proud], [yB+s.proud*1.4, zFace-s.proud],
-                            [yB+s.proud*2.6, zFace+0.6]], xc-bl/2, xc+bl/2)); }
+      add(convexPrismXTris([[yB, zFace-0.6], [yB, zFace+s.proud], [yB+s.proud*1.4, zFace+s.proud],
+                            [yB+s.proud*2.6, zFace-0.6]], xc-bl/2, xc+bl/2)); }
   }
   return polyDropDegen(tris);
 }
@@ -10876,7 +10927,7 @@ function caseLidTris(p, s){
   for(let i=1;i<s.nKn;i+=2){ const xc = -L/2 + (i+0.5)*s.knW;                    // узлы: нечётные
     add(caseKnuckleTris(s, xc - s.knFit/2, xc + s.knFit/2, null));
     // Перемычка крышки идёт ВЫШЕ отверстия — и выше разъёма, где у корпуса ничего нет: его перемычки ниже.
-    add(boxSpanTris(xc - s.knFit/2, xc + s.knFit/2, s.axY + s.rBore + 0.25, y1, dep/2 - 0.6, s.axZ + s.rB*0.5));
+    add(boxSpanTris(xc - s.knFit/2, xc + s.knFit/2, s.axY + s.rBore + 0.25, y1, -dep/2 + 0.6, s.axZ - s.rB*0.5));
   }
   /* Защёлка: язычок свисает с переднего края крышки и заходит зацепу под низ. Отставлен он от стенки не на
      посадочный зазор, а на выступ зацепа с запасом — иначе упёрся бы в зацеп всей длиной и остался бы
@@ -10885,7 +10936,7 @@ function caseLidTris(p, s){
     const pitch = L/s.nLatch;
     const lw = Math.max(6, Math.min(p.pipLatchW>0 ? p.pipLatchW : 14, pitch - 4));
     const tt = s.lt, stand = s.proud + 0.25;
-    const zFace = -dep/2, zTi = zFace - stand, zTo = zTi - tt, yTip = s.rimY - s.arm;
+    const zFace = dep/2, zTi = zFace + stand, zTo = zTi + tt, yTip = s.rimY - s.arm;
     for(let i=0;i<s.nLatch;i++){
       const xc = -L/2 + (i+0.5)*pitch, x0 = xc-lw/2, x1 = xc+lw/2, xa = x0+0.35, xb = x1-0.35;
       /* Плечо и язычок — ОДНА трапеция, а не две коробки со ступенькой между ними: у корня толщина полная,
@@ -10898,18 +10949,18 @@ function caseLidTris(p, s){
          Плечо выносит язычок за плиту и живёт ВЫШЕ разъёма — ниже него стенка корпуса. Язычок заходит в
          плечо на 0.5 мм: приставленный вплотную, он делил бы с ним грань, а это четыре треугольника на
          ребре. */
-      add(boxSpanTris(xa, xb, y0, y1-0.4, zTo, zFace+0.6));                       // плечо
-      add(convexPrismXTris([[y0+0.5, zTi], [y0+0.5, zTo], [yTip, zTi - s.ltTip], [yTip, zTi]], x0, x1));
+      add(boxSpanTris(xa, xb, y0, y1-0.4, zTo, zFace-0.6));                       // плечо
+      add(convexPrismXTris([[y0+0.5, zTi], [y0+0.5, zTo], [yTip, zTi + s.ltTip], [yTip, zTi]], x0, x1));
       /* ГАЛТЕЛЬ У КОРНЯ. Отгибаясь наружу, язычок растянут по ВНУТРЕННЕЙ грани — а на ней у корня стоял
          прямой угол, ступенька от плеча. Трещина начинается ровно там, и никакая расчётная деформация
          этого не видит: формула знает гладкую балку. Наклонная грань разводит переход по высоте и
          остаётся в стороне от стенки корпуса на посадочный зазор. */
-      const fz = zFace - s.gap, fh = 2.5*Math.max(0.2, fz - zTi);
+      const fz = zFace + s.gap, fh = 2.5*Math.max(0.2, zTi - fz);
       add(convexPrismXTris([[y0+0.4, zTi], [y0+0.4, fz], [y0+0.4-fh, zTi]], xa, xb));
       /* Крючок заходит В язычок на 0.4, а не пристыковывается к нему: приставленный вплотную, он делил бы
          с ним нижнюю грань по общему ребру — четыре треугольника на ребре, то есть дыра в сетке. */
-      add(convexPrismXTris([[yTip+s.hook, zTi-0.4], [yTip+s.hook, zFace-s.gap],
-                            [yTip, zFace-s.gap-s.eng*0.9], [yTip, zTi-0.4]], xa, xb)); // крючок
+      add(convexPrismXTris([[yTip+s.hook, zTi+0.4], [yTip+s.hook, zFace+s.gap],
+                            [yTip, zFace+s.gap+s.eng*0.9], [yTip, zTi+0.4]], xa, xb)); // крючок
     }
   }
   return polyDropDegen(tris);
@@ -20659,8 +20710,14 @@ function collectPrintWarnings(p){
     if (cn >= 2 && cl > 1){
       const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
                   p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
-      const b = 2*Math.PI*(minorR - cw/2)/cn*0.78, I = b*Math.pow(cw,3)/12;
+      const b = colletFingerWidth(minorR, cw, Math.min(cn, COLLET_N_MAX)), I = b*Math.pow(cw,3)/12;
       const F = 3*1700*I/Math.pow(cl,3);
+      /* ШИРИНА ЛЕПЕСТКА — второе, что ограничивает их число, и на глаз оно не видно вовсе: венец делится
+         на n секторов, из каждого прорезь съедает свою долю, и на мелком вводе двадцать четыре лепестка
+         выходят уже двух проходов сопла. Потолок в самом поле этого не знает — он один на все диаметры. */
+      if (b < 0.8) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — уже двух проходов сопла 0,4; ' +
+        cn + ' лепестков на этот Ø не режется, возьмите ' + Math.max(2, Math.floor(cn*b/0.9)) + ' или меньше');
+      else if (b < 1.2) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — на пределе (три прохода сопла)');
       if (F > 250) w.push('цанга: чтобы прогнуть лепесток на 1 мм, нужно ' + Math.round(F/9.8) +
         ' кгс — она не обожмётся, а треснет у корня; тоньше стенка или длиннее лепестки');
       else if (F > 120) w.push('цанга: лепесток жёсткий (' + Math.round(F/9.8) +
@@ -20668,6 +20725,29 @@ function collectPrintWarnings(p){
       if (cw < 1.0) w.push('цанга: стенка лепестка ' + cw.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4');
       if (cl < minorR) w.push('цанга: лепестки короче своего радиуса — рычага почти нет, гнуться будет корень');
     }
+  }
+  /* НАКИДНАЯ ГАЙКА ВВОДА. Три числа, которых на экране нет, а деталь держится ими: сколько витков в
+     резьбе (шестигранник теперь идёт ровно по ней, и коротким его сделать можно одним движением),
+     под каким углом стоит конус (единственный навес в детали — он растёт внутрь) и сколько материала
+     осталось у выхода под кабель. */
+  if (p.threadMode === 'glandcap'){
+    const D = Math.max(6, p.threadD||30), P2 = Math.max(0.5, p.threadPitch||3), majorR = D/2;
+    const hh = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P2*0.55);
+    const minorR = Math.max(0.5, majorR - hh);
+    const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
+    const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
+    const thH = Math.max(1.5, Math.min(nutH - 2.4, p.threadCapThread>0 ? p.threadCapThread : Math.max(5, 2.5*P2)));
+    const turns = thH/P2, cone = Math.atan2(minorR - rOut, nutH - thH)*180/Math.PI;
+    const wTop = Math.max(1.2, Math.min(3, 0.08*D));
+    w.push('накидная гайка: шестигранник ' + (thH + 0.6).toFixed(1) + ' мм — ровно по резьбе (' +
+           turns.toFixed(1) + ' витка), выше купол до Ø' + (2*rOut).toFixed(1) + ' мм под кабель');
+    if (turns < 2) w.push('накидная гайка: резьбы ' + turns.toFixed(1) +
+      ' витка — в пластике держит от двух с половиной; и шестигранник под ключ выходит того же роста');
+    if (cone > 50) w.push('накидная гайка: конус внутри стоит под ' + cone.toFixed(0) +
+      '° к оси — это навес круче 45°, потолок конуса ляжет с провисом; выше гайка или шире выход');
+    if (wTop < 1.6) w.push('накидная гайка: у выхода под кабель остаётся ' + wTop.toFixed(1) +
+      ' мм стенки — это кромка в четыре прохода сопла');
+    if (rOut >= minorR - 0.6) w.push('накидная гайка: выход под кабель шире собственной резьбы — конуса не выйдет вовсе');
   }
   if (p.pbPart && p.pbPart !== 'none' && p.pbCable && p.pbCable !== 'none') {
     const cs = pboxCableSpec(p);
@@ -20970,7 +21050,7 @@ function collectPrintWarnings(p){
       const part = casePartOf(p), mine = casePartFaces(part);
       const thick = f => f === '+Y' ? c.tLid : f === '-Y' ? c.floorT : c.bw;
       const where = {'+Y':'крышка сверху', '-Y':'дно корпуса', '+X':'торец корпуса', '-X':'торец корпуса',
-                     '+Z':'задняя стенка корпуса', '-Z':'передняя стенка корпуса'};
+                     '+Z':'передняя стенка корпуса', '-Z':'задняя стенка корпуса'};
       if (logoAmsOn(p)) w.push('футляр, цветная печать: надпись идёт НАКЛАДКОЙ поверх детали, а не вмятиной — ' +
         'карман и пробки обязаны резаться одной сеткой; накладка на крышке поднимет её над столом');
       for (const lg of logos){
@@ -20989,9 +21069,9 @@ function collectPrintWarnings(p){
         if (d > 0 && (f === '+Y' || f === '-Y')) w.push('выпуклый логотип на грани ' + f + ' (' + where[f] +
           '): эта сторона ложится НА СТОЛ, деталь встанет на надпись — сделайте глубину отрицательной (вмятина) ' +
           'или переверните деталь в слайсере и печатайте с поддержкой');
-        if (d > 0 && f === '-Z' && c.latchOn) w.push('выпуклый логотип на передней стенке — там же зацепы защёлки; ' +
+        if (d > 0 && f === '+Z' && c.latchOn) w.push('выпуклый логотип на передней стенке — там же зацепы защёлки; ' +
           'язычок крышки пойдёт по надписи');
-        if (d > 0 && f === '+Z') w.push('выпуклый логотип на задней стенке — там же узлы петли и косынки под них');
+        if (d > 0 && f === '-Z') w.push('выпуклый логотип на задней стенке — там же узлы петли и косынки под них');
       }
     }
   }

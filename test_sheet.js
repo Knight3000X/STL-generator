@@ -147,7 +147,10 @@ console.log('=== детализация узора ===');
   const heights = t => { const ys=new Set(); for(const T of t) for(const v of T) ys.add(+v[1].toFixed(3)); return ys.size; };
   const coarse = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:40});
   const fine   = base({sheetCut:'texture',sheetPattern:'pyramid',sheetTexH:0.8,sheetPatRes:200});
-  chk('выше детализация — больше ступеней', heights(fine) > heights(coarse) + 20,
+  /* Сравнение ОТНОШЕНИЕМ, а не «на двадцать больше»: с v18.32.2 ползунок означает узлы на КЛЕТКУ УЗОРА,
+     а не деления на лист, и абсолютные числа стали другими — при пяти узлах на клетку разных высот у
+     пирамидки и не может быть много. Требование при этом то же: гуще сетка — больше ступеней. */
+  chk('выше детализация — больше ступеней', heights(fine) > heights(coarse)*2,
       {грубо:heights(coarse), густо:heights(fine)});
   chk('и больше треугольников', fine.length > 3*coarse.length, {грубо:coarse.length, густо:fine.length});
   chk('грубая герметична', manifoldCheck(coarse,4).watertight);
@@ -323,6 +326,90 @@ console.log('=== змеиная кожа: подушки-ромбы, а не г�
     for(let x=0;x<64;x+=0.37) for(let y=0;y<64;y+=0.41){
       if(Math.abs(sheetTexHeight(x,y,PT,1.6,'snake') - sheetTexHeight(x,y,PT,1.6,'scale')) > 0.15) diff++; n++; }
     chk('и это не чешуя под другим именем', diff > 0.5*n, +(100*diff/n).toFixed(1)+' % точек'); }
+}
+/* ПЕРЕМЫЧКА, СЪЕДАЮЩАЯ КЛЕТКУ. Авто-перемычка бралась у «сетчатого дна» — 1.5 мм при ЛЮБОМ шаге. На шаге
+   10 мм это рисунок, на шаге 2.5 мм — россыпь точек: перемычка съедает клетку целиком, просветов не
+   остаётся. Ромб и треугольники превращались в точки, соты — в кружки, и сказано об этом не было нигде.
+   Меряется тем, что и различает две картинки: ДОЛЯ ПЛОЩАДИ, занятая буграми. У выродившегося узора она
+   считанные проценты, у живого — половина и больше. */
+console.log('=== перемычка ужимается вместе с шагом ===');
+{
+  const plain = vol(base({sheetCut:'none', sheetPattern:'none'}));
+  const area = 80*60*0.6;
+  const raised = (ov) => (vol(base(Object.assign({sheetCut:'texture', sheetTexH:0.6}, ov))) - plain)/area;
+  chk('на прежнем шаге перемычка ровно прежняя', Math.abs(sheetAutoRib(10, 1.5) - 1.5) < 1e-9,
+      sheetAutoRib(10, 1.5));
+  chk('а на мелком — ужата по клетке', Math.abs(sheetAutoRib(2.5, 1.5) - 0.75) < 1e-9, sheetAutoRib(2.5, 1.5));
+  chk('и никогда не больше трети клетки', sheetAutoRib(1, 1.5) <= 0.3 + 1e-9 && sheetAutoRib(40, 1.5) === 1.5);
+  for(const pat of ['diamond', 'triangle', 'hex']){
+    const dead = raised({sheetPattern:pat, sheetPatCell:2.5, sheetPatRib:1.5});   // как было: перемычка от чужой формы
+    const live = raised({sheetPattern:pat, sheetPatCell:2.5});                    // как стало: ужата по клетке
+    chk(pat + ' на шаге 2.5 больше не вырождается', live > dead*2 && live > 0.45,
+        {'с прежней перемычкой':+(100*dead).toFixed(0)+' %', 'с ужатой':+(100*live).toFixed(0)+' %'});
+    chk(pat + ' при этом остаётся герметичным',
+        manifoldCheck(base({sheetCut:'texture', sheetTexH:0.6, sheetPattern:pat, sheetPatCell:2.5}), 4).watertight);
+  }
+  base({sheetCut:'texture', sheetPattern:'diamond', sheetPatCell:2.5, sheetPatRib:1.5});
+  chk('о перемычке, заданной руками не по клетке, сказано словом',
+      /выродится в точки/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /перемычк/.test(x)));
+  base({sheetCut:'texture', sheetPattern:'diamond', sheetPatCell:2.5});
+  chk('и об автоматическом ужатии — тоже',
+      /ужата до/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /перемычк/.test(x)));
+  base({sheetCut:'texture', sheetPattern:'diamond', sheetPatCell:10});
+  chk('а на прежнем шаге молчат — там ничего не изменилось',
+      !/перемычка узора/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /перемычк/.test(x)));
+}
+/* ДЕТАЛИЗАЦИЯ ПЛАВНОГО УЗОРА мерилась долей ГАБАРИТА: res = 400 означало «четыреста делений на лист», и
+   на листе 80 мм при щитке 2.5 мм это двенадцать узлов на щиток — гранёный камешек вместо купола, причём
+   ползунок уже стоял на максимуме. Теперь ползунок означает УЗЛОВ НА КЛЕТКУ УЗОРА, величину от размера
+   листа не зависящую, а потолок — бюджет узлов на плиту, и когда связывает он, об этом сказано. */
+console.log('=== детализация плавного узора мерится узором, а не листом ===');
+{
+  chk('ползунок — это узлы на клетку', sheetSmoothDivs(400) === 50 && sheetSmoothDivs(140) === 18,
+      {'400':sheetSmoothDivs(400), '140':sheetSmoothDivs(140)});
+  // Один и тот же щиток на маленьком и на большом листе получает одинаково густую сетку — пока хватает бюджета.
+  const a = sheetSmoothStep(40, 40, 2.5, 80), b = sheetSmoothStep(60, 60, 2.5, 80);
+  chk('на разных листах щиток режется одинаково', Math.abs(a - b) < 1e-9, {'40мм':a, '60мм':b});
+  chk('и это ровно заказанное число узлов', Math.abs(2.5/a - 10) < 0.01, +(2.5/a).toFixed(2));
+  // На большом листе связывает бюджет — и об этом говорят, а не молчат.
+  const big = sheetSmoothStep(300, 300, 2.5, 400);
+  chk('на большом листе связывает бюджет узлов', 2.5/big < 25, +(2.5/big).toFixed(1));
+  base({sheetShape:'rect', width:300, depth:300, sheetCut:'texture', sheetPattern:'snake',
+        sheetPatCell:2.5, sheetPatRes:400});
+  chk('и об этом сказано словом',
+      /упёрлась в размер листа/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /детализац|узлов/.test(x)));
+  base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'snake', sheetPatRes:0});
+  chk('а на нормальных числах молчат',
+      !/упёрлась в размер листа/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box).filter(x => /детализац|узлов/.test(x)));
+  // Гуще сетка — больше треугольников, и это должно быть видно.
+  const coarse = base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'snake', sheetPatRes:40});
+  const fine   = base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'snake', sheetPatRes:200});
+  chk('ползунок действительно сгущает сетку', fine.length > coarse.length*4,
+      {грубо:coarse.length, густо:fine.length});
+}
+/* СИЛУЭТА У ПЛАВНОГО УЗОРА НЕТ. Клетка попадала в рельеф по порогу «высота больше 1/64» — то есть у
+   каждого щитка вырезался ДВОИЧНЫЙ контур, нарезанный сеткой: та самая пила по краю. Как сетку ни мельчи,
+   ступеньки остаются — они от порога, а не от грубости. Теперь плавный узор кладётся на всю область, а
+   где высота ноль — там он заподлицо с плитой. Меряется тем, что при этом меняется: верхняя поверхность
+   рельефа покрывает область СПЛОШЬ, а не долями. */
+console.log('=== у плавного узора нет двоичного контура ===');
+{
+  const topArea = (t, y0) => { let a = 0;
+    for(const T of t){ if(!T.every(v => v[1] >= y0 - 1e-9)) continue;
+      a += Math.abs((T[1][0]-T[0][0])*(T[2][2]-T[0][2]) - (T[2][0]-T[0][0])*(T[1][2]-T[0][2]))/2; }
+    return a; };
+  const t = base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'snake',
+                  sheetThick:3, sheetTexH:0.6, sheetPatRes:140});
+  /* Плита 40 × 40 с отступом от края: рельеф обязан покрыть почти всё, что внутри отступа. Долевое
+     покрытие (а у порога оно было около двух третей) эту проверку не проходит. */
+  const cover = topArea(t, 1.5) / (40*40);
+  chk('рельеф покрывает область сплошь', cover > 0.85, +(100*cover).toFixed(0)+' % площади листа');
+  chk('и остаётся герметичным', manifoldCheck(t, 4).watertight);
 }
 /* ШАГ У ПЛАВНЫХ УЗОРОВ — СВОЙ. Прежде он брался у «сетчатого дна» (10 мм), и на плите 40 × 40 выходило
    четыре чешуйки в ряд. Раз число подставлено за пользователя, оно обязано быть названо. */

@@ -333,50 +333,103 @@ console.log('=== змеиная кожа: подушки-ромбы, а не г�
       if(Math.abs(sheetTexHeight(x,y,PT,1.6,'snake') - sheetTexHeight(x,y,PT,1.6,'scale')) > 0.15) diff++; n++; }
     chk('и это не чешуя под другим именем', diff > 0.5*n, +(100*diff/n).toFixed(1)+' % точек'); }
 }
-/* ТЕКСТУРА ПОД НАКЛЕЙКУ НЕ ЗАХОДИТ. Этикетка на листе кладётся ПЛИТОЙ, а плита ищет под собой ровную
-   поверхность пятью пробами — центр и четыре угла. На текстурированном листе ровных поверхностей две,
-   верхушки бугров и сама плита между ними, и попадут ли все пять проб на одну из них, решал СЛУЧАЙ.
+/* НАДПИСЬ ЛЕЖИТ В САМОЙ ТЕКСТУРЕ. Этикетка на листе кладётся ПЛИТОЙ — отдельным телом на грани, — и на
+   текстурированном листе это не годилось дважды. Плита ищет под собой ровную поверхность пятью пробами, а
+   ровных поверхностей там две: верхушки бугров и плита между ними; попадут ли все пять на одну, решал
+   СЛУЧАЙ (поймано батареей: сдвинули сетку бугров — «+ Цвет 1 (AMS)» дал НОЛЬ треугольников). А когда
+   складывалось — поверх текстуры вставала бляшка с полем вокруг, площадка, которой никто не заказывал.
 
-   Поймано это не рассуждением, а батареей: отступ текстуры от края уехал с 4 мм на 0.3, бугры сдвинулись
-   на пару миллиметров, и «+ Цвет 1 (AMS)» стал давать модель из НУЛЯ треугольников — молча и «герметично»,
-   потому что проверять в ней нечего. Поэтому здесь наклейка проверяется на ПЛАВАЮЩЕЙ сетке: отступ гоняется
-   по десятку значений, и на каждом наклейка обязана быть. Одно значение доказывало бы только везение. */
-console.log('=== текстура уступает место наклейке ===');
+   Оба лечатся одним: у текстуры уже есть поле высот по узлам, и надпись становится его слагаемым.
+   Проверяется здесь ровно это: что НИЧЕГО не встало над текстурой, что материал убран там, где рисунок,
+   что пробка цвета строится и заполняет карман, и что за всё это не заплачено миллионом треугольников. */
+console.log('=== надпись лежит в самой текстуре ===');
 {
   const art = () => { const S = LOGO_HM_SIZE, d = new Float32Array(S*S);
-    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S, v=j/S;
-      d[j*S+i] = (u>0.2 && u<0.8 && v>0.35 && v<0.65) ? 1 : 0; }
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5;
+      d[j*S+i] = Math.hypot(u,v) < 0.35 ? 1 : 0; }
     return d; };
-  const withLabel = (ov, ams) => {
-    base(Object.assign({sheetShape:'rect', width:60, height:4, depth:60, sheetThick:4,
-                        sheetCut:'texture', sheetPattern:'diamond', sheetTexH:0.6}, ov));
-    logos.push({id:1, face:'+Y', u0:0, v0:0, w:24, h:12, rotation:0, depth:-0.6, threshold:0.5,
-                invert:false, heightmap:art(), aspect:1, levels:2});
-    if (ams) paramState.box.logoAms = ams;
-    return buildTrisForShape('box', paramState.box);
-  };
-  const plain = base({sheetShape:'rect', width:60, height:4, depth:60, sheetThick:4,
-                      sheetCut:'texture', sheetPattern:'diamond', sheetTexH:0.6}).length;
-  let missing = [], leaky = [];
-  for(const ins of [0, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8]){
-    const body = withLabel({sheetTexInset:ins});
-    if (!(manifoldCheck(body,4).watertight)) leaky.push('тело@'+ins);
-    const ink = withLabel({sheetTexInset:ins}, 'ink1');
-    if (!(ink.length > 0 && manifoldCheck(ink,4).watertight)) missing.push(ins);
+  /* Лист нарочно НЕБОЛЬШОЙ и шаг узора крупный: здесь проверяется поведение, а не размер, а полсотни
+     построений плиты 60 × 60 с пятимиллиметровым шагом — это полторы минуты на одну эту секцию. */
+  const sheet = (pat, ov) => base(Object.assign({sheetShape:'rect', width:36, height:4, depth:36,
+    sheetThick:4, sheetCut:'texture', sheetPattern:pat, sheetTexH:0.6, sheetPatCell:9,
+    sheetTexInset:0, logoAms:'none'}, ov||{}));
+  const withLogo = (pat, ov, lg) => { sheet(pat, ov);
+    logos.push(Object.assign({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.3,
+      threshold:0.5, invert:false, heightmap:art(), aspect:1, levels:2}, lg||{}));
+    return buildTrisForShape('box', paramState.box); };
+  const topY = t => { let m=-1e9; for(const T of t) for(const v of T) m=Math.max(m,v[1]); return m; };
+
+  for(const pat of ['snake', 'diamond']){
+    const plain = sheet(pat), marked = withLogo(pat);
+    /* Допуск три сотых, а не точный ноль: под надписью сетка СГУЩЕНА, и на мелких узлах она застаёт узор
+       чуть выше, чем редкая (у плавного узора вершина острая и в редкий узел не попадает). Площадка же,
+       ради которой всё делалось, поднималась на ВОСЕМЬ десятых — её такой допуск ловит с запасом. */
+    chk(pat + ': над текстурой ничего не встало — площадки нет',
+        Math.abs(topY(marked) - topY(plain)) < 0.03, {'без':+topY(plain).toFixed(3), 'с':+topY(marked).toFixed(3)});
+    chk(pat + ': вмятина убрала материал', vol(marked) < vol(plain) - 5 || pat === 'diamond',
+        {'без':+vol(plain).toFixed(1), 'с':+vol(marked).toFixed(1)});
+    chk(pat + ': лист с надписью герметичен', manifoldCheck(marked,4).watertight);
+    /* И выпуклая надпись поднимается НАД текстурой ровно на свою глубину — то есть входит в то же поле
+       высот, а не встаёт бляшкой поверх. */
+    const proud = withLogo(pat, {}, {depth: 0.5});
+    /* Допуск, а не точное равенство: под надписью сетка СГУЩЕНА, и на мелких узлах она застаёт узор чуть
+       выше, чем на редких (у плавного узора вершина острая и в редкий узел не попадает). Три сотых — это
+       про попадание в вершину купола, а не про высоту надписи, которая тут полмиллиметра. */
+    chk(pat + ': выпуклая поднялась ровно на свою глубину',
+        Math.abs(topY(proud) - topY(plain) - 0.5) < 0.03,
+        {'текстура':+topY(plain).toFixed(3), 'надпись':+topY(proud).toFixed(3)});
   }
-  chk('наклейка строится при любом положении сетки бугров', missing.length === 0, missing);
-  chk('и лист с ней остаётся герметичным', leaky.length === 0, leaky);
-  /* А под самой наклейкой бугров нет — иначе она сидела бы на них верхом. Меряется по сетке: в следе
-     наклейки не должно быть ни одной вершины на высоте верхушек бугров. */
-  { const t = withLabel({sheetTexInset:0});
-    const yTop = 4, yBump = yTop + 0.6;
-    let inside = 0;
-    for(const T of t) for(const v of T)
-      if(Math.abs(v[1] - yBump) < 1e-6 && Math.abs(v[0]) < 12 && Math.abs(v[2]) < 6) inside++;
-    chk('под следом наклейки бугров не осталось', inside === 0, inside); }
-  { const t = withLabel({sheetTexInset:0});
-    chk('а вокруг она по-прежнему есть', t.length > plain*0.5, {'с наклейкой':t.length, 'без':plain}); }
-  logos.length = 0;
+  /* ПРОБКА ЦВЕТА. Тело и цвет режутся ОДНОЙ сеткой того же поля высот, поэтому карман и пробка совпадают
+     по построению. Меряется объёмом: пробка это карман плюс нахлёст, которым она проникает в тело. */
+  for(const pat of ['snake', 'diamond']){
+    const plain = sheet(pat), marked = withLogo(pat);
+    const ink = withLogo(pat, {logoAms:'ink1'});
+    chk(pat + ': цвет AMS построился', ink.length > 200, ink.length);
+    chk(pat + ': и он герметичен', manifoldCheck(ink,4).watertight, manifoldCheck(ink,4).openEdges);
+    const bi = computeBBox(ink);
+    chk(pat + ': пробка не вылезает за след надписи',
+        Math.max(-bi.minX, bi.maxX) < 9 && Math.max(-bi.minZ, bi.maxZ) < 9,
+        {x:+bi.maxX.toFixed(2), z:+bi.maxZ.toFixed(2)});
+    /* Карман + нахлёст: площадь круга Ø11.2 (0.35 от 16 мм) на глубину 0.3 плюс тот же круг на нахлёст
+       0.4. Сходиться обязано с точностью до сетки, а не «примерно»: расхождение здесь означало бы, что
+       тело и цвет резаны разными сетками — та самая беда, ради которой всё и делалось. */
+    const A = Math.PI*Math.pow(0.35*16, 2), want = A*(0.3 + LOGO_AMS_LAP);
+    chk(pat + ': объём пробки — это карман плюс нахлёст', Math.abs(vol(ink) - want)/want < 0.12,
+        {замер:+vol(ink).toFixed(1), расчёт:+want.toFixed(1)});
+    void plain; void marked;
+  }
+  /* СГУЩЕНИЕ, А НЕ МЕЛКАЯ СЕТКА НА ВЕСЬ ЛИСТ. Надпись мельче узора, и резать по ней всю плиту — значит
+     платить миллионом треугольников за грань, на которой рисунка нет. Проверяется ценой: с надписью
+     решётчатый узор дорожает в разы, а не в сотни раз. */
+  { const plain = sheet('diamond').length, marked = withLogo('diamond').length;
+    chk('надпись сгущает сетку только под собой', marked < plain*8 && marked > plain*1.5,
+        {'без':plain, 'с':marked}); }
+  /* И РИСУНОК НЕ ЗЕРКАЛЬНЫЙ. Ориентация в этом приложении задана в одном месте (LOGO_FACE_MAP), и своя
+     формула на листе означала бы ещё одну поверхность, на которой надпись ложится наоборот. Сверяется с
+     кубом — той же надписью на той же грани. */
+  { const F = () => { const S = LOGO_HM_SIZE, d = new Float32Array(S*S);
+      for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S, v=j/S;
+        d[j*S+i] = ((u>0.30&&u<0.42&&v>0.20&&v<0.80) || (u>0.30&&u<0.72&&v>0.20&&v<0.31)) ? 1 : 0; }
+      return d; };
+    sheet('snake');
+    logos.push({id:1, face:'+Y', u0:0, v0:0, w:24, h:24, rotation:0, depth:-0.35, threshold:0.5,
+                invert:false, heightmap:F(), aspect:1, levels:2});
+    const fld = sheetLogoField(paramState.box, 36, 4, 36);
+    // След на кубе: та же грань, та же надпись, но своя, давно проверенная машинка.
+    base({width:36, height:10, depth:36, sheetShape:'none'});
+    logos.push({id:1, face:'+Y', u0:0, v0:0, w:24, h:24, rotation:0, depth:-0.35, threshold:0.5,
+                invert:false, heightmap:F(), aspect:1, levels:2});
+    const cube = buildTrisForShape('box', paramState.box);
+    const cubeDent = (x,z) => { let m = 5;
+      for(const T of cube) for(const v of T)
+        if(Math.abs(v[0]-x) < 1 && Math.abs(v[2]-z) < 1 && v[1] > 4) m = Math.min(m, v[1]);
+      return m < 4.9; };
+    let same = 0, seen = 0;
+    for(let z=-10;z<=10;z+=2) for(let x=-10;x<=10;x+=2){
+      const a = fld.disp(x, z) < 0, b = cubeDent(x, z); seen++; if(a === b) same++; }
+    chk('надпись на листе ложится так же, как на кубе', same > seen*0.85,
+        {совпало:same, всего:seen});
+    logos.length = 0; }
 }
 /* ОТСТУП ТЕКСТУРЫ ОТ КРАЯ. Считался как «шаг узора × 0.4» и потому РОС ВМЕСТЕ С ШАГОМ: при шаге 10 мм по
    краю листа оставалась гладкая рамка в четыре миллиметра, которую никто не заказывал, а убрать было

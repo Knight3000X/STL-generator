@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.32.3';
+const APP_VERSION = 'v18.33.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -8480,23 +8480,77 @@ function sheetAutoRib(cell, latticeRib){ return Math.min(latticeRib || 1.5, cell
    это ручка, а её авто — тот самый технический минимум; при бортике отступ по-прежнему считается от него,
    иначе текстура упёрлась бы в стенку бортика. */
 const SHEET_TEX_MIN_INSET = 0.3;
-/* ПОД НАКЛЕЙКОЙ ТЕКСТУРЫ НЕТ, и это не украшение. Этикетка на листе кладётся ПЛИТОЙ, а плита ищет под
-   собой ровную поверхность (`outermostFlatPlaneAt`, пять проб: центр и четыре угла). На текстурированном
-   листе ровных поверхностей две — верхушки бугров и сама плита между ними, — и попадут ли все пять проб на
-   одну из них, решал случай: сдвиньте сетку бугров на пару миллиметров, и наклейка пропадёт целиком, молча.
-   Поймано ровно так — отступ текстуры от края уехал с 4 мм на 0.3, бугры сдвинулись, и «+ Цвет 1 (AMS)»
-   стал давать модель из НУЛЯ треугольников.
-   Поэтому текстура под наклейку не заходит вовсе: клетки внутри её следа (плюс полтора миллиметра поля)
-   не строятся. Плита получает под собой сплошную ровную площадку, и случайности не остаётся. */
-function sheetLogoKeepouts(p){
-  if (typeof logos === 'undefined' || !logos.length) return [];
-  const out = [];
-  for (const lg of logos){
-    if (!lg || !lg.heightmap || !(lg.depth||0) || lg.face !== '+Y') continue;
-    const ext = logoFaceExtent(lg, lg.w, lg.h, lg.rotation);
-    out.push([lg.u0||0, lg.v0||0, ext.halfX + 1.5, ext.halfY + 1.5]);
+/* ---- ЛОГОТИП ЛЕЖИТ В САМОЙ ТЕКСТУРЕ ------------------------------------------------------------
+   Этикетка на листе кладётся ПЛИТОЙ — отдельным телом, поставленным на грань, — и на текстурированном
+   листе это никуда не годилось дважды. Во-первых, плита ищет под собой ровную поверхность пятью пробами, а
+   ровных поверхностей там две: верхушки бугров и сама плита между ними. Попадут ли все пять проб на одну,
+   решал СЛУЧАЙ; сдвиньте сетку бугров на пару миллиметров — и наклейка пропадала целиком, молча (так и
+   поймано: отступ текстуры уехал с 4 мм на 0.3, и «+ Цвет 1 (AMS)» дал НОЛЬ треугольников). Во-вторых,
+   даже когда всё складывалось, поверх текстуры вставала бляшка с полем вокруг — площадка, которой никто
+   не заказывал.
+
+   Оба лечатся одним: у листа с текстурой уже есть ПОЛЕ ВЫСОТ по узлам сетки, и надпись просто становится
+   его слагаемым. H = верх + высота_текстуры · узор + смещение_логотипа. Ни плиты, ни площадки, ни поиска
+   ровного места — рисунок лежит в текстуре, а текстура идёт по нему.
+
+   СМЕЩЕНИЕ СЧИТАЕТСЯ ОБЩЕЙ МАШИНКОЙ (`makeLogoDispFn` и та же рамка от FACE_AXES, что у куба и у корпуса),
+   а не своей формулой. Соблазн написать «здесь всё просто, x и z» велик, но ориентация логотипа в этом
+   приложении задана в одном месте (LOGO_FACE_MAP), и своя копия означала бы ещё одну поверхность, на
+   которой рисунок ложится зеркально. */
+function sheetLogoField(p, W, T, D){
+  if (typeof logos === 'undefined' || !logos.length) return null;
+  const mine = logos.filter(lg => lg && lg.heightmap && (lg.depth||0) && lg.face === '+Y');
+  if (!mine.length) return null;
+  const dims = {width:W, height:T, depth:D};
+  const parts = [];
+  for (const lg of mine){
+    const ax = FACE_AXES['+Y']; if (!ax) continue;
+    const [uAxis, vAxis, nAxis, nOffset] = ax(dims);
+    const full = Object.assign({}, lg, {uAxis, vAxis, nAxis, nOffset});
+    const fr = makeLogoFrame(full, q => q);
+    parts.push({lg, disp: makeLogoDispFn(full, fr), mask: makeLogoMaskFn(full, fr),
+                inks: logoInks(lg), stepped: logoStepped(lg)});
   }
-  return out;
+  if (!parts.length) return null;
+  const at = (x, z) => [x, T/2, z];
+  return {
+    // Смещение поверхности в миллиметрах: <0 — вмятина, >0 — выпуклость.
+    disp(x, z){ for (const q of parts){ const d = q.disp(0, 0, at(x, z)); if (d !== 0) return d; } return 0; },
+    /* Тон — какому цвету принадлежит точка (0 = вне рисунка). Ступенчатый рельеф уже несёт высоту, и
+       уровень ищется ближайшим — ровно так же, как это делает logoPatchPlan для накладок; иначе тело и
+       его цвета резались бы по разным правилам и не совпали бы по контуру. */
+    tone(x, z){
+      for (const q of parts){
+        if (!q.mask(0, 0, at(x, z))) continue;
+        if (!q.stepped || !q.inks.levels.length) return 1;
+        const d = q.disp(0, 0, at(x, z)), val = q.lg.depth ? d/q.lg.depth : 0;
+        let k = 1, bd = Infinity;
+        q.inks.levels.forEach((v, i) => { const e = Math.abs(v - val); if (e < bd){ bd = e; k = i + 1; } });
+        return k;
+      }
+      return 0;
+    },
+    inkCount: Math.max(1, parts[0].inks.levels.length),
+    /* СГУЩЕНИЕ, А НЕ МЕЛКАЯ СЕТКА НА ВЕСЬ ЛИСТ. Шаг сетки текстуры мерится её узором, а надпись узором не
+       мерится ничем: буквы бывают куда мельче щитка. Резать по надписи ВЕСЬ лист — значит платить
+       миллионом треугольников за грань, на которой рисунка нет (замерено: полсекунды превращались в
+       минуты). Поэтому поле называет ЗОНЫ — прямоугольники своих следов с полем в 1 мм — и шаг внутри
+       них; ровно так же поступает скруглённый куб и электрокорпус, и по той же причине. */
+    zonesX: parts.map(q => { const e = logoFaceExtent(q.lg, q.lg.w, q.lg.h, q.lg.rotation);
+      return [(q.lg.u0||0) - e.halfX - 1, (q.lg.u0||0) + e.halfX + 1]; }),
+    zonesZ: parts.map(q => { const e = logoFaceExtent(q.lg, q.lg.w, q.lg.h, q.lg.rotation);
+      return [(q.lg.v0||0) - e.halfY - 1, (q.lg.v0||0) + e.halfY + 1]; }),
+    want: Math.min.apply(null, parts.map(q =>
+      Math.min(q.lg.w, q.lg.h)/Math.max(24, Math.min(200,
+        (typeof logoResolution !== 'undefined' ? logoResolution : 120))))),
+  };
+}
+// Мнёт ли лист ЭТОТ логотип сам — то есть надо ли обойти общий путь накладок.
+function sheetDentsLogo(p, lg){
+  if (!p || !p.sheetShape || p.sheetShape === 'none') return false;
+  if ((p.sheetCut || 'texture') !== 'texture') return false;
+  if (!p.sheetPattern || p.sheetPattern === 'none') return false;
+  return !!(lg && lg.heightmap && (lg.depth||0) && lg.face === '+Y');
 }
 function sheetTexEdgeGap(p){
   const rimNeed = (p.sheetRim||0) > 0 ? Math.max(1, p.sheetRimW||2) + 0.6 : 0;
@@ -8514,6 +8568,30 @@ function sheetSmoothStep(wx, wz, pitch, res){
   const want = Math.max(0.02, pitch/sheetSmoothDivs(res));
   const budget = Math.sqrt(Math.max(1, wx*wz)/SHEET_SMOOTH_NODES);
   return Math.max(budget, want);
+}
+/* Позиции узлов по одной оси: равномерная сетка шагом `step`, СГУЩЁННАЯ до `fine` внутри зон. Зоны — следы
+   надписей; всё остальное режется узором, как и резалось. Сгущение считается по своему бюджету: рисунок
+   мельче четверти миллиметра ни один слайсер всё равно не увидит, а треугольники за него платятся. */
+const SHEET_ZONE_NODES = 260 * 260;
+function sheetAxisPositions(lo, hi, step, zones, fine){
+  const n = Math.max(4, Math.ceil((hi - lo)/step)), base = [];
+  for (let i = 0; i <= n; i++) base.push(lo + (hi - lo)*i/n);
+  if (!zones || !zones.length || !(fine > 0) || fine >= step) return base;
+  let span = 0;
+  for (const z of zones) span = Math.max(span, Math.min(hi, z[1]) - Math.max(lo, z[0]));
+  const f = Math.max(fine, span/Math.sqrt(SHEET_ZONE_NODES));
+  if (f >= step) return base;
+  const out = [];
+  for (let i = 0; i + 1 < base.length; i++){
+    const a = base[i], b = base[i+1];
+    out.push(a);
+    if (zones.some(z => b > z[0] && a < z[1])){
+      const k = Math.max(1, Math.ceil((b - a)/f));
+      for (let q = 1; q < k; q++) out.push(a + (b - a)*q/k);
+    }
+  }
+  out.push(base[base.length-1]);
+  return out;
 }
 function sheetTexHeight(cx, cz, pitch, rib, pattern){
   const frac = t => ((t % 1) + 1) % 1;
@@ -8552,7 +8630,7 @@ function sheetTexRaised(cx, cz, pitch, rib, pattern){
 // Full-coverage grip texture: the raised pattern over the WHOLE outline (clipped just inside the edge),
 // appended as ONE watertight extruded-silhouette slab that straddles the plate top (sunk `embed`, proud
 // `texH`). The smooth solid plate carries the shape; the slab adds the bumps (like a mouse side-pad).
-function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, keepouts){
+function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, field, ink){
   const clip=polyInsetRing(ring, Math.max(SHEET_TEX_MIN_INSET, edgeGap));  // текстура встаёт чуть внутри контура
   if(clip.length<3) return [];
   let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
@@ -8568,10 +8646,17 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, ke
      остаётся, но он честный и по делу: не «столько-то делений», а бюджет УЗЛОВ на всю плиту, потому что
      ограничение здесь одно — сколько треугольников выдержит предпросмотр. Когда потолок связывает, об этом
      сказано в предупреждениях вместе с настоящим числом узлов на щиток. */
-  const step = smooth ? sheetSmoothStep(maxx-minx, maxz-minz, pitch, res)
+  /* С НАДПИСЬЮ СЕТКА СЧИТАЕТСЯ КАК У ПЛАВНОГО УЗОРА, даже если сам узор резкий: решётчатый шаг мерит
+     перемычку, а надпись мерить нечем, кроме неё самой. На решётчатом шаге буквы вышли бы рублеными. */
+  const byNode = smooth || !!field;
+  const step = byNode ? sheetSmoothStep(maxx-minx, maxz-minz, pitch, res)
                       : netGridStep(maxDim, pitch, rib, res);
-  const nx=Math.max(4,Math.ceil((maxx-minx)/step)), nz=Math.max(4,Math.ceil((maxz-minz)/step));
-  const X=i=>minx+(maxx-minx)*i/nx, Z=j=>minz+(maxz-minz)*j/nz;
+  const zx = field ? field.zonesX.map(z => [z[0]+c[0], z[1]+c[0]]) : null;
+  const zz = field ? field.zonesZ.map(z => [z[0]+c[1], z[1]+c[1]]) : null;
+  const xs = sheetAxisPositions(minx, maxx, step, zx, field && field.want);
+  const zs = sheetAxisPositions(minz, maxz, step, zz, field && field.want);
+  const nx=xs.length-1, nz=zs.length-1;
+  const X=i=>xs[i], Z=j=>zs[j];
   const inPoly=(x,z)=>{ let w=false; for(let a=0,b=clip.length-1;a<clip.length;b=a++){ const xi=clip[a][0],yi=clip[a][1],xj=clip[b][0],yj=clip[b][1];
     if(((yi>z)!==(yj>z)) && (x<(xj-xi)*(z-yi)/(yj-yi)+xi)) w=!w; } return w; };
   /* У ПЛАВНОГО УЗОРА СИЛУЭТА НЕТ — есть поле высот, и порог ему только вредит. Прежде клетка попадала в
@@ -8581,17 +8666,25 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, ke
      Плавный узор кладётся на ВСЮ область целиком, а где высота ноль — там он просто заподлицо с плитой.
      Никакого контура не рисуется вовсе, значит и рвать нечего; заодно исчезают внутренние юбки вокруг
      каждого щитка, которых было больше, чем самого рельефа. */
-  const ko=keepouts||[];
-  const inKeepout=(x,z)=>{ for(const k of ko) if(Math.abs(x-c[0]-k[0])<k[2] && Math.abs(z-c[1]-k[1])<k[3]) return true; return false; };
+  /* НАДПИСЬ ДЕЛАЕТ ПОЛЕ ВЫСОТ ИЗ ЛЮБОГО УЗОРА. Резкий узор строится столбиками с отвесными стенками, и
+     это верно, пока высот всего две; надпись же несёт свою в каждой точке. Поэтому лист с надписью идёт
+     тем же путём по УЗЛАМ, что и плавные узоры, — иначе там, где сходятся четыре клетки разной высоты,
+     вертикальные рёбра стыкуются в разных точках, и получается T-стык (замерено однажды: 9…54 тысячи
+     открытых рёбер). Клетка при этом мельче бугра в разы, так что скос по краю бугра шириной в одну
+     клетку глазом не отличить от отвеса. */
   const sol=Array.from({length:nx},()=>new Array(nz).fill(false));
   for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ const cx=(X(i)+X(i+1))/2, cz=(Z(j)+Z(j+1))/2;
-    if(inPoly(cx,cz) && !inKeepout(cx,cz) && (smooth || sheetTexRaised(cx-c[0], cz-c[1], pitch, rib, pattern))) sol[i][j]=true; }
+    if(!inPoly(cx,cz)) continue;
+    // Пробка цвета — только свои клетки рисунка; тело — вся область (у плавного узора силуэта нет).
+    if(ink > 0){ if(field && field.tone(cx-c[0], cz-c[1]) === ink) sol[i][j]=true; continue; }
+    if(byNode || sheetTexRaised(cx-c[0], cz-c[1], pitch, rib, pattern)) sol[i][j]=true; }
   for(let ch=true;ch;){ ch=false;
     for(let i=0;i+1<nx;i++)for(let j=0;j+1<nz;j++){ const a=sol[i][j],bb=sol[i+1][j],c2=sol[i][j+1],d=sol[i+1][j+1];
       if(a&&d&&!bb&&!c2){sol[i+1][j]=true;ch=true;} else if(bb&&c2&&!a&&!d){sol[i][j]=true;ch=true;} } }
   const at=(i,j)=>(i>=0&&j>=0&&i<nx&&j<nz)?sol[i][j]:false;
   const yLo=yTop-Math.min(0.5, texH*0.6+0.3), yHi=yTop+texH, tris=[];
-  const quad=(A,B,C,D,ref)=>{tris.push(orient([A,B,C],ref));tris.push(orient([A,C,D],ref));};
+  const quadTo=(dst,A,B,C,D,ref)=>{dst.push(orient([A,B,C],ref));dst.push(orient([A,C,D],ref));};
+  const quad=(A,B,C,D,ref)=>quadTo(tris,A,B,C,D,ref);
   /* ПЛАВНЫЙ УЗОР СТРОИТСЯ ПО ВЕРШИНАМ, А НЕ ПО КЛЕТКАМ, и это не оптимизация, а единственный способ.
      Первая попытка ставила каждой клетке свою высоту столбиком: соседи по грани сходились верно, но там,
      где сходятся ЧЕТЫРЕ клетки разной высоты, вертикальные рёбра стыкуются в разных точках — ребро одной
@@ -8599,9 +8692,33 @@ function buildSheetBumps(ring, pattern, pitch, rib, yTop, texH, res, edgeGap, ke
      снятая в УЗЛАХ сетки, читается соседними клетками одна и та же на общем ребре, поэтому шва нет вовсе
      — тот же приём, которым сделан скруглённый профиль ребра у сетчатого дна. Юбка вниз ставится только
      по краю области, где соседней клетки нет; там обе сходящиеся стенки идут от высоты одного узла. */
-  if(smooth){
-    const H=Array.from({length:nx+1},(_,i)=>Array.from({length:nz+1},(_,j)=>
+  if(byNode){
+    // Поверхность БЕЗ надписи и поверхность С ней. Первая нужна пробке цвета: она заполняет карман ровно
+    // до того уровня, на котором поверхность шла бы, не будь рисунка.
+    const BASE=Array.from({length:nx+1},(_,i)=>Array.from({length:nz+1},(_,j)=>
       yTop + texH*Math.max(0, Math.min(1, sheetTexHeight(X(i)-c[0], Z(j)-c[1], pitch, rib, pattern)))));
+    const H=field ? Array.from({length:nx+1},(_,i)=>Array.from({length:nz+1},(_,j)=>
+                      BASE[i][j] + field.disp(X(i)-c[0], Z(j)-c[1])))
+                  : BASE;
+    /* ПРОБКА ЦВЕТА — плита между двумя полями высот: от поверхности с надписью до поверхности без неё,
+       плюс нахлёст вниз, чтобы она проникала в тело, а не делила с ним грань. Обе поверхности сняты в тех
+       же узлах той же сетки, поэтому карман и пробка совпадают по построению, а не по совпадению. */
+    if(ink > 0){
+      const out=[];
+      for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(!sol[i][j]) continue;
+        const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
+        const lo=(i2,j2)=>Math.min(H[i2][j2], BASE[i2][j2]) - LOGO_AMS_LAP, hi=(i2,j2)=>Math.max(H[i2][j2], BASE[i2][j2]);
+        const A=[x0,hi(i,j),z0], Bv=[x1,hi(i+1,j),z0], C=[x1,hi(i+1,j+1),z1], D=[x0,hi(i,j+1),z1];
+        out.push(orient([A,Bv,C],[0,1,0]), orient([A,C,D],[0,1,0]));
+        const a2=[x0,lo(i,j),z0], b2=[x1,lo(i+1,j),z0], c2=[x1,lo(i+1,j+1),z1], d2=[x0,lo(i,j+1),z1];
+        out.push(orient([a2,b2,c2],[0,-1,0]), orient([a2,c2,d2],[0,-1,0]));
+        if(!at(i+1,j)) quadTo(out,[x1,lo(i+1,j),z0],Bv,C,[x1,lo(i+1,j+1),z1],[1,0,0]);
+        if(!at(i-1,j)) quadTo(out,[x0,lo(i,j),z0],[x0,lo(i,j+1),z1],D,A,[-1,0,0]);
+        if(!at(i,j+1)) quadTo(out,[x0,lo(i,j+1),z1],D,C,[x1,lo(i+1,j+1),z1],[0,0,1]);
+        if(!at(i,j-1)) quadTo(out,[x0,lo(i,j),z0],[x1,lo(i+1,j),z0],Bv,A,[0,0,-1]);
+      }
+      return polyDropDegen(out);
+    }
     for(let i=0;i<nx;i++)for(let j=0;j<nz;j++){ if(!sol[i][j]) continue;
       const x0=X(i),x1=X(i+1),z0=Z(j),z1=Z(j+1);
       const A=[x0,H[i][j],z0], B=[x1,H[i+1][j],z0], C=[x1,H[i+1][j+1],z1], D=[x0,H[i][j+1],z1];
@@ -9422,8 +9539,15 @@ function buildSheet(p){
        Ноль — авто, и авто у двух родов узоров разное: резкому хватает прежнего числа (клетка либо стоит,
        либо нет, мельче резать нечего), а плавному клетка — это СТУПЕНЬ купола, и на прежней сетке
        пирамидка выходила из трёх ступеней. */
-    out=out.concat(buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6),
-      p.sheetPatRes>0 ? p.sheetPatRes : (SHEET_SMOOTH.has(pattern) ? 140 : res), rim, sheetLogoKeepouts(p)));
+    /* Надпись входит в поле высот текстуры (см. sheetLogoField), а при выбранном цвете AMS построитель
+       возвращает ОДНИ пробки: тело этого цвета — тот же лист, построенный с «телом», и печатать под
+       пробками второй лист было бы нечем оправдать. */
+    const field = sheetLogoField(p, 2*hw, t, 2*hd);
+    const inkK = (typeof logoAmsIndex === 'function') ? logoAmsIndex(p.logoAms) : 0;
+    const bumps = buildSheetBumps(ring, pattern, cell, rib, yt, Math.max(0.1,p.sheetTexH||0.6),
+      p.sheetPatRes>0 ? p.sheetPatRes : (SHEET_SMOOTH.has(pattern) ? 140 : res), rim, field, inkK);
+    if(inkK > 0 && field) return polyDropDegen(bumps);
+    out=out.concat(bumps);
   }
   if((p.sheetRim||0)>0) out=out.concat(buildSheetRim(ring, yt, p.sheetRim, Math.max(1,p.sheetRimW||2)));
   return out;
@@ -18811,13 +18935,18 @@ function buildTrisForShape(shape, p) {
     // built with «тело» selected — the two are one printed object, so what this filament must not do is
     // print a second container underneath its own logo.
     const amsK = logoAmsIndex(p.logoAms);
+    /* Лист с текстурой разбирает свой логотип САМ — и тело, и цвета: карман у него не отдельная бляшка, а
+       та же сетка поля высот, и пробки обязаны резаться ею же. Общий путь построил бы их по своей сетке,
+       и по контуру они бы не совпали. Тело в этом случае уже собрано ниже по коду, а пробки построитель
+       листа вернул вместо него. */
+    if (amsK && logos.some(lg => sheetDentsLogo(p, lg))) return snapWeldTris(tris);
     if (amsK) return snapWeldTris(buildLogoAmsInkTris(p, host, res, amsK));
     /* Логотип, который корпус промял сам, накладки получать не должен — иначе к вмятине добавится ровно
        та бляшка, ради избавления от которой всё и делалось. Отбор ПО ОДНОМУ логотипу: на одной детали
        один может лежать на промятой стенке, а другой — на грани, которой у неё нет, и тому накладка
        по-прежнему нужна, иначе он просто исчезнет. */
     for (const lg of logos){
-      if (pboxDentsLogo(p, lg)) continue;
+      if (pboxDentsLogo(p, lg) || sheetDentsLogo(p, lg)) continue;
       tris = tris.concat(buildLogoPlateTris(lg, bb, p.logoPlate || 0, res, host));
     }
   }

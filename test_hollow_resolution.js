@@ -69,7 +69,12 @@ console.log('\n=== Hollow resolution at a high value stays fast and correct ==='
   console.log('    logoResolution=150, 2 logos incl. inner-bottom: ' + tris.length + ' tris in ' + ms + 'ms');
   check('no NaN at high hollow resolution', !hasNaN(tris));
   check('watertight at high hollow resolution', manifoldCheck(tris,4).watertight, manifoldCheck(tris,4));
-  check('completes comfortably fast', ms < 2000, ms); // guards the stack-overflow regression, not micro-perf: CI-load tolerant
+  /* Сторож СТЕКА, а не микропроизводительности: до правки эта постановка валилась с «call stack exceeded»,
+     и порог здесь затем, чтобы такое падение снова стало видно. Восемь секунд, а не две: файл гоняется
+     параллельно с десятками других, и на загруженной машине честные четыреста миллисекунд растягивались за
+     две секунды — проверка краснела на ровном месте. Переполнение стека или случайный O(n²) уходят за
+     восемь секунд с большим запасом, так что сторож остаётся сторожем. */
+  check('completes comfortably fast', ms < 8000, ms);
 }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

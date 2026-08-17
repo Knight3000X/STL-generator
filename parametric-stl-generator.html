@@ -1186,7 +1186,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.31.0';
+const APP_VERSION = 'v18.32.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3668,37 +3668,65 @@ function hexEdgeDist(u, v, n){
   }
   return (best[1] - best[0])/s;                    // 0 на ребре соты, растёт к её середине
 }
-/* ЗМЕИНАЯ КОЖА. От «чешуи» отличается не масштабом, а устройством, и разницу видно на печати.
+/* ---- ДВА УЗОРА-ЧЕШУИ, И ОНИ РАЗНЫЕ ---------------------------------------------------------------
+   Обе функции живут ЗДЕСЬ, снаружи построителей, и обе читаются двумя: узором листа (sheetTexHeight) и
+   процедурной текстурой грани (makeTextureLogoResult). Одна формула на два места — не экономия строк, а
+   единственный способ не получить два разных рисунка под одним именем; до v18.32.0 они и были двумя
+   копиями, и разошлись бы при первой же правке.
 
-   Чешуя — круглый купол своего радиуса: между куполами остаётся ПОЛЕ, и рисунок читается как россыпь
-   пуговиц. Змеиная кожа вымощена без просветов, оттого чешуйки МНОГОУГОЛЬНЫЕ: граница проходит там, где
-   два ближайших узла решётки равноудалены. Ровно та же мысль, что у сот (hexEdgeDist) — владения узла, —
-   но взятая ОТНОШЕНИЕМ d0/(d0+d1), а не разностью: отношение равно 1 на шве при любом размере клетки, и
-   потому купол доходит до шва и обрывается там, а не гаснет на полпути.
+   ЧЕШУЯ РЫБЫ — черепица, а не грядка бугров. Прежняя версия ставила купол в каждую клетку сетки со
+   сдвигом рядов: ряды не перекрывались вовсе, между ними оставалась плоская полоса, и на печати выходили
+   ряды полуцилиндров. Настоящая чешуя перекрывается, и держится это на ДВУХ вещах:
 
-   Три числа делают из этого змею, а не соты:
-     шаг по X в 1.6 шага по Y — чешуйка широкая и короткая, как на брюхе, а не круглая;
-     показатель 0.45 — верх плоский, а спад к шву крутой: шов выходит бороздкой, а не ложбиной;
-     наклон по ряду — ЧЕРЕПИЦА: высота растёт к переднему краю чешуйки, а не к её середине. Так лежит
-     настоящая чешуя, и так же она читается на печати, где ступени слоёв идут поперёк.
-   Делитель 0.78 — измеренный максимум произведения (в точке v−cv = 0.35); без него узор не доходил бы
-   до полной высоты и «высота текстуры» врала бы на четверть. */
-const SNAKE_AX = 1.6;
-function snakeSkinHeight(u, v){                    // u, v — в шагах узора
-  const j0 = Math.round(v);
-  let d0 = 1e9, d1 = 1e9, cv = j0;
-  for(let dj = -1; dj <= 1; dj++){
-    const j = j0 + dj, off = (((j % 2) + 2) % 2) ? SNAKE_AX/2 : 0;
-    const i0 = Math.round((u - off)/SNAKE_AX);
+     1. Чешуйки ПЕРЕКРЫВАЮТСЯ по построению — эллипс каждой длиннее шага ряда (b > rowH), так что любая
+        точка накрыта двумя-тремя чешуйками сразу.
+     2. Из накрывших видна ОДНА, и это чешуйка с наименьшим v — та, что лежит СВЕРХУ. Отсюда и вид: у
+        каждой видна только передняя полоска шириной в шаг ряда, оканчивающаяся её собственной круглой
+        кромкой. Возьми вместо неё дальнюю — и увидишь задворки чешуек, а не их края.
+
+   Высота внутри чешуйки растёт К КРОМКЕ (t^1.8, где t — эллиптическое расстояние от центра), поэтому на
+   свободном крае стоит ОБРЫВ: за кромкой начинается соседка своей серединой, а она ниже. Обрыв и есть та
+   тёмная дуга, по которой чешую узнают. Боковой множитель гасит высоту к боковым концам чешуйки, иначе
+   её острые углы стояли бы вровень с серединой кромки. */
+const FISH_ROW = 0.50, FISH_A = 0.62, FISH_B = 0.85, FISH_G = 1.8;
+function fishScaleHeight(u, v){                    // u, v — в шагах узора
+  let bv = null, bu = 0, bt = 0, bl = 0;
+  const j0 = Math.floor(v/FISH_ROW);
+  for(let dj = -1; dj <= 3; dj++){
+    const j = j0 + dj, cv = j*FISH_ROW, off = (((j % 2) + 2) % 2) ? 0.5 : 0;
+    const i0 = Math.round(u - off);
     for(let di = -1; di <= 1; di++){
-      const cu = (i0 + di)*SNAKE_AX + off, d = Math.hypot(u - cu, v - j);
-      if(d < d0){ d1 = d0; d0 = d; cv = j; } else if(d < d1) d1 = d;
+      const cu = i0 + di + off, lat = (u - cu)/FISH_A, t = Math.hypot(lat, (v - cv)/FISH_B);
+      if(t < 1 && (bv === null || cv < bv)){ bv = cv; bu = cu; bt = t; bl = lat; }
     }
   }
-  const t = 2*d0/(d0 + d1 + 1e-9);                 // 0 в середине чешуйки, 1 на шве
-  const tile = Math.pow(Math.max(0, 1 - t*t), 0.45);
-  const lap  = Math.max(0, Math.min(1, 0.64 + 0.72*(v - cv)));
-  return Math.max(0, Math.min(1, tile*lap/0.78));
+  if(bv === null) return 0;                        // между чешуйками — дно
+  return Math.max(0, Math.min(1, Math.pow(bt, FISH_G)*Math.sqrt(Math.max(0, 1 - bl*bl))));
+}
+/* ЗМЕИНАЯ КОЖА — ПОДУШКИ-РОМБЫ, вымощенные без просветов. Первая версия (v18.30.0) брала границу владений
+   узлов решётки и показатель 0.45: выходили ПЛОСКИЕ шестигранные фацеты — гранёный кристалл, а не кожа.
+   Дело было в показателе (плоский верх) и в самой решётке (владения узла — шестиугольник).
+
+   Здесь решётка повёрнута на 45°: p = u/ax + v/bz, q = u/ax − v/bz. Клетка в (p, q) — квадрат, значит в
+   (u, v) это РОМБ, и никаких шестиугольников не возникает вовсе. Форма щитка — суперэллипс степени 5:
+   между ромбом (1) и эллипсом (2), то есть ромб со скруглёнными углами, каким щиток и выглядит. Купол
+   sqrt-образный (показатель 0.40) — подушка с крутым спадом у шва, а не фацет; `fill` = 0.93 оставляет
+   между щитками ту самую тонкую бороздку.
+
+   Множитель `lap` даёт лёгкую ЧЕРЕПИЦУ: щиток чуть выше у своего переднего края. Делитель 0.901 —
+   измеренный максимум произведения; без него узор не доходил бы до полной высоты и «высота текстуры»
+   врала бы на десятую часть. */
+const SNAKE_AX = 1.0, SNAKE_BZ = 0.64, SNAKE_K = 5, SNAKE_FILL = 0.93, SNAKE_E = 0.40,
+      SNAKE_LAP = 0.22, SNAKE_NORM = 0.901;
+function snakeSkinHeight(u, v){                    // u, v — в шагах узора
+  const fr = t => ((t % 1) + 1) % 1;
+  const p = u/SNAKE_AX + v/SNAKE_BZ, q = u/SNAKE_AX - v/SNAKE_BZ;
+  const fp = 2*(fr(p) - 0.5), fq = 2*(fr(q) - 0.5);
+  const sp = Math.pow(Math.pow(Math.abs(fp), SNAKE_K) + Math.pow(Math.abs(fq), SNAKE_K), 1/SNAKE_K);
+  const r = Math.min(1, sp/SNAKE_FILL);
+  const dome = Math.pow(Math.max(0, 1 - r*r), SNAKE_E);
+  const lap = 1 - SNAKE_LAP + SNAKE_LAP*(0.5 + 0.5*Math.max(-1, Math.min(1, (fp - fq)/1.4)));
+  return Math.max(0, Math.min(1, dome*lap/SNAKE_NORM));
 }
 function makeTextureLogoResult(kind){
   if (!TEXTURE_KINDS[kind]) return null;
@@ -3737,12 +3765,9 @@ function makeTextureLogoResult(kind){
       const n = rep * 0.5, fu = ((u * n) % 1) - 0.5, fv = ((v * n) % 1) - 0.5;
       val = Math.max(0, 1 - 2 * Math.max(Math.abs(fu), Math.abs(fv)));
     } else if (kind === 'scale') {
-      // Чешуя: ряды со сдвигом на полшага, каждая чешуйка — купол от своего нижнего края.
-      const n = rep * 0.5, row = Math.floor(v * n), off = (row & 1) ? 0.5 : 0;
-      const fu = (((u * n + off) % 1) + 1) % 1 - 0.5, fv = (((v * n) % 1) + 1) % 1;
-      val = Math.max(0, 1 - 1.45 * Math.hypot(fu, fv - 0.12));
+      val = fishScaleHeight(u * rep * 0.5, v * rep * 0.5);
     } else if (kind === 'snake') {
-      val = snakeSkinHeight(u * rep * 0.55, v * rep * 0.55);
+      val = snakeSkinHeight(u * rep * 0.5, v * rep * 0.5);
     } else if (kind === 'wave') {
       // Волна: рёбра, которые сами гуляют поперёк — гильош, а не синус.
       const n = rep * 0.6;
@@ -8420,6 +8445,16 @@ const SHEET_TEXTURE_ONLY = new Set(['stripe','dots','checker','weave','knurl','p
    рельефа. Отсюда и «детализация узора»: она задаёт не гладкость контура, а то, сколькими ступенями
    выложен купол. Плавные — только текстура: сквозной решёткой высота не выражается ничем. */
 const SHEET_SMOOTH = new Set(['knurl','pyramid','scale','snake','wave']);
+/* ШАГ ПО УМОЛЧАНИЮ У ПЛАВНЫХ УЗОРОВ — СВОЙ, и это не косметика. Решётчатые узоры делят шаг с «сетчатым
+   дном» (`latticeCell`, 10 мм), и для перфорации это верно: ромб в 10 мм — нормальная дырка. Но чешуя и
+   змеиная кожа — не дырки, а рисунок поверхности, и на плите 40 × 40 десятимиллиметровый шаг давал
+   ЧЕТЫРЕ чешуйки в ряд: узнать в них чешую было нельзя ни на превью, ни на печати.
+   Плавным узорам ставится 5 мм — восемь щитков на ту же плиту. Ручка «шаг узора» никуда не делась и
+   перебивает это значение; готовое число печатается в предупреждениях, чтобы подстановка не была тихой. */
+const SHEET_SMOOTH_CELL = 5;
+function sheetAutoCell(pattern, latticeCell){
+  return SHEET_SMOOTH.has(pattern) ? SHEET_SMOOTH_CELL : (latticeCell || 8);
+}
 function sheetTexHeight(cx, cz, pitch, rib, pattern){
   const frac = t => ((t % 1) + 1) % 1;
   const saw  = t => { const f = frac(t); return Math.min(f, 1 - f); };   // расстояние до ближайшей линии
@@ -8431,16 +8466,9 @@ function sheetTexHeight(cx, cz, pitch, rib, pattern){
     const fu = frac(cx/pitch) - 0.5, fv = frac(cz/pitch) - 0.5;
     return Math.max(0, 1 - 2*Math.max(Math.abs(fu), Math.abs(fv)));
   }
-  if(pattern==='scale'){
-    // Чешуя: ряды со сдвигом на полшага, каждая чешуйка — купол от своего нижнего края.
-    const row = Math.floor(cz/pitch), off = (row & 1) ? 0.5 : 0;
-    const fu = frac(cx/pitch + off) - 0.5, fv = frac(cz/pitch);
-    return Math.max(0, 1 - 1.45*Math.hypot(fu, fv - 0.12));
-  }
-  if(pattern==='snake'){
-    // Змеиная кожа: чешуйки вымощены без просветов и потому многоугольные — см. snakeSkinHeight.
-    return snakeSkinHeight(cx/pitch, cz/pitch);
-  }
+  // Чешуя рыбы и змеиная кожа — обе в fishScaleHeight / snakeSkinHeight, одни на лист и на текстуру грани.
+  if(pattern==='scale') return fishScaleHeight(cx/pitch, cz/pitch);
+  if(pattern==='snake') return snakeSkinHeight(cx/pitch, cz/pitch);
   if(pattern==='wave'){
     // Волна: гребни, которые сами гуляют поперёк, — гильош, а не синус.
     return 0.5 + 0.5*Math.sin(2*Math.PI*(cz/pitch + 0.22*Math.sin(2*Math.PI*cx/(3*pitch))));
@@ -9280,7 +9308,7 @@ function buildSheet(p){
      задавался числами из чужой формы, недосягаемыми с панели. Ноль означает «как было» — ровно те же
      значения, что читались раньше, чтобы ни один уже напечатанный лист не поменялся молча. */
   const rib=Math.max(0.1, p.sheetPatRib>0 ? p.sheetPatRib : (p.latticeRib||1.5)),
-        cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : (p.latticeCell||8)),
+        cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : sheetAutoCell(p.sheetPattern, p.latticeCell)),
         border=Math.max(1,Math.round(p.latticeBorder||2)), res=p.latticeRes||80;
   // Back (bottom) chamfer: bevel the bottom outer edge. The bottom face insets to botRing@yb, a bevel band
   // rises to the full ring at chY, and the vertical edge runs chY..yt. Works with every cut / outline / rim.
@@ -20778,6 +20806,18 @@ function collectPrintWarnings(p){
         w.push('вентрешётка одна: воздуху нужен и приток, и отток — возьмите «сквозняк» или «все четыре», иначе тёплый воздух останется внутри');
     }
   }
+  /* ШАГ, КОТОРЫЙ ПОСТАВИЛИ ЗА ПОЛЬЗОВАТЕЛЯ. У плавных узоров он свой (5 мм), а не общий с сетчатым дном:
+     чешуя в 10 мм — четыре щитка на плиту 40 × 40, и узором это не выглядит. Раз число подставлено, оно
+     обязано быть названо, иначе это та же тихая подмена, на которой горел и кабельный ввод, и решётка. */
+  if ((p.sheetShape && p.sheetShape !== 'none') && p.sheetCut === 'texture' &&
+      SHEET_SMOOTH.has(p.sheetPattern) && !(p.sheetPatCell > 0)){
+    const row = SHAPE_PARAMS.box.find(r => r.key === 'sheetPattern');
+    const opt = row && row.options.find(o => o.v === p.sheetPattern);
+    w.push('узор «' + ((opt && opt.t.replace(/ \(.*\)$/, '')) || p.sheetPattern) + '»: шаг ' +
+           SHEET_SMOOTH_CELL + ' мм (авто у плавных узоров — свой, не от сетчатого дна); ' +
+           'на лист ' + (p.width||0) + ' мм это ' + Math.max(1, Math.round((p.width||0)/SHEET_SMOOTH_CELL)) +
+           ' щитков в ряд — «шаг узора» перебивает');
+  }
   /* Шаг узора крупнее, чем лист способен унести: решётке нужен хотя бы один целый шаг в каждую сторону от
      края, и там, где его нет, она не строится вовсе. Считается тем же кольцом и той же функцией, что у
      построителя, — включая обрезку тыльной фаской, которая это кольцо ужимает. */
@@ -20785,7 +20825,7 @@ function collectPrintWarnings(p){
       p.sheetPattern && p.sheetPattern !== 'none' && !SHEET_TEXTURE_ONLY.has(p.sheetPattern)){
     const hw=(p.width||0)/2, hd=(p.depth||0)/2;
     const ring=sheetOutlineRing(p, hw, hd);
-    const cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : (p.latticeCell||8));
+    const cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : sheetAutoCell(p.sheetPattern, p.latticeCell));
     const chW=Math.max(0, Math.min(p.sheetChamfer||0, Math.min(hw,hd)*0.4));
     const bot=(chW>0.1 && ring && ring.length>2) ? polyInsetRing(ring, chW) : ring;
     if(ring && ring.length>2 && bot && bot.length>2 && !sheetNetFitsRing(bot, cell))

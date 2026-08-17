@@ -262,40 +262,87 @@ console.log('=== новые узоры текстуры — каждый сво�
   for(let x=0;x<16;x+=0.25) if(seam(x, 4) !== seam(x, 12)) shifted = true;
   chk('кладка сдвинута через ряд, иначе это сетка', shifted);
 }
-/* ЗМЕИНАЯ КОЖА — не «чешуя помельче», и меряется это ровно тем, чем они отличаются.
+/* ЧЕШУЯ И ЗМЕИНАЯ КОЖА — переделаны в v18.32.0 по фотографиям, и проверяется здесь ровно то, чем прежние
+   версии от них отличались. Обе прошли всю прежнюю батарею: они были герметичны, ступенчаты, доходили до
+   заказанной высоты — и при этом не были ни чешуёй, ни кожей. Мерить надо ФОРМУ.
 
-   Чешуя — купол СВОЕГО радиуса: между куполами остаётся поле, и четверть площади лежит ровно на нуле.
-   Змеиная кожа вымощена БЕЗ ПРОСВЕТОВ (граница — там, где два ближайших узла равноудалены), и на нуле у
-   неё только сами швы, то есть почти ничего. Второе отличие — ЧЕРЕПИЦА: чешуйка выше у своего переднего
-   края, а не посередине, поэтому профиль вдоль ряда несимметричен. Ни то ни другое не видно ни по объёму,
-   ни по герметичности — а перепутать два узора местами можно молча, и заметить это было бы негде. */
-console.log('=== змеиная кожа ===');
+   Чешуя была грядкой куполов: ряды не перекрывались, между ними оставалась ПЛОСКАЯ полоса (четверть
+   площади лежала ровно на нуле), и на печати выходили ряды полуцилиндров. Настоящая чешуя черепичная:
+   плоского поля нет вовсе, между обрывами высота растёт МОНОТОННО к свободному краю, а на самом краю
+   стоит обрыв — та тёмная дуга, по которой чешую и узнают.
+
+   Змеиная кожа была гранёным кристаллом: показатель 0.45 давал плоский верх, а решётка «владений узла» —
+   шестиугольники. Стала подушками-ромбами: верх ВЫПУКЛЫЙ (профиль идёт выше прямой, соединяющей центр с
+   краем), плато нет, а решётка ромбическая — сдвиг по диагонали клетки не меняет ровно ничего, сдвиг
+   только по X меняет всё. */
+console.log('=== чешуя: черепица, а не грядка куполов ===');
 {
-  const field = pat => { let z=0, n=0;
-    for(let x=0;x<64;x+=0.13) for(let cz=0;cz<64;cz+=0.11){
-      if(sheetTexHeight(x, cz, 8, 1.6, pat) < 1e-6) z++; n++; }
+  const PT = 8, H = (pat,x,z) => sheetTexHeight(x, z, PT, 1.6, pat);
+  const zeroFrac = pat => { let z=0, n=0;
+    for(let x=0;x<64;x+=0.13) for(let y=0;y<64;y+=0.11){ if(H(pat,x,y) < 1e-6) z++; n++; }
     return z/n; };
-  const fSnake = field('snake'), fScale = field('scale');
-  chk('змеиная кожа вымощена без просветов', fSnake < 0.02, +(100*fSnake).toFixed(1)+' % на нуле');
-  chk('а чешуя — купола с полем между ними', fScale > 0.15, +(100*fScale).toFixed(1)+' % на нуле');
-  // Ряды стоят через шаг, значит середина чешуйки — на cz кратном шагу; впереди неё выше, чем позади.
-  const rowMax = cz => { let m=0; for(let x=0;x<64;x+=0.05) m=Math.max(m, sheetTexHeight(x, cz, 8, 1.6, 'snake')); return m; };
-  chk('черепица: впереди середины чешуйка выше, чем позади', rowMax(8+2.8) > rowMax(8-2.8) + 0.15,
-      {впереди:+rowMax(8+2.8).toFixed(2), позади:+rowMax(8-2.8).toFixed(2)});
-  { let top = 0; for(let k=0;k<8;k+=0.1) top = Math.max(top, rowMax(8+k));
-    chk('и полную высоту чешуйка всё-таки набирает', top > 0.99, +top.toFixed(3)); }
-  // Чешуйка ШИРЕ, чем длиннее: по X шов встречается реже, чем по Z.
-  const crossings = (dx, dz) => { let n=0, prev=null;
-    for(let k=0;k<400;k++){ const h = sheetTexHeight(20+k*0.1*dx, 20+k*0.1*dz, 8, 1.6, 'snake') > 0.35;
-      if(prev !== null && h !== prev) n++; prev = h; }
-    return n; };
-  chk('чешуйка широкая и короткая, а не круглая', crossings(0,1) > crossings(1,0),
-      {поперёк:crossings(0,1), вдоль:crossings(1,0)});
-  // И это НЕ чешуя под другим именем: карты высот расходятся на большей части площади.
+  chk('плоского поля между рядами не осталось', zeroFrac('scale') < 0.02,
+      +(100*zeroFrac('scale')).toFixed(1)+' % на нуле');
+  // Обрывы вдоль ряда: их шаг в среднем — половина шага узора (ряды перекрываются вдвое).
+  const cliffs = [];
+  { let prev = H('scale', 3.1, 0);
+    for(let y=0.02;y<40;y+=0.02){ const h = H('scale', 3.1, y); if(prev - h > 0.35) cliffs.push(y); prev = h; } }
+  chk('на свободном крае чешуйки — обрыв, и он не один', cliffs.length >= 8, cliffs.length);
+  { const span = cliffs[cliffs.length-1] - cliffs[0], step = span/(cliffs.length-1);
+    chk('обрывы идут через полшага узора — ряды перекрываются', Math.abs(step - PT*0.5) < 0.2,
+        {шаг:+step.toFixed(2), надо:PT*0.5}); }
+  /* МЕЖДУ ОБРЫВАМИ ВЫСОТА ТОЛЬКО РАСТЁТ. Это и есть черепица: видна передняя полоска чешуйки, идущая
+     вверх к её кромке. У грядки куполов профиль поднимался и опускался — по этой проверке она бы и легла. */
+  { let up=0, down=0, prev=H('scale', 3.1, 5);
+    for(let y=5.02;y<9;y+=0.02){ const h=H('scale', 3.1, y);
+      if(h > prev) up++; else if(prev - h < 0.3) down++; prev = h; }
+    chk('между обрывами высота растёт монотонно', up > 150 && down === 0, {вверх:up, вниз:down}); }
+}
+console.log('=== змеиная кожа: подушки-ромбы, а не гранёный кристалл ===');
+{
+  const PT = 8, H = (x,z) => sheetTexHeight(x, z, PT, 1.6, 'snake');
+  { let top=0, n=0; for(let x=0;x<64;x+=0.13) for(let y=0;y<64;y+=0.11){ if(H(x,y) > 0.985) top++; n++; }
+    chk('плато на вершине нет — щиток выпуклый, а не фацет', top/n < 0.06,
+        +(100*top/n).toFixed(2)+' % площади в 1.5 % от вершины'); }
+  // Профиль от середины щитка к шву обязан идти ВЫШЕ прямой: купол, а не конус.
+  { let bx=0, by=0, bh=0;
+    for(let x=0;x<PT;x+=0.08) for(let y=0;y<PT*0.64;y+=0.08){ const h=H(x,y); if(h>bh){ bh=h; bx=x; by=y; } }
+    const edge = PT*0.64/2*0.98, h0 = H(bx,by), he = H(bx, by+edge), hm = H(bx, by+edge/2);
+    chk('профиль щитка выпуклый', hm > (h0 + he)/2 + 0.04,
+        {центр:+h0.toFixed(3), середина:+hm.toFixed(3), край:+he.toFixed(3), 'прямая':+((h0+he)/2).toFixed(3)}); }
+  /* РЕШЁТКА РОМБИЧЕСКАЯ, а не шестиугольная: у ромба сдвиг на половину клетки ПО ДИАГОНАЛИ — точная
+     симметрия, а сдвиг только по одной оси — нет. У шестиугольной решётки не выполняется ни то, ни другое. */
+  { let diag=0, alongX=0;
+    for(let x=0;x<20;x+=0.37) for(let y=0;y<20;y+=0.41){
+      diag = Math.max(diag, Math.abs(H(x,y) - H(x + PT/2, y + PT*0.64/2)));
+      alongX = Math.max(alongX, Math.abs(H(x,y) - H(x + PT/2, y))); }
+    chk('сдвиг на полклетки по диагонали не меняет ничего', diag < 1e-9, +diag.toFixed(6));
+    chk('а сдвиг только по X меняет всё', alongX > 0.5, +alongX.toFixed(3)); }
+  // И это не чешуя под другим именем: карты расходятся на большей части площади.
   { let diff=0, n=0;
-    for(let x=0;x<64;x+=0.37) for(let cz=0;cz<64;cz+=0.41){
-      if(Math.abs(sheetTexHeight(x,cz,8,1.6,'snake') - sheetTexHeight(x,cz,8,1.6,'scale')) > 0.15) diff++; n++; }
+    for(let x=0;x<64;x+=0.37) for(let y=0;y<64;y+=0.41){
+      if(Math.abs(sheetTexHeight(x,y,PT,1.6,'snake') - sheetTexHeight(x,y,PT,1.6,'scale')) > 0.15) diff++; n++; }
     chk('и это не чешуя под другим именем', diff > 0.5*n, +(100*diff/n).toFixed(1)+' % точек'); }
+}
+/* ШАГ У ПЛАВНЫХ УЗОРОВ — СВОЙ. Прежде он брался у «сетчатого дна» (10 мм), и на плите 40 × 40 выходило
+   четыре чешуйки в ряд. Раз число подставлено за пользователя, оно обязано быть названо. */
+console.log('=== свой шаг у плавных узоров ===');
+{
+  base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'scale'});
+  chk('плавному узору ставится свой шаг', SHEET_SMOOTH_CELL === 5 &&
+      sheetAutoCell('scale', 10) === 5 && sheetAutoCell('diamond', 10) === 10,
+      {плавный:sheetAutoCell('scale',10), решётчатый:sheetAutoCell('diamond',10)});
+  chk('и об этом сказано словом',
+      /шаг 5 мм \(авто у плавных узоров/.test(collectPrintWarnings(paramState.box).join(' | ')),
+      collectPrintWarnings(paramState.box));
+  const fine = base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'scale'});
+  const coarse = base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'scale', sheetPatCell:10});
+  chk('на своём шаге чешуек вдвое больше, чем на прежнем', fine.length > coarse.length,
+      {своё:fine.length, 'шаг 10':coarse.length});
+  base({sheetShape:'rect', width:40, depth:40, sheetCut:'texture', sheetPattern:'scale', sheetPatCell:10});
+  chk('а когда шаг задали руками — не говорят',
+      !/авто у плавных узоров/.test(collectPrintWarnings(paramState.box).join(' | ')));
+  chk('резким узорам шаг не тронут', sheetAutoCell('diamond', undefined) === 8);
 }
 { Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,sheetShape:'none'});
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);

@@ -1205,7 +1205,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.33.4';
+const APP_VERSION = 'v18.34.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4980,12 +4980,30 @@ const SHAPE_PARAMS = {
     {group:'Шестерня', key:'rootsWall', w:['roots'], only:{rootsPart:['housing']}, label:'Roots: стенка корпуса', min:1.2, max:20, step:0.2, default:3, unit:'мм'},
     {group:'Шестерня', key:'rootsGap', w:['roots'], label:'Roots: зазор', min:0.1, max:1.2, step:0.05, default:0.35, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntMode', label:'Крепёж (перекрывает всё)', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'keycover',t:'накладка на головку ключа'},{v:'furnkey',t:'мебельный ключ (сувальдный)'},{v:'cylkey',t:'цилиндровый ключ (заготовка по вашим замерам)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
+      options:[{v:'none',t:'нет'},{v:'lbracket',t:'L-кронштейн (уголок)'},{v:'vesa',t:'VESA-адаптер (плита)'},{v:'boss',t:'стойки под heat-set / винт'},{v:'hub',t:'ступица на вал (лыска / шестигранник / шлицы)'},{v:'tool',t:'держатель инструмента (полка с гнёздами)'},{v:'pipe',t:'хомут-кронштейн трубы (отвод от стены)'},{v:'foot',t:'ножка / накладка на мебель'},{v:'fittest',t:'калибровка зазора (штырьки + отверстия)'},{v:'battery',t:'батарейный холдер (AA/AAA/18650…)'},{v:'dovetail',t:'ласточкин хвост (шип + паз)'},{v:'gauge',t:'калибр go/no-go (кольца + пробки)'},{v:'radgauge',t:'шаблон радиусов (гребёнка)'},{v:'polygauge',t:'шаблон резьб (многогранник)'},{v:'pingauge',t:'шаблон диаметров (стойки)'},{v:'keycover',t:'накладка на головку ключа'},{v:'furnkey',t:'мебельный ключ (сувальдный)'},{v:'cylkey',t:'цилиндровый ключ (заготовка по вашим замерам)'},{v:'cablecomb',t:'гребёнка кабелей (защёлкивающиеся гнёзда)'},{v:'edgeclip',t:'держатель на кромку (монитор / дефлектор)'},{v:'cupholder',t:'двустенный подстаканник'},{v:'transition',t:'переходник круг↔прямоугольник (лофт)'}]},
     {group:'Крепёж / монтаж', key:'mntDtLen', w:['dovetail'], label:'Ласточкин хвост: длина', min:10, max:300, step:1, default:60, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtW', w:['dovetail'], label:'Ласточкин хвост: ширина шипа у основания', min:4, max:120, step:1, default:18, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtH', w:['dovetail'], label:'Ласточкин хвост: высота шипа', min:3, max:60, step:0.5, default:8, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntDtAngle', w:['dovetail'], label:'Ласточкин хвост: угол подреза', min:5, max:30, step:1, default:12, unit:'°'},
     {group:'Крепёж / монтаж', key:'mntDtClear', w:['dovetail'], label:'Ласточкин хвост: зазор посадки', min:0, max:1, step:0.05, default:0.25, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubStyle', w:['hub'], label:'Ступица: исполнение', type:'select', default:'clamp',
+      options:[{v:'clamp',t:'разрезная со стяжным винтом'},{v:'plain',t:'глухая (запрессовка / клей), можно с фланцем'}]},
+    {group:'Крепёж / монтаж', key:'hubShaft', w:['hub'], label:'Ступица: профиль вала', type:'select', default:'dflat',
+      options:[{v:'round',t:'гладкий круг (момента не держит)'},{v:'dflat',t:'лыска (D-вал)'},{v:'dflat2',t:'две лыски'},
+               {v:'hex',t:'шестигранник (под ключ)'},{v:'square',t:'квадрат'},{v:'spline',t:'шлицы (n пазов)'}]},
+    {group:'Крепёж / монтаж', key:'hubShaftD', w:['hub'], label:'Ступица: Ø вала (у граней — под ключ)', min:1.5, max:40, step:0.5, default:5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubFlat', w:['hub'], only:{hubShaft:['dflat','dflat2']}, label:'Ступица: глубина лыски', min:0.2, max:6, step:0.1, default:0.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubSplineN', w:['hub'], only:{hubShaft:['spline']}, label:'Ступица: число шлицев (1 = шпоночный паз)', min:1, max:20, step:1, default:6, unit:'', int:true},
+    {group:'Крепёж / монтаж', key:'hubSplineW', w:['hub'], only:{hubShaft:['spline']}, label:'Ступица: ширина шлица', min:0.4, max:6, step:0.1, default:1.2, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubSplineD', w:['hub'], only:{hubShaft:['spline']}, label:'Ступица: глубина шлица', min:0.2, max:4, step:0.1, default:0.8, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubClear', w:['hub'], label:'Ступица: зазор посадки на вал', min:0, max:0.6, step:0.05, default:0.15, unit:'мм',
+      hint:'Это зазор НА СТОРОНУ: отверстие шире вала на два таких. Свой принтер меряют калибровкой зазора (та же группа).'},
+    {group:'Крепёж / монтаж', key:'hubOD', w:['hub'], label:'Ступица: наружный Ø', min:6, max:80, step:1, default:20, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubH', w:['hub'], label:'Ступица: высота', min:4, max:60, step:1, default:16, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubSlit', w:['hub'], only:{hubStyle:['clamp']}, label:'Ступица: рабочая щель между проушинами', min:0.4, max:3, step:0.1, default:1, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubFlange', w:['hub'], only:{hubStyle:['plain']}, label:'Ступица: сторона фланца (0 = без фланца)', min:0, max:120, step:1, default:0, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubFlangeT', w:['hub'], only:{hubStyle:['plain']}, needs:{hubFlange:0}, label:'Ступица: толщина фланца', min:1.5, max:12, step:0.5, default:4, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'hubBoltD', w:['hub'], only:{hubStyle:['plain']}, needs:{hubFlange:0}, label:'Ступица: Ø отверстий фланца', min:1.5, max:10, step:0.1, default:3.4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'battType', w:['battery'], label:'Холдер: типоразмер элемента', type:'select', default:'aa',
       options:[{v:'aaa',t:'AAA (Ø10.5 × 44.5)'},{v:'aa',t:'AA (Ø14.5 × 50.5)'},{v:'c',t:'C (Ø26.2 × 50)'},{v:'d',t:'D (Ø34.2 × 61.5)'},{v:'18650',t:'18650 (Ø18.6 × 65.2)'},{v:'21700',t:'21700 (Ø21.2 × 70.2)'},{v:'custom',t:'свой размер'}]},
     {group:'Крепёж / монтаж', key:'battN', w:['battery'], label:'Холдер: число элементов', min:1, max:8, step:1, default:2, unit:'', int:true},
@@ -5151,7 +5169,7 @@ const SHAPE_PARAMS = {
     {group:'Крепёж / монтаж', key:'mntT', w:['dovetail','fittest','gauge','radgauge','pingauge','foot','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: толщина плиты/полки', min:2, max:20, step:0.5, default:4, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegA', w:['boss','tool','pipe','lbracket'], label:'L-кронштейн: полка A / стойки: глубина', min:12, max:200, step:1, default:45, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntLegB', w:['tool','lbracket'], label:'L-кронштейн: полка B (высота)', min:12, max:200, step:1, default:45, unit:'мм'},
-    {group:'Крепёж / монтаж', key:'mntScrewD', w:['battery','vesa','boss','tool','pipe','lbracket'], label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
+    {group:'Крепёж / монтаж', key:'mntScrewD', w:['battery','vesa','boss','tool','pipe','lbracket','hub'], label:'Крепёж: Ø отверстий под винт (0 = без)', min:0, max:12, step:0.5, default:4.5, unit:'мм'},
     {group:'Крепёж / монтаж', key:'mntGusset', w:['lbracket'], label:'L-кронштейн: рёбра жёсткости', type:'select', default:'yes',
       options:[{v:'yes',t:'да'},{v:'no',t:'нет'}]},
     {group:'Крепёж / монтаж', key:'mntGussetLen', w:['lbracket'], label:'L-кронштейн: длина ребра (0 = авто)', min:0, max:150, step:1, default:0, unit:'мм'},
@@ -6977,6 +6995,7 @@ const MODEL_HELP = {
   'mount:foot':      {what:'Ножка или накладка на мебель: площадка со скруглением и посадочным штырём.', how:'Площадкой на стол. Верхний слой — то, что будет касаться пола, поэтому гладить его стоит.', mat:['tpu','petg']},
   'mount:fittest':   {what:'Калибровка зазора: набор штырьков и отверстий с шагом, чтобы подобрать посадку именно вашего принтера. Один раз напечатать — и все подвижные модели садятся с первого раза.', how:'Плашмя, без изменения настроек — иначе измеряете не то.', mat:['pla','petg']},
   'mount:battery':   {what:'Батарейный холдер под AA/AAA/C/D/18650/21700 или свой размер: ложе с пружинными язычками.', how:'Ложем вверх. Контактные язычки под пластину печатать не нужно — они металлические.', mat:['petg','abs']},
+  'mount:hub':       {what:'Ступица: то, чем печатная деталь садится на ВАЛ. Отверстие берёт форму вала — лыска (D-вал моторов и энкодеров), две лыски, шестигранник под ключ, квадрат или шлицы; шлиц с n = 1 это обычный шпоночный паз. Гладкий круг тоже есть, но он не держит момента вовсе, и генератор об этом говорит. Разрезная ступица со стяжным винтом садится и на гладкий вал — трением. Момент до среза ведущего выступа печатается всегда: это главное число модели.', how:'Стоймя, отверстием вверх — слои ложатся поперёк вала, а не вдоль щёк лыски. Проушины разрезной ступицы висят над столом и печатаются с поддержкой или с фаской; винт заходит с той стороны, где потай, а дальняя проушина сделана под саморез или термовтулку. Зазор посадки — на сторону: сначала напечатайте калибровку зазора из этой же группы, потом ставьте число сюда.', mat:['petg','pacf','pla']},
   'mount:dovetail':  {what:'Ласточкин хвост: шип и паз, чтобы срастить две печатные детали без клея.', how:'Плоскостью разъёма на стол — тогда наклонные грани печатаются навесом и без поддержек.', mat:['petg','pla']},
   'mount:cylkey':   {what:'Цилиндровый (штифтовой) ключ по ВАШИМ замерам: длина и сечение клинка, шаг и глубина нарезок, при желании продольная канавка под вороты скважины. Никакого справочника чужих профилей здесь нет и не будет: вы описываете свой замок числами — генератор строит по ним. Честнее считать это ЗАГОТОВКОЙ И ШАБЛОНОМ, чем ключом: по ней размечают металл, ею сверяют снятые штангенциркулем размеры и проверяют, попадает ли шаг нарезок в шаг штифтов.', how:'ПЛАШМЯ, широкой гранью на стол: нависаний нет, канавка выходит щелью в полтора миллиметра и мостится без поддержек. Момент до слома считается для САМОГО СЛАБОГО сечения — дна глубокой нарезки, где высота клинка падает вдвое — и выводится в предупреждениях. У PLA выходит 0.15–0.2 Н·м, а цилиндровый замок просит 0.3–0.6 Н·м даже смазанный: печатный клинок сломается, и обломок останется в личинке. Толще клинок или выше — момент растёт как t² и как высота, но втрое его не поднять.', mat:['pla','petg','pacf']},
   'mount:keycover': {what:'Накладка на головку ключа, чтобы ключи различались на ощупь и в темноте. ДВЕ ПОЛОВИНЫ клеятся на плоские грани головки — попадать в посадку не нужно, зазор берёт на себя клей, и подходит это к головке любой формы. ЧЕХОЛ натягом — второй вариант, для тех, кто не хочет клеить: у него верх открыт, чтобы кольцо осталось в родном отверстии ключа.', how:'Половинки печатаются плашмя, карманом вверх — слои ложатся поперёк отрыва, и поддержек не нужно. Карман на половину толщины головки нужен не для держания (держит клей), а для совмещения: без него половинки при склейке разъезжаются. Чехол печатается стоймя, устьем вниз. Обмерьте головку штангенциркулем; радиус скругления 0 даёт овал, любое число — прямоугольник с этим радиусом. Клей: цианакрилат по PETG и PLA, по TPU — полиуретановый.', mat:['petg','pla','tpu']},
@@ -16822,7 +16841,250 @@ function buildTransition(p){
   const Ai = insetLoopXZ(s.A, s.w), Bi = insetLoopXZ(s.B, s.w);
   return loftShellYTris(s.A, s.B, Ai, Bi, -s.H/2, s.H/2, Math.max(8, Math.round(s.H/3)));
 }
+/* ---- Посадка на вал: ступица (mntMode:'hub') ------------------------------------------------------
+   Шкивы, шестерни, кулачки, роторы Roots и мальтийские кресты в этом приложении есть давно — а НАСАДИТЬ
+   их было не на что. Единственное, что предлагалось, — `gearBore`, гладкое круглое отверстие, которое на
+   гладком валу проворачивается под первой же нагрузкой. Ступица закрывает эту дыру.
+
+   ПРОФИЛЬ ОТВЕРСТИЯ ОПИСАН ОДИН РАЗ, функцией r(θ) (`shaftBoreRadiusAt`), и по одной причине: ровно такую
+   функцию уже принимают `latheYTris` и `extrudeProfileY` — на ней держится шпоночный паз у шестерён. Значит
+   «лыска» на ступице и «лыска» в шкиве — это одна и та же лыска, а не две похожие, и добавить профиль в
+   любую из круглых моделей стоит одной строчки.
+
+   Почему r(θ), а не контур: луч из центра пересекает границу такого отверстия РОВНО ОДИН РАЗ (все шесть
+   профилей звёздчаты относительно оси), а значит внешняя стенка, стенка отверстия и оба торцевых кольца
+   сшиваются по общей угловой сетке и деталь водонепроницаема по построению. Шлиц — это тот же
+   прямоугольный паз, что и шпонка, повторённый n раз: шпоночный паз здесь просто частный случай n = 1.
+
+   ИЗЛОМЫ ПРОФИЛЯ ПОПАДАЮТ В СЕТКУ ТОЧНО (`shaftBoreAngles`). Равномерная выборка режет углы хордой: у
+   шестигранника «под ключ 5» при 48 делениях каждый из шести углов срезается на сотые доли миллиметра, и
+   это не косметика — отверстие становится ТЕСНЕЕ заказанного там, где вал как раз и опирается.
+
+   РАЗРЕЗНАЯ ступица (`clamp`) — это то же кольцо, у которого прорезь задана той же функцией: на луче с
+   cos θ > 0 внутренний радиус поднимается до плоскости z = ±щель/2. Там, где он догоняет наружный, кольцо
+   кончается — угол β = asin(щель/2rO) и есть край прорези, и торцевого «донышка» у сектора нет, потому что
+   в этой точке наружная стенка и стенка отверстия сходятся в одну линию.
+
+   ДВЕ ПРОУШИНЫ под стяжной винт — отдельные коробки (`buildBoxWithHoles`), и вот что здесь важно: прорезь
+   в КОЛЬЦЕ шире рабочей щели на 2·HUB_SLOT_RELIEF. Если бы они совпадали, плоскость проушины z = щель/2
+   легла бы ровно на плоскость среза кольца — две совпадающие грани двух разных оболочек, то самое
+   склеивание, из-за которого на ребре оказывается четыре треугольника, а manifoldCheck ничего не замечает.
+   Разведённые на 0.8 мм, они пересекаются честным объёмом, и рабочую щель задают именно проушины. */
+const HUB_STYLES = ['clamp','plain'];
+const SHAFT_SHAPES = ['round','dflat','dflat2','hex','square','spline'];
+const HUB_MIN_WALL = 1.2;          // мм пластика между отверстием и наружной стенкой — меньше просто рвётся
+const HUB_SLOT_RELIEF = 0.8;       // на столько прорезь в кольце шире рабочей щели между проушинами
+const HUB_SINK = 0.6;              // на столько ступица утоплена во фланец (пересечение вместо стыка)
+const HUB_TAU_MPA = 25;            // МПа: то же межслойное сопротивление сдвигу, что у печатных ключей
+// Лыска смотрит в +Z, прорезь хомута — в +X: они не пересекаются, и лыска не попадает на разрез.
+const SHAFT_FLAT_A = Math.PI/2;
+// Луч под углом u от середины плоской грани, стоящей на расстоянии F от оси: F/cos u, пока не упрётся в круг R.
+function shaftFlatR(u, R, F){ const c = Math.cos(u); if(c <= 1e-9) return R; const r = F/c; return r < R ? r : R; }
+// Правильный n-угольник «под ключ» 2F, середина грани — на угле 0.
+function shaftPolyR(u, F, n){ const step = 2*Math.PI/n, h = step/2;
+  let t = ((u % step) + step) % step; if(t > h) t -= step; return F/Math.cos(t); }
+/* Один прямоугольный шлиц ширины w и глубины d, наружу от круга R, ось шлица — местный +X. Это дословно
+   `boreRadiusAt` (шпоночный паз у шестерён), только повёрнутый: плоское дно паза, две прямые щеки, круг
+   всюду остальное. Держится тем, что паз узкий — его щека пересекает луч не больше одного раза. */
+function shaftSlotR(u, R, w, d){
+  const c = Math.cos(u), s = Math.sin(u); if(c <= 0) return R;
+  const rTop = (R+d)/c; if(Math.abs(rTop*s) <= w/2) return rTop;                      // дно паза
+  if(Math.abs(s) > 1e-9){ const rSide = (w/2)/Math.abs(s); if(rSide*c > R && rSide*c < R+d) return rSide; } // щека
+  return R;
+}
+// Радиус отверстия под вал на угле a. `s` — из shaftBoreSpec: {shape, R, F, n, sw, sd}.
+function shaftBoreRadiusAt(a, s){
+  switch(s.shape){
+    case 'dflat':  return shaftFlatR(a - SHAFT_FLAT_A, s.R, s.F);
+    case 'dflat2': return Math.min(shaftFlatR(a - SHAFT_FLAT_A, s.R, s.F),
+                                   shaftFlatR(a - SHAFT_FLAT_A + Math.PI, s.R, s.F));
+    case 'hex':    return shaftPolyR(a, s.F, 6);
+    case 'square': return shaftPolyR(a, s.F, 4);
+    case 'spline': { let r = s.R;
+      for(let k=0;k<s.n;k++){ const v = shaftSlotR(a - 2*Math.PI*k/s.n, s.R, s.sw, s.sd); if(v > r) r = v; }
+      return r; }
+  }
+  return s.R;
+}
+// Наибольший радиус профиля — по нему считают стенку и подбирают проходное отверстие во фланце.
+function shaftBoreMaxR(s){ return s.shape === 'spline' ? s.R + s.sd : s.R; }
+// Углы, на которых у профиля ИЗЛОМ. Попасть в них выборкой обязательно: между двумя соседними углами
+// поверхность строится хордой, и угол, не попавший в сетку, срезается — отверстие становится теснее.
+function shaftCornerAngles(s){
+  const TAU = 2*Math.PI, out = [], wrap = a => ((a % TAU) + TAU) % TAU;
+  if(s.shape === 'dflat' || s.shape === 'dflat2'){
+    const t = Math.acos(Math.max(-1, Math.min(1, s.F/s.R)));
+    const bases = s.shape === 'dflat' ? [SHAFT_FLAT_A] : [SHAFT_FLAT_A, SHAFT_FLAT_A + Math.PI];
+    for(const b of bases) for(const sg of [-1, 1]) out.push(wrap(b + sg*t));
+  } else if(s.shape === 'hex' || s.shape === 'square'){
+    const n = s.shape === 'hex' ? 6 : 4;
+    for(let k=0;k<n;k++) out.push(wrap(Math.PI/n + k*TAU/n));
+  } else if(s.shape === 'spline'){
+    const u1 = Math.atan2(s.sw/2, s.R + s.sd), u2 = Math.asin(Math.max(-1, Math.min(1, (s.sw/2)/s.R)));
+    for(let k=0;k<s.n;k++){ const c = TAU*k/s.n; for(const u of [u1, -u1, u2, -u2]) out.push(wrap(c + u)); }
+  }
+  return out;
+}
+/* Угловая сетка кольца: равномерная выборка ПЛЮС все изломы профиля, плюс всё, что дописал вызывающий
+   (у разрезной ступицы — края прорези). Полный круг задаётся lo/hi = 0/2π. */
+function shaftBoreAngles(s, seg, lo, hi, extra){
+  const TAU = 2*Math.PI, full = (hi - lo) > TAU - 1e-9;
+  const N = Math.max(24, Math.round(seg)), set = [];
+  for(let k=0;k<=N;k++){ if(full && k === N) break; set.push(lo + (hi-lo)*k/N); }
+  const add = a => { for(const c of [a - TAU, a, a + TAU]) if(c > lo + 1e-7 && c < hi - 1e-7) set.push(c); };
+  for(const c of shaftCornerAngles(s)) add(c);
+  for(const c of (extra || [])) add(c);
+  set.sort((x, y) => x - y);
+  const out = []; for(const a of set) if(!out.length || a - out[out.length-1] > 1e-7) out.push(a);
+  return out;
+}
+/* Кольцо высоты [y0,y1] с наружным радиусом rO и отверстием boreFn(θ), сшитое по готовому списку углов.
+   `closed` — полное кольцо (список замыкается сам на себя) или сектор. У сектора торцы строятся всегда, но
+   там, где отверстие догнало наружный радиус, они вырождаются в отрезок и отсеиваются: наружная стенка и
+   стенка отверстия в этой точке совпадают вершина в вершину, поэтому рёбра всё равно спарены. */
+function boreRingYTris(rO, boreFn, y0, y1, angs, closed){
+  const out = [], n = angs.length;
+  if(n < 2) return out;
+  const O = (k, y) => { const a = angs[k]; return [rO*Math.cos(a), y, rO*Math.sin(a)]; };
+  const B = (k, y) => { const a = angs[k], r = boreFn(a); return [r*Math.cos(a), y, r*Math.sin(a)]; };
+  const last = closed ? n : n - 1;
+  for(let i=0;i<last;i++){
+    const j = (i + 1) % n;
+    const oa = O(i,y0), ob = O(j,y0), oc = O(j,y1), od = O(i,y1);
+    const am = ringMidAngle(angs[i], angs[j]), refO = [Math.cos(am), 0, Math.sin(am)];
+    out.push(orient([oa,ob,oc], refO)); out.push(orient([oa,oc,od], refO));
+    const ba = B(i,y0), bb = B(j,y0), bc = B(j,y1), bd = B(i,y1);
+    const refI = [-refO[0], 0, -refO[2]];
+    out.push(orient([ba,bb,bc], refI)); out.push(orient([ba,bc,bd], refI));
+    out.push(orient([oa,ba,bb], [0,-1,0])); out.push(orient([oa,bb,ob], [0,-1,0]));   // нижнее кольцо
+    out.push(orient([od,bc,bd], [0, 1,0])); out.push(orient([od,oc,bc], [0, 1,0]));   // верхнее
+  }
+  if(!closed) for(const [k, sg] of [[0,-1],[n-1,1]]){                                  // торцы сектора
+    const a = angs[k], t = [-Math.sin(a)*sg, 0, Math.cos(a)*sg];
+    const p0 = O(k,y0), p1 = O(k,y1), q0 = B(k,y0), q1 = B(k,y1);
+    out.push(orient([p0,p1,q1], t)); out.push(orient([p0,q1,q0], t));
+  }
+  return polyDropDegen(out);
+}
+/* Что за ступица получилась — числами, до всякой геометрии. Отдельно от построения, потому что то же самое
+   читают подпись модели, предупреждения и тесты. */
+function shaftBoreSpec(p){
+  const shape = SHAFT_SHAPES.indexOf(String(p.hubShaft)) >= 0 ? String(p.hubShaft) : 'round';
+  const D  = Math.max(1.5, p.hubShaftD > 0 ? p.hubShaftD : 5);
+  const cl = Math.max(0, Math.min(p.hubClear != null ? p.hubClear : 0.15, 1));
+  const nF = shape === 'hex' ? 6 : shape === 'square' ? 4 : 0;
+  // У многогранника «Ø вала» читается как размер ПОД КЛЮЧ (между гранями) — так его и меряют.
+  let R, F;
+  const flatAsked = Math.max(0.1, p.hubFlat > 0 ? p.hubFlat : 0.5);
+  const flatCut = Math.min(flatAsked, Math.max(0.1, D/2 - 0.25));   // лыска не режет вал насквозь
+  if(nF){ F = D/2 + cl; R = F/Math.cos(Math.PI/nF); }
+  else { R = D/2 + cl; F = D/2 - flatCut + cl; }
+  const flat = R - F;
+  const n  = Math.max(1, Math.min(20, Math.round(p.hubSplineN > 0 ? p.hubSplineN : 6)));
+  const swAsked = Math.max(0.3, p.hubSplineW > 0 ? p.hubSplineW : 1.2);
+  // Шлицы не должны съесть весь круг: суммарная ширина пазов — не больше 60 % длины окружности.
+  const swMax = Math.max(0.3, 2*Math.PI*R*0.6/n);
+  const sw = Math.min(swAsked, swMax);
+  const sd = Math.max(0.2, p.hubSplineD > 0 ? p.hubSplineD : 0.8);
+  return {shape, D, cl, R, F, flat, n, sw, sd, swAsked, swCramped: sw < swAsked - 1e-9,
+          flatAsked, flatCut, flatClamped: !nF && flatCut < flatAsked - 1e-9};
+}
+function hubSpec(p){
+  const style = HUB_STYLES.indexOf(String(p.hubStyle)) >= 0 ? String(p.hubStyle) : 'clamp';
+  const bore = shaftBoreSpec(p);
+  const H = Math.max(3, p.hubH > 0 ? p.hubH : 16);
+  const rMax = shaftBoreMaxR(bore);
+  const odAsked = Math.max(4, p.hubOD > 0 ? p.hubOD : 20);
+  const odMin = 2*(rMax + HUB_MIN_WALL);
+  const OD = Math.max(odAsked, odMin), rO = OD/2, wall = rO - rMax;
+  // Стяжной винт: его диаметр задаёт размеры проушин, поэтому он же и зажимается по высоте ступицы —
+  // проушина обязана быть НИЖЕ кольца, иначе её торец лёг бы в одну плоскость с торцом кольца.
+  const sdAsked = Math.max(0, p.mntScrewD != null ? p.mntScrewD : 4.5);
+  const screwD = Math.min(sdAsked, Math.max(1.5, H*0.5));
+  const hasScrew = screwD > 0.5;
+  const slitAsked = Math.max(0.3, p.hubSlit > 0 ? p.hubSlit : 1);
+  const slit = Math.min(slitAsked, Math.max(0.3, rO*0.5));
+  const ringSlot = slit + 2*HUB_SLOT_RELIEF;
+  const beta = Math.asin(Math.max(0, Math.min(0.999, (ringSlot/2)/rO)));
+  const earH = Math.max(2, Math.min(H - 1.6, Math.max(6, 2.2*screwD)));
+  const earT = Math.max(2.4, 0.85*screwD + 1.2);
+  const earOut = rO + Math.max(5, 2.2*screwD);
+  const earIn = rO - 2;
+  const boltX = rO + (earOut - rO)*0.55;
+  // Фланец — квадратная плита с четырьмя отверстиями по углам. Круглую с болтовой окружностью здесь не
+  // строят: отверстие в теле вращения — это вычитание, а вычитания у движка нет вовсе.
+  const boltD = Math.max(1.5, p.hubBoltD > 0 ? p.hubBoltD : 3.4);
+  const flT = Math.max(1.5, p.hubFlangeT > 0 ? p.hubFlangeT : 4);
+  const throughR = rMax + 0.4;
+  const margin = Math.max(2.2, boltD*1.2);
+  const flAsked = Math.max(0, p.hubFlange > 0 ? p.hubFlange : 0);
+  const flMin = Math.max(2*rO + 3, 2*(1.7*throughR + 1.7*boltD/2 + margin + 0.5));
+  const flangeOn = style === 'plain' && flAsked > 0;
+  const flS = flangeOn ? Math.max(flAsked, flMin) : 0;
+  // Момент до среза ведущего выступа: T = τ·A·r. A — суммарная площадь оснований выступов (число углов
+  // профиля × радиальная ступень × высота ступицы), r — радиус, на котором они работают, τ — те же 25 МПа
+  // межслойного сдвига, по которым в этом приложении считаются печатные ключи. Гладкий вал даёт ноль, и
+  // это не оговорка: круглое отверстие момента не держит вовсе, его держит трение или клей.
+  const nCorner = {round:0, dflat:2, dflat2:4, hex:6, square:4, spline:2*bore.n}[bore.shape];
+  const step = bore.shape === 'spline' ? bore.sd : bore.flat;
+  const arm  = bore.shape === 'spline' ? bore.R : bore.F;
+  const torque = HUB_TAU_MPA*(nCorner*step*H)*arm/1000;
+  return {style, bore, H, rMax, OD, rO, wall, odAsked, odGrown: OD > odAsked + 1e-9,
+          screwD, sdAsked, screwClamped: hasScrew && screwD < sdAsked - 1e-9, hasScrew,
+          slit, slitAsked, slitClamped: slit < slitAsked - 1e-9, ringSlot, beta,
+          earH, earT, earOut, earIn, boltX,
+          flangeOn, flS, flAsked, flGrown: flangeOn && flS > flAsked + 1e-9, flT, boltD, throughR,
+          torque, nCorner,
+          thinWall: wall < HUB_MIN_WALL + 1e-9,
+          squat: style === 'clamp' && H < 4,
+          deepSpline: bore.shape === 'spline' && bore.sd > wall*0.6};
+}
+function buildHub(p){
+  const s = hubSpec(p), b = s.bore, tris = [];
+  const seg = Math.max(48, Math.round(2*Math.PI*s.rO/0.9));
+  const slotEdge = a => {                                   // подъём отверстия до щеки прорези, только при cos θ > 0
+    if(s.style !== 'clamp' || Math.cos(a) <= 0) return 0;
+    const sn = Math.abs(Math.sin(a));
+    return sn > 1e-9 ? Math.min((s.ringSlot/2)/sn, s.rO) : s.rO;
+  };
+  const boreFn = a => Math.max(shaftBoreRadiusAt(a, b), slotEdge(a));
+  const y0 = s.flangeOn ? s.flT - HUB_SINK : 0, y1 = y0 + s.H;
+  if(s.style === 'clamp'){
+    // Край прорези там, где щека догоняет круг отверстия, — ещё один излом, который обязан попасть в сетку.
+    const cross = Math.asin(Math.max(0, Math.min(1, (s.ringSlot/2)/b.R)));
+    const angs = shaftBoreAngles(b, seg, s.beta, 2*Math.PI - s.beta, [cross, 2*Math.PI - cross]);
+    for(const T of boreRingYTris(s.rO, boreFn, y0, y1, angs, false)) tris.push(T);
+    {
+      const yc = (y0 + y1)/2, bw = s.earOut - s.earIn;
+      const hR = s.screwD*0.95, hD = Math.min(s.earT*0.55, s.screwD*0.5);
+      for(const sg of [1, -1]){
+        const holes = !s.hasScrew ? []
+          : sg > 0 ? [{axis:2, cp:s.boltX - (s.earIn + bw/2), cq:0, r:s.screwD/2,
+                       head:'sink', headR:hR, headDepth:hD, headSide:1}]
+                   // Дальняя проушина — под саморез/термовтулку: сквозная, но уже, как у стоек heat-set.
+                   : [{axis:2, cp:s.boltX - (s.earIn + bw/2), cq:0, r:Math.max(0.6, s.screwD*0.41)}];
+        const zc = sg*(s.slit/2 + s.earT/2);
+        for(const T of buildBoxWithHoles(bw, s.earH, s.earT, holes))
+          tris.push(T.map(v => [v[0] + s.earIn + bw/2, v[1] + yc, v[2] + zc]));
+      }
+    }
+  } else {
+    const angs = shaftBoreAngles(b, seg, 0, 2*Math.PI);
+    for(const T of boreRingYTris(s.rO, boreFn, y0, y1, angs, true)) tris.push(T);
+    if(s.flangeOn){
+      const m = s.flS/2 - Math.max(2.2, s.boltD*1.2), holes = [{axis:1, cp:0, cq:0, r:s.throughR}];
+      for(const sx of [-1,1]) for(const sz of [-1,1])
+        holes.push({axis:1, cp:sx*m, cq:sz*m, r:s.boltD/2});
+      for(const T of buildBoxWithHoles(s.flS, s.flT, s.flS, holes))
+        tris.push(T.map(v => [v[0], v[1] + s.flT/2, v[2]]));
+    }
+  }
+  let lo = [1e9,1e9,1e9], hi = [-1e9,-1e9,-1e9];
+  for(const T of tris) for(const v of T) for(let k=0;k<3;k++){ if(v[k]<lo[k])lo[k]=v[k]; if(v[k]>hi[k])hi[k]=v[k]; }
+  return tris.map(T => T.map(v => [v[0]-(lo[0]+hi[0])/2, v[1]-(lo[1]+hi[1])/2, v[2]-(lo[2]+hi[2])/2]));
+}
 function buildMount(p){
+  if(p.mntMode==='hub') return buildHub(p);
   if(p.mntMode==='dovetail') return buildDovetail(p);
   if(p.mntMode==='fittest') return buildFitTest(p);
   if(p.mntMode==='gauge') return buildGoNoGo(p);
@@ -20645,6 +20907,10 @@ function activeShapeLabel() {
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
+    hub:(function(){ const g=hubSpec(p); return 'ступица ' +
+      ({round:'под гладкий вал',dflat:'с лыской',dflat2:'с двумя лысками',hex:'шестигранная',square:'квадратная',spline:'шлицевая'}[g.bore.shape]) +
+      ' (' + (g.bore.shape==='hex'||g.bore.shape==='square' ? 'S' : 'Ø') + fmtNum(g.bore.D) + ')' +
+      (g.style==='clamp' ? ', разрезная' : g.flangeOn ? ', с фланцем' : ''); })(),
     radgauge:(function(){ const g=radGaugeSpec(p); return 'шаблон радиусов (' + g.r0 + '…' + (+g.rs[g.n-1].toFixed(2)) + ' мм)'; })(),
     polygauge:(function(){ const g=polyGaugeSpec(p); return 'шаблон резьб ' + g.n + '-гранник Ø' + g.d.toFixed(0) +
       ' (' + (g.imp ? 'дюймовый, ' + g.list[0].tag + '…' + g.list[g.n-1].tag + ' вит./дюйм'
@@ -21277,6 +21543,34 @@ function collectPrintWarnings(p){
              ' — в самом подстаканнике остаётся только карман под ' + (g.ringInk ? 'них' : 'него') +
              '; нажмите «+ Цвет N (AMS)» ' + (inks === 1 ? 'один раз' : inks + ' раза') +
              ' (тонов у рисунка: ' + inks + ')');
+  }
+  /* Ступица. Момент печатается ВСЕГДА, как у ключей и по той же причине: ради него модель и существует, а
+     узнать его после печати можно только сломав деталь. */
+  if (p.mntMode === 'hub'){
+    const g = hubSpec(p);
+    if (g.bore.shape === 'round')
+      w.push('отверстие гладкое — момента оно не держит вовсе; ' + (g.style === 'clamp'
+        ? 'разрезная ступица возьмёт его трением, и только пока винт затянут'
+        : 'нужен клей, запрессовка или профиль вала (лыска, шестигранник, шлицы)'));
+    else
+      w.push('до среза ведущего выступа ≈ ' + g.torque.toFixed(2) + ' Н·м (τ 25 МПа, ' + g.nCorner +
+             ' углов профиля на высоте ' + fmtNum(g.H) + ' мм); момент растёт прямо с высотой ступицы');
+    if (g.odGrown) w.push('наружный Ø поднят с ' + fmtNum(g.odAsked) + ' до ' + fmtNum(g.OD) +
+                          ' мм — при заказанном стенка была бы тоньше ' + HUB_MIN_WALL + ' мм');
+    if (g.bore.flatClamped && (g.bore.shape === 'dflat' || g.bore.shape === 'dflat2'))
+      w.push('глубина лыски уменьшена с ' + fmtNum(g.bore.flatAsked) + ' до ' + fmtNum(g.bore.flatCut) +
+             ' мм — заказанная срезала бы вал Ø' + fmtNum(g.bore.D) + ' насквозь');
+    if (g.bore.swCramped) w.push('ширина шлица уменьшена с ' + fmtNum(g.bore.swAsked) + ' до ' + fmtNum(g.bore.sw) +
+                                 ' мм — ' + g.bore.n + ' пазов заказанной ширины съели бы весь круг');
+    if (g.deepSpline) w.push('шлиц глубиной ' + fmtNum(g.bore.sd) + ' мм при стенке ' + fmtNum(g.wall) +
+                             ' мм — дно паза почти на наружной поверхности');
+    if (g.screwClamped) w.push('Ø стяжного винта уменьшен с ' + fmtNum(g.sdAsked) + ' до ' + fmtNum(g.screwD) +
+                               ' мм — проушина должна быть ниже кольца');
+    if (g.slitClamped) w.push('щель уменьшена с ' + fmtNum(g.slitAsked) + ' до ' + fmtNum(g.slit) + ' мм — шире просто разрезало бы ступицу');
+    if (g.flGrown) w.push('сторона фланца поднята с ' + fmtNum(g.flAsked) + ' до ' + fmtNum(g.flS) +
+                          ' мм — иначе отверстия под болты налезли бы на проходное');
+    if (g.style === 'clamp' && g.wall < 2) w.push('стенка ' + fmtNum(g.wall) + ' мм — разрезная ступица такой толщины лопнет на затяжке, а не обожмёт вал');
+    if (!g.hasScrew && g.style === 'clamp') w.push('Ø винта 0 — проушины напечатаются глухими, стягивать будет нечем');
   }
   if (p.mntMode === 'transition'){
     const g = transitionSpec(p);

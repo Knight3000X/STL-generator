@@ -180,6 +180,7 @@ const valuesOf = r => {
 // Named individually — "it does nothing" must never be a blanket excuse for a mark nobody checked.
 const ADVISORY = new Set([
   'snapMat',        // модуль и допустимая деформация: считает усилие и запас, а не форму
+  'dinMat',         // то же самое у язычка DIN-клипсы
   'mntCalStart', 'mntCalStep',  // подписи на калибровочных образцах
 ]);
 function auditFamily(g, only){

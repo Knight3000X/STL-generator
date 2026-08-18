@@ -144,7 +144,16 @@
        page being unfinished. `both-edges` is deliberately NOT used: it would pad the left as well and the
        panel would stop lining up with the title block. */
     scrollbar-gutter:stable;
-    padding:16px 18px 32px;
+    /* НИЖНЯЯ СТРОКА УХОДИЛА ПОД СИСТЕМНУЮ ПОЛОСУ. В `<meta viewport>` стоит `viewport-fit=cover` — то есть
+       страница СОГЛАСИЛАСЬ рисоваться под вырезом и под полосой жестов, — а взамен обязана сама отступить
+       от них на `env(safe-area-inset-*)`. Ни одного такого отступа в файле не было ни разу: панель кончалась
+       ровно на физической кромке экрана (замерено в headless: `panelBottom` = `innerHeight` в точности), и
+       последние 24…48 px её содержимого приходились на полосу жестов. Со стороны это выглядит как «не
+       пролистывается до конца»: прокрутка-то доходит, но конец лежит под полосой.
+       `dvh` тут ни при чём и не помогал: он про высоту ОКНА, а полоса жестов лежит ВНУТРИ окна.
+       Двенадцать пикселей сверх отступа — про то, чтобы последняя строка не липла к кромке и там, где
+       система честно сообщила нулевой отступ (кнопочная навигация со своей полосой). */
+    padding:16px 18px calc(32px + env(safe-area-inset-bottom, 0px));
   }
   #panel::-webkit-scrollbar{width:8px;}
   #panel::-webkit-scrollbar-thumb{background:var(--paper-line);border-radius:4px;}
@@ -842,9 +851,12 @@
   }
   @keyframes busy-pulse{ 0%,100%{opacity:0.25;} 50%{opacity:1;} }
 
+  /* Кнопки поверх превью — по тому же счёту, что и низ панели: `viewport-fit=cover` пускает под них вырез
+     и «уши» камеры, и отступить от них должна сама страница. */
   #btn-reset-view{
     position:absolute;
-    top:12px; right:14px;
+    top:calc(12px + env(safe-area-inset-top, 0px));
+    right:calc(14px + env(safe-area-inset-right, 0px));
     background:rgba(10,34,56,0.7);
     border:1px solid var(--blueprint-line);
     color:var(--blueprint-line);
@@ -857,7 +869,8 @@
   #btn-reset-view:hover{ background:rgba(111,183,219,0.18); }
   #btn-move-mode{
     position:absolute;
-    top:52px; right:14px;
+    top:calc(52px + env(safe-area-inset-top, 0px));
+    right:calc(14px + env(safe-area-inset-right, 0px));
     background:rgba(10,34,56,0.7);
     border:1px solid var(--blueprint-line);
     color:var(--blueprint-line);
@@ -882,6 +895,12 @@
       max-height:none;      /* height is whatever the preview leaves; the handle drives the split */
       flex:1;
       min-height:0;
+      /* На телефоне панель во всю ширину, поэтому в альбомной ориентации в неё упирается вырез сбоку.
+         И запас снизу: двенадцать пикселей поверх системного отступа, чтобы последняя строка не липла к
+         кромке даже там, где система сообщила ноль. */
+      padding-left:calc(18px + env(safe-area-inset-left, 0px));
+      padding-right:calc(18px + env(safe-area-inset-right, 0px));
+      padding-bottom:calc(44px + env(safe-area-inset-bottom, 0px));
     }
     #viewport-wrap{ order:1; height:46vh; height:46dvh; flex:none; }
     #split-handle{
@@ -1186,7 +1205,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.33.2';
+const APP_VERSION = 'v18.33.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */

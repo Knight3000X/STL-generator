@@ -680,5 +680,31 @@ console.log('\n=== «детали» на одноцветной картинке
   logos.length = 0;
 }
 
+/* ПРОСЯТ ЦВЕТ, КОТОРОГО У РИСУНКА НЕТ. Число деталей-цветов задаёт САМ рисунок: у однотонового он один.
+   Кнопка «+ Цвет N» лишнего не предложит, но выбор остаётся в списке и приезжает из сохранённого JSON, а
+   построитель на такой номер честно возвращает пусто — модель из нуля треугольников, молча и
+   «герметичная», потому что проверять в ней нечего. Замерено на кубе и на листе одинаково. */
+console.log('\n=== просят цвет, которого у рисунка нет ===');
+{
+  const S = 64, d = new Uint8ClampedArray(S*S*4);
+  for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5, o=(j*S+i)*4;
+    if(Math.hypot(u,v) < 0.4){ d[o]=255; d[o+1]=222; d[o+2]=0; d[o+3]=255; } }
+  const r = analyzeLogoImageData(d, S, undefined, 2);
+  container({width:40, height:40, depth:40, hollow:false});
+  logos.length = 0;
+  logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+              invert:false, heightmap:r.heightmap, levels:2, chan:r.stats.chose, tones:r.toneColors});
+  check('у однотонового рисунка ровно один цвет', amsInkCount(paramState.box) === 1, amsInkCount(paramState.box));
+  paramState.box.logoAms = 'ink1';
+  check('первый цвет строится', buildTrisForShape('box', paramState.box).length > 0);
+  check('и о нём молчат', !collectPrintWarnings(paramState.box).some(x => /выйдет пустой/.test(x)));
+  paramState.box.logoAms = 'ink2';
+  check('второго у рисунка нет — деталь пустая', buildTrisForShape('box', paramState.box).length === 0);
+  check('и об этом сказано словом', collectPrintWarnings(paramState.box).some(x => /выйдет пустой/.test(x)),
+        collectPrintWarnings(paramState.box).filter(x => /AMS|цвет/.test(x)));
+  paramState.box.logoAms = 'none';
+  logos.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

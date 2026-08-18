@@ -431,6 +431,93 @@ console.log('=== надпись лежит в самой текстуре ===');
         {совпало:same, всего:seen});
     logos.length = 0; }
 }
+/* ВМЯТИНА РЕЖЕТ ТОЛЬКО ТЕКСТУРУ. Рельеф надписи входит слагаемым в поле высот ТЕКСТУРЫ, а сама текстура
+   лежит отдельным замкнутым телом поверх сплошной плиты. Объединение замкнутых тел умеет только ДОБАВЛЯТЬ
+   материал, поэтому глубже верха плиты вмятина не уходит физически.
+
+   Меряется числом оборотов, а не чётностью: оболочки пересекаются, и точка внутри двух даёт два
+   пересечения — чётность объявит её наружной и «докажет» несуществующую вмятину. На этом и попались:
+   первая проба показала дыру там, где материал есть. */
+console.log('=== вмятина на текстуре режет узор, а не плиту ===');
+{
+  const art = () => { const S = LOGO_HM_SIZE, d = new Float32Array(S*S);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5;
+      d[j*S+i] = Math.hypot(u,v) < 0.4 ? 1 : 0; }
+    return d; };
+  const build = (texH, depth) => { base({sheetShape:'rect', width:40, height:4, depth:40, sheetThick:4,
+      sheetCut:'texture', sheetPattern:'snake', sheetTexH:texH, sheetTexInset:0});
+    logos.push({id:1, face:'+Y', u0:0, v0:0, w:16, h:16, rotation:0, depth:depth, threshold:0.5,
+                invert:false, heightmap:art(), aspect:1, levels:2});
+    return buildTrisForShape('box', paramState.box); };
+  const winding = (t, x, y, z) => { let n = 0;
+    for(const T of t){ const [a,b,c] = T;
+      const d1=(b[0]-a[0])*(z-a[2])-(b[2]-a[2])*(x-a[0]);
+      const d2=(c[0]-b[0])*(z-b[2])-(c[2]-b[2])*(x-b[0]);
+      const d3=(a[0]-c[0])*(z-c[2])-(a[2]-c[2])*(x-c[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[0]-a[0])*(c[2]-a[2])-(b[2]-a[2])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[0]-x)*(c[2]-z)-(b[2]-z)*(c[0]-x))/A, w2=((c[0]-x)*(a[2]-z)-(c[2]-z)*(a[0]-x))/A;
+      const yy=w1*a[1]+w2*b[1]+(1-w1-w2)*c[1];
+      if(yy <= y) continue;
+      n += ((b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])) > 0 ? 1 : -1; }
+    return n; };
+  // Точка во впадине узора внутри глифа: там снимать нечего, и плита обязана остаться целой.
+  let low = null;
+  for(let x=-4;x<=4;x+=0.25) for(let z=-4;z<=4;z+=0.25){
+    const pat = sheetTexHeight(x, z, 5, 0.75, 'snake');
+    if(low === null || pat < low.pat) low = {x, z, pat}; }
+  const deep = build(0.6, -1.5);
+  chk('под верхом плиты материал на месте даже при вмятине вдвое глубже текстуры',
+      winding(deep, low.x, 2 - 0.05, low.z) !== 0, {'узор в точке':+low.pat.toFixed(3)});
+  chk('и лист при этом герметичен', manifoldCheck(deep, 4).watertight);
+  chk('о том, что глубже текстуры вмятина не идёт, сказано словом',
+      collectPrintWarnings(paramState.box).some(x => /глубже самой текстуры/.test(x)),
+      collectPrintWarnings(paramState.box).filter(x => /вмятина/.test(x)));
+  build(0.6, -0.3);
+  chk('а про саму оговорку говорят и при разумной глубине',
+      collectPrintWarnings(paramState.box).some(x => /в плиту не режет/.test(x)));
+  build(0.6, 0.5);
+  chk('выпуклой надписи оговорка не адресована',
+      !collectPrintWarnings(paramState.box).some(x => /в плиту не режет/.test(x)));
+  logos.length = 0;
+}
+/* НАДПИСЬ, СРЕЗАННАЯ ОТСТУПОМ ТЕКСТУРЫ. Рельеф надписи живёт в поле высот ТЕКСТУРЫ, а текстура встаёт не
+   во весь лист, а внутри отступа от края. Сдвиньте надпись к краю — и она обрежется ровно по нему, молча:
+   замерено, вмятина с 47 мм³ до 11. Ловится тем же кольцом и той же обрезкой, что у построителя. */
+console.log('=== надпись, срезанная отступом текстуры ===');
+{
+  const art = () => { const S = LOGO_HM_SIZE, d = new Float32Array(S*S);
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const u=i/S-0.5, v=j/S-0.5;
+      d[j*S+i] = Math.hypot(u,v) < 0.4 ? 1 : 0; }
+    return d; };
+  const put = (ov, u0) => { base(Object.assign({sheetShape:'rect', width:60, height:4, depth:60,
+      sheetThick:4, sheetCut:'texture', sheetPattern:'snake', sheetTexH:0.6}, ov));
+    logos.push({id:1, face:'+Y', u0:u0, v0:0, w:16, h:16, rotation:0, depth:-0.4, threshold:0.5,
+                invert:false, heightmap:art(), aspect:1, levels:2});
+    return buildTrisForShape('box', paramState.box); };
+  const said = () => collectPrintWarnings(paramState.box).some(x => /выходит за область текстуры/.test(x));
+  const plain = (ov) => { base(Object.assign({sheetShape:'rect', width:60, height:4, depth:60,
+      sheetThick:4, sheetCut:'texture', sheetPattern:'snake', sheetTexH:0.6}, ov)); 
+    return vol(buildTrisForShape('box', paramState.box)); };
+  /* Договор предупреждения — про СЛЕД карточки, а не про то, сколько от рисунка уцелело: срезанная
+     карточка означает, что часть рельефа ушла, и сказать об этом надо ДО того, как пропадёт половина
+     надписи. Поэтому проверяется и то и другое: что оно срабатывает по следу и что за ним стоит
+     настоящая потеря, а не ложная тревога. */
+  const p8 = plain({sheetTexInset:8});
+  put({sheetTexInset:8}, 18);
+  chk('след, вылезший за область текстуры, назван', said(),
+      collectPrintWarnings(paramState.box).filter(x=>/текстур/.test(x)));
+  const far = vol(put({sheetTexInset:8}, 25));
+  chk('и это не ложная тревога — рельеф там правда срезан', p8 - far < 20,
+      {'вмятина, мм³':+(p8-far).toFixed(1)});
+  const p0 = plain({sheetTexInset:0});
+  const whole = vol(put({sheetTexInset:0}, 25));
+  chk('та же надпись вплотную к краю — цела', p0 - whole > 35, {'вмятина, мм³':+(p0-whole).toFixed(1)});
+  put({sheetTexInset:8}, 10);
+  chk('а надпись, влезающая целиком, молчит', !said(),
+      collectPrintWarnings(paramState.box).filter(x=>/текстур/.test(x)));
+  logos.length = 0;
+}
 /* ОТСТУП ТЕКСТУРЫ ОТ КРАЯ. Считался как «шаг узора × 0.4» и потому РОС ВМЕСТЕ С ШАГОМ: при шаге 10 мм по
    краю листа оставалась гладкая рамка в четыре миллиметра, которую никто не заказывал, а убрать было
    нечем — своей ручки у неё не было вовсе. Стал ручкой, и авто у неё — технический минимум.

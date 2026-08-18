@@ -488,14 +488,14 @@
     color:var(--ink); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
     transition:border-color .13s, background .13s; }
   #btn-export-3mf:hover{ border-color:var(--accent); background:var(--accent-soft); }
-  #btn-save-config, #btn-load-config{
+  #btn-save-config, #btn-load-config, #btn-orca-tpl, #btn-orca-clear{
     width:100%; padding:9px 0; margin-bottom:6px;
     background:var(--field-bg); border:1px solid var(--paper-line); border-radius:var(--r-sm);
     box-shadow:var(--sh-1);
     color:var(--ink); font-family:inherit; font-size:13px; cursor:pointer;
     transition:background 0.12s, border-color 0.12s;
   }
-  #btn-save-config:hover, #btn-load-config:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  #btn-save-config:hover, #btn-load-config:hover, #btn-orca-tpl:hover, #btn-orca-clear:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
   #btn-install-app{
     width:100%; padding:10px 0; margin-bottom:6px;
     background:var(--redline); border:none; border-radius:2px;
@@ -1176,6 +1176,10 @@
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
     <button id="btn-export-3mf" title="3MF: каждая видимая модель — отдельный объект (в слайсере сборка приедет раздельными деталями)">⬇ Скачать 3MF (детали раздельно)</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
+    <button id="btn-orca-tpl" title="Один раз отдать генератору сохранённый проект Orca — дальше 3MF будет приезжать с готовой палитрой">🎨 Палитра Orca: шаблон проекта</button>
+    <button id="btn-orca-clear" style="display:none">✕ Убрать шаблон Orca</button>
+    <input type="file" id="orca-tpl-input" accept=".3mf,model/3mf" style="display:none">
+    <div class="export-note" id="orca-tpl-note"></div>
     </details>
 
     <details class="panel-fold" data-def-closed data-tab="export" data-fold="Конфигурация сборки"><summary class="section-label">Конфигурация сборки</summary>
@@ -1205,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.35.0';
+const APP_VERSION = 'v18.36.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3113,10 +3117,94 @@ function mfBodyKey(m){
    Resource ids share one namespace with `<basematerials>`, so materials take id 1 and objects start at 2; a
    component may only reference an object already defined, so parts are emitted before the body that holds
    them. */
-function assemblyTo3MF(){
-  saveActiveModel();
-  const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-  const MAT_ID = 1;
+/* ---- Палитра Orca: цвета филамента в самом файле -----------------------------------------------
+   Номер СЛОТА у каждой детали в 3MF уже есть (`Metadata/model_settings.config`), и Orca по нему сама
+   заводит столько филаментов, сколько нашла номеров. Чего в файле нет — самих ЦВЕТОВ, и взять их Orca
+   неоткуда: цвет филамента у неё не свойство модели, а свойство ПРОЕКТА. Прочитано в её исходниках
+   (`bbs_3mf.cpp`, `Plater.cpp`, `PresetBundle.cpp`), потому что гадать тут не о чем:
+
+     `<basematerials displaycolor=…>` — ядро спецификации 3MF; читают просмотрщики, Orca не читает вовсе;
+     `m:colorgroup` / `m:color`      — читает, но лишь чтобы вывести НОМЕР экструдера на объект целиком
+                                       (`color_group_id_to_extruder_id_map`), а не цвет катушки;
+     `model_settings.config`         — ключа цвета нет ни у объекта, ни у части;
+     `project_settings.config`       — `filament_colour`, и это единственное место.
+
+   А дальше ловушка, из-за которой «просто дописать цвета» — плохая мысль. `filament_colour` применяется,
+   только когда файл открывают КАК ПРОЕКТ, и тогда Orca поступает так (Plater.cpp):
+
+       config.apply(FullPrintConfig::defaults());   // свои умолчания
+       config += std::move(config_loaded);          // поверх — то, что нашла в файле
+       preset_bundle->load_config_model(...);       // и ВЫБИРАЕТ созданные из этого профили
+
+   То есть файл, в котором лежат одни цвета, при открытии проектом сносит профиль принтера и заменяет его
+   дефолтным с именем этого файла. Хуже, чем вбить три цвета руками.
+
+   Поэтому цвета кладутся не сами по себе, а В ШАБЛОН. Пользователь один раз отдаёт СВОЙ сохранённый
+   проект Orca; из него берётся `project_settings.config` целиком, и меняются в нём только значения
+   `filament_colour`. Принтер, профиль печати, температуры остаются его собственными — а `load_external_preset`
+   при совпадении настроек выбирает уже существующий пресет, а не плодит копию.
+
+   ЧИСЛО СЛОТОВ ПРИ ЭТОМ НЕ МЕНЯЕТСЯ, и это тоже не лень. Пер-филаментных векторов в конфиге десятки, и
+   имена у них не по одному правилу: `filament_type`, но и `nozzle_temperature`, и `fan_min_speed`.
+   Растягивать их «по списку имён» — значит однажды растянуть заодно `nozzle_diameter` и объявить принтеру
+   лишний экструдер. Так что палитра пишется в первые N слотов шаблона, а если сборке нужно больше, чем в
+   шаблоне есть, об этом СКАЗАНО, и добавить слот предлагается там, где это умеют, — в самой Orca. */
+const ORCA_TPL_FILE = 'Metadata/project_settings.config';
+const ORCA_TPL_STORE = 'stl-orca-template';
+let orcaTemplate = null;                       // {name, cfg} — настройки проекта как есть, текстом
+// Сколько слотов филамента в шаблоне. Ноль значит «это не настройки проекта Orca» — и это единственная
+// проверка, которая тут нужна: без `filament_colour` сама Orca такой конфиг тоже не примет
+// (load_config_file_config падает с «Invalid configuration file»).
+function orcaTemplateSlots(cfg){
+  let j; try { j = JSON.parse(cfg); } catch(e){ return 0; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return 0;
+  const c = j.filament_colour;
+  return (Array.isArray(c) && c.length && c.every(x => typeof x === 'string')) ? c.length : 0;
+}
+// Шаблон с подставленной палитрой. Возвращает и то, чего не хватило: цвет сверх числа слотов молча
+// пропасть не может.
+function orcaPaletteConfig(cfg, colors){
+  const slots = orcaTemplateSlots(cfg);
+  if (!slots) return null;
+  const j = JSON.parse(cfg), n = Math.min(slots, colors.length);
+  for (let i = 0; i < n; i++) j.filament_colour[i] = colors[i];
+  return { text: JSON.stringify(j), slots, want: colors.length, wrote: n, short: colors.length > slots };
+}
+/* `Metadata/project_settings.config` из сохранённого проекта Orca. Две беды называются РАЗНЫМИ словами,
+   потому что чинятся по-разному: «это вообще не 3MF» и «это 3MF с одной геометрией, а нужен проект». */
+function orcaTemplateFrom3MF(buf){
+  const entries = zipEntries(buf);
+  if (!entries) return Promise.reject(new Error('это не 3MF: внутри нет ZIP-архива'));
+  const e = entries.find(x => x.name.replace(/^\/+/, '').toLowerCase() === ORCA_TPL_FILE.toLowerCase());
+  if (!e) return Promise.reject(new Error('внутри нет ' + ORCA_TPL_FILE + ' — это 3MF с одной геометрией. ' +
+    'Нужен СОХРАНЁННЫЙ ПРОЕКТ: в Orca «Файл → Сохранить проект как…»'));
+  return zipRead(buf, e).then(b => new TextDecoder().decode(b));
+}
+function orcaTemplateStore(){
+  try { orcaTemplate ? localStorage.setItem(ORCA_TPL_STORE, JSON.stringify(orcaTemplate))
+                     : localStorage.removeItem(ORCA_TPL_STORE); } catch(e) {}
+}
+function orcaTemplateRestore(){
+  try { const j = JSON.parse(localStorage.getItem(ORCA_TPL_STORE) || 'null');
+    if (j && typeof j.cfg === 'string' && orcaTemplateSlots(j.cfg)) orcaTemplate = j; } catch(e) {}
+}
+/* Что написано под кнопкой. Отдельной функцией, потому что это единственное место, где приложение
+   объясняет, ПОЧЕМУ без шаблона цвета не приезжают, — и потому что состояние «шаблон есть, но слотов в
+   нём меньше, чем цветов у сборки» обязано быть видно ДО экспорта, а не выясняться в слайсере. */
+function orcaNoteText(tpl, want){
+  if (!tpl) return 'Цвета филамента Orca берёт из ПРОЕКТА, а не из модели, поэтому в обычный 3MF их класть ' +
+    'некуда. Отдайте свой сохранённый проект Orca — экспорт будет класть в файл вашу же конфигурацию с ' +
+    'подставленной палитрой, и цвета приедут сами. Файл открывать «как проект».';
+  const slots = orcaTemplateSlots(tpl.cfg);
+  const head = 'Шаблон: ' + tpl.name + ', слотов в нём ' + slots + ', сборке нужно ' + want + '. ';
+  return head + (want > slots
+    ? 'Лишние ' + (want - slots) + ' в файл не попадут: добавьте слоты в Orca и пересохраните проект.'
+    : 'Палитра уедет в файл — открывайте его «как проект».');
+}
+/* Кто на каком филаменте — без всякого XML. Вынесено из построителя файла, потому что это же число —
+   сколько ЦВЕТОВ просит сборка — нужно панели: от него зависит, влезает ли палитра в слоты шаблона Orca.
+   Пересчитать его вторым правилом было бы ровно той двойной бухгалтерией, которая расходится молча. */
+function assemblyInks(){
   const bodies = [], byKey = new Map();
   for (const m of models){
     if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
@@ -3126,10 +3214,10 @@ function assemblyTo3MF(){
     bodies.push(body);
     if (key) byKey.set(key, body);
   }
-  const mats = [], inkOf = new Map();
+  const colors = [], names = [], inkOf = new Map();
   const newInk = (col, name) => {
-    mats.push('<base name="' + esc(name || ('Филамент ' + (mats.length+1))) + '" displaycolor="' + col + 'FF"/>');
-    return mats.length - 1;
+    colors.push(col); names.push(name || ('Филамент ' + colors.length));
+    return colors.length - 1;
   };
   /* One filament per distinct colour — but never one filament for two parts of the SAME body. Sharing
      across bodies is right: two coasters printed in the same three tones are three AMS slots, not six.
@@ -3145,14 +3233,26 @@ function assemblyTo3MF(){
     used.add(i);
     return i;
   };
+  for (const body of bodies){ const used = new Set();
+    body.inks = body.parts.map(m => inkIndex(m, used)); }
+  return { bodies, colors, names };
+}
+function assemblyTo3MF(){
+  saveActiveModel();
+  const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  const MAT_ID = 1;
+  const { bodies, colors, names } = assemblyInks();
+  const mats = colors.map((col, i) =>
+    '<base name="' + esc(names[i]) + '" displaycolor="' + col + 'FF"/>');
   const objects = [], items = [], cfg = [];
   let id = MAT_ID + 1;
   for (const body of bodies){
-    const comps = [], parts = [], used = new Set();
-    for (const m of body.parts){
+    const comps = [], parts = [];
+    for (let k = 0; k < body.parts.length; k++){
+      const m = body.parts[k];
       let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
       if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
-      const ink = inkIndex(m, used);
+      const ink = body.inks[k];
       objects.push(tris3MFObject(id, tris, MAT_ID, ink));
       comps.push('<component objectid="' + id + '" transform="' + MF_IDENT3 + '"/>');
       parts.push('<part id="' + id + '" subtype="normal_part">' +
@@ -3176,7 +3276,7 @@ function assemblyTo3MF(){
       (mats.length ? '<basematerials id="' + MAT_ID + '">' + mats.join('') + '</basematerials>' : '') +
       objects.join('') + '</resources>' +
     '<build>' + items.join('') + '</build></model>';
-  return makeZipStore([
+  const files = [
     { name: '[Content_Types].xml', text: '<?xml version="1.0" encoding="UTF-8"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -3189,7 +3289,10 @@ function assemblyTo3MF(){
     { name: '3D/3dmodel.model', text: model },
     { name: 'Metadata/model_settings.config', text: '<?xml version="1.0" encoding="UTF-8"?>' +
       '<config>' + cfg.join('') + '</config>' },
-  ]);
+  ];
+  const pal = orcaTemplate ? orcaPaletteConfig(orcaTemplate.cfg, colors) : null;
+  if (pal) files.push({ name: ORCA_TPL_FILE, text: pal.text });
+  return makeZipStore(files);
 }
 
 function downloadBlob(blob, filename) {
@@ -19912,6 +20015,22 @@ function attachEventListeners() {
   document.getElementById('config-file-input').addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0]; if (f) importAssemblyJSON(f); e.target.value = '';
   });
+  orcaTemplateRestore();
+  document.getElementById('btn-orca-tpl').addEventListener('click', () => document.getElementById('orca-tpl-input').click());
+  document.getElementById('orca-tpl-input').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    f.arrayBuffer().then(orcaTemplateFrom3MF).then(cfg => {
+      if (!orcaTemplateSlots(cfg))
+        throw new Error('в настройках проекта нет filament_colour — палитру взять неоткуда');
+      orcaTemplate = { name: f.name, cfg };
+      orcaTemplateStore(); orcaNoteRefresh();
+    }).catch(err => alert('Шаблон Orca: ' + err.message));
+  });
+  document.getElementById('btn-orca-clear').addEventListener('click', () => {
+    orcaTemplate = null; orcaTemplateStore(); orcaNoteRefresh();
+  });
+  orcaNoteRefresh();
   document.getElementById('panel').addEventListener('input', (e) => {
     const t = e.target;
     if (t.matches('.param-number') && t.dataset.shape) {
@@ -22094,6 +22213,7 @@ function updatePrintStats(tris){
     ovEl.textContent = a < 0.02 ? 'нет' : '≈ '+(a<1? a.toFixed(2) : a.toFixed(1))+' см² — нужны поддержки';
     ovEl.className = 'v mono' + (a < 0.02 ? ' ok' : ' warn');
   }
+  orcaNoteRefresh();
   const prEl = document.getElementById('stat-printable');
   if (prEl) {
     const warns = collectPrintWarnings(paramState.box);
@@ -22101,6 +22221,14 @@ function updatePrintStats(tris){
     prEl.title = warns.join('; ');
     prEl.className = 'v mono' + (warns.length ? ' warn' : ' ok');
   }
+}
+// Строка под кнопкой шаблона: пересчитывается там же, где остальная статистика, — число цветов у сборки
+// меняется от каждой правки, и «слотов не хватает» обязано быть видно ДО экспорта.
+function orcaNoteRefresh(){
+  const el = document.getElementById('orca-tpl-note'); if (!el) return;
+  el.textContent = orcaNoteText(orcaTemplate, assemblyInks().colors.length);
+  const clr = document.getElementById('btn-orca-clear');
+  if (clr) clr.style.display = orcaTemplate ? '' : 'none';
 }
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;

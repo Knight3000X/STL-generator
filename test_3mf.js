@@ -3,6 +3,12 @@
 // (parsing local headers), re-computes every CRC, and checks the model XML carries the right
 // objects/vertices/triangles per visible model, that AMS colour parts arrive as PARTS of one
 // object rather than as separate objects, and that each part names its own filament.
+//
+// Плюс ПАЛИТРА: `Metadata/project_settings.config`, собранный из шаблона пользователя с подставленным
+// `filament_colour`. Это единственное место, откуда Orca берёт цвета филамента, и портится оно тихо —
+// подставить палитру и заодно сдвинуть чужой ключ или длину чужого вектора значит подменить человеку
+// профиль принтера, ничего ему об этом не сказав. Поэтому проверяется не «цвета на месте», а «изменился
+// РОВНО ОДИН ключ».
 // Run via ./run-all.sh (extraction test).
 
 async function main(){
@@ -276,6 +282,102 @@ console.log('\n=== two parts of one body are never one filament ===');
   check('the legend takes the artwork\'s top tone',
         (assemblyMate(paramState.box) || {}).color === '#BB1828', (assemblyMate(paramState.box)||{}).color);
   logos.length = 0;
+}
+
+/* ПАЛИТРА ORCA. Номера слотов в файле были всегда, а цветов не было, и человек ставил их руками. Взять
+   их Orca может ровно из одного места — `filament_colour` в `Metadata/project_settings.config`, — но
+   применяет его, только открывая файл КАК ПРОЕКТ, и тогда накладывает найденное поверх СВОИХ умолчаний и
+   выбирает получившиеся профили. Файл, в котором лежат одни цвета, поэтому сносит профиль принтера.
+
+   Отсюда вся конструкция: подставляются цвета не в пустоту, а в ШАБЛОН — сохранённый проект самого
+   пользователя. Здесь проверяется то, что в этой подстановке можно испортить незаметно: что меняется
+   ТОЛЬКО палитра (принтер, температуры, длины остальных векторов — как были), что число слотов не растёт
+   (растянуть «по именам» значит однажды растянуть заодно nozzle_diameter), и что лишние цвета не
+   пропадают молча. */
+console.log('=== палитра Orca: шаблон проекта ===');
+{
+  const TPL = JSON.stringify({
+    print_settings_id: '0.20mm Standard @MyPrinter',
+    printer_settings_id: 'My Printer 0.4 nozzle',
+    nozzle_diameter: ['0.4'],
+    filament_colour: ['#00FF00', '#0000FF', '#FF0000', '#FFFFFF'],
+    filament_type: ['PLA', 'PLA', 'PETG', 'PLA'],
+    filament_settings_id: ['Generic PLA', 'Generic PLA', 'Generic PETG', 'Generic PLA'],
+    nozzle_temperature: ['220', '220', '250', '220'],
+    version: '2.3.0.0'
+  });
+  check('слоты шаблона считаются по filament_colour', orcaTemplateSlots(TPL) === 4, orcaTemplateSlots(TPL));
+  check('без filament_colour это не шаблон', orcaTemplateSlots('{"printer_settings_id":"x"}') === 0);
+  check('не-JSON это не шаблон', orcaTemplateSlots('какой-то мусор') === 0);
+  check('массив вместо объекта — не шаблон', orcaTemplateSlots('[1,2,3]') === 0);
+  check('нечитаемый шаблон не притворяется рабочим', orcaPaletteConfig('мусор', ['#000000']) === null);
+
+  const pal = orcaPaletteConfig(TPL, ['#141414', '#BD1828']);
+  const j = JSON.parse(pal.text), t0 = JSON.parse(TPL);
+  check('палитра встала в первые слоты',
+        j.filament_colour[0] === '#141414' && j.filament_colour[1] === '#BD1828', j.filament_colour);
+  check('остальные слоты шаблона не тронуты',
+        j.filament_colour[2] === '#FF0000' && j.filament_colour[3] === '#FFFFFF', j.filament_colour);
+  check('число слотов не изменилось', j.filament_colour.length === 4, j.filament_colour.length);
+  // Всё остальное обязано совпасть ДО ЕДИНОГО КЛЮЧА: подстановка палитры — не повод трогать принтер.
+  const diff = Object.keys(t0).filter(k => JSON.stringify(t0[k]) !== JSON.stringify(j[k]));
+  check('изменился ровно один ключ', diff.length === 1 && diff[0] === 'filament_colour', diff);
+  check('длины остальных векторов на месте',
+        j.filament_type.length === 4 && j.nozzle_temperature.length === 4 && j.nozzle_diameter.length === 1);
+
+  const many = orcaPaletteConfig(TPL, ['#010101','#020202','#030303','#040404','#050505','#060606']);
+  check('лишние цвета названы, а не выброшены молча', many.short && many.want === 6 && many.slots === 4,
+        {short: many.short, want: many.want, slots: many.slots});
+  check('и записано ровно столько, сколько влезло', many.wrote === 4 &&
+        JSON.parse(many.text).filament_colour.length === 4, many.wrote);
+  check('строка под кнопкой говорит про нехватку',
+        /Лишние 2 в файл не попадут/.test(orcaNoteText({name:'p.3mf', cfg:TPL}, 6)),
+        orcaNoteText({name:'p.3mf', cfg:TPL}, 6));
+  check('и про порядок, когда всё влезает',
+        /как проект/.test(orcaNoteText({name:'p.3mf', cfg:TPL}, 3)));
+  check('без шаблона объясняет, почему цветов нет',
+        /из ПРОЕКТА, а не из модели/.test(orcaNoteText(null, 3)), orcaNoteText(null, 3));
+
+  // Шаблон вынимается из НАСТОЯЩЕГО архива — тем же кодом, которым приложение читает 3MF.
+  const zip = new Uint8Array(await makeZipStore([
+    { name: '[Content_Types].xml', text: '<Types/>' },
+    { name: 'Metadata/project_settings.config', text: TPL }]).arrayBuffer());
+  const got = await orcaTemplateFrom3MF(zip.buffer);
+  check('шаблон вынут из проекта', orcaTemplateSlots(got) === 4, got.slice(0, 40));
+  let err = null;
+  const plain = new Uint8Array(await makeZipStore([{ name: '3D/3dmodel.model', text: '<model/>' }]).arrayBuffer());
+  try { await orcaTemplateFrom3MF(plain.buffer); } catch(e){ err = e.message; }
+  check('3MF без настроек проекта отвергается СВОИМИ словами', /СОХРАНЁННЫЙ ПРОЕКТ/.test(err || ''), err);
+  err = null;
+  try { await orcaTemplateFrom3MF(new Uint8Array([1,2,3,4]).buffer); } catch(e){ err = e.message; }
+  check('не-ZIP отвергается другими словами', /не 3MF/.test(err || ''), err);
+
+  // И то же самое в готовом файле.
+  models.length = 0; logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false});
+  const tris = buildTrisForShape('box', paramState.box);
+  const put = (name, color) => models.push({ name, visible:true, rawTris:tris, shape:'box',
+    params:JSON.parse(JSON.stringify(paramState.box)), color, rx:0, ry:0, rz:0, px:0, py:0, pz:0 });
+  put('Тело', '#141414'); put('Логотип', '#BD1828');
+  const before = readZip(new Uint8Array(await assemblyTo3MF().arrayBuffer()));
+  check('без шаблона настроек проекта в файле нет', !before['Metadata/project_settings.config'],
+        Object.keys(before));
+  orcaTemplate = { name: 'мой-проект.3mf', cfg: TPL };
+  const after = readZip(new Uint8Array(await assemblyTo3MF().arrayBuffer()));
+  const inFile = after['Metadata/project_settings.config'];
+  check('с шаблоном — есть', !!inFile, Object.keys(after));
+  const conf = JSON.parse(new TextDecoder().decode(inFile.data));
+  check('и в нём цвета сборки', conf.filament_colour[0] === '#141414' && conf.filament_colour[1] === '#BD1828',
+        conf.filament_colour);
+  check('и принтер пользователя', conf.printer_settings_id === 'My Printer 0.4 nozzle', conf.printer_settings_id);
+  // Номера слотов у деталей и порядок палитры — одно и то же: иначе цвет уедет не на ту деталь.
+  const parts2 = parseParts(new TextDecoder().decode(after['Metadata/model_settings.config'].data));
+  check('слот детали указывает на её же цвет',
+        conf.filament_colour[parts2[0].extruder - 1] === '#141414' &&
+        conf.filament_colour[parts2[1].extruder - 1] === '#BD1828',
+        parts2.map(p => p.extruder));
+  orcaTemplate = null;
+  models.length = 0;
 }
 
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);

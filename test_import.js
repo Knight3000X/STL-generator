@@ -1,5 +1,16 @@
 // Mesh import: STL binary / STL ASCII / OBJ parsers + scaleImportedMesh (centre-on-origin, uniform % or
-// non-uniform fit-to-box) through the REAL pipeline. Run via ./run-all.sh.
+// non-uniform fit-to-box) through the REAL pipeline.
+//
+// Плюс три вещи, каждая из которых ломалась ТИХО — файл открывался, карточки появлялись, и всё выглядело
+// работающим:
+//   · СИСТЕМА КООРДИНАТ. Приложение моделирует в Y-вверх, слайсеры едят Z-вверх; на выходе это учтено
+//     давно, на входе не учитывалось вовсе, и импортированное приезжало лёжа на боку. Заметить трудно —
+//     модель видно, она просто повёрнута.
+//   · ГЕОМЕТРИЯ В ЗАПИСИ. buildTrisForShape для НЕАКТИВНЫХ моделей не зовёт никто, а показ, экспорт и
+//     карточка читают rawTris записи. Из файла на двадцать семь деталей строилась одна.
+//   · ИМЯ И ЦВЕТ. Они лежат в метаданных слайсера (model_settings.config + project_settings.config), и
+//     порознь эти файлы бесполезны: номер филамента без палитры — число, палитра без номера — список.
+// Run via ./run-all.sh.
 let pass=0,fail=0; function chk(n,c,e){if(c){pass++;console.log('  OK  ',n);}else{fail++;console.log('  FAIL',n,e!==undefined?JSON.stringify(e):'');}}
 function approx(a,b,t){return Math.abs(a-b)<=(t||1e-4);}
 
@@ -222,6 +233,111 @@ console.log('=== 3MF: составная модель приходит дета�
     const two = await parseMeshFileParts(buf, 'узел.3mf');
     chk('3MF приходит двумя', two.length === 2, two.length);
   }
+  /* 8) СИСТЕМА КООРДИНАТ. Приложение моделирует в Y-ВВЕРХ, слайсеры едят Z-ВВЕРХ, и на выходе это давно
+        учтено (toPrintFrameTris). На ВХОДЕ не учитывалось вовсе, и любой импортированный файл приезжал
+        лёжа на боку: у подставки 100×100×3.6 толщина шла по глубине сцены, а не по высоте. Заметить это
+        трудно ровно потому, что модель всё равно видно — она просто повёрнута, и рука тянется довернуть
+        её ручками вместо того, чтобы заподозрить границу форматов. */
+  {
+    const one = await parseMeshFileParts(makeBinSTL(T), 'тетра.stl');
+    const b = bbox(one[0].tris);
+    chk('импорт ставит модель на пол: 2×4×6 в файле → 2×6×4 в сцене',
+        approx(b.maxX-b.minX, 2) && approx(b.maxY-b.minY, 6) && approx(b.maxZ-b.minZ, 4),
+        [b.maxX-b.minX, b.maxY-b.minY, b.maxZ-b.minZ]);
+    // Точное обращение: экспорт после импорта возвращает исходные координаты до последнего знака.
+    const back = toPrintFrameTris(fromPrintFrameTris(T));
+    chk('импорт и экспорт — взаимно обратны', JSON.stringify(back) === JSON.stringify(T), back[0]);
+    // И это ПОВОРОТ, а не отражение: объём со знаком не меняется.
+    const vol = t => { let v = 0; for (const q of t){ const [a,b2,c] = q;
+      v += (a[0]*(b2[1]*c[2]-b2[2]*c[1]) - a[1]*(b2[0]*c[2]-b2[2]*c[0]) + a[2]*(b2[0]*c[1]-b2[1]*c[0]))/6; } return v; };
+    chk('это поворот, а не отражение (знак объёма цел)',
+        Math.abs(vol(fromPrintFrameTris(T)) - vol(T)) < 1e-9, [vol(T), vol(fromPrintFrameTris(T))]);
+  }
+
+  /* 9) ИМЯ И ЦВЕТ ИЗ МЕТАДАННЫХ СЛАЙСЕРА. Bambu Studio и Orca кладут рядом два файла, и порознь они
+        бесполезны: `model_settings.config` даёт имя объекта и НОМЕР филамента, `project_settings.config` —
+        палитру. Номер без палитры просто число, палитра без номера просто список. Вместе они дают то, что
+        видно в слайсере, и то, чего у импортированной детали не было: своё имя вместо «Деталь 2» и свой
+        цвет вместо общего серого. */
+  {
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="1" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh></object>' +
+      '<object id="2" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh></object></resources>' +
+      '<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>' +
+      '<item objectid="2" transform="1 0 0 0 1 0 0 0 1 30 0 0"/></build></model>';
+    const ms = '<?xml version="1.0"?><config>' +
+      // Объект 1: часть МОЛЧИТ — значит наследует номер объекта (3 → жёлтый).
+      '<object id="1"><metadata key="name" value="Orbital Laser.stl"/><metadata key="extruder" value="3"/>' +
+      '<part id="1" subtype="normal_part"><metadata key="name" value="Не это имя"/></part></object>' +
+      // Объект 2: своего номера нет, часть говорит 2 → чёрный.
+      '<object id="2"><metadata key="name" value="Ramp.stl"/>' +
+      '<part id="2" subtype="normal_part"><metadata key="extruder" value="2"/></part></object>' +
+      // Объект 3: часть ВЫШЕ собственных метаданных объекта. Настоящие слайсеры так не пишут, но и не
+      // обязаны: порядок здесь ничем не закреплён, а ответ от него зависеть не должен.
+      '<object id="3"><part id="3" subtype="normal_part"/>' +
+      '<metadata key="name" value="Перевёрнутый.stl"/><metadata key="extruder" value="4"/></object>' +
+      // Объект 4: части СПОРЯТ — одного цвета у склеенной детали нет, берётся объявленный объектом.
+      '<object id="4"><metadata key="extruder" value="4"/>' +
+      '<part id="4" subtype="normal_part"><metadata key="extruder" value="1"/></part>' +
+      '<part id="5" subtype="normal_part"><metadata key="extruder" value="2"/></part></object>' +
+      '</config>';
+    const ps = JSON.stringify({ filament_colour: ['#FFFFFF', '#000000', '#F4EE2A', '#545454'] });
+    const buf = zipStored([
+      {name:'3D/3dmodel.model', method:0, data:enc.encode(model)},
+      {name:'Metadata/model_settings.config', method:0, data:enc.encode(ms)},
+      {name:'Metadata/project_settings.config', method:0, data:enc.encode(ps)}]);
+    const parts = await parse3MF(buf);
+    chk('деталей две', parts.length === 2, parts.length);
+    chk('имя взято у слайсера, расширение отброшено', parts[0].name === 'Orbital Laser', parts[0].name);
+    chk('молчащая часть наследует номер объекта', parts[0].color === '#F4EE2A', parts[0].color);
+    chk('говорящая часть перекрывает объект', parts[1].color === '#000000', parts[1].color);
+    chk('и своё имя', parts[1].name === 'Ramp', parts[1].name);
+    const meta = parse3MFMeta(ms, ps).objs;
+    chk('своё у объекта то, что не внутри части — даже если часть выше',
+        meta.get('3').extruder === 4 && meta.get('3').name === 'Перевёрнутый.stl', meta.get('3'));
+    chk('спорящие части — берётся номер объекта', meta.get('4').extruder === 4, meta.get('4'));
+    // Без метаданных всё как было: имя из XML или номер, цвета нет.
+    const bare = await parse3MF(zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(model)}]));
+    chk('без метаданных имя — номер объекта', bare[0].name === 'Деталь 1', bare[0].name);
+    chk('и цвета нет', !bare[0].color, bare[0].color);
+    // Палитра из мусора не притворяется палитрой.
+    const bad = parse3MFMeta('<config><object id="1"><metadata key="extruder" value="2"/></object></config>', 'не json');
+    chk('нечитаемая палитра — пустая', bad.palette.length === 0);
+    chk('но номер филамента всё равно прочитан', bad.objs.get('1').extruder === 2);
+  }
+
+  /* 10) ГЕОМЕТРИЯ ПИШЕТСЯ В ЗАПИСЬ. `buildTrisForShape` для НЕАКТИВНЫХ моделей не зовёт никто: показ,
+         экспорт, счётчик треугольников и габарит карточки читают `rawTris` записи. Пока addImportedPart
+         этого не делал, из файла на двадцать семь деталей строилась ОДНА — та, которую loadModel делал
+         активной, — а остальные стояли с нулём треугольников и пустым габаритом. Молча: файл открылся,
+         карточки появились, в сцене одна деталь. */
+  {
+    const before = models.length;
+    const a = addImportedPart(fromPrintFrameTris(T), 'Первая', false, '#123456');
+    const b2 = addImportedPart(fromPrintFrameTris(T), 'Вторая', false, null);
+    chk('обе записи добавлены', models.length === before + 2, models.length);
+    chk('у первой есть геометрия', a.rawTris && a.rawTris.length > 0, a.rawTris && a.rawTris.length);
+    chk('и у второй тоже — она не активна и никто её больше не построит',
+        b2.rawTris && b2.rawTris.length > 0, b2.rawTris && b2.rawTris.length);
+    chk('габарит посчитан, а не остался пустым', !!a.bbox && Number.isFinite(a.bbox.maxX), a.bbox);
+    chk('цвет из файла взят', a.color === '#123456', a.color);
+    chk('без цвета остаётся общий серый', b2.color === '#b9c5cd', b2.color);
+    // Размеры записи — родные размеры детали: 100 % масштаба это тождество.
+    chk('размеры записи — родные', approx(a.params.width, 2) && approx(a.params.height, 6) && approx(a.params.depth, 4),
+        [a.params.width, a.params.height, a.params.depth]);
+    models.length = before;
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.36.0';
+const APP_VERSION = 'v18.37.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -2980,6 +2980,12 @@ function computeWeldedNormals(tris) {
    (det +1), so triangle winding — and therefore every face normal — stays correct without re-orienting. Only
    the export boundary converts; all modelling, print checks and bed limits keep working in Y-up. */
 function toPrintFrameTris(tris){ return tris.map(T=>T.map(v=>[v[0], -v[2], v[1]])); }
+/* И ОБРАТНО, на входе. Долго не было вовсе, и это стоило ровно того же, чего стоило бы его отсутствие на
+   выходе: любой импортированный STL, OBJ или 3MF приезжал ЛЕЖА НА БОКУ — толщина подставки шла по глубине
+   сцены, а не по высоте. Незаметно это потому, что модель всё равно видно, она просто повёрнута, и рука
+   тянется довернуть её ручками поворота вместо того, чтобы заподозрить границу форматов.
+   Точное обращение (x,y,z) → (x, z, −y), так что экспорт после импорта возвращает исходные координаты. */
+function fromPrintFrameTris(tris){ return tris.map(T=>T.map(v=>[v[0], v[2], -v[1]])); }
 function trisToBinarySTL(trisIn) {
   const tris = toPrintFrameTris(trisIn);
   const n = tris.length;
@@ -6411,7 +6417,7 @@ const HEAVY_IMPORT_TRIS = 1200000;
    координаты, поэтому детали приходят стоящими друг относительно друга правильно — а вот собственный
    сдвиг модели сборки (`px/py/pz`) для них должен остаться НУЛЕВЫМ. Раскладка «следующая правее
    предыдущей», которой встречают одиночный STL, разнесла бы собранный узел по столу. */
-function addImportedPart(tris, name, place){
+function addImportedPart(tris, name, place, color){
   const b = computeBBox(tris);
   const id = nextImportId++; importedMeshes.set(id, tris);
   const params = defaultBoxParams();
@@ -6420,11 +6426,28 @@ function addImportedPart(tris, name, place){
   params.height = Math.max(0.1, Math.round((b.maxY-b.minY)*100)/100);
   params.depth  = Math.max(0.1, Math.round((b.maxZ-b.minZ)*100)/100);
   const rec = makeModelRecord(name.slice(0,40) || 'Импорт', params);
+  if (color) rec.color = color;
   if (place){
     let right = -Infinity;
     for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
     rec.px = (right === -Infinity) ? 0 : Math.round(right + (b.maxX-b.minX)/2 + 12);
   }
+  /* СЕТКА ПИШЕТСЯ В САМУ ЗАПИСЬ. Ровно та же ловушка, что описана у spawnFrozenModels, и это уже
+     четвёртое место, где она сработала: `buildTrisForShape` для НЕАКТИВНЫХ моделей никто не зовёт —
+     показ, экспорт, счётчик треугольников и габарит карточки берут `rawTris` записи. Без этой строки из
+     файла на двадцать семь деталей строилась ОДНА, та, которую `loadModel` делал активной; остальные
+     двадцать шесть стояли с нулём треугольников, пустым габаритом («бесконечные размеры» в карточке) и в
+     экспорт не попадали вовсе. Молча.
+
+     Глобальные логотипы/отверстия на время подменяются пустыми: построитель читает их из globals, а у
+     импортированной детали их нет — иначе на неё налезла бы надпись уходящей модели. */
+  const keepL = logos.slice(), keepH = boxHoles.slice(), keepD = dieFaces.slice();
+  const swap = (arr, next) => { arr.length = 0; for (const q of next) arr.push(q); };
+  try {
+    swap(logos, []); swap(boxHoles, []); swap(dieFaces, []);
+    rec.rawTris = buildTrisForShape('box', params);
+  } finally { swap(logos, keepL); swap(boxHoles, keepH); swap(dieFaces, keepD); }
+  rec.bbox = computeBBox(rec.rawTris);
   models.push(rec);
   return rec;
 }
@@ -6457,11 +6480,15 @@ function importMeshFile(file){
       const many = parts.length > 1;
       let last = null;
       parts.forEach((p, i) => {
-        const nm = many ? (p.name || (stem + ' · ' + (i+1))) : stem;
-        last = addImportedPart(p.tris, nm, !many);          // сборку не раскладываем: у неё своя раскладка
+        const nm = many ? (p.name || (stem + ' · ' + (i+1))) : (p.name || stem);
+        last = addImportedPart(p.tris, nm, !many, p.color);  // сборку не раскладываем: у неё своя раскладка
       });
       loadModel(last);
       regenerate();
+      // Каждой записи — свой меш в сцене. Без этого прохода видно только ту деталь, которую loadModel
+      // сделал активной: у остальных запись есть, геометрия есть, а показывать её нечем. Резалка делает
+      // ровно то же и по той же причине.
+      if (scene3DReady) for (const m of models) ensureModelMesh(m);
       renderModelCards();
       if (scene3DReady) frameCamera(sceneUnionBBox());
       console.log('imported', file.name, parts.length, 'part(s),', total, 'tris');
@@ -19058,7 +19085,60 @@ function parse3MFObjects(xml, self){
   return objs;
 }
 const mfPath = s => String(s||'').replace(/^\/+/, '');          // «/3D/Objects/x.model» → ключ записи ZIP
-function parse3MFModels(files, mainPath){
+/* Имя и цвет детали, как их записал слайсер. Bambu Studio и Orca (то есть почти всё, что скачивается с
+   MakerWorld) кладут рядом с моделью два файла, и порознь они бесполезны:
+
+     `Metadata/model_settings.config`   — имя объекта и НОМЕР филамента у него;
+     `Metadata/project_settings.config` — `filament_colour`, палитра проекта.
+
+   Номер без палитры — просто число, палитра без номера — просто список. Вместе они дают ровно то, что
+   человек видит в слайсере, и ровно то, чего у импортированной детали не было: своё имя вместо «Деталь 38»
+   и свой цвет вместо общего серого на всю сборку.
+
+   ЧЕЙ НОМЕР БРАТЬ. У объекта свой номер, у каждой его части — свой, и часть ПЕРЕКРЫВАЕТ объект: номер
+   объекта это то, что наследуют части, у которых своего нет. Импорт склеивает части объекта в одну
+   деталь, поэтому верный ответ — номер, которым эта геометрия печатается: согласный номер частей, если он
+   у них есть и один на всех, и номер самого объекта во всех остальных случаях (части молчат — значит
+   наследуют его; части спорят — значит одного цвета у склеенной детали нет вовсе, и выдумывать его хуже,
+   чем взять объявленный объектом).
+
+   Имя берётся наоборот, от объекта: имя объекта — это название детали, имя части — название её куска.
+
+   И то и другое читается из СВОИХ метаданных объекта, то есть тех, что не лежат внутри части: ключи
+   называются одинаково, и поиск по телу подряд отдал бы объекту значение первой части, стоило бы ей
+   оказаться выше. Порядок зависит от того, кто писал файл, а ответ зависеть от него не должен. */
+function parse3MFMeta(modelSettings, projectSettings){
+  const objs = new Map();
+  const pick = (txt, k) => { const r = new RegExp('key="' + k + '"\\s+value="([^"]*)"').exec(txt); return r ? r[1] : null; };
+  if (modelSettings){
+    const re = /<object\s+id="(\d+)"([\s\S]*?)<\/object>/g; let m;
+    while ((m = re.exec(modelSettings))){
+      const body = m[2], parts = body.match(/<part\s[^>]*\/>|<part\s[\s\S]*?<\/part>/g) || [];
+      const own = body.replace(/<part\s[^>]*\/>|<part\s[\s\S]*?<\/part>/g, '');
+      const said = []; for (const q of parts){ const e = pick(q, 'extruder'); if (e && said.indexOf(e) < 0) said.push(e); }
+      objs.set(m[1], { name: pick(own, 'name') || pick(body, 'name'),
+                       extruder: +(said.length === 1 ? said[0] : (pick(own, 'extruder') || 0)) });
+    }
+  }
+  let palette = [];
+  if (projectSettings){
+    try { const j = JSON.parse(projectSettings);
+      if (Array.isArray(j.filament_colour)) palette = j.filament_colour.filter(x => /^#[0-9a-fA-F]{6}$/.test(x));
+    } catch(e) {}
+  }
+  return { objs, palette };
+}
+// Имя детали: своё из метаданных слайсера, иначе из XML, иначе номер. Расширение исходного файла в имени
+// объекта («Orbital Laser.stl») — след импорта в слайсер, а не часть названия.
+function mf3MFName(meta, xmlName, id){
+  const n = (meta && meta.name) || xmlName || '';
+  return n.replace(/\.(stl|obj|3mf|step|stp)$/i, '') || ('Деталь ' + id);
+}
+function mf3MFColor(meta, palette){
+  const k = meta ? meta.extruder : 0;
+  return (k > 0 && palette && palette[k-1]) ? palette[k-1] : null;
+}
+function parse3MFModels(files, mainPath, meta){
   const xmlMain = files.get(mainPath) || '';
   const um = /<model[^>]*>/.exec(xmlMain);
   const unit = MF_UNITS[(mfAttr(um ? um[0] : '', 'unit') || 'millimeter')] || 1;
@@ -19078,19 +19158,23 @@ function parse3MFModels(files, mainPath){
     for (const c of o.comps) build(c.path ? mfPath(c.path) : path, c.id, mfMul(c.mat, mat), depth + 1, out);
   };
   const objs = byFile.get(mainPath) || new Map();
+  const objMeta = (meta && meta.objs) || new Map(), palette = (meta && meta.palette) || [];
   const parts = [];
   const reItem = /<item\b([^>]*)\/?>/g; let it;
   while ((it = reItem.exec(xmlMain))){
     const a = '<item' + it[1] + '>', id = mfAttr(a, 'objectid'); if (id == null) continue;
     const path = a.indexOf('p:path') >= 0 ? mfPath(mfAttr(a, 'p:path')) : mainPath;
     const out = []; build(path, id, mfMat(mfAttr(a, 'transform')), 0, out);
-    if (out.length) parts.push({ name: ((byFile.get(path) || new Map()).get(id) || {}).name || ('Деталь ' + id), tris: out });
+    const md = objMeta.get(id);
+    if (out.length) parts.push({ name: mf3MFName(md, ((byFile.get(path) || new Map()).get(id) || {}).name, id),
+                                 color: mf3MFColor(md, palette), tris: out });
   }
   // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой, из любого файла.
   if (!parts.length) for (const [path, m] of byFile) for (const [id, o] of m){
     if (!o.tris.length) continue;
     const out = []; build(path, id, null, 0, out);
-    if (out.length) parts.push({ name: o.name || ('Деталь ' + id), tris: out });
+    const md = objMeta.get(id);
+    if (out.length) parts.push({ name: mf3MFName(md, o.name, id), color: mf3MFColor(md, palette), tris: out });
   }
   if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
   return parts;
@@ -19104,16 +19188,23 @@ function parse3MF(buf){
   // Читаются ВСЕ файлы модели, а не только главный: у расширения Production геометрия лежит по
   // отдельным `3D/Objects/*.model`, и главный несёт одни ссылки.
   const dec = new TextDecoder();
-  return Promise.all(models.map(e => zipRead(buf, e).then(b => [e.name, dec.decode(b)])))
-    .then(pairs => parse3MFModels(new Map(pairs), main.name));
+  const side = nm => { const e = entries.find(x => x.name.replace(/^\/+/, '').toLowerCase() === nm);
+    return e ? zipRead(buf, e).then(b => dec.decode(b), () => null) : Promise.resolve(null); };
+  return Promise.all([
+    Promise.all(models.map(e => zipRead(buf, e).then(b => [e.name, dec.decode(b)]))),
+    side('metadata/model_settings.config'), side('metadata/project_settings.config')
+  ]).then(([pairs, ms, ps]) => parse3MFModels(new Map(pairs), main.name, parse3MFMeta(ms, ps)));
 }
 // Один вход для всех форматов. STL и OBJ разбираются на месте, 3MF — обещанием (распаковка
 // асинхронная), поэтому наружу всегда уходит обещание СПИСКА деталей: у 3MF их бывает много, и
 // склеивать их в одну — значит терять сборку, ради которой формат и взят.
 function parseMeshFileParts(buf, name){
-  if (/\.3mf$/i.test(name||'')) return parse3MF(buf);
+  // Система координат меняется ЗДЕСЬ, на границе, а не в разборщиках: разборщик обязан отдавать то, что
+  // написано в файле (на этом стоят его проверки), а «где верх» — вопрос не формата, а приложения.
+  const frame = parts => parts.map(p => Object.assign({}, p, { tris: fromPrintFrameTris(p.tris) }));
+  if (/\.3mf$/i.test(name||'')) return parse3MF(buf).then(frame);
   const tris = /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
-  return Promise.resolve(tris.length ? [{name:'', tris}] : []);
+  return Promise.resolve(tris.length ? frame([{name:'', tris}]) : []);
 }
 
 /* ---- Edge chamfer / rounding as a general modifier ----------------------------------------------

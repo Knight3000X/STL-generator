@@ -338,6 +338,88 @@ console.log('=== 3MF: составная модель приходит дета�
     models.length = before;
   }
 
+  /* 11) ЦЕПОЧКА ЦЕЛИКОМ. Разбор находил цвет, проверка разбора его видела — а в сборку он не доезжал:
+         посередине стоял шаг, который пересобирал деталь из пары полей (`{name, tris}`) и молча ронял
+         всё остальное. Единственным следом была серая деталь там, где в файле чёрная. Поэтому здесь
+         проверяется не разбор и не запись по отдельности, а ПУТЬ от файла до модели сборки. */
+  {
+    const kept = sanitizeImportParts([{ name:'Цветная', color:'#BD1828', tris: T },
+                                      { name:'Битая', color:'#123456',
+                                        tris: [[[0,0,0],[1,0,0],[NaN,0,0]]] },
+                                      { name:'Полубитая', color:'#00FF00',
+                                        tris: T.concat([[[0,0,0],[1,0,0],[0,Infinity,0]]]) }]);
+    chk('деталь из одних битых треугольников выброшена', kept.length === 2, kept.map(p=>p.name));
+    chk('битый треугольник выброшен, целые остались', kept[1].tris.length === T.length, kept[1].tris.length);
+    chk('ЦВЕТ пережил чистку', kept[0].color === '#BD1828' && kept[1].color === '#00FF00',
+        kept.map(p=>p.color));
+    chk('и имя тоже', kept[0].name === 'Цветная', kept[0].name);
+
+    // …и весь путь: файл → разбор → чистка → запись сборки.
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="7" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh></object></resources>' +
+      '<build><item objectid="7" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></build></model>';
+    const ms = '<?xml version="1.0"?><config><object id="7">' +
+      '<metadata key="name" value="Подставка.stl"/><metadata key="extruder" value="2"/>' +
+      '<part id="7" subtype="normal_part"/></object></config>';
+    const ps = JSON.stringify({ filament_colour: ['#FFFFFF', '#000000'] });
+    const buf = zipStored([
+      {name:'3D/3dmodel.model', method:0, data:enc.encode(model)},
+      {name:'Metadata/model_settings.config', method:0, data:enc.encode(ms)},
+      {name:'Metadata/project_settings.config', method:0, data:enc.encode(ps)}]);
+    const raw = await parseMeshFileParts(buf, 'набор.3mf');
+    const clean = sanitizeImportParts(raw);
+    const before = models.length;
+    const rec = addImportedPart(clean[0].tris, clean[0].name, false, clean[0].color);
+    chk('цвет доехал от файла до записи сборки', rec.color === '#000000', rec.color);
+    chk('имя доехало тоже', rec.name === 'Подставка', rec.name);
+    chk('и геометрия', rec.rawTris.length === 4, rec.rawTris.length);
+    models.length = before;
+  }
+
+  /* 12) МЕСТО ДЕТАЛИ. 3MF несёт его матрицей, вшитой в координаты, — и до записи оно доезжает, а в записи
+         теряется: каждая модель сборки устроена как «форма в своём нуле + место в px/py/pz», и
+         scaleImportedMesh честно центрует сетку на её начале. Замерено на присланном файле: двадцать семь
+         деталей, стоявших от 28 до 838 мм по X, вставали в ОДИН НОЛЬ, друг на друга. */
+  {
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="1" name="A" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh></object></resources>' +
+      '<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>' +
+      '<item objectid="1" transform="1 0 0 0 1 0 0 0 1 30 0 0"/></build></model>';
+    const parts = sanitizeImportParts(await parseMeshFileParts(
+      zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(model)}]), 'узел.3mf'));
+    chk('деталей две', parts.length === 2, parts.length);
+    // Тетра в файле: x 0…2, y 0…4, z 0…6 → в сцене x 0…2, y 0…6, z −4…0. Вторая сдвинута на +30 по X.
+    const org = importAssemblyOrigin(parts);
+    chk('начало сборки — середина её габарита по X и Z',
+        approx(org.x, 16) && approx(org.z, -2), org);
+    const before = models.length;
+    const a = addImportedPart(parts[0].tris, 'A', false, null, org);
+    const b2 = addImportedPart(parts[1].tris, 'B', false, null, org);
+    chk('места РАЗНЫЕ, а не общий ноль', a.px !== b2.px, [a.px, b2.px]);
+    chk('взаимное расположение из файла сохранено', approx(b2.px - a.px, 30), b2.px - a.px);
+    chk('и сборка приехала к началу координат', approx(a.px, -15) && approx(b2.px, 15), [a.px, b2.px]);
+    chk('по Z обе на месте', approx(a.pz, 0) && approx(b2.pz, 0), [a.pz, b2.pz]);
+    // По Y не вычитается ничего: высота над столом — это сама деталь, а не произвол раскладки.
+    chk('высота над столом сохранена', approx(a.py, 3) && approx(b2.py, 3), [a.py, b2.py]);
+    chk('сетка при этом отцентрована на своём нуле',
+        approx((a.bbox.minX + a.bbox.maxX)/2, 0), [a.bbox.minX, a.bbox.maxX]);
+    // Одиночный файл — по-прежнему «следующая правее предыдущей»: у него своей раскладки нет.
+    const solo = addImportedPart(parts[0].tris, 'Один', true, null, null);
+    chk('одиночная деталь раскладывается вправо, а не по координатам файла',
+        solo.px > b2.px, [solo.px, b2.px]);
+    models.length = before;
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.37.0';
+const APP_VERSION = 'v18.37.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6412,12 +6412,52 @@ function sliceActiveModel(){
    предупреждение выше `HEAVY_IMPORT_TRIS`. */
 const MAX_IMPORT_TRIS = 2000000;
 const HEAVY_IMPORT_TRIS = 1200000;
-/* Одна деталь файла — одна модель сборки. Для STL и OBJ деталь всегда одна; 3MF несёт их сколько
-   угодно, каждую со своим местом, и ради этого формат и взят. Место 3MF отдаёт МАТРИЦЕЙ, уже вшитой в
-   координаты, поэтому детали приходят стоящими друг относительно друга правильно — а вот собственный
-   сдвиг модели сборки (`px/py/pz`) для них должен остаться НУЛЕВЫМ. Раскладка «следующая правее
-   предыдущей», которой встречают одиночный STL, разнесла бы собранный узел по столу. */
-function addImportedPart(tris, name, place, color){
+/* Одна деталь файла — одна модель сборки. Для STL и OBJ деталь всегда одна; 3MF несёт их сколько угодно,
+   КАЖДУЮ СО СВОИМ МЕСТОМ, и ради этого формат и взят.
+
+   Место 3MF отдаёт матрицей, вшитой в координаты, — и вот тут стояла ошибка, которую прежний комментарий
+   на этом самом месте не описывал, а ОБЕЩАЛ: «детали приходят стоящими друг относительно друга правильно,
+   а собственный сдвиг записи должен остаться нулевым». Правильно они приходят только до записи. Дальше
+   каждая модель сборки устроена одинаково: ФОРМА лежит в своём нуле, МЕСТО живёт в `px/py/pz`, — и
+   `scaleImportedMesh` честно центрует импортированную сетку на её собственном начале. Место, оставленное
+   в координатах, на этом шаге просто исчезает: замерено на присланном файле — двадцать семь деталей,
+   стоявших в файле от 28 до 838 мм по X, встали в ОДИН НОЛЬ, друг на друга.
+
+   Поэтому место переезжает в смещение записи. По X и Z из него вычитается общее начало сборки:
+   абсолютные координаты 3MF — это внутреннее пространство слайсера, где шесть плит лежат подряд, и деталь
+   с пятой плиты стоит на восьмистах миллиметрах от нуля. Смысл в них имеет только ВЗАИМНОЕ расположение —
+   оно и сохраняется, а сборка целиком приезжает к началу координат. По Y не вычитается ничего: высота над
+   столом — это не произвол раскладки, а сама деталь.
+
+   Раскладка «следующая правее предыдущей», которой встречают одиночный STL, остаётся только для него: у
+   собранного узла своя раскладка, и разносить его по столу нечего. */
+function importAssemblyOrigin(parts){
+  let loX = Infinity, hiX = -Infinity, loZ = Infinity, hiZ = -Infinity;
+  for (const p of parts){ const b = computeBBox(p.tris);
+    if (b.minX < loX) loX = b.minX; if (b.maxX > hiX) hiX = b.maxX;
+    if (b.minZ < loZ) loZ = b.minZ; if (b.maxZ > hiZ) hiZ = b.maxZ; }
+  return Number.isFinite(loX) ? { x: (loX+hiX)/2, z: (loZ+hiZ)/2 } : { x: 0, z: 0 };
+}
+function importPartOffset(b, origin){
+  const o = origin || { x: 0, z: 0 };
+  return { px: (b.minX+b.maxX)/2 - o.x, py: (b.minY+b.maxY)/2, pz: (b.minZ+b.maxZ)/2 - o.z };
+}
+/* Мусор выбрасывается ДО подсчёта: скан приносит нечисловые координаты, и деталь из одних таких не должна
+   занимать место в сборке.
+
+   Деталь при этом КОПИРУЕТСЯ ЦЕЛИКОМ, а не пересобирается из пары полей, и это не стилистика. Первая
+   версия писала здесь `{name, tris}` — и ЦВЕТ, только что прочитанный из метаданных слайсера, тихо
+   оставался в этой строке. Разбор его находил, проверка разбора его видела, до сборки он не доезжал, и
+   единственным следом была серая деталь там, где в файле стоит чёрная. Поле, добавленное в одном конце
+   цепочки, обязано пережить её всю; перечисление полей посередине — это место, где оно однажды не
+   переживёт. Поэтому шаг вынесен функцией и проверяется отдельно. */
+function sanitizeImportParts(parts){
+  return parts
+    .map(p => Object.assign({}, p, {
+      tris: p.tris.filter(t => t.every(v => v.length === 3 && v.every(Number.isFinite))) }))
+    .filter(p => p.tris.length);
+}
+function addImportedPart(tris, name, place, color, origin){
   const b = computeBBox(tris);
   const id = nextImportId++; importedMeshes.set(id, tris);
   const params = defaultBoxParams();
@@ -6431,6 +6471,9 @@ function addImportedPart(tris, name, place, color){
     let right = -Infinity;
     for (const m of models) if (m.visible && m.bbox) right = Math.max(right, m.bbox.maxX + m.px);
     rec.px = (right === -Infinity) ? 0 : Math.round(right + (b.maxX-b.minX)/2 + 12);
+  } else {
+    const o = importPartOffset(b, origin);
+    rec.px = o.px; rec.py = o.py; rec.pz = o.pz;
   }
   /* СЕТКА ПИШЕТСЯ В САМУ ЗАПИСЬ. Ровно та же ловушка, что описана у spawnFrozenModels, и это уже
      четвёртое место, где она сработала: `buildTrisForShape` для НЕАКТИВНЫХ моделей никто не зовёт —
@@ -6458,10 +6501,7 @@ function importMeshFile(file){
     parseMeshFileParts(e.target.result, file.name).then(parts => {
       if (!parts || !parts.length){
         alert('В файле не найдено треугольников (поддерживаются STL binary/ASCII, OBJ и 3MF).'); return; }
-      // Мусор выбрасывается ДО подсчёта: скан приносит нечисловые координаты, и деталь из одних таких
-      // не должна занимать место в сборке.
-      parts = parts.map(p => ({name:p.name, tris:p.tris.filter(t => t.every(v => v.length===3 && v.every(Number.isFinite)))}))
-                   .filter(p => p.tris.length);
+      parts = sanitizeImportParts(parts);
       if (!parts.length){ alert('Все треугольники повреждены (нечисловые координаты).'); return; }
       const total = parts.reduce((n, p) => n + p.tris.length, 0);
       if (total > MAX_IMPORT_TRIS){ alert('Слишком много треугольников: '+total.toLocaleString('ru')+
@@ -6479,9 +6519,11 @@ function importMeshFile(file){
       const stem = file.name.replace(/\.(stl|obj|3mf)$/i,'') || 'Импорт';
       const many = parts.length > 1;
       let last = null;
+      // Начало сборки считается ДО добавления: оно общее на все детали, и по одной его не вывести.
+      const origin = many ? importAssemblyOrigin(parts) : null;
       parts.forEach((p, i) => {
         const nm = many ? (p.name || (stem + ' · ' + (i+1))) : (p.name || stem);
-        last = addImportedPart(p.tris, nm, !many, p.color);  // сборку не раскладываем: у неё своя раскладка
+        last = addImportedPart(p.tris, nm, !many, p.color, origin);   // сборку не раскладываем: у неё своя
       });
       loadModel(last);
       regenerate();

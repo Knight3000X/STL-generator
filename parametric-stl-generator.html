@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.37.1';
+const APP_VERSION = 'v18.37.2';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -19122,9 +19122,35 @@ function parse3MFObjects(xml, self){
     while ((c = reC.exec(body))){ const a = '<component' + c[1] + '>';
       comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')),
                    path: a.indexOf('p:path') >= 0 ? mfAttr(a,'p:path') : null }); }
-    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps });
+    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps,
+                   pid: mfAttr(attrs, 'pid'), pindex: mfAttr(attrs, 'pindex') });
   }
   return objs;
+}
+/* Цвета САМОГО ФОРМАТА, а не слайсера. Спецификация 3MF описывает их `<basematerials>`, расширение
+   материалов — `<m:colorgroup>`; и то и другое читает любой просмотрщик, и то и другое пишет этот
+   генератор. Слайсерных метаданных в таком файле может не быть вовсе — а цвет в нём есть, и до сих пор
+   импорт его не замечал: свой же экспорт возвращался серым.
+
+   Группы материалов живут в ОДНОМ пространстве имён с объектами (потому у экспорта материалы занимают
+   id 1, а объекты начинаются с двойки), поэтому ключ здесь — тот же id, на который ссылается `pid`. */
+function parse3MFMaterials(xml){
+  const groups = new Map();
+  const grab = (re, tagRe, attr) => { let g;
+    while ((g = re.exec(xml))){
+      const id = mfAttr('<x' + g[1] + '>', 'id'); if (id == null) continue;
+      const list = groups.get(id) || []; let c;
+      const inner = new RegExp(tagRe, 'g');
+      while ((c = inner.exec(g[2]))){
+        const raw = mfAttr('<x' + c[1] + '>', attr) || '';
+        const hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(raw) ? raw.slice(0, 7) : null;
+        list.push(hex);                                     // null — место занято, но цвета в нём нет
+      }
+      groups.set(id, list);
+    } };
+  grab(/<basematerials\b([^>]*)>([\s\S]*?)<\/basematerials>/g, '<base\\b([^>]*)\\/?>', 'displaycolor');
+  grab(/<m:colorgroup\b([^>]*)>([\s\S]*?)<\/m:colorgroup>/g, '<m:color\\b([^>]*)\\/?>', 'color');
+  return groups;
 }
 const mfPath = s => String(s||'').replace(/^\/+/, '');          // «/3D/Objects/x.model» → ключ записи ZIP
 /* Имя и цвет детали, как их записал слайсер. Bambu Studio и Orca (то есть почти всё, что скачивается с
@@ -19136,6 +19162,11 @@ const mfPath = s => String(s||'').replace(/^\/+/, '');          // «/3D/Objects
    Номер без палитры — просто число, палитра без номера — просто список. Вместе они дают ровно то, что
    человек видит в слайсере, и ровно то, чего у импортированной детали не было: своё имя вместо «Деталь 38»
    и свой цвет вместо общего серого на всю сборку.
+
+   Метаданные слайсера идут ПЕРВЫМИ, а `<basematerials>` формата — запасным: печатается тем, что назначено
+   филаментом, и если слайсер сказал своё слово, оно и есть правда. Но сказать его есть кому не всегда —
+   в файле без слайсерных метаданных (свой же экспорт этого генератора, любой конвертер) цвет лежит только
+   в материалах формата, и до сих пор импорт не читал их вовсе.
 
    ЧЕЙ НОМЕР БРАТЬ. У объекта свой номер, у каждой его части — свой, и часть ПЕРЕКРЫВАЕТ объект: номер
    объекта это то, что наследуют части, у которых своего нет. Импорт склеивает части объекта в одну
@@ -19184,8 +19215,25 @@ function parse3MFModels(files, mainPath, meta){
   const xmlMain = files.get(mainPath) || '';
   const um = /<model[^>]*>/.exec(xmlMain);
   const unit = MF_UNITS[(mfAttr(um ? um[0] : '', 'unit') || 'millimeter')] || 1;
-  const byFile = new Map();
-  for (const [path, xml] of files) byFile.set(path, parse3MFObjects(xml, path));
+  const byFile = new Map(), matByFile = new Map();
+  for (const [path, xml] of files){ byFile.set(path, parse3MFObjects(xml, path));
+    matByFile.set(path, parse3MFMaterials(xml)); }
+  /* Цвет объекта по ссылке на материал — и по ссылкам всего, из чего он собран. Ответ есть только тогда,
+     когда цвет ОДИН: тело из нескольких частей разного цвета склеивается импортом в одну деталь, и одного
+     цвета у неё нет вовсе — выдумать его хуже, чем оставить общий серый. Та же логика, что у номера
+     филамента: части согласны — берём, спорят — не берём. */
+  const objColors = (path, id, depth, out) => {
+    if (depth > 12 || out.size > 4) return;
+    const o = (byFile.get(path) || new Map()).get(id); if (!o) return;
+    if (o.pid != null && o.pindex != null){
+      const g = (matByFile.get(path) || new Map()).get(o.pid);
+      const c = g && g[+o.pindex];
+      if (c) out.add(c);
+    }
+    for (const c of o.comps) objColors(c.path ? mfPath(c.path) : path, c.id, depth + 1, out);
+  };
+  const matColor = (path, id) => { const out = new Set(); objColors(path, id, 0, out);
+    return out.size === 1 ? [...out][0] : null; };
   // Развёртка объекта в треугольники: своя сетка плюс всё, на что он ссылается. Глубина ограничена —
   // ссылка на самого себя в чужом файле встречается, и без предела это зависание, а не ошибка.
   const build = (path, id, mat, depth, out) => {
@@ -19209,14 +19257,15 @@ function parse3MFModels(files, mainPath, meta){
     const out = []; build(path, id, mfMat(mfAttr(a, 'transform')), 0, out);
     const md = objMeta.get(id);
     if (out.length) parts.push({ name: mf3MFName(md, ((byFile.get(path) || new Map()).get(id) || {}).name, id),
-                                 color: mf3MFColor(md, palette), tris: out });
+                                 color: mf3MFColor(md, palette) || matColor(path, id), tris: out });
   }
   // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой, из любого файла.
   if (!parts.length) for (const [path, m] of byFile) for (const [id, o] of m){
     if (!o.tris.length) continue;
     const out = []; build(path, id, null, 0, out);
     const md = objMeta.get(id);
-    if (out.length) parts.push({ name: mf3MFName(md, o.name, id), color: mf3MFColor(md, palette), tris: out });
+    if (out.length) parts.push({ name: mf3MFName(md, o.name, id),
+                                 color: mf3MFColor(md, palette) || matColor(path, id), tris: out });
   }
   if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
   return parts;

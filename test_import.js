@@ -420,6 +420,85 @@ console.log('=== 3MF: составная модель приходит дета�
     models.length = before;
   }
 
+  /* 13) ЦВЕТА САМОГО ФОРМАТА. Спецификация 3MF описывает их `<basematerials>`, расширение материалов —
+         `<m:colorgroup>`; и то и другое пишет этот генератор, и то и другое до сих пор импорт не читал
+         вовсе. Следствие было ровно одно и вполне обидное: СВОЙ ЖЕ экспорт возвращался серым — цвет в
+         файле есть, любой просмотрщик его показывает, а генератор своего же цвета не узнаёт. */
+  {
+    const mats = parse3MFMaterials(
+      '<resources><basematerials id="1">' +
+      '<base name="a" displaycolor="#112233FF"/><base name="b" displaycolor="#445566"/>' +
+      '<base name="c" displaycolor="мусор"/></basematerials>' +
+      '<m:colorgroup id="7"><m:color color="#AABBCCDD"/></m:colorgroup></resources>');
+    chk('basematerials прочитан', (mats.get('1')||[]).length === 3, mats.get('1'));
+    chk('прозрачность отброшена, цвет остался', mats.get('1')[0] === '#112233' && mats.get('1')[1] === '#445566',
+        mats.get('1'));
+    chk('мусор не притворяется цветом', mats.get('1')[2] === null, mats.get('1')[2]);
+    chk('место в группе за ним сохранено (иначе съедет pindex)', mats.get('1').length === 3);
+    chk('m:colorgroup читается тоже', (mats.get('7')||[])[0] === '#AABBCC', mats.get('7'));
+
+    // Файл БЕЗ слайсерных метаданных: цвет лежит только в материалах формата.
+    const mesh = '<mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>' +
+      '<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>' +
+      '</triangles></mesh>';
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<basematerials id="1"><base name="ч" displaycolor="#141414FF"/><base name="к" displaycolor="#BD1828FF"/></basematerials>' +
+      '<object id="2" type="model" pid="1" pindex="0">' + mesh + '</object>' +
+      '<object id="3" type="model" pid="1" pindex="1">' + mesh + '</object>' +
+      // Тело из ДВУХ частей разного цвета: одного цвета у склеенной детали нет вовсе.
+      '<object id="4" type="model"><components>' +
+      '<component objectid="2" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>' +
+      '<component objectid="3" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object>' +
+      '</resources><build>' +
+      '<item objectid="2" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>' +
+      '<item objectid="3" transform="1 0 0 0 1 0 0 0 1 40 0 0"/>' +
+      '<item objectid="4" transform="1 0 0 0 1 0 0 0 1 80 0 0"/></build></model>';
+    const parts = await parse3MF(zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(model)}]));
+    chk('деталей три', parts.length === 3, parts.length);
+    chk('цвет взят из материала формата', parts[0].color === '#141414' && parts[1].color === '#BD1828',
+        parts.map(p=>p.color));
+    chk('у тела из частей разного цвета своего цвета нет', !parts[2].color, parts[2].color);
+
+    // Слайсер главнее: печатается тем, что назначено филаментом.
+    const ms = '<?xml version="1.0"?><config><object id="2">' +
+      '<metadata key="extruder" value="2"/><part id="2" subtype="normal_part"/></object></config>';
+    const ps = JSON.stringify({ filament_colour: ['#FFFFFF', '#00FF00'] });
+    const both = await parse3MF(zipStored([
+      {name:'3D/3dmodel.model', method:0, data:enc.encode(model)},
+      {name:'Metadata/model_settings.config', method:0, data:enc.encode(ms)},
+      {name:'Metadata/project_settings.config', method:0, data:enc.encode(ps)}]));
+    chk('метаданные слайсера перебивают материал формата', both[0].color === '#00FF00', both[0].color);
+    chk('а там, где слайсер молчит, остаётся материал', both[1].color === '#BD1828', both[1].color);
+  }
+
+  /* 14) КРУГ ЗАМКНУТ: свой экспорт → свой импорт. Цвет, имя и взаимное расположение обязаны вернуться. */
+  {
+    const keepModels = models.slice(), keepActive = activeModelId, keepCached = cachedRawTris;
+    Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false});
+    logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
+    const solid = buildTrisForShape('box', paramState.box);
+    models.length = 0;
+    [['Тело','#141414',0], ['Логотип','#bd1828',60], ['Третья','#00aa55',120]].forEach(([nm, col, px]) =>
+      models.push({ id: nextModelId++, name: nm, visible: true, rawTris: solid, shape: 'box',
+        params: JSON.parse(JSON.stringify(paramState.box)), logos: [], holes: [], dieFaces: [],
+        color: col, rx:0, ry:0, rz:0, px, py:0, pz:0, bbox: computeBBox(solid) }));
+    activeModelId = models[0].id; cachedRawTris = solid;
+    const ab = await assemblyTo3MF().arrayBuffer();
+    const back = sanitizeImportParts(await parseMeshFileParts(ab, 'своё.3mf'));
+    chk('вернулись все три детали', back.length === 3, back.length);
+    chk('имена вернулись', back.map(p=>p.name).join('|') === 'Тело|Логотип|Третья', back.map(p=>p.name));
+    chk('цвета вернулись', back.map(p=>(p.color||'').toLowerCase()).join('|') === '#141414|#bd1828|#00aa55',
+        back.map(p=>p.color));
+    const org = importAssemblyOrigin(back);
+    const offs = back.map(p => importPartOffset(computeBBox(p.tris), org).px);
+    chk('взаимное расположение вернулось', approx(offs[1]-offs[0], 60) && approx(offs[2]-offs[1], 60), offs);
+    models.length = 0; for (const m of keepModels) models.push(m);
+    activeModelId = keepActive; cachedRawTris = keepCached;
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

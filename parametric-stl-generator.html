@@ -1234,7 +1234,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.39.0';
+const APP_VERSION = 'v18.40.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5583,7 +5583,14 @@ const SHAPE_PARAMS = {
     {group:'Воронка', key:'vaseNeckAt', label:'Ваза: где шейка (% высоты)', min:15, max:95, step:1, default:75, unit:'%'},
     {group:'Воронка', key:'vaseMouthD', label:'Ваза: Ø устья', min:10, max:300, step:1, default:70, unit:'мм'},
     {group:'Воронка', key:'vaseFacets', label:'Ваза: число граней (0 = круглая)', min:0, max:24, step:1, default:0, unit:'', int:true},
-    {group:'Воронка', key:'vaseTwist', label:'Ваза: закрутка граней на всю высоту', min:-360, max:360, step:5, default:0, unit:'°'},
+    {group:'Воронка', key:'vaseRelief', label:'Ваза: рельеф сечения', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'flute',t:'каннелюры (желоба врезаны)'},{v:'rib',t:'валики (гребни стоят)'},{v:'lobe',t:'лепестки (излом в ложбине)'}],
+      hint:'Радиус, зависящий от угла. Каннелюры и валики — одна формула с разной опорой: у первых гладкая поверхность прорезана желобами, у вторых гребни стоят на утопленном фоне. Лепестки отличаются тем, что в ложбине у них ИЗЛОМ, а не гладкий минимум, — именно излом читается как лепесток, а не как волна. Названный диаметр при любом рельефе остаётся габаритом: все три вида только убавляют радиус.'},
+    {group:'Воронка', key:'vaseReliefN', label:'Ваза: рельеф — сколько по кругу', min:2, max:48, step:1, default:8, unit:'', int:true},
+    {group:'Воронка', key:'vaseReliefD', label:'Ваза: рельеф — глубина', min:0, max:20, step:0.5, default:3, unit:'мм',
+      hint:'Ограничена внутренней стенкой, а не вкусом: рельеф вычитается и снаружи, и изнутри (стенка остаётся постоянной), поэтому в самом узком месте профиля внутри обязано остаться 0.6 мм радиуса. Запрошенная глубина сверх этого срезается, и об этом сказано в «Печатаемости» — молча подрезать введённое число значит соврать про деталь.'},
+    {group:'Воронка', key:'vaseReliefSharp', label:'Ваза: рельеф — острота', min:0, max:1, step:0.05, default:0.5, unit:''},
+    {group:'Воронка', key:'vaseTwist', label:'Ваза: закрутка граней/рельефа на всю высоту', min:-360, max:360, step:5, default:0, unit:'°'},
     {group:'Воронка', key:'vaseFloor', label:'Ваза: дно (выкл = абажур)', type:'bool', default:true},
     {group:'Воронка', key:'fnDose', label:'Дозатор: доза за оборот (задаёт размер барабана)', min:0.5, max:100, step:0.5, default:10, unit:'мл'},
     {group:'Воронка', key:'fnDoseClear', label:'Дозатор: зазор барабана в камере', min:0.15, max:1, step:0.05, default:0.4, unit:'мм'},
@@ -12694,11 +12701,106 @@ function vaseProfileR(t, pts){
   const u2=u*u, u3=u2*u;
   return 0.5*((2*p1[1]) + (-p0[1]+p2[1])*u + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*u2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*u3);
 }
-function vaseShellTris(outer, inner, seg, nFac, twist){
+/* ---- Рельеф по телу вращения (каннелюры, валики, лепестки) ----------------------------------------
+   У вазы было ровно два сечения: круг и правильный N-угольник. Рельеф добавляет силуэту третью
+   степень свободы — радиус, зависящий от УГЛА, — и делает это той же функцией r(θ), на которой уже
+   держатся лыска в ступице и шпоночный паз: луч из центра пересекает такую границу ровно один раз,
+   поэтому оболочка сшивается по общей угловой сетке водонепроницаемо по построению, без CSG.
+
+   ТРИ ВИДА — ОДНА ФОРМУЛА, отличаются тем, что берётся за опору:
+     каннелюры  r = R − d·f       желоба врезаны в гладкую поверхность;
+     валики     r = R − d + d·f   гребни стоят на утопленном фоне;
+     лепестки   то же, но f = |cos(nθ/2)|^e. У косинуса в ложбине гладкий минимум, у модуля — ИЗЛОМ,
+                и читается как лепесток именно излом, а не глубина.
+   Острота — это показатель степени: e = 8^(2s−1). s = 0.5 даёт чистый приподнятый косинус, s → 0 —
+   широкие плоские бугры, s → 1 — узкие спицы. Один параметр вместо трёх коэффициентов суперформулы
+   Гилиса, а диапазон форм тот же.
+
+   НАЗВАННЫЙ ДИАМЕТР ОСТАЁТСЯ ГАБАРИТОМ. Все три вида только УБАВЛЯЮТ радиус: f ∈ [0,1] и максимум
+   каждой формулы равен R. Иначе «Ø в самом широком месте 95» перестало бы что-либо значить — ваза с
+   валиками вылезала бы за собственный названный размер и не влезла бы на полку, под которую её считали.
+
+   ГЛУБИНА ОГРАНИЧЕНА ВНУТРЕННЕЙ СТЕНКОЙ, а не вкусом: рельеф вычитается и снаружи, и изнутри (стенка
+   остаётся постоянной), поэтому в самом узком месте профиля внутренний радиус обязан остаться
+   положительным. Предел считается, а не угадывается, и о срезанной глубине панель сообщает. */
+const VASE_INNER_MIN = 0.6;      // мм внутреннего радиуса, которые рельеф не имеет права съесть
+const VASE_LOBE_SAMPLES = 8;     // выборок угловой сетки на один гребень / желоб / лепесток
+const VASE_SEG_MAX = 2400;       // потолок угловой сетки
+const VASE_RELIEF_KIND = { none:1, flute:1, rib:1, lobe:1 };
+function vaseReliefExp(sharp){
+  const s = Math.max(0, Math.min(1, sharp == null ? 0.5 : sharp));
+  return Math.pow(8, 2*s - 1);
+}
+function vaseReliefF(kind, n, sharp, a){
+  const e = vaseReliefExp(sharp);
+  if (kind === 'lobe') return Math.pow(Math.abs(Math.cos(n*a/2)), e);
+  return Math.pow((1 + Math.cos(n*a))/2, e);
+}
+function vaseReliefR(r, a, rel){
+  if (!rel || !(rel.depth > 0) || rel.kind === 'none') return r;
+  const f = vaseReliefF(rel.kind, rel.n, rel.sharp, a);
+  return (rel.kind === 'flute') ? r - rel.depth*f : r - rel.depth + rel.depth*f;
+}
+// Наименьшее общее кратное: угловая сетка обязана быть кратна И числу граней, И числу лепестков, иначе
+// излом попадёт между выборками и грань выйдет зубчатой, а лепесток — смазанным.
+function lcmInt(a, b){
+  a = Math.max(1, Math.round(a)); b = Math.max(1, Math.round(b));
+  let x = a, y = b; while (y) { const t = x % y; x = y; y = t; }
+  return a / x * b;
+}
+/* Вся арифметика вазы одним местом: строитель и предупреждение о срезанной глубине обязаны считать
+   ОДНИМ правилом, иначе панель начнёт обещать одно, а модель приезжать другой. */
+function vaseSpec(p){
+  const H    = Math.max(20, p.vaseH||120);
+  const wall = Math.max(0.8, p.fnWall||1.6);
+  const rB   = Math.max(4, (p.vaseBaseD||60)/2);
+  const rBe  = Math.max(4, (p.vaseBellyD||95)/2);
+  const rN   = Math.max(4, (p.vaseNeckD||55)/2);
+  const rM   = Math.max(4, (p.vaseMouthD||70)/2);
+  const tBe  = Math.max(0.05, Math.min(0.85, (p.vaseBellyAt||35)/100));
+  const tN   = Math.max(tBe+0.08, Math.min(0.95, (p.vaseNeckAt||75)/100));
+  const nFac = Math.max(0, Math.min(24, Math.round(p.vaseFacets||0)));
+  const twist= (p.vaseTwist||0)*Math.PI/180;
+  const pts  = [[0,rB],[tBe,rBe],[tN,rN],[1,rM]];
+  const nS   = Math.max(24, Math.round(H/1.5));
+  const prof = [];
+  let rMin = Infinity, rMax = 0;
+  for(let i=0;i<=nS;i++){ const r = Math.max(1.2, vaseProfileR(i/nS, pts));
+    prof.push(r); if(r<rMin) rMin=r; if(r>rMax) rMax=r; }
+  /* Огранка только УБАВЛЯЕТ радиус: cos(π/N)/cos(m) ≤ 1, минимум приходится на середину грани. Значит
+     самое тонкое место оболочки — внутренний радиус, умноженный на cos(π/N), и запас под рельеф надо
+     мерить от него, а не от круглого профиля: иначе на шестиграннике рельеф прорезал бы стенку насквозь. */
+  const facK = nFac>=3 ? Math.cos(Math.PI/nFac) : 1;
+  const kind = VASE_RELIEF_KIND[p.vaseRelief] ? p.vaseRelief : 'none';
+  const n    = Math.max(2, Math.min(48, Math.round(p.vaseReliefN||8)));
+  const sharp= Math.max(0, Math.min(1, p.vaseReliefSharp == null ? 0.5 : p.vaseReliefSharp));
+  const want = (kind === 'none') ? 0 : Math.max(0, p.vaseReliefD||0);
+  const cap  = Math.max(0, Math.max(0.4, rMin - wall)*facK - VASE_INNER_MIN);
+  const rel  = { kind, n, sharp, want, cap, depth: Math.min(want, cap) };
+  let seg = Math.max(48, Math.round(2*Math.PI*rMax/1.0));
+  /* Сетка кратна ДВУМ периодам рельефа, а не одному. Гребень и ложбина стоят через ПОЛпериода, и при
+     кратности n выборка попадает только на гребни: у лепестка ложбина — излом, и промахнувшаяся мимо
+     него сетка срезает угол хордой. Замерено: при n = 12 и глубине 4 мм размах слоя выходил 5.75 вместо
+     6.00 — четверть глубины пропадала, а модель при этом оставалась герметичной и на вид правильной.
+     У каннелюр и валиков то же самое при малой остроте: ((1+cos)/2)^e около ложбины ведёт себя как
+     |θ−θ₀|^(2e), и при e < 0.5, то есть при остроте ниже 1/3, это тоже излом. */
+  const relPer = rel.depth>0 ? 2*n : 0;
+  const per = (nFac>=3 && relPer) ? lcmInt(nFac, relPer) : (nFac>=3 ? nFac : relPer);
+  if (per > 0){
+    const need = Math.max(seg, rel.depth>0 ? n*VASE_LOBE_SAMPLES : 0, nFac>=3 ? nFac*2 : 0);
+    let k = Math.max(1, Math.ceil(need/per));
+    const kMax = Math.floor(VASE_SEG_MAX/per);
+    if (kMax >= 1 && k > kMax) k = kMax;
+    seg = per*k;
+  }
+  return { H, wall, pts, nS, prof, nFac, facK, twist, rel, seg, rMin, rMax };
+}
+function vaseShellTris(outer, inner, seg, nFac, twist, rel){
   const out=[], n=outer.length, TAU=2*Math.PI;
-  const rad=(r, a, f)=>{ if(nFac<3) return r;
-    const k=TAU/nFac, ph=a + twist*f, m=((ph%k)+k)%k - k/2;
-    return r*Math.cos(Math.PI/nFac)/Math.cos(m); };
+  const rad=(r, a, f)=>{ const ph=a + twist*f;
+    let R = r;
+    if(nFac>=3){ const k=TAU/nFac, m=((ph%k)+k)%k - k/2; R = R*Math.cos(Math.PI/nFac)/Math.cos(m); }
+    return vaseReliefR(R, ph, rel); };
   const V=(prof,i,k)=>{ const a=TAU*(k%seg)/seg, f=n>1 ? i/(n-1) : 0;
     const r=rad(prof[i][0], a, f); return [r*Math.cos(a), prof[i][1], r*Math.sin(a)]; };
   for(let s=0;s<n-1;s++) for(let k=0;k<seg;k++){
@@ -12714,28 +12816,20 @@ function vaseShellTris(outer, inner, seg, nFac, twist){
   return out;
 }
 function buildVase(p){
-  const H    = Math.max(20, p.vaseH||120);
-  const wall = Math.max(0.8, p.fnWall||1.6);
-  const rB   = Math.max(4, (p.vaseBaseD||60)/2);
-  const rBe  = Math.max(4, (p.vaseBellyD||95)/2);
-  const rN   = Math.max(4, (p.vaseNeckD||55)/2);
-  const rM   = Math.max(4, (p.vaseMouthD||70)/2);
-  let tBe = Math.max(0.05, Math.min(0.85, (p.vaseBellyAt||35)/100));
-  let tN  = Math.max(tBe+0.08, Math.min(0.95, (p.vaseNeckAt||75)/100));
-  const nFac = Math.max(0, Math.min(24, Math.round(p.vaseFacets||0)));
-  const twist= (p.vaseTwist||0)*Math.PI/180;
-  const pts  = [[0,rB],[tBe,rBe],[tN,rN],[1,rM]];
-  const nS   = Math.max(24, Math.round(H/1.5));
-  const rMax = Math.max(rB,rBe,rN,rM);
-  let seg    = Math.max(48, Math.round(2*Math.PI*rMax/1.0));
-  if(nFac>=3) seg = nFac*Math.max(2, Math.round(seg/nFac));      // facet edges land on samples
+  const s = vaseSpec(p);
   const outer=[], inner=[];
-  for(let i=0;i<=nS;i++){ const t=i/nS, r=Math.max(1.2, vaseProfileR(t, pts)), y=H*t;
-    outer.push([r,y]); inner.push([Math.max(0.4, r-wall), y]); }
-  const tris = vaseShellTris(outer, inner, seg, nFac, twist);
+  for(let i=0;i<=s.nS;i++){ const r=s.prof[i], y=s.H*(i/s.nS);
+    outer.push([r,y]); inner.push([Math.max(0.4, r-s.wall), y]); }
+  const tris = vaseShellTris(outer, inner, s.seg, s.nFac, s.twist, s.rel);
   if(p.vaseFloor!==false){                                        // a lampshade is the same shell, open
-    const rFloor=Math.max(0.6, Math.max(1.2, vaseProfileR(0.02, pts)) - wall*0.4);
-    for(const T of discYTris(0,0, rFloor, -0.01, wall, Math.max(32, Math.round(2*Math.PI*rFloor/1.2)))) tris.push(T);
+    /* ДНО — ДИСК ВНУТРИ ОБОЛОЧКИ, и радиус ему нужен меньше САМОГО УЗКОГО места стенки, а не круглого
+       профиля. Огранка ужимает стенку в середине грани в cos(π/N) раз, рельеф вычитает свою глубину —
+       и без обоих множителей диск вылезал наружу: у шестигранной вазы Ø60 стенка в середине грани
+       стоит на 25.98 мм, а дно доставало до 29.97 и торчало из неё воротником. `manifoldCheck` на это
+       не жалуется и не может: два пересекающихся замкнутых тела герметичны по построению, ошибка тут
+       не в сетке, а в размере, и ловится она измерением, а не проверкой рёбер. */
+    const rFloor=Math.max(0.6, (Math.max(1.2, vaseProfileR(0.02, s.pts)) - s.wall*0.4)*s.facK - s.rel.depth);
+    for(const T of discYTris(0,0, rFloor, -0.01, s.wall, Math.max(32, Math.round(2*Math.PI*rFloor/1.2)))) tris.push(T);
   }
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
@@ -22019,6 +22113,15 @@ function collectPrintWarnings(p){
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
   }
   if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  /* СРЕЗАННАЯ ГЛУБИНА РЕЛЬЕФА. Ограничение здесь настоящее — рельеф вычитается и изнутри, и глубже
+     стенки резать нечего, — но подрезать введённое число молча значит показать человеку не ту вазу,
+     которую он заказал, и не сказать об этом ни слова. Считается тем же `vaseSpec`, что и строит. */
+  if (p.fnOn && (p.fnMode||'funnel') === 'vase'){
+    const rel = vaseSpec(p).rel;
+    if (rel.want > rel.depth + 0.05)
+      w.push('рельеф вазы: просили ' + rel.want.toFixed(1) + ' мм глубины, стенка держит ' +
+             rel.depth.toFixed(1) + ' — глубже резать нечего; тоньше стенка или шире профиль');
+  }
   if (p.psOn && typeof logos !== 'undefined' && logos.some(l => l.heightmap && (l.depth||0)) &&
       Math.max(0, p.psSlot != null ? p.psSlot : 18) > 1 &&
       logos.some(l => l.heightmap && (l.depth||0) && standLogoSurface(l, p) === 'floor'))

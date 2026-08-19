@@ -353,6 +353,47 @@ console.log('=== угловая сетка кратна и граням, и гр
   chk('на мелкой вазе выборок на гребень всё равно восемь', e.seg/24>=8, {seg:e.seg, per:e.seg/24});
 }
 
+console.log('=== дно достаёт до стенки НА КАЖДОМ УГЛЕ ===');
+{
+  /* Круглый диск обязан лежать между внутренней и наружной поверхностью на каждом угле, а у рельефной
+     вазы эти границы гуляют навстречу друг другу: внутренняя доходит до максимума на ГРЕБНЕ, наружная
+     опускается до минимума в ЛОЖБИНЕ. Замерено на Ø дна 60, стенке 2 и каннелюрах глубиной 3:
+     внутренняя 28.61, наружная 27.61 — интервал ПУСТ, круглого дна для такой вазы не существует вовсе.
+     Круг любого радиуса либо не достаёт до стенки на гребнях (сквозные щели снизу), либо вылезает
+     наружу в ложбинах. Поэтому дно повторяет тот же r(θ), что и оболочка.
+
+     Проверяется по функциям, а не лучом: луч по сетке меряет то же самое, но за минуты, а разрешение по
+     углу у него всё равно грубее. Что построенная сетка следует этому контуру, держит проверка «дно не
+     торчит наружу» ниже — она как раз лучевая. */
+  const fit = (ov) => {
+    base(ov);                                   // прогоняем через тот же путь, что и строитель
+    const s = vaseSpec(paramState.box);
+    const rProf = Math.max(1.2, vaseProfileR(0.02, s.pts)), rBase = rProf - s.wall*0.4;
+    let inGap = 1e9, outGap = 1e9;
+    for(let k=0;k<1440;k++){ const a=2*Math.PI*k/1440;
+      const fl = Math.max(0.6, vaseSectionR(rBase, a, s.nFac, s.rel));
+      inGap  = Math.min(inGap,  fl - vaseSectionR(rProf - s.wall, a, s.nFac, s.rel));
+      outGap = Math.min(outGap, vaseSectionR(rProf, a, s.nFac, s.rel) - fl); }
+    return {inGap, outGap};
+  };
+  for(const ov of [{}, {vaseRelief:'flute',vaseReliefN:8,vaseReliefD:3},
+                   {vaseRelief:'rib',vaseReliefN:12,vaseReliefD:5},
+                   {vaseRelief:'lobe',vaseReliefN:5,vaseReliefD:6},
+                   {vaseRelief:'lobe',vaseReliefN:5,vaseReliefD:6,vaseReliefSharp:1},
+                   {vaseFacets:6}, {vaseFacets:3},
+                   {vaseFacets:6,vaseRelief:'flute',vaseReliefD:4},
+                   {vaseFacets:5,vaseRelief:'rib',vaseReliefD:9,vaseReliefN:7},
+                   {fnWall:8,vaseRelief:'flute',vaseReliefD:3}]){
+    const f = fit(ov);
+    chk('дно перекрывает стенку '+JSON.stringify(ov),
+        f.inGap > 0.05 && f.outGap > 0.05, {in:+f.inGap.toFixed(3), out:+f.outGap.toFixed(3)});
+  }
+  // И тот самый случай, который был сломан: глубина рельефа БОЛЬШЕ стенки — круглого дна не существует.
+  base({vaseRelief:'flute',vaseReliefN:8,vaseReliefD:3});
+  const sp = vaseSpec(paramState.box);
+  chk('это и есть случай «глубина больше стенки»', sp.rel.depth > sp.wall, {d:sp.rel.depth, w:sp.wall});
+}
+
 console.log('=== дно не торчит наружу ===');
 {
   /* Дно — диск ВНУТРИ оболочки. Огранка ужимает стенку в середине грани в cos(π/N) раз, рельеф вычитает
@@ -372,14 +413,43 @@ console.log('=== дно не торчит наружу ===');
   const inside=solidRunsY(t, (wallR-2)*Math.cos(mid), (wallR-2)*Math.sin(mid));
   chk('а внутри стенки дно на месте', inside.some(([y0,y1]) => y0 < B.minY+0.05 && y1-y0 > 1.0),
       inside.map(x=>x.map(v=>+v.toFixed(2))));
-  // То же для рельефа: канавка режет стенку внутрь, и диск обязан уйти вместе с ней.
-  const t2=base({vaseRelief:'flute',vaseReliefN:12,vaseReliefD:5});
-  const B2=computeBBox(t2);
-  const valley=2*Math.PI/12/2;   // ложбина каннелюры при vaseReliefN=12
-  const rV=30-5+0.6;
-  const runs2=solidRunsY(t2, rV*Math.cos(valley), rV*Math.sin(valley));
-  chk('с каннелюрами: в ложбине у дна снаружи пусто',
-      !runs2.some(([y0,y1]) => y0 < B2.minY+0.05 && y1 < B2.minY+3), runs2.map(x=>x.map(v=>+v.toFixed(2))));
+  /* То же для рельефа — и углы здесь СЧИТАЮТСЯ, а не берутся на глаз. Прежняя версия этой проверки
+     зондировала точку 2π/n/2, назвав её ложбиной каннелюры; на деле у каннелюры f = ((1+cos nθ)/2)^e,
+     и там cos(nθ) = −1, то есть f = 0 и радиус ПОЛНЫЙ — это гребень. Точка лежала глубоко внутри
+     полости, дна там при круглом диске не было, проверка проходила — и закрепляла ровно ту поломку,
+     из-за которой у рельефной вазы снизу были сквозные щели. */
+  const nR = 12, dR = 5;
+  const t2 = base({vaseRelief:'flute', vaseReliefN:nR, vaseReliefD:dR});
+  const B2 = computeBBox(t2), s2 = vaseSpec(paramState.box);
+  const rProf2 = Math.max(1.2, vaseProfileR(0.02, s2.pts));
+  // Ложбина каннелюры — где f = 1, то есть cos(nθ) = 1: θ = 0. Гребень — где f = 0: θ = π/n.
+  const valley = 0, crest = Math.PI/nR;
+  const outV = vaseSectionR(rProf2, valley, s2.nFac, s2.rel);
+  const outC = vaseSectionR(rProf2, crest,  s2.nFac, s2.rel);
+  chk('ложбина и гребень посчитаны, а не угаданы', Math.abs((outC - outV) - dR) < 0.01,
+      {valley:+outV.toFixed(2), crest:+outC.toFixed(2)});
+  const bottomRun = (r, a) => solidRunsY(t2, r*Math.cos(a), r*Math.sin(a))
+      .some(([y0,y1]) => y0 < B2.minY+0.05 && y1 < B2.minY+3);
+  chk('с каннелюрами: ЗА наружной поверхностью в ложбине дна нет', !bottomRun(outV + 0.6, valley),
+      solidRunsY(t2, (outV+0.6)*Math.cos(valley), (outV+0.6)*Math.sin(valley)).map(x=>x.map(v=>+v.toFixed(2))));
+  chk('и за наружной на гребне тоже нет', !bottomRun(outC + 0.6, crest));
+  /* А ВНУТРИ стенки дно обязано БЫТЬ — на обоих углах. Это и есть починка: круглый диск на гребне до
+     стенки не доставал, и снизу были видны сквозные щели. */
+  /* Опора берётся от САМОГО НИЖНЕГО ряда профиля, а не от t = 0.02, и точка ставится чуть внутри его
+     внутренней поверхности. Первая версия этой проверки промахнулась дважды: у самого низа профиль ещё
+     30, а не 30.61, и точка «чуть внутри 28.61» попадала В ТОЛЩУ СТЕНКИ — короткий отрезок там есть
+     всегда, потому что ваза расширяется и стенка на этом радиусе быстро кончается. Проверка меряла
+     стенку и проходила даже на круглом диске, то есть на самой поломке.
+
+     Здесь же стенки заведомо нет (её внутренняя граница дальше), и всё, что найдено, — это дно. При
+     старом круглом диске R = 24.81, и на гребне там ПУСТО. */
+  const rB2 = Math.max(1.2, vaseProfileR(0, s2.pts));
+  const inV = vaseSectionR(rB2 - s2.wall, valley, s2.nFac, s2.rel);
+  const inC = vaseSectionR(rB2 - s2.wall, crest,  s2.nFac, s2.rel);
+  chk('в ложбине дно доходит до стенки', bottomRun(inV - 0.4, valley),
+      {r:+(inV-0.4).toFixed(2), inner:+inV.toFixed(2)});
+  chk('и на ГРЕБНЕ доходит тоже', bottomRun(inC - 0.4, crest),
+      {r:+(inC-0.4).toFixed(2), inner:+inC.toFixed(2)});
 }
 
 /* ============ КАШПО И ПОДДОН =====================================================================

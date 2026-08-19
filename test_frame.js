@@ -146,6 +146,33 @@ console.log('=== проушина ===');
   chk('прорезь под ней тоже', runsY(t, 0, b.top - b.slotL*0.6).length===0);
   chk('а рядом с прорезью материал есть', runsY(t, b.slotW, b.top - b.slotL*0.6).length===1);
   chk('прорезь уже шляпки — иначе гвоздь выпадет', b.slotW < b.headD*0.6, {slot:b.slotW, head:b.headD});
+  /* ШЛЯПКА ПРОРЕЗАНА ЦЕЛИКОМ, А НЕ ПОЛОВИНОЙ. Первая версия обходила ПОЛОВИНУ окружности и замыкалась
+     прямо на прорезь: выходил полудиск с хвостиком — контур по X от −4.00 до +1.80 при радиусе 4. Луч по
+     оси такое проходит насквозь, и все прежние проверки (дырка в центре, дырка в прорези, материал
+     рядом) на нём проходили. Ловится это только промером ПОПЕРЁК: слева и справа от оси должно быть
+     одинаково пусто, а за краем шляпки — одинаково твёрдо. */
+  const r0 = b.headD/2;
+  chk('шляпка пуста и слева, и справа от оси',
+      runsY(t, -r0*0.7, b.top).length === 0 && runsY(t, r0*0.7, b.top).length === 0,
+      {left:runsY(t,-r0*0.7,b.top).length, right:runsY(t,r0*0.7,b.top).length});
+  chk('а за её краем материал с обеих сторон',
+      runsY(t, -r0*1.6, b.top).length === 1 && runsY(t, r0*1.6, b.top).length === 1);
+  let sym = true, probes = 0;
+  for(let k=0;k<48;k++){ const a2=2*Math.PI*k/48, x=r0*0.6*Math.cos(a2), z=b.top + r0*0.6*Math.sin(a2);
+    probes++;
+    if((runsY(t,x,z).length===0) !== (runsY(t,-x,z).length===0)) sym = false; }
+  chk('и вся проушина симметрична относительно оси', sym && probes===48, {sym, probes});
+  /* Снятая площадь — круг ПЛЮС ТО, ЧТО ПРОРЕЗЬ ДОБАВЛЯЕТ К НЕМУ, а не круг плюс вся прорезь: верхняя
+     часть прорези лежит внутри круга и уже посчитана. Стык прорези с окружностью — на глубине r·cos φ,
+     где sin φ = hw/r. Прежняя, наивная формула завышала на 18 %, и проверка с допуском 15 % падала на
+     ПРАВИЛЬНОМ коде. */
+  const cut = vol(base({frMode:'back', frHang:'none'})) - vol(t);
+  const hw0 = Math.min(b.slotW/2, r0*0.8), phi0 = Math.asin(hw0/r0);
+  const want = (Math.PI*r0*r0 + b.slotW*(b.slotL - r0*Math.cos(phi0)))*b.T;
+  chk('снятый объём = шляпка плюс выступающая часть прорези', Math.abs(cut - want) < want*0.05,
+      {cut:+cut.toFixed(1), want:+want.toFixed(1)});
+  chk('и это заметно больше половины круга', cut > (Math.PI*r0*r0/2)*b.T*1.4,
+      {cut:+cut.toFixed(1), half:+((Math.PI*r0*r0/2)*b.T).toFixed(1)});
   chk('и проушина внутри задника', b.top + b.headD/2 < b.H/2 && b.top - b.slotL > -b.H/2,
       {top:b.top, H:b.H});
   chk('габарит задника от неё не вырос', Math.abs((B.maxZ-B.minZ)-b.H)<0.05, {h:+(B.maxZ-B.minZ).toFixed(2)});

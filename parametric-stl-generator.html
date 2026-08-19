@@ -1237,7 +1237,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v21.0.0';
+const APP_VERSION = 'v21.0.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -13308,8 +13308,18 @@ function buildFrameBack(p){
   const rl = frameRectLoop(b.W, b.H, b.cornerR, FRAME_CORNER_SEG);
   const loops = [rl.pts];
   if(b.hang === 'keyhole'){
-    const P = [], r = b.headD/2, cz = b.top, hw = b.slotW/2, zEnd = cz - b.slotL;
-    for(let i=0;i<=24;i++){ const a = -Math.PI/2 + Math.PI*(i/24) + Math.PI;   // верхняя полуокружность
+    /* «Замочная скважина» — это ОДИН контур: окружность под шляпку, из которой вниз выходит узкая
+       прорезь. Обход идёт от правого стыка прорези с окружностью ДЛИННОЙ дорогой — через верх, налево
+       и вниз, — до левого стыка, потом по прорези вниз и обратно вверх.
+
+       Первая версия обходила ПОЛОВИНУ окружности (угол шёл от π/2 до 3π/2) и замыкалась прямо на
+       прорезь: выходил полудиск с хвостиком, у которого правой половины шляпки не было вовсе. Замерено:
+       контур по X от −4.00 до +1.80 при радиусе 4. Гвоздь в такое не заходит. */
+    const r = b.headD/2, cz = b.top, hw = Math.min(b.slotW/2, r*0.8), zEnd = cz - b.slotL;
+    const phi = Math.asin(hw/r);                       // где прорезь встречает окружность
+    const a0 = -Math.PI/2 + phi, a1 = 1.5*Math.PI - phi;
+    const nA = 36, P = [];
+    for(let i=0;i<=nA;i++){ const a = a0 + (a1 - a0)*(i/nA);
       P.push([r*Math.cos(a), cz + r*Math.sin(a)]); }
     P.push([-hw, zEnd]); P.push([hw, zEnd]);
     loops.push(P);
@@ -13350,17 +13360,30 @@ function vaseDrainSpec(rFloor, nWant, dWant){
   const cap = Math.max(0, 2*(rFloor - rC - VASE_DRAIN_EDGE));
   return { n, d:Math.min(want, cap), rC, want, cap };
 }
-// Дно с отверстиями. Контур с дырами, а не сеточная раскладка: `buildBoxWithHoles` МОЛЧА выбрасывает
-// отверстие, чей блок сетки налез на принятый, — на клипсе DIN так пропала целая прорезь.
-function vaseFloorTris(rFloor, y0, y1, drain){
-  const circle = (cx, cz, r, k) => { const P=[];
-    for(let i=0;i<k;i++){ const a=2*Math.PI*i/k; P.push([cx+r*Math.cos(a), cz+r*Math.sin(a)]); } return P; };
-  const segO = Math.max(48, Math.round(2*Math.PI*rFloor/1.2));
-  if(!drain || !drain.n || !(drain.d > 0)) return discYTris(0, 0, rFloor, y0, y1, segO);
+const vaseCircleLoop = (cx, cz, r, k) => { const P=[];
+  for(let i=0;i<k;i++){ const a=2*Math.PI*i/k; P.push([cx+r*Math.cos(a), cz+r*Math.sin(a)]); } return P; };
+/* Дно принимает КОНТУР, а не радиус, и в этом вся починка.
+
+   Круглый диск обязан лежать между внутренней и наружной поверхностью НА КАЖДОМ УГЛЕ, а у рельефной
+   вазы эти две границы гуляют по углу навстречу друг другу: внутренняя доходит до максимума на ГРЕБНЕ,
+   наружная опускается до минимума в ЛОЖБИНЕ. Замерено на вазе Ø дна 60, стенке 2 и каннелюрах глубиной
+   3: внутренняя доходит до 28.61, наружная опускается до 27.61 — интервал ПУСТ, и никакого радиуса,
+   закрывающего такую вазу, не существует. Круг с любым радиусом либо не достаёт до стенки на гребнях
+   (это и было видно снизу сквозными щелями), либо вылезает наружу в ложбинах.
+
+   Условие существования круглого дна — глубина рельефа МЕНЬШЕ стенки, и оно нарушается на умолчаниях.
+   Поэтому дно повторяет тот же r(θ), что и оболочка, только по середине стенки: `vaseSectionR` одна на
+   обоих, и разойтись им негде.
+
+   Отверстия по-прежнему режутся контуром с дырами, а не сеточной раскладкой: `buildBoxWithHoles` МОЛЧА
+   выбрасывает отверстие, чей блок сетки налез на принятый, — на клипсе DIN так пропала целая прорезь. */
+function vaseFloorTris(loop, y0, y1, drain){
+  if(!loop || loop.length < 3) return [];
+  if(!drain || !drain.n || !(drain.d > 0)) return extrudePolyYTris([loop], y0, y1);
   const segH = Math.max(16, Math.round(Math.PI*drain.d/0.8));
-  const loops = [circle(0, 0, rFloor, segO)];
+  const loops = [loop];
   for(let i=0;i<drain.n;i++){ const a = 2*Math.PI*i/drain.n;
-    loops.push(circle(drain.rC*Math.cos(a), drain.rC*Math.sin(a), drain.d/2, segH)); }
+    loops.push(vaseCircleLoop(drain.rC*Math.cos(a), drain.rC*Math.sin(a), drain.d/2, segH)); }
   return extrudePolyYTris(loops, y0, y1);
 }
 /* Поддон: мелкая чаша той же постройки, что и ваза, — прямой профиль, оболочка постоянной толщины,
@@ -13394,7 +13417,7 @@ function buildSaucer(p){
   const seg = Math.max(64, Math.round(2*Math.PI*s.rOut/1.0));
   const outer=[[s.rOut,0],[s.rOut,s.H]], inner=[[s.rIn,0],[s.rIn,s.H]];
   const tris = vaseShellTris(outer, inner, seg, 0, 0, null);
-  for(const T of vaseFloorTris(s.rFloor, -0.01, s.wall, null)) tris.push(T);
+  for(const T of vaseFloorTris(vaseCircleLoop(0, 0, s.rFloor, Math.max(48, Math.round(2*Math.PI*s.rFloor/1.2))), -0.01, s.wall, null)) tris.push(T);
   if(s.lift > 0){
     for(let i=0;i<VASE_LIFT_N;i++){ const a = 2*Math.PI*i/VASE_LIFT_N + Math.PI/2;
       for(const T of discYTris(s.padC*Math.cos(a), s.padC*Math.sin(a), s.padR,
@@ -13403,12 +13426,16 @@ function buildSaucer(p){
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
 }
+/* Радиус сечения на данном угле: огранка, потом рельеф. Отдельной функцией, потому что ЭТО ЖЕ правило
+   нужно дну: круглый диск внутри огранённой или рельефной вазы стенки не достаёт. */
+function vaseSectionR(r, a, nFac, rel){
+  let R = r;
+  if(nFac>=3){ const k=2*Math.PI/nFac, m=((a%k)+k)%k - k/2; R = R*Math.cos(Math.PI/nFac)/Math.cos(m); }
+  return vaseReliefR(R, a, rel);
+}
 function vaseShellTris(outer, inner, seg, nFac, twist, rel){
   const out=[], n=outer.length, TAU=2*Math.PI;
-  const rad=(r, a, f)=>{ const ph=a + twist*f;
-    let R = r;
-    if(nFac>=3){ const k=TAU/nFac, m=((ph%k)+k)%k - k/2; R = R*Math.cos(Math.PI/nFac)/Math.cos(m); }
-    return vaseReliefR(R, ph, rel); };
+  const rad=(r, a, f)=>vaseSectionR(r, a + twist*f, nFac, rel);
   const V=(prof,i,k)=>{ const a=TAU*(k%seg)/seg, f=n>1 ? i/(n-1) : 0;
     const r=rad(prof[i][0], a, f); return [r*Math.cos(a), prof[i][1], r*Math.sin(a)]; };
   for(let s=0;s<n-1;s++) for(let k=0;k<seg;k++){
@@ -13436,8 +13463,17 @@ function buildVase(p){
        стоит на 25.98 мм, а дно доставало до 29.97 и торчало из неё воротником. `manifoldCheck` на это
        не жалуется и не может: два пересекающихся замкнутых тела герметичны по построению, ошибка тут
        не в сетке, а в размере, и ловится она измерением, а не проверкой рёбер. */
-    const rFloor=Math.max(0.6, (Math.max(1.2, vaseProfileR(0.02, s.pts)) - s.wall*0.4)*s.facK - s.rel.depth);
-    for(const T of vaseFloorTris(rFloor, -0.01, s.wall, vaseDrainSpec(rFloor, p.vaseDrain, p.vaseDrainD))) tris.push(T);
+    /* Дно идёт по СЕРЕДИНЕ стенки на каждом угле: `vaseSectionR` та же, что у оболочки. Радиус 0.4
+       стенки от наружной поверхности — не середина ровно, а ближе к ней: диск обязан перекрыть стенку с
+       запасом с обеих сторон, а не касаться её. */
+    const rBase = Math.max(1.2, vaseProfileR(0.02, s.pts)) - s.wall*0.4;
+    const segF = Math.max(48, Math.min(s.seg, 360));
+    const loop = [];
+    let rMin = 1e9;
+    for(let k=0;k<segF;k++){ const a = 2*Math.PI*k/segF;
+      const rr = Math.max(0.6, vaseSectionR(rBase, a, s.nFac, s.rel));
+      loop.push([rr*Math.cos(a), rr*Math.sin(a)]); if(rr < rMin) rMin = rr; }
+    for(const T of vaseFloorTris(loop, -0.01, s.wall, vaseDrainSpec(rMin, p.vaseDrain, p.vaseDrainD))) tris.push(T);
   }
   let lo=1e9,hi=-1e9; for(const T of tris) for(const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2; return tris.map(T=>T.map(v=>[v[0],v[1]+dy,v[2]]));
@@ -22814,7 +22850,10 @@ function collectPrintWarnings(p){
     if ((p.vaseDrain||0) > 0 && p.vaseFloor === false)
       w.push('дренаж просят у абажура: дна нет — сверлить нечего');
     if ((p.vaseDrain||0) > 0 && p.vaseFloor !== false){
-      const rFloor = Math.max(0.6, (Math.max(1.2, vaseProfileR(0.02, sp.pts)) - sp.wall*0.4)*sp.facK - rel.depth);
+      // Тот же минимум контура дна, что и у строителя: дренаж обязан уместиться в САМОМ УЗКОМ месте.
+      const rBase = Math.max(1.2, vaseProfileR(0.02, sp.pts)) - sp.wall*0.4;
+      let rFloor = 1e9;
+      for(let k=0;k<360;k++) rFloor = Math.min(rFloor, Math.max(0.6, vaseSectionR(rBase, 2*Math.PI*k/360, sp.nFac, rel)));
       const dr = vaseDrainSpec(rFloor, p.vaseDrain, p.vaseDrainD);
       if (dr.want > dr.d + 0.05)
         w.push('дренаж: просили Ø' + dr.want.toFixed(1) + ', дно держит ' + dr.d.toFixed(1) +

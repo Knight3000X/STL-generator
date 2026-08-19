@@ -1040,6 +1040,7 @@
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">Подставка</button>
         <button class="base-btn" data-base="test" title="Тесты печати: калибровочные образцы — температурная башня, мосты и нависания, ретракт">Тесты</button>
         <button class="base-btn" data-base="litho" title="Литофания: фото становится толщиной панели — на просвет проявляется картинка. Плоская, дугой или цилиндром-абажуром">Литофания</button>
+        <button class="base-btn" data-base="frame" title="Рамка для фото: багет протянут по замкнутому контуру, размеры выведены из размера снимка; задник с проушиной под гвоздь">Рамка</button>
       </div>
     </div>
 
@@ -1234,7 +1235,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.41.0';
+const APP_VERSION = 'v19.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5572,6 +5573,24 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Рамка для фото', key:'frMode', label:'Рамка для фото (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'frame',t:'рамка'},{v:'back',t:'задник'}],
+      hint:'Профиль багета, протянутый по замкнутому контуру. Наружный габарит, проём и фальц СЧИТАЮТСЯ из размера снимка, ширины багета и нахлёста: ввести их отдельно значило бы завести второе место, где живёт размер фотографии.'},
+    {group:'Рамка для фото', key:'frPhotoW', w:['frame','back'], label:'Рамка: ширина снимка', min:20, max:400, step:1, default:100, unit:'мм'},
+    {group:'Рамка для фото', key:'frPhotoH', w:['frame','back'], label:'Рамка: высота снимка', min:20, max:400, step:1, default:150, unit:'мм'},
+    {group:'Рамка для фото', key:'frWidth', w:['frame','back'], label:'Рамка: ширина багета (за фальцем)', min:3, max:60, step:0.5, default:12, unit:'мм'},
+    {group:'Рамка для фото', key:'frOverlap', w:['frame'], label:'Рамка: нахлёст губы на снимок', min:0, max:30, step:0.5, default:4, unit:'мм'},
+    {group:'Рамка для фото', key:'frT', w:['frame'], label:'Рамка: толщина', min:4, max:40, step:0.5, default:10, unit:'мм'},
+    {group:'Рамка для фото', key:'frRabbetD', w:['frame'], label:'Рамка: глубина фальца', min:1, max:30, step:0.5, default:3, unit:'мм',
+      hint:'Обязана вместить задник и сам снимок и при этом оставить переднюю губу не тоньше 1.2 мм. Это два ограничения с разных сторон: сначала берётся нужное, потом урезается возможным, и урезанное названо в «Печатаемости».'},
+    {group:'Рамка для фото', key:'frProfile', w:['frame'], label:'Рамка: профиль багета', type:'select', default:'flat',
+      options:[{v:'flat',t:'плоский'},{v:'bevel',t:'скос внутрь'},{v:'round',t:'вал'},{v:'step',t:'ступенька'}]},
+    {group:'Рамка для фото', key:'frProfD', w:['frame'], label:'Рамка: глубина профиля', min:0, max:30, step:0.5, default:3, unit:'мм'},
+    {group:'Рамка для фото', key:'frCorner', w:['frame','back'], label:'Рамка: скругление наружных углов', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Рамка для фото', key:'frBackT', w:['back'], label:'Задник: толщина', min:1, max:10, step:0.2, default:2, unit:'мм'},
+    {group:'Рамка для фото', key:'frHang', w:['back'], label:'Задник: подвес', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'keyhole',t:'проушина под гвоздь'}]},
+    {group:'Рамка для фото', key:'frNailD', w:['back'], label:'Задник: Ø шляпки гвоздя', min:4, max:16, step:0.5, default:8, unit:'мм'},
     {group:'Воронка', key:'fnOn', label:'Воронка (перекрывает всё)', type:'bool', default:false},
     {group:'Воронка', key:'fnMode', label:'Воронка: режим', type:'select', default:'funnel',
       options:[{v:'funnel',t:'воронка'},{v:'doser',t:'дозатор (барабанный, печать в сборе)'},{v:'vase',t:'ваза / абажур (тело вращения)'}]},
@@ -6903,6 +6922,7 @@ function dominantMode(p){
   if (p.pbPart && p.pbPart !== 'none') return 'pbox';
   if (lithoOn(p)) return 'litho';
   if (p.csMode && p.csMode !== 'none') return 'coaster';
+  if (p.frMode && p.frMode !== 'none') return 'frame';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
@@ -6931,6 +6951,7 @@ function dominantMode(p){
 // control. The census in test_paramrows.js is what makes it strict: an unmarked row fails the battery.
 const FAMILY_MODE = {
   'Крепёж / монтаж': 'mntMode',
+  'Рамка для фото': 'frMode',
   'Тесты печати': 'tstMode',
   'Шестерня': 'gearMode',
   'Резьба (крышка / штуцер)': 'threadMode',
@@ -6984,6 +7005,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Настенный органайзер': return mode==='wallorg';
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подстаканник': return mode==='coaster';
+    case 'Рамка для фото': return mode==='frame';
     case 'Литофания': return mode==='litho';
     case 'Тесты печати': return mode==='test';
     case 'Подставка (телефон / планшет)': return mode==='stand';
@@ -7004,6 +7026,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='pbox')      return key==='Корпус (электроника)';
   if (mode==='coaster')   return key==='Подстаканник';
+  if (mode==='frame')     return key==='Рамка для фото';
   if (mode==='litho')     return key==='Литофания';
   /* «Тесты» — форма со своей единственной группой, ровно как подстаканник или литофания. Без этой
      строки она проваливалась бы в общий `return true` в конце, и на калибровочной плите панель
@@ -7039,6 +7062,7 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
+  'Рамка для фото':'frame',
   'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
@@ -7046,6 +7070,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
+  frame:'Рамка для фото',
   litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
@@ -7334,6 +7359,12 @@ const MODEL_HELP = {
   litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
              how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов» — берётся ПЕРВАЯ карточка с изображением, остальные литофания не читает; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа. Высота панели считается сама из пропорций снимка — задавайте ширину, а высота подберётся так, чтобы фотографию не сплющило; нужна своя — снимите галочку «высота по пропорциям фото». Рельеф смотрит НА ВАС, гладкая сторона — от вас: этой стороной панель и ставится к лампе.',
              mat:['pla']},
+  'frame:frame': {what:'Рамка для фото: багет заданного профиля, протянутый по замкнутому контуру, с фальцем сзади под снимок и задник. Наружный габарит, световой проём и фальц СЧИТАЮТСЯ из размера снимка, ширины багета и нахлёста губы — вводить их отдельно негде и не нужно.',
+             how:'Лицом ВНИЗ, на стол. Лицевая грань — самая заметная поверхность рамки, а первый слой самый гладкий, какой даёт принтер; печатая лицом вверх, вы меняете эту гладкость на следы слоёв ради ничего. Фальц при такой ориентации смотрит вверх и остаётся навесом только на глубину своей полки — поддержек это не требует. Скос и вал печатаются сами: они уходят внутрь, то есть каждый слой у'+'же предыдущего.',
+             mat:['pla','petg']},
+  'frame:back':  {what:'Задник рамки: пластина по фальцу с зазором, прижимающая снимок. Может нести проушину под гвоздь — «замочную скважину»: круглое окно под шляпку и узкая прорезь вниз, по которой рамка садится и там остаётся.',
+             how:'Плашмя, без поддержек. Проушину печатать в верхней части задника — как она и стоит; переворачивать деталь не нужно, отверстие сквозное и в любой ориентации выходит одинаково. Толщина задника не должна превышать глубину фальца, иначе он встанет выше рамки — об этом скажет «Печатаемость».',
+             mat:['petg','pla']},
   coaster:  {what:'Подстаканник: круг или квадрат со скруглёнными углами, с бортом против конденсата. Логотип лежит в кармане на НИЖНЕЙ стороне.',
              how:'Логотипом ВНИЗ, на стол — карман печатается первым слоем. Это не прихоть: первый слой — самая гладкая поверхность, какую даёт принтер, и логотип на нём выходит зеркальной вставкой, а тот же логотип сверху — рельефом со следами слоёв.',
              stepsTitle:'Цветной логотип через AMS',
@@ -7472,6 +7503,7 @@ const KIND_PRINT = {
   keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail', litho:'detail',
   gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
   wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
+  frame:'detail',
 };
 // The two lines that depend on what was typed rather than on what kind of part it is.
 function printSettingsFor(p){
@@ -7593,6 +7625,7 @@ function setBaseShape(kind){
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
+  setSel('frMode',     kind==='frame'  ? 'frame'  : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
   setSel('tstMode',    kind==='test'   ? 'ruler'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
@@ -12804,6 +12837,162 @@ function vaseSpec(p){
     seg = per*k;
   }
   return { H, wall, pts, nS, prof, nFac, facK, twist, rel, seg, rMin, rMax };
+}
+/* ---- Рамка для фото ------------------------------------------------------------------------------
+   Рамка — это ПРОФИЛЬ, протянутый по замкнутому прямоугольному контуру, а не стопка колец. Разница не
+   стилистическая: стопка колец складывается из тел с ОБЩИМИ гранями (наружные стенки переднего и
+   заднего кольца лежат в одной плоскости), а общая грань двух тел — это нулевая толщина, отданная
+   слайсеру в надежде, что он разберётся. Протяжка же замкнутого сечения по замкнутому пути даёт
+   замкнутую поверхность по построению: соседние сечения сшиваются четырёхугольниками, первое смыкается
+   с последним, и швов не остаётся вовсе.
+
+   СМЕЩЕНИЕ СКРУГЛЁННОГО ПРЯМОУГОЛЬНИКА ВНУТРЬ — ЭТО ТОТ ЖЕ ПРЯМОУГОЛЬНИК с уменьшенным радиусом и
+   НЕПОДВИЖНЫМИ центрами угловых дуг. Поэтому «протянуть по контуру» здесь не требует ни офсета
+   многоугольника, ни разбора самопересечений: каждое сечение задаёт свой радиус, и всё.
+
+   ВЫВОДИТСЯ ВСЁ ИЗ ФОТО. Человек называет размер снимка, ширину багета и нахлёст губы; наружный габарит,
+   проём и фальц считаются из них. Ввести проём отдельно значило бы завести второе место, где живёт
+   размер фотографии, — и эти два места разошлись бы молча.
+
+   ОРИЕНТИР НАРУЖУ БЕРЁТСЯ ОТ СЕЧЕНИЯ, а не «от центра». На горизонтальном участке профиля (полка
+   фальца, задняя грань) радиальное направление ПЕРПЕНДИКУЛЯРНО настоящей нормали, скалярное
+   произведение равно нулю, и `orient` молча оставляет треугольник как есть — ровно та ловушка, что
+   описана у `latheYTris`. Здесь нормаль сечения (Δy, Δu) поднимается в 3D по нормали контура. */
+const FRAME_PROFILES = { flat:1, bevel:1, round:1, step:1 };
+const FRAME_MIN_LIP  = 1.2;   // мм — тоньше передней губы над фальцем не бывает
+const FRAME_MIN_WALL = 1.0;   // мм — тоньше стенки багета за фальцем не бывает
+const FRAME_PHOTO_GAP = 0.5;  // зазор фальца по каждой стороне: фото должно ВХОДИТЬ, а не запрессовываться
+const FRAME_BACK_GAP  = 0.3;  // зазор задника в фальце
+const FRAME_MIN_R = 0.2;      // остаточный радиус угла: ноль дал бы совпавшие точки и вырожденные грани
+/* ПРОЁМ ОБЯЗАН ОСТАТЬСЯ ПРОЁМОМ. Нахлёст губы съедает снимок с двух сторон, и на снимке 20×20 нахлёст
+   в 10 мм закрывает его ЦЕЛИКОМ: внутренний контур схлопывается в точку, а при большем нахлёсте
+   выворачивается наизнанку. Замерено: 20×20 с нахлёстом 10 давало 8 битых рёбер, а с нахлёстом 30 —
+   «герметичную» рамку с проёмом −40 мм, то есть самопересечённую и на вид правильную. */
+const FRAME_MIN_OPEN = 5;    // мм светового проёма, меньше которых рамка перестаёт быть рамкой
+const FRAME_CORNER_SEG = 10;  // выборок на угловую дугу
+/* Скруглённый прямоугольник как список точек И НОРМАЛЕЙ. Нормаль отдаётся вместе с точкой, потому что
+   считать её потом по соседям — значит получить на прямом участке разность двух одинаковых точек. */
+function frameRectLoop(W, H, r, segC){
+  const rr = Math.max(FRAME_MIN_R, Math.min(r, Math.min(W, H)/2 - 1e-6));
+  const cx = W/2 - rr, cz = H/2 - rr, pts = [], nrm = [];
+  for(let q=0;q<4;q++){
+    const sx = (q===0||q===3) ? 1 : -1, sz = (q===0||q===1) ? 1 : -1;
+    for(let i=0;i<=segC;i++){
+      const a = (q*Math.PI/2) + (Math.PI/2)*(i/segC);
+      const c = Math.cos(a), s2 = Math.sin(a);
+      pts.push([sx*cx + rr*c, sz*cz + rr*s2]);
+      nrm.push([c, s2]);
+    }
+  }
+  return { pts, nrm };
+}
+/* Сечение багета в координатах (u, y): u — вглубь от наружной кромки, y — от задней грани вперёд.
+   Обход против часовой стрелки в плоскости (наружу, вверх), поэтому нормаль ребра (Δy, Δu). */
+function frameSection(s){
+  const P = [[0,0],[0,s.T]];
+  const push = (u,y)=>P.push([u,y]);
+  const kind = s.profile, d = s.drop, Wm = s.Wm;
+  if(kind === 'bevel') push(Wm, s.T - d);
+  else if(kind === 'step'){ push(Wm/2, s.T); push(Wm/2, s.T - d); push(Wm, s.T - d); }
+  else if(kind === 'round'){
+    const n = 12;
+    for(let i=1;i<=n;i++){ const t=i/n; push(Wm*t, s.T - d*(1 - Math.sqrt(Math.max(0,1-t*t)))); }
+  } else push(Wm, s.T);                       // flat
+  push(Wm, s.rabD);                           // стенка проёма вниз до полки фальца
+  push(Wm - s.Wr, s.rabD);                    // полка фальца наружу
+  push(Wm - s.Wr, 0);                         // стенка фальца вниз до задней грани
+  return P;
+}
+// Протяжка замкнутого сечения по замкнутому скруглённому прямоугольнику.
+function frameSweepTris(section, W, H, cornerR, segC){
+  const n = section.length, out = [];
+  const loops = section.map(([u]) => frameRectLoop(W - 2*u, H - 2*u, cornerR - u, segC));
+  const K = loops[0].pts.length;
+  for(let i=0;i<n;i++){
+    const j = (i+1)%n, A = loops[i], B = loops[j];
+    const du = section[j][0] - section[i][0], dy = section[j][1] - section[i][1];
+    for(let k=0;k<K;k++){
+      const k2 = (k+1)%K;
+      const p0=[A.pts[k][0], section[i][1], A.pts[k][1]], p1=[A.pts[k2][0], section[i][1], A.pts[k2][1]];
+      const p2=[B.pts[k2][0], section[j][1], B.pts[k2][1]], p3=[B.pts[k][0], section[j][1], B.pts[k][1]];
+      // Нормаль сечения (Δy, Δu), поднятая в 3D по нормали контура: горизонтально — Δy наружу,
+      // вертикально — Δu вверх.
+      const nx = A.nrm[k][0] + A.nrm[k2][0], nz = A.nrm[k][1] + A.nrm[k2][1];
+      const ref = [nx*dy, du*2, nz*dy];
+      out.push(orient([p0,p1,p2], ref)); out.push(orient([p0,p2,p3], ref));
+    }
+  }
+  return out;
+}
+function frameSpec(p){
+  const photoW = Math.max(20, Math.min(400, p.frPhotoW || 100));
+  const photoH = Math.max(20, Math.min(400, p.frPhotoH || 150));
+  const bw     = Math.max(3, Math.min(60, p.frWidth || 12));          // багет ЗА фальцем
+  const ovWant = Math.max(0, Math.min(30, p.frOverlap == null ? 4 : p.frOverlap));
+  const ovCap  = Math.max(0, (Math.min(photoW, photoH) - FRAME_MIN_OPEN)/2);
+  const ov     = Math.min(ovWant, ovCap);
+  const T      = Math.max(4, Math.min(40, p.frT || 10));
+  const backT  = Math.max(1, Math.min(10, p.frBackT || 2));
+  /* Глубина фальца обязана вместить задник и сам снимок, и при этом оставить переднюю губу не тоньше
+     FRAME_MIN_LIP. Это два ограничения с РАЗНЫХ сторон, поэтому сначала берётся нужное, потом урезается
+     возможным — и урезанное называется вслух. */
+  const rabWant = Math.max(1, Math.min(30, p.frRabbetD == null ? 3 : p.frRabbetD));
+  const rabCap  = Math.max(0.5, T - FRAME_MIN_LIP);
+  const rabD    = Math.min(rabWant, rabCap);
+  const Wr = ov + FRAME_PHOTO_GAP;           // ширина полки фальца
+  const Wm = bw + Wr;                          // от наружной кромки до проёма
+  const W = photoW + 2*FRAME_PHOTO_GAP + 2*bw; // наружный габарит
+  const H = photoH + 2*FRAME_PHOTO_GAP + 2*bw;
+  const cornerWant = Math.max(0, Math.min(60, p.frCorner || 0));
+  const cornerR = Math.max(FRAME_MIN_R, Math.min(cornerWant, Math.min(W,H)/2 - 0.5));
+  const profile = FRAME_PROFILES[p.frProfile] ? p.frProfile : 'flat';
+  const dropWant = Math.max(0, Math.min(30, p.frProfD == null ? 3 : p.frProfD));
+  const dropCap  = Math.max(0, T - rabD - FRAME_MIN_LIP);
+  const drop = (profile === 'flat') ? 0 : Math.min(dropWant, dropCap);
+  return { photoW, photoH, bw, ov, ovWant, ovCap, T, backT, rabD, rabWant, rabCap, Wr, Wm, W, H,
+           cornerR, cornerWant, profile, drop, dropWant, dropCap,
+           openW: photoW - 2*ov, openH: photoH - 2*ov };
+}
+function buildPhotoFrame(p){
+  const s = frameSpec(p);
+  const tris = frameSweepTris(frameSection(s), s.W, s.H, s.cornerR, FRAME_CORNER_SEG);
+  return tris.map(T2 => T2.map(v => [v[0], v[1] - s.T/2, v[2]]));
+}
+/* Задник: пластина по фальцу минус зазор. Проушина под гвоздь — «замочная скважина»: круг под шляпку и
+   узкая прорезь вниз, по которой рамка садится на гвоздь и там остаётся. Контур с дырой, а не сеточная
+   раскладка: `buildBoxWithHoles` молча выбрасывает отверстие, чей блок сетки налез на принятый. */
+function frameBackSpec(p){
+  const s = frameSpec(p);
+  const W = s.photoW + 2*FRAME_PHOTO_GAP - 2*FRAME_BACK_GAP;
+  const H = s.photoH + 2*FRAME_PHOTO_GAP - 2*FRAME_BACK_GAP;
+  const cornerR = Math.max(FRAME_MIN_R, Math.min(s.cornerR - s.bw, Math.min(W,H)/2 - 0.5));
+  /* ПРОУШИНА ОБЯЗАНА ПОМЕСТИТЬСЯ В ЗАДНИК. Шляпка Ø16 на заднике 20×20 не просто «тесновата»: прорезь
+     уходила на 24 мм вниз при половине высоты 10.2, контур дыры пересекал наружный контур, и деталь
+     выходила с восемью открытыми рёбрами и габаритом 20.4×34.4 — то есть подвес торчал НАРУЖУ. Предел
+     выводится из самой раскладки: сверху 4 мм до шляпки, снизу 4 мм под прорезью, между ними шляпка и
+     прорезь длиной 1.4 её диаметра ⟹ headD ≤ (H − 8)/1.9, и headD ≤ W − 8 по ширине. */
+  const headWant = Math.max(4, Math.min(16, p.frNailD == null ? 8 : p.frNailD));
+  const headCap  = Math.min(W - 8, (H - 8)/1.9);
+  const headD    = Math.min(headWant, headCap);
+  const fits     = headD >= 4;
+  const slotW = Math.max(1.5, headD*0.45);
+  return { W, H, cornerR, T:s.backT, headWant, headCap, fits,
+           hang: (p.frHang === 'keyhole' && fits) ? 'keyhole' : 'none',
+           headD, slotW, slotL: headD*1.4, top: H/2 - 4 - headD/2 };
+}
+function buildFrameBack(p){
+  const b = frameBackSpec(p);
+  const rl = frameRectLoop(b.W, b.H, b.cornerR, FRAME_CORNER_SEG);
+  const loops = [rl.pts];
+  if(b.hang === 'keyhole'){
+    const P = [], r = b.headD/2, cz = b.top, hw = b.slotW/2, zEnd = cz - b.slotL;
+    for(let i=0;i<=24;i++){ const a = -Math.PI/2 + Math.PI*(i/24) + Math.PI;   // верхняя полуокружность
+      P.push([r*Math.cos(a), cz + r*Math.sin(a)]); }
+    P.push([-hw, zEnd]); P.push([hw, zEnd]);
+    loops.push(P);
+  }
+  const tris = extrudePolyYTris(loops, 0, b.T);
+  return tris.map(T2 => T2.map(v => [v[0], v[1] - b.T/2, v[2]]));
 }
 /* ---- Кашпо и поддон ------------------------------------------------------------------------------
    Кашпо — та же ваза, у которой в дне просверлены дренажные отверстия. Поддон — отдельная деталь, но
@@ -20138,7 +20327,7 @@ function buildTrisForShape(shape, p) {
     return bevelledMesh(snapWeldTris(buildLithophane(p, lg)), p);
   }
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || p.psOn || p.fnOn);
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -20152,7 +20341,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -20229,6 +20418,9 @@ function buildTrisForShapeCore(shape, p) {
     }
     if (p.csMode && p.csMode !== 'none') {
       return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
+    }
+    if (p.frMode && p.frMode !== 'none') {
+      return snapWeldTris(p.frMode === 'back' ? buildFrameBack(p) : buildPhotoFrame(p));
     }
     if (p.psOn) {
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
@@ -20611,7 +20803,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form',
+  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -21871,6 +22063,8 @@ function activeShapeLabel() {
     return 'литофания ' + Math.round(g.W) + '×' + Math.round(g.H) +
            (g.mode==='flat' ? '' : g.mode==='cylinder' ? ' (цилиндр)' : ' (дуга ' + Math.round(g.arcDeg) + '°)'); }
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
+  if (p.frMode && p.frMode !== 'none')
+    return (p.frMode === 'back' ? 'задник' : 'рамка') + ' (' + Math.round(p.frPhotoW||100) + '×' + Math.round(p.frPhotoH||150) + ')';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? (p.vasePart==='saucer'
                  ? ('поддон (Ø' + Math.round(vaseSaucerSpec(p).rOut*2) + ')')
@@ -22214,6 +22408,35 @@ function collectPrintWarnings(p){
   /* СРЕЗАННАЯ ГЛУБИНА РЕЛЬЕФА. Ограничение здесь настоящее — рельеф вычитается и изнутри, и глубже
      стенки резать нечего, — но подрезать введённое число молча значит показать человеку не ту вазу,
      которую он заказал, и не сказать об этом ни слова. Считается тем же `vaseSpec`, что и строит. */
+  /* РАМКА. Три числа урезаются молча, и каждое из них меняет ДЕТАЛЬ, а не вид: мелкий фальц не примет
+     задник со снимком, глубокий профиль съест переднюю губу, а слишком широкий багет схлопнет проём. */
+  if (p.frMode && p.frMode !== 'none'){
+    const fs = frameSpec(p);
+    if (fs.rabWant > fs.rabD + 0.05)
+      w.push('фальц: просили ' + fs.rabWant.toFixed(1) + ' мм, толщина рамки держит ' + fs.rabD.toFixed(1) +
+             ' — передней губе нужно ' + FRAME_MIN_LIP + ' мм; толще рамка или мельче фальц');
+    if (fs.dropWant > fs.drop + 0.05 && fs.profile !== 'flat')
+      w.push('профиль багета: просили ' + fs.dropWant.toFixed(1) + ' мм, осталось ' + fs.drop.toFixed(1) +
+             ' — глубже профиль срезал бы переднюю губу над фальцем');
+    if (fs.rabD < fs.backT + 0.3)
+      w.push('фальц ' + fs.rabD.toFixed(1) + ' мм мельче задника (' + fs.backT.toFixed(1) +
+             ' мм) со снимком — задник встанет заподлицо или выше рамки');
+    if (fs.ovWant > fs.ov + 0.05)
+      w.push('нахлёст губы: просили ' + fs.ovWant.toFixed(1) + ' мм, снимок держит ' + fs.ov.toFixed(1) +
+             ' — от него должно остаться видно хотя бы ' + FRAME_MIN_OPEN + ' мм');
+    if (p.frMode === 'back' && p.frHang === 'keyhole'){
+      const fb = frameBackSpec(p);
+      if (!fb.fits)
+        w.push('проушина не помещается в задник ' + fb.W.toFixed(0) + '×' + fb.H.toFixed(0) +
+               ' мм — подвеса не будет; крупнее снимок или без подвеса');
+      else if (fb.headWant > fb.headD + 0.05)
+        w.push('проушина: просили Ø' + fb.headWant.toFixed(1) + ', задник держит ' + fb.headD.toFixed(1) +
+               ' — прорезь под шляпкой должна уместиться по высоте');
+    }
+    if (fs.bw < FRAME_MIN_WALL + 0.5)
+      w.push('багет за фальцем ' + fs.bw.toFixed(1) + ' мм — стенке рамки нужно хотя бы ' +
+             (FRAME_MIN_WALL + 0.5) + ' мм');
+  }
   if (p.fnOn && (p.fnMode||'funnel') === 'vase' && p.vasePart === 'saucer'){
     const sc = vaseSaucerSpec(p);
     if (sc.liftWant > sc.lift + 0.05)

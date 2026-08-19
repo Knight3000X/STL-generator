@@ -22,7 +22,7 @@ const rowOf = k => SHAPE_PARAMS.box.find(r => r.key === k);
 console.log('=== у каждого семейства ровно одна головная форма ===');
 {
   const fams = new Set(Object.keys(FAMILY_MODE).map(g => FAMILY_MODE[g]));
-  chk('семейств пять', fams.size === 5, [...fams]);
+  chk('семейств шесть', fams.size === 6, [...fams]);
   const found = {};
   for(const m of MODES){ const k = subModelKey(m); if(k){ chk('форма '+m+' → '+k+' (единственный раз)', !found[k], found[k]); found[k] = m; } }
   chk('каждое семейство досягаемо с какой-то базовой формы',

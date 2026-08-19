@@ -555,6 +555,20 @@
     line-height:1.4;
   }
   .export-note p{ margin:0 0 6px; }
+  /* Палитра сборки: строка на каждый филамент. Образец цвета рядом с HEX не украшение — «#514C42» и
+     «#686868» на глаз не отличить, а на детали видно сразу, и решение о слиянии принимается по паре
+     «квадратик + число ΔE», а не по коду. */
+  .pal-row{ display:flex; align-items:center; gap:8px; padding:4px 0; font-size:11.5px; }
+  .pal-row + .pal-row{ border-top:1px solid var(--paper-line); }
+  .pal-sw{ width:15px; height:15px; border-radius:4px; border:1px solid var(--paper-line); flex:0 0 auto; }
+  .pal-hex{ font-family:'IBM Plex Mono', monospace; font-weight:600; flex:0 0 auto; }
+  .pal-use{ color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pal-btns{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .pal-btn{ padding:6px 9px; font-size:11px; font-weight:600; cursor:pointer; border-radius:var(--r-sm);
+    border:1px solid var(--paper-line); background:var(--field-bg); color:var(--ink-soft); line-height:1.25; }
+  .pal-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  .pal-btn.active{ color:var(--on-accent); background:var(--accent); border-color:var(--accent); }
+  .pal-btn.warn{ border-color:var(--redline-dark); color:var(--redline-dark); }
   /* Model help sits above the accordion, next to the choice it explains, so it reads a little louder than
      the per-group notes buried inside it. */
   #model-help{ margin:-2px 0 12px; }
@@ -1182,6 +1196,17 @@
     <div class="export-note" id="orca-tpl-note"></div>
     </details>
 
+    <details class="panel-fold" data-def-closed data-tab="export" data-fold="Палитра сборки"><summary class="section-label">Палитра сборки</summary>
+
+    <div class="param-row">
+      <span class="param-label">Слотов в принтере</span>
+      <div class="num-field"><input type="number" id="ams-slots" class="param-number" min="1" max="64" step="1" value="4"></div>
+    </div>
+    <div id="palette-list"></div>
+    <div class="export-note" id="palette-note"></div>
+    <div id="palette-plan"></div>
+    </details>
+
     <details class="panel-fold" data-def-closed data-tab="export" data-fold="Конфигурация сборки"><summary class="section-label">Конфигурация сборки</summary>
 
     <button id="btn-save-config">💾 Сохранить (JSON)</button>
@@ -1209,7 +1234,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.38.1';
+const APP_VERSION = 'v18.39.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3267,6 +3292,118 @@ function assemblyInks(){
       const to = []; for (const k of pm.used) to[k-1] = inkForPaint(pm.palette[k-1]);
       return { pm, to, base: body.inks[i] + 1 }; }); }
   return { bodies, colors, names };
+}
+/* ---- Палитра сборки ----------------------------------------------------------------------------
+   Слот AMS — это цвет, и слотов у принтера конечное число, а у сборки — сколько получилось. Приложение
+   умело считать, сколько цветов нужно, и молчало о том, что с этим делать. Здесь два расчёта, и оба
+   отвечают на вопрос числом, а не на глаз.
+
+   РАЗБИВКА НА ПАРТИИ — прямой ответ. Тела печатаются отдельными плитами, значит и палитру можно делить
+   по плитам: сгруппировать так, чтобы каждой партии хватило слотов. Это не компромисс, а выигрыш —
+   слайсер на каждой смене филамента продувает сопло, и две трёхцветные плиты дешевле одной
+   шестицветной, даже если бы шесть влезли.
+
+   СЛИЯНИЕ БЛИЖАЙШИХ — запасной. Считается по ΔE в CIE Lab, а не по разнице RGB: в RGB тёмно-синий и
+   тёмно-коричневый «далеко», хотя на детали рядом почти неразличимы, а два жёлтых «рядом», хотя видно
+   сразу. ΔE 1 — предел различимости, 2–3 заметно вплотную, больше 10 — очевидно разные цвета; поэтому
+   каждое предложенное слияние идёт СО СВОИМ ЧИСЛОМ, и решение принимает человек. */
+function hexToLab(hex){
+  const h = String(hex || '').replace('#', '');
+  const lin = v => { v /= 255; return v <= 0.04045 ? v/12.92 : Math.pow((v + 0.055)/1.055, 2.4); };
+  const r = lin(parseInt(h.slice(0,2), 16) || 0), g = lin(parseInt(h.slice(2,4), 16) || 0), b = lin(parseInt(h.slice(4,6), 16) || 0);
+  const X = (0.4124*r + 0.3576*g + 0.1805*b)/0.95047;
+  const Y =  0.2126*r + 0.7152*g + 0.0722*b;
+  const Z = (0.0193*r + 0.1192*g + 0.9505*b)/1.08883;
+  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+  const fx = f(X), fy = f(Y), fz = f(Z);
+  return [116*fy - 16, 500*(fx - fy), 200*(fy - fz)];
+}
+function colorDeltaE(a, b){
+  const p = hexToLab(a), q = hexToLab(b);
+  return Math.sqrt((p[0]-q[0])*(p[0]-q[0]) + (p[1]-q[1])*(p[1]-q[1]) + (p[2]-q[2])*(p[2]-q[2]));
+}
+// Набор индексов филамента, которые просит одно печатаемое ТЕЛО: свой цвет каждой части плюс всё, чем
+// она раскрашена. Партия делится по телам, а не по деталям: части одного тела печатаются вместе всегда.
+function bodyInkSet(b){
+  const s = new Set();
+  (b.inks || []).forEach(k => s.add(k));
+  (b.paint || []).forEach(pp => { if (pp) for (const j of pp.to) if (j != null) s.add(j); });
+  return s;
+}
+/* Палитра сборки: цвета и кто их просит. Считается из того же `assemblyInks`, что и запись файла, —
+   второе правило разошлось бы с первым молча. */
+function assemblyPalette(){
+  const ink = assemblyInks();
+  const use = ink.colors.map(() => []);
+  for (const b of ink.bodies){
+    (b.inks || []).forEach((k, i) => { const nm = (b.parts[i] || {}).name || '?';
+      if (use[k] && use[k].indexOf(nm) < 0) use[k].push(nm); });
+    (b.paint || []).forEach((pp, i) => { if (!pp) return; const nm = (b.parts[i] || {}).name || '?';
+      for (const j of pp.to) if (j != null && use[j] && use[j].indexOf(nm) < 0) use[j].push(nm); });
+  }
+  return { colors: ink.colors, names: ink.names, use, bodies: ink.bodies };
+}
+/* Партии. Жадно и по убыванию «цветастости»: самое требовательное тело кладётся первым, дальше каждое
+   следующее — в первую партию, которой оно не сломает лимит. Это ЭВРИСТИКА, а не доказанный минимум, и
+   так и написано: точный ответ здесь — упаковка в контейнеры, задача NP-полная, а разница на десятке тел
+   не окупает ни строчки кода, ни секунды ожидания.
+
+   Тело, которому слотов не хватает В ОДИНОЧКУ, партией не лечится — оно уезжает своей и помечается
+   `over`: молча положить его в переполненную партию значило бы соврать. */
+function paletteBatches(bodies, slots){
+  const n = Math.max(1, Math.round(slots) || 1);
+  const items = bodies.map((b, i) => ({ body: b, order: i, set: bodyInkSet(b) }))
+                      .sort((x, y) => (y.set.size - x.set.size) || (x.order - y.order));
+  const out = [];
+  for (const it of items){
+    let placed = false;
+    for (const g of out){
+      const u = new Set(g.set); for (const k of it.set) u.add(k);
+      if (u.size <= n){ g.set = u; g.items.push(it); placed = true; break; }
+    }
+    if (!placed) out.push({ set: new Set(it.set), items: [it] });
+  }
+  return out.map(g => ({ inks: [...g.set].sort((a,b)=>a-b), bodies: g.items.map(x => x.body),
+                         over: g.set.size > n }));
+}
+/* Слияния. Агломеративно: каждый раз сливаются две БЛИЖАЙШИЕ группы, пока групп больше, чем слотов.
+   Представителем остаётся цвет, который просит БОЛЬШЕ деталей: слить частый оттенок в редкий — значит
+   перекрасить всю сборку ради одной детали. */
+function paletteMerges(colors, slots, weight){
+  const n = Math.max(1, Math.round(slots) || 1);
+  let groups = colors.map((c, i) => ({ idx: [i], rep: c, w: (weight && weight[i]) || 1 }));
+  const steps = [];
+  let guard = colors.length + 4;
+  while (groups.length > n && guard-- > 0){
+    let bi = 0, bj = 1, best = Infinity;
+    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++){
+      const d = colorDeltaE(groups[i].rep, groups[j].rep);
+      if (d < best){ best = d; bi = i; bj = j; }
+    }
+    const a = groups[bi], b = groups[bj];
+    const keep = (b.w > a.w) ? b : a, drop = (keep === a) ? b : a;
+    steps.push({ from: drop.rep, to: keep.rep, dE: best });
+    groups = groups.filter(g => g !== a && g !== b);
+    groups.push({ idx: a.idx.concat(b.idx), rep: keep.rep, w: a.w + b.w });
+  }
+  return { steps, left: groups.length };
+}
+// Применить слияния к самой сборке: цвет детали и палитра её раскраски. Цепочки разворачиваются (цвет
+// мог быть слит в тот, который слили дальше), иначе часть сборки осталась бы на выброшенном цвете.
+function paletteApplyMerges(steps){
+  const map = new Map();
+  for (const st of steps) map.set(String(st.from).toUpperCase(), String(st.to).toUpperCase());
+  const resolve = c => { let x = String(c || '').toUpperCase(), n = 0;
+    while (map.has(x) && n++ < 32) x = map.get(x); return x; };
+  let changed = 0;
+  for (const m of models){
+    const was = String(m.color || '').toUpperCase(), now = resolve(was);
+    if (now && now !== was){ m.color = now; changed++; }
+    const id = m.params ? m.params.importId : null;
+    const p = (id != null) ? importedPaint.get(id) : null;
+    if (p) p.palette = p.palette.map(c => c ? resolve(c) : c);
+  }
+  return changed;
 }
 function assemblyTo3MF(){
   saveActiveModel();
@@ -6712,6 +6849,7 @@ function updateExportTotal(){
   for (const m of models){ if (!m.visible) continue;
     n += (m.id === activeModelId) ? currentTris.length : (m.rawTris ? m.rawTris.length : 0); }
   const el = document.getElementById('stat-tris-total'); if (el) el.textContent = n;
+  renderPaletteSection();
 }
 // Push the ACTIVE globals back into the panel inputs (after a model switch).
 function refreshActiveModelUI(){
@@ -20402,6 +20540,14 @@ function attachEventListeners() {
     orcaTemplate = null; orcaTemplateStore(); orcaNoteRefresh();
   });
   orcaNoteRefresh();
+  paletteSlotsRestore();
+  const slotsEl = document.getElementById('ams-slots');
+  if (slotsEl) slotsEl.addEventListener('input', () => {
+    // Смена числа слотов делает снимок плана недействительным: он считался под другое число.
+    if (paletteView) paletteShowAll();
+    paletteSlotsStore(); renderPaletteSection();
+  });
+  renderPaletteSection();
   document.getElementById('panel').addEventListener('input', (e) => {
     const t = e.target;
     if (t.matches('.param-number') && t.dataset.shape) {
@@ -22608,6 +22754,134 @@ function orcaNoteRefresh(){
   el.textContent = orcaNoteText(orcaTemplate, assemblyInks().colors.length);
   const clr = document.getElementById('btn-orca-clear');
   if (clr) clr.style.display = orcaTemplate ? '' : 'none';
+}
+/* ---- Панель «Палитра сборки» ---------------------------------------------------------------------
+   Раздел отвечает на вопрос, который до него решался на глаз: цветов в сборке больше, чем слотов в
+   принтере, — что делать. Ответов два, оба считаются, ни один не применяется сам.
+
+   Пока показана ОДНА партия, план берётся из снимка, а не пересчитывается: `assemblyPalette` смотрит
+   только на ВИДИМОЕ, поэтому живой пересчёт после «показать партию 1» увидел бы три цвета, доложил бы
+   «влезает» и стёр бы сам план, по которому эта партия и была выбрана. */
+const PAL_SLOTS_STORE = 'stl-ams-slots';
+let paletteView = null;   // {pal, plan, batch, shown} — снимок, пока в сцене оставлена одна партия
+let paletteSteps = null;  // последнее показанное предложение слияний (его и применяет кнопка)
+function paletteSlots(){
+  const el = document.getElementById('ams-slots');
+  const n = el ? Math.round(parseFloat(el.value)) : NaN;
+  return (isFinite(n) && n >= 1) ? Math.min(64, n) : 4;
+}
+function paletteSlotsStore(){ try { localStorage.setItem(PAL_SLOTS_STORE, String(paletteSlots())); } catch(e) {} }
+function paletteSlotsRestore(){
+  const el = document.getElementById('ams-slots'); if (!el) return;
+  try { const v = parseInt(localStorage.getItem(PAL_SLOTS_STORE) || '', 10);
+    if (isFinite(v) && v >= 1 && v <= 64) el.value = v; } catch(e) {}
+}
+/* Показать одну партию — это просто видимость: экспорт и так берёт ТОЛЬКО ВИДИМОЕ, поэтому отдельной
+   кнопки «скачать партию» не нужно, работает обычная. `shown` помнит, что было видно ДО фильтра: модель,
+   которую человек погасил сам, обратно всплывать не должна. */
+function paletteShowBatch(pal, plan, k){
+  if (!plan[k]) return;
+  const shown = paletteView ? paletteView.shown : new Set(models.filter(m => m.visible).map(m => m.id));
+  paletteView = { pal, plan, batch: k, shown };
+  const keep = new Set();
+  plan[k].bodies.forEach(b => b.parts.forEach(m => keep.add(m.id)));
+  for (const m of models) setModelVisible(m.id, keep.has(m.id) && shown.has(m.id));
+  renderModelCards(); renderPaletteSection();
+}
+function paletteShowAll(){
+  const snap = paletteView; paletteView = null;
+  if (snap) for (const m of models) setModelVisible(m.id, snap.shown.has(m.id));
+  renderModelCards(); renderPaletteSection();
+}
+/* После слияния мало поменять material.color: у раскрашенной детали её собственный цвет живёт в ЦВЕТАХ
+   ВЕРШИН (в материале там белый, иначе раскраска умножилась бы на него), поэтому геометрию каждой
+   модели надо пересобрать — иначе перекрашенным окажется только непокрашенное. */
+function paletteRefreshMeshes(){
+  if (typeof scene3DReady === 'undefined' || !scene3DReady) return;
+  for (const m of models){
+    const mm = modelMeshes.get(m.id); if (!mm) continue;
+    if (m.id === activeModelId) setMeshTrisGeometry(mm, currentTris, m);
+    else if (m.rawTris && m.rawTris.length) setMeshTrisGeometry(mm, rotateTris(m.rawTris, m.rx, m.ry, m.rz), m);
+  }
+}
+function paletteApplyUI(){
+  const steps = paletteSteps;
+  if (!steps || !steps.length) return;
+  if (!confirm('Слить цвета: ' + steps.length + ' шт. Цвета деталей и палитры раскраски изменятся, ' +
+               'вернуть прежние можно будет только вручную. Продолжить?')) return;
+  // Снимок плана считался под СТАРЫЕ цвета и после перекраски врёт; заодно возвращается видимость,
+  // иначе часть сборки осталась бы погашенной, а кнопки, которая её вернёт, на панели уже не будет.
+  if (paletteView) paletteShowAll();
+  paletteApplyMerges(steps);
+  paletteRefreshMeshes(); renderModelCards();
+  const cp = document.getElementById('color-picker'), am = getActiveModel();
+  if (cp && am && am.color) cp.value = am.color;
+  renderPaletteSection();
+}
+function renderPaletteSection(){
+  const listEl = document.getElementById('palette-list');
+  const noteEl = document.getElementById('palette-note');
+  const planEl = document.getElementById('palette-plan');
+  if (!listEl || !noteEl || !planEl) return;
+  const slots = paletteSlots();
+  const pal  = paletteView ? paletteView.pal  : assemblyPalette();
+  const plan = paletteView ? paletteView.plan : paletteBatches(pal.bodies, slots);
+  const n = pal.colors.length;
+  const lit = paletteView && plan[paletteView.batch] ? new Set(plan[paletteView.batch].inks) : null;
+
+  listEl.innerHTML = pal.colors.map((c, i) => {
+    const who = pal.use[i].join(', ') || pal.names[i];
+    return '<div class="pal-row"' + (lit && !lit.has(i) ? ' style="opacity:.3"' : '') + '>' +
+      '<span class="pal-sw" style="background:' + escapeHtml(c) + '"></span>' +
+      '<span class="pal-hex">' + escapeHtml(c) + '</span>' +
+      '<span class="pal-use" title="' + escapeHtml(who) + '">' + escapeHtml(who) + '</span></div>';
+  }).join('');
+
+  noteEl.textContent = !n
+    ? 'В сборке нет видимых моделей — считать нечего.'
+    : (n <= slots
+        ? 'Цветов в сборке: ' + n + ', слотов ' + slots + ' — влезает целиком.'
+        : 'Цветов в сборке: ' + n + ', слотов ' + slots + '. Лишних ' + (n - slots) +
+          ': либо печатать партиями, либо слить ближайшие.');
+
+  let html = '';
+  if (n > slots || paletteView){
+    html += '<div class="export-note"><b>Партии.</b> Плит: ' + plan.length + '. Кнопка оставляет в сцене ' +
+      'только свою партию, а экспорт и так берёт видимое — качать можно обычной кнопкой.</div>' +
+      '<div class="pal-btns"><button class="pal-btn' + (paletteView ? '' : ' active') + '" data-pal="all">Все</button>';
+    plan.forEach((g, k) => {
+      html += '<button class="pal-btn' + (g.over ? ' warn' : '') +
+        (paletteView && paletteView.batch === k ? ' active' : '') + '" data-pal="' + k + '"' +
+        (g.over ? ' title="Этому телу не хватает слотов в одиночку — партиями это не лечится"' : '') +
+        '>Партия ' + (k + 1) + ' · ' + g.inks.length + ' цв · ' + g.bodies.length + ' тел</button>';
+    });
+    html += '</div>';
+  }
+  paletteSteps = null;
+  if (n > slots){
+    const mg = paletteMerges(pal.colors, slots, pal.use.map(u => u.length));
+    if (mg.steps.length){
+      paletteSteps = mg.steps;
+      html += '<div class="export-note"><b>Слияние ближайших.</b> Шагов ' + mg.steps.length + ', останется ' +
+        mg.left + '. ΔE — расхождение цвета: 1 предел различимости, 2–3 заметно вплотную, больше 10 — ' +
+        'очевидно разные цвета. Решать по числу, а не на глаз.</div>';
+      html += mg.steps.map(st =>
+        '<div class="pal-row">' +
+        '<span class="pal-sw" style="background:' + escapeHtml(st.from) + '"></span>' +
+        '<span class="pal-hex">' + escapeHtml(st.from) + '</span><span class="pal-use">→</span>' +
+        '<span class="pal-sw" style="background:' + escapeHtml(st.to) + '"></span>' +
+        '<span class="pal-hex">' + escapeHtml(st.to) + '</span>' +
+        '<span class="pal-use">ΔE ' + st.dE.toFixed(1) + '</span></div>').join('');
+      html += '<div class="pal-btns"><button class="pal-btn" data-pal="merge">Слить (' + mg.steps.length + ')</button></div>';
+    }
+  }
+  planEl.innerHTML = html;
+  planEl.querySelectorAll('button[data-pal]').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.pal;
+    if (v === 'all') paletteShowAll();
+    else if (v === 'merge') paletteApplyUI();
+    else paletteShowBatch(pal, plan, +v);
+  }));
 }
 function updateStatsPanel(tris, bbox) {
   document.getElementById('stat-tris').textContent = tris.length;

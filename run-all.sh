@@ -81,7 +81,7 @@ for t in test_paramrows.js test_keycap.js test_thread.js test_battery.js test_ho
           test_grip.js test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js \
           test_textures.js test_pbox.js test_gridfinity.js test_hook.js test_clips.js test_hole_patterns.js \
           test_hinge.js test_print_check.js test_wallorg.js test_svg_hole.js test_baseplate.js \
-          test_import.js test_3mf.js; do
+          test_import.js test_3mf.js test_palette.js; do
   add "$t" stub_preamble.js "$LIB" "$t"
 done
 

@@ -143,8 +143,25 @@ console.log('=== проушина ===');
   const t=base({frMode:'back', frHang:'keyhole'}), b=frameBackSpec(par({frMode:'back',frHang:'keyhole'}));
   const B=computeBBox(t);
   chk('шляпка прорезана насквозь', runsY(t, 0, b.top).length===0, runsY(t,0,b.top));
-  chk('прорезь под ней тоже', runsY(t, 0, b.top - b.slotL*0.6).length===0);
-  chk('а рядом с прорезью материал есть', runsY(t, b.slotW, b.top - b.slotL*0.6).length===1);
+  chk('прорезь тоже', runsY(t, 0, b.top + b.slotL*0.6).length===0);
+  chk('а рядом с прорезью материал есть', runsY(t, b.slotW, b.top + b.slotL*0.6).length===1);
+  /* СУЖЕНИЕ СВЕРХУ, А НЕ СНИЗУ — и это не про вид, а про то, держится ли рамка на гвозде. Гвоздь заводят
+     в круглое окно и рамку ОТПУСКАЮТ: она едет вниз, гвоздь относительно неё уходит ВВЕРХ и попадает в
+     узкую прорезь, откуда шляпке не пройти. Перевёрнутая проушина строится и герметична ровно так же, а
+     рамка съезжает с гвоздя тем же движением, каким её вешали.
+
+     Меряется ШИРИНА ДЫРЫ на двух высотах: у центра окружности она равна шляпке, выше — прорези. */
+  const holeWidth = (z) => { let lo=null, hi=null;
+    for(let i=0;i<=400;i++){ const x = -b.headD + 2*b.headD*i/400;
+      if (runsY(t, x, z).length === 0){ if(lo===null) lo=x; hi=x; } }
+    return lo===null ? 0 : hi-lo; };
+  const wHead = holeWidth(b.top), wSlot = holeWidth(b.top + b.slotL*0.6);
+  chk('у центра окружности дыра шириной со шляпку', Math.abs(wHead - b.headD) < 0.6,
+      {got:+wHead.toFixed(2), want:b.headD});
+  chk('выше — шириной с прорезь', Math.abs(wSlot - b.slotW) < 0.6, {got:+wSlot.toFixed(2), want:b.slotW});
+  chk('то есть сужение СВЕРХУ, а не снизу', wSlot < wHead*0.7, {slot:+wSlot.toFixed(2), head:+wHead.toFixed(2)});
+  chk('а ниже окружности дыры нет вовсе', holeWidth(b.top - b.headD/2 - 1.0) === 0,
+      holeWidth(b.top - b.headD/2 - 1.0));
   chk('прорезь уже шляпки — иначе гвоздь выпадет', b.slotW < b.headD*0.6, {slot:b.slotW, head:b.headD});
   /* ШЛЯПКА ПРОРЕЗАНА ЦЕЛИКОМ, А НЕ ПОЛОВИНОЙ. Первая версия обходила ПОЛОВИНУ окружности и замыкалась
      прямо на прорезь: выходил полудиск с хвостиком — контур по X от −4.00 до +1.80 при радиусе 4. Луч по
@@ -173,8 +190,9 @@ console.log('=== проушина ===');
       {cut:+cut.toFixed(1), want:+want.toFixed(1)});
   chk('и это заметно больше половины круга', cut > (Math.PI*r0*r0/2)*b.T*1.4,
       {cut:+cut.toFixed(1), half:+((Math.PI*r0*r0/2)*b.T).toFixed(1)});
-  chk('и проушина внутри задника', b.top + b.headD/2 < b.H/2 && b.top - b.slotL > -b.H/2,
+  chk('и проушина внутри задника', b.top + b.slotL < b.H/2 && b.top - b.headD/2 > -b.H/2,
       {top:b.top, H:b.H});
+  chk('и держится у ВЕРХНЕГО края, а не посередине', b.top + b.slotL > b.H/2 - 6, {top:b.top, H:b.H});
   chk('габарит задника от неё не вырос', Math.abs((B.maxZ-B.minZ)-b.H)<0.05, {h:+(B.maxZ-B.minZ).toFixed(2)});
   chk('без подвеса дырки нет', runsY(base({frMode:'back',frHang:'none'}), 0, b.top).length===1);
   chk('и материала больше', vol(base({frMode:'back',frHang:'none'})) > vol(t));

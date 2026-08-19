@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.37.3';
+const APP_VERSION = 'v18.38.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3054,7 +3054,11 @@ function makeZipStore(entries){
   return new Blob(parts, { type: 'model/3mf' });
 }
 // One model's tris → a 3MF <object> (vertices deduped after 3-decimal rounding; degenerates dropped).
-function tris3MFObject(id, trisIn, pid, pindex){
+/* `nums` — номер филамента на КАЖДЫЙ треугольник (1-based) или null. Совпадающий с собственным номером
+   объекта не пишется: слайсер помечает только то, что покрашено ОТЛИЧНО от него, и лишний атрибут на
+   каждом треугольнике раздул бы файл вдвое ни за чем. Вырожденные грани отбрасываются здесь же, поэтому
+   номер берётся по индексу ИСХОДНОГО треугольника, а не по счётчику записанных. */
+function tris3MFObject(id, trisIn, pid, pindex, nums){
   const tris = toPrintFrameTris(trisIn);          // Y-up → Z-up, same as the STL writer
   const r3 = v => Math.round(v * 1000) / 1000;
   const vmap = new Map(), verts = [], faces = [];
@@ -3064,16 +3068,23 @@ function tris3MFObject(id, trisIn, pid, pindex){
     if (i === undefined) { i = verts.length; verts.push([x, y, z]); vmap.set(k, i); }
     return i;
   };
-  for (const t of tris){
-    const a = idx(t[0]), b = idx(t[1]), c = idx(t[2]);
-    if (a !== b && b !== c && a !== c) faces.push(a, b, c);
+  const paint = [];
+  for (let i = 0; i < tris.length; i++){
+    const t = tris[i], a = idx(t[0]), b = idx(t[1]), c = idx(t[2]);
+    if (a === b || b === c || a === c) continue;
+    faces.push(a, b, c);
+    const k = nums ? nums[i] : 0;
+    paint.push((k && k !== (pindex|0) + 1) ? paintLeafCode(k) : '');
   }
   const attr = (pid != null && pindex != null) ? ' pid="' + pid + '" pindex="' + pindex + '"' : '';
   const s = ['<object id="' + id + '" type="model"' + attr + '><mesh><vertices>'];
   for (const v of verts) s.push('<vertex x="' + v[0] + '" y="' + v[1] + '" z="' + v[2] + '"/>');
   s.push('</vertices><triangles>');
-  for (let i = 0; i < faces.length; i += 3)
-    s.push('<triangle v1="' + faces[i] + '" v2="' + faces[i+1] + '" v3="' + faces[i+2] + '"/>');
+  for (let i = 0; i < faces.length; i += 3){
+    const pc = paint[i/3];
+    s.push('<triangle v1="' + faces[i] + '" v2="' + faces[i+1] + '" v3="' + faces[i+2] + '"' +
+           (pc ? ' paint_color="' + pc + '"' : '') + '/>');
+  }
   s.push('</triangles></mesh></object>');
   return s.join('');
 }
@@ -3239,8 +3250,22 @@ function assemblyInks(){
     used.add(i);
     return i;
   };
+  /* Цвета ПОКРАСКИ попадают в тот же список филаментов, что и цвета деталей: слот AMS — это цвет, и
+     чёрный, которым покрашена эмблема, тот же чёрный, что у соседней детали. Регистрируется здесь только
+     ПАЛИТРА (несколько записей), а раскладка по треугольникам считается один раз при записи файла: эта
+     же функция зовётся на каждую перерисовку панели, и перебирать на ней двести тысяч треугольников
+     значило бы подвесить приложение ради строчки под кнопкой. */
+  const inkForPaint = (hex) => {
+    const col = /^#[0-9a-fA-F]{6}$/.test(hex || '') ? hex.toUpperCase() : null;
+    if (!col) return null;
+    if (inkOf.has(col)) return inkOf.get(col);
+    const i = newInk(col, 'Покраска'); inkOf.set(col, i); return i;
+  };
   for (const body of bodies){ const used = new Set();
-    body.inks = body.parts.map(m => inkIndex(m, used)); }
+    body.inks = body.parts.map(m => inkIndex(m, used));
+    body.paint = body.parts.map((m, i) => { const pm = modelPaint(m); if (!pm) return null;
+      const to = []; for (const k of pm.used) to[k-1] = inkForPaint(pm.palette[k-1]);
+      return { pm, to, base: body.inks[i] + 1 }; }); }
   return { bodies, colors, names };
 }
 function assemblyTo3MF(){
@@ -3259,7 +3284,9 @@ function assemblyTo3MF(){
       let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
       if (m.px || m.py || m.pz) tris = tris.map(t => t.map(p => [p[0]+m.px, p[1]+m.py, p[2]+m.pz]));
       const ink = body.inks[k];
-      objects.push(tris3MFObject(id, tris, MAT_ID, ink));
+      const pp = body.paint[k];
+      const nums = pp ? pp.pm.ink.map(q => (q > 0 && pp.to[q-1] != null) ? pp.to[q-1] + 1 : pp.base) : null;
+      objects.push(tris3MFObject(id, tris, MAT_ID, ink, nums));
       comps.push('<component objectid="' + id + '" transform="' + MF_IDENT3 + '"/>');
       parts.push('<part id="' + id + '" subtype="normal_part">' +
         '<metadata key="name" value="' + esc(m.name || ('Деталь ' + id)) + '"/>' +
@@ -6452,14 +6479,44 @@ function importPartOffset(b, origin){
    цепочки, обязано пережить её всю; перечисление полей посередине — это место, где оно однажды не
    переживёт. Поэтому шаг вынесен функцией и проверяется отдельно. */
 function sanitizeImportParts(parts){
-  return parts
-    .map(p => Object.assign({}, p, {
-      tris: p.tris.filter(t => t.every(v => v.length === 3 && v.every(Number.isFinite))) }))
-    .filter(p => p.tris.length);
+  return parts.map(p => {
+    const ok = t => t.every(v => v.length === 3 && v.every(Number.isFinite));
+    if (!p.ink) return Object.assign({}, p, { tris: p.tris.filter(ok) });
+    // Номера филаментов идут ПОЗИЦИЯ В ПОЗИЦИЮ с треугольниками, значит и выбрасывать их надо в ногу:
+    // отфильтровать одно и оставить другое — это сдвинуть всю раскраску на число выброшенных.
+    const tris = [], ink = [];
+    for (let i = 0; i < p.tris.length; i++) if (ok(p.tris[i])){ tris.push(p.tris[i]); ink.push(p.ink[i]); }
+    return Object.assign({}, p, { tris, ink });
+  }).filter(p => p.tris.length);
 }
-function addImportedPart(tris, name, place, color, origin){
+/* Раскраска модели — но только там, где её ещё можно применить. Условий два, и оба проверяемые, а не
+   предполагаемые:
+     · у модели есть исходная раскраска (это импорт, и в файле она была);
+     · итоговая сетка совпала с исходной ПО ЧИСЛУ треугольников, то есть по дороге ничего не выбросили и
+       не добавили. `snapWeldTris` умеет выбрасывать схлопнувшиеся щепки, а фаска кромок режет сетку
+       заново — после них соответствия «номер к номеру» уже нет, и притворяться, что есть, нельзя.
+   Второе условие и есть замена сквозного протаскивания: массив номеров пережить пересборку сетки не
+   может, но может СКАЗАТЬ, что не пережил. */
+function modelPaint(m, tris){
+  const id = m && m.params ? m.params.importId : null;
+  const p = (id != null) ? importedPaint.get(id) : null;
+  if (!p) return null;
+  const q = m.params;
+  if ((q.edgeBevelWhere || 'none') !== 'none' && (q.edgeBevel || 0) > 0.01) return null;
+  const n = (tris || m.rawTris || []).length;
+  return n === p.ink.length ? p : null;
+}
+function addImportedPart(tris, name, place, color, origin, paint){
   const b = computeBBox(tris);
   const id = nextImportId++; importedMeshes.set(id, tris);
+  if (paint && paint.ink && paint.ink.length === tris.length && paint.ink.some(k => k > 0)){
+    // Какие филаменты в покраске ЕСТЬ — считается один раз, здесь. Палитра проекта бывает на пять катушек,
+    // а покрашено двумя; заводить филаментами всю палитру значило бы просить зарядить впятеро больше,
+    // чем деталь просит. А пересчитывать это при каждой перерисовке панели нельзя — там двести тысяч
+    // треугольников.
+    const used = []; for (const k of paint.ink) if (k > 0 && used.indexOf(k) < 0) used.push(k);
+    importedPaint.set(id, { ink: paint.ink, palette: (paint.palette || []).slice(), used: used.sort((a,b)=>a-b) });
+  }
   const params = defaultBoxParams();
   params.importId = id; params.importFit = 'scale'; params.importScale = 100;
   params.width  = Math.max(0.1, Math.round((b.maxX-b.minX)*100)/100);   // native size → 100% is identity
@@ -6521,20 +6578,24 @@ function importMeshFile(file){
       let last = null;
       // Начало сборки считается ДО добавления: оно общее на все детали, и по одной его не вывести.
       const origin = many ? importAssemblyOrigin(parts) : null;
+      const made = [];
       parts.forEach((p, i) => {
         const nm = many ? (p.name || (stem + ' · ' + (i+1))) : (p.name || stem);
-        last = addImportedPart(p.tris, nm, !many, p.color, origin);   // сборку не раскладываем: у неё своя
+        last = addImportedPart(p.tris, nm, !many, p.color, origin,   // сборку не раскладываем: у неё своя
+                               { ink: p.ink, palette: p.palette });
+        made.push(last);
       });
-      /* Покраска НЕ импортируется, и это сказано вслух. Она свойство поверхности — какой филамент печатает
-         периметры вот этого куска, — а модель сборки красится целиком; разложить покраску по деталям
-         значило бы наделать открытых заплаток вместо тел. Молчать об этом нельзя: файл с MakerWorld почти
-         всегда раскрашен, и человек увидит одноцветную деталь там, где в слайсере эмблема. */
+      /* Сколько покраски ДОЕХАЛО — спрашивается у самих записей, а не у разбора. Привязать её есть к чему
+         не всегда: номера филаментов в покраске есть, а ПАЛИТРА лежит в `project_settings.config`, и без
+         него номер остаётся числом. Отчитаться числом из разбора значило бы отчитаться о намерении, а не
+         о результате, — ровно та ошибка, которой этот проект и боится. Молчать тем более нельзя: файл с
+         MakerWorld почти всегда раскрашен, и человек увидит ровную деталь там, где в слайсере эмблема. */
       const painted = parts.reduce((n, p) => n + (p.painted || 0), 0);
-      if (painted) alert('В файле РАСКРАШЕНО ' + painted.toLocaleString('ru') + ' треугольников ' +
-        '(многоцветная покраска слайсера). Она не импортируется: покраска — это свойство поверхности, ' +
-        'какой филамент печатает вот этот кусок, а деталь сборки красится целиком.\n\n' +
-        'Каждая деталь получила цвет своего филамента — тот, которым слайсер печатает её основную часть. ' +
-        'Геометрия при этом взята вся, без потерь.');
+      const inked = made.filter(r => modelPaint(r)).length;
+      if (painted && !inked) alert('В файле РАСКРАШЕНО ' + painted.toLocaleString('ru') + ' треугольников ' +
+        '(многоцветная покраска слайсера), но перенести её не вышло. Чаще всего причина одна: в архиве ' +
+        'нет Metadata/project_settings.config, а палитра филаментов лежит только там, и номер филамента ' +
+        'без палитры — просто число.\n\nГеометрия взята вся, без потерь; деталь пришла одним цветом.');
       loadModel(last);
       regenerate();
       // Каждой записи — свой меш в сцене. Без этого прохода видно только ту деталь, которую loadModel
@@ -6543,7 +6604,8 @@ function importMeshFile(file){
       if (scene3DReady) for (const m of models) ensureModelMesh(m);
       renderModelCards();
       if (scene3DReady) frameCamera(sceneUnionBBox());
-      console.log('imported', file.name, parts.length, 'part(s),', total, 'tris');
+      console.log('imported', file.name, parts.length, 'part(s),', total, 'tris',
+                  painted ? ('| раскрашено ' + painted + (inked ? ', перенесено на ' + inked + ' дет.' : ', БЕЗ палитры')) : '');
     }).catch(err => alert('Не удалось разобрать файл: ' + err.message));
   };
   reader.onerror = () => alert('Не удалось прочитать файл.');
@@ -18990,6 +19052,13 @@ let nextFrozenId = 1;
 // params carry `importId` + a scale spec, so buildTrisForShape re-derives the on-bed geometry each rebuild
 // (letting Width/Height/Depth or a uniform % rescale a scan live, like a parametric shape).
 const importedMeshes = new Map();
+/* Раскраска лежит РЯДОМ с исходной сеткой, а не внутри треугольников. Треугольник здесь — обычный массив
+   точек, и он пересобирается по дороге (масштаб, сварка вершин, поворот, сдвиг, запись в файл): свойство,
+   привешенное к нему, потерялось бы на первом же пересоздании — ровно так, как уже терялся цвет детали.
+   Массив номеров, идущий позиция в позицию с исходной сеткой, пережить это не может тоже — но зато МОЖЕТ
+   СКАЗАТЬ, что не пережил: длина не сойдётся. Отсюда `modelPaint`, который применяет раскраску только там,
+   где соответствие доказуемо, и молча не применяет там, где нет. */
+const importedPaint = new Map();
 let nextImportId = 1;
 // Center the original on the origin and scale: 'box' → non-uniform stretch to exactly Width×Height×Depth;
 // otherwise uniform × importScale%. Pure (no DOM) so the tests can exercise it.
@@ -19114,6 +19183,88 @@ const mfAttr = (tag, name) => { const m = new RegExp(name + '\\s*=\\s*"([^"]*)"'
    Bambu Studio и Orca — то есть большинство того, что скачивается с MakerWorld) выносит геометрию в
    отдельные `3D/Objects/object_N.model`, а в главном оставляет ссылки `p:path`. Объект поэтому опознаётся
    ПАРОЙ «файл + id», а не одним id: номера в разных файлах свои и совпадают сплошь и рядом. */
+/* ---- Многоцветная покраска слайсера ------------------------------------------------------------
+   `paint_color` у Bambu и Orca (`slic3rpe:mmu_segmentation` у PrusaSlicer) — это НЕ цвет, а дерево
+   разбиения треугольника с номером филамента в каждом листе. Разобрано по исходникам Orca
+   (`TriangleSelector::serialize`, `FacetsAnnotation::get_triangle_as_string`), потому что формат нигде
+   не описан, а угадывать тут нечего:
+
+     · строка читается С КОНЦА — писавший её вставлял каждую тетраду В НАЧАЛО;
+     · внутри тетрады биты идут младшим вперёд;
+     · у каждого узла 2 бита «на сколько сторон разбит»; ноль — лист;
+     · у листа ещё 2 бита состояния, а значение 0b11 означает «дальше 4 бита номера минус три»
+       (так помещаются филаменты с четвёртого по восемнадцатый);
+     · у разбитого узла 2 бита «особой стороны» и дети — В ОБРАТНОМ ПОРЯДКЕ.
+
+   Проверено на настоящем файле с MakerWorld: 1 → «4», 2 → «8», 3 → «0C», 4 → «1C», 5 → «2C» — ровно те
+   коды, что в нём лежат. */
+const PAINT_MAX_DEPTH = 12;
+function paintBits(code){
+  const bits = [];
+  for (let i = code.length - 1; i >= 0; i--){
+    const d = parseInt(code[i], 16);
+    if (!Number.isFinite(d)) return null;
+    for (let b = 0; b < 4; b++) bits.push((d >> b) & 1);
+  }
+  return bits;
+}
+// Номер филамента → код листа. Обратное к разбору, и проверяется именно так: закодировать и разобрать.
+function paintLeafCode(state){
+  const bits = [0, 0];
+  if (state >= 3){ bits.push(1, 1); const n = state - 3;
+    for (let i = 0; i < 4; i++) bits.push((n >> i) & 1); }
+  else bits.push(state & 1, (state >> 1) & 1);
+  let out = '';
+  for (let i = 0; i < bits.length; i += 4){
+    let v = 0; for (let b = 0; b < 4; b++) v |= (bits[i+b] || 0) << b;
+    out = v.toString(16).toUpperCase() + out;                 // каждая тетрада — В НАЧАЛО строки
+  }
+  return out;
+}
+/* Как слайсер делит треугольник — дословно по `TriangleSelector::perform_split`. Делится он всегда по
+   СЕРЕДИНАМ сторон, поэтому поверхность от разбиения не меняется ни на микрон: те же точки, просто
+   мельче. Порядок вершин начинается с «особой стороны», и от него зависит, какой ребёнок какой. */
+function paintSplitKids(a, b, c, k, s){
+  const src = [a, b, c], V = [src[s % 3], src[(s + 1) % 3], src[(s + 2) % 3]];
+  const mid = (p, q) => [(p[0]+q[0])/2, (p[1]+q[1])/2, (p[2]+q[2])/2];
+  if (k === 1){ V.splice(2, 0, mid(V[2], V[1]));
+    return [[V[0],V[1],V[2]], [V[2],V[3],V[0]]]; }
+  if (k === 2){ V.splice(1, 0, mid(V[1], V[0])); V.splice(4, 0, mid(V[0], V[3]));
+    return [[V[0],V[1],V[4]], [V[1],V[2],V[4]], [V[2],V[3],V[4]]]; }
+  V.splice(1, 0, mid(V[1], V[0])); V.splice(3, 0, mid(V[3], V[2])); V.splice(5, 0, mid(V[0], V[4]));
+  return [[V[0],V[1],V[5]], [V[1],V[2],V[3]], [V[3],V[4],V[5]], [V[1],V[3],V[5]]];
+}
+function paintRead(bits, pos, a, b, c, out, depth){
+  if (pos + 2 > bits.length || depth > PAINT_MAX_DEPTH) return -1;
+  const k = bits[pos] | (bits[pos+1] << 1); pos += 2;
+  if (!k){
+    if (pos + 2 > bits.length) return -1;
+    let st = bits[pos] | (bits[pos+1] << 1); pos += 2;
+    if (st === 3){
+      if (pos + 4 > bits.length) return -1;
+      let n = 0; for (let i = 0; i < 4; i++) n |= bits[pos+i] << i;
+      pos += 4; st = 3 + n;
+    }
+    out.push({ tri: [a, b, c], state: st });
+    return pos;
+  }
+  if (pos + 2 > bits.length) return -1;
+  const s = bits[pos] | (bits[pos+1] << 1); pos += 2;
+  const kids = paintSplitKids(a, b, c, k, s);
+  for (let i = k; i >= 0; i--){                                // дети записаны В ОБРАТНОМ порядке
+    const kid = kids[i]; if (!kid) return -1;
+    pos = paintRead(bits, pos, kid[0], kid[1], kid[2], out, depth + 1);
+    if (pos < 0) return -1;
+  }
+  return pos;
+}
+/* Один треугольник с кодом → список кусков «точки + номер филамента». Возвращает null, если код
+   не разобрался: битый код — не повод потерять сам треугольник, он просто останется целым. */
+function paintFacets(code, a, b, c){
+  const bits = paintBits(code); if (!bits) return null;
+  const out = [];
+  return paintRead(bits, 0, a, b, c, out, 0) < 0 ? null : out;
+}
 function parse3MFObjects(xml, self){
   const objs = new Map();
   const reObj = /<object\b([^>]*)>([\s\S]*?)<\/object>/g;
@@ -19132,15 +19283,18 @@ function parse3MFObjects(xml, self){
        файл с MakerWorld без покраски почти не встречается: в присланном наборе её несут двадцать тысяч
        треугольников из ста двадцати, то есть каждая эмблема на каждой подставке. */
     let paint = 0;
+    const codes = [];
     const reT = /<triangle\b([^>]*)\/?>/g; let t;
     while ((t = reT.exec(body))){ const a = '<triangle' + t[1] + '>';
-      if (/\b(paint_color|mmu_segmentation)\s*=/.test(a)) paint++;
+      const pc = mfAttr(a, 'paint_color') || mfAttr(a, 'slic3rpe:mmu_segmentation') || mfAttr(a, 'mmu_segmentation');
+      if (pc) paint++;
+      codes.push(pc || null);
       tris.push([+mfAttr(a,'v1'), +mfAttr(a,'v2'), +mfAttr(a,'v3')]); }
     const reC = /<component\b([^>]*)\/?>/g; let c;
     while ((c = reC.exec(body))){ const a = '<component' + c[1] + '>';
       comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')),
                    path: a.indexOf('p:path') >= 0 ? mfAttr(a,'p:path') : null }); }
-    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps, paint,
+    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps, paint, codes,
                    pid: mfAttr(attrs, 'pid'), pindex: mfAttr(attrs, 'pindex') });
   }
   return objs;
@@ -19258,10 +19412,22 @@ function parse3MFModels(files, mainPath, meta){
     if (depth > 12) return;
     const o = (byFile.get(path) || new Map()).get(id); if (!o) return;
     if (stat) stat.paint += o.paint || 0;
-    for (const f of o.tris){
-      const p = f.map(k => o.verts[k]);
+    for (let fi = 0; fi < o.tris.length; fi++){
+      const p = o.tris[fi].map(k => o.verts[k]);
       if (p.some(q => !q || q.some(x => !Number.isFinite(x)))) continue;
-      out.push(p.map(q => mfApply(mat, q)));
+      /* РАЗБИЕНИЕ ЗАПЕКАЕТСЯ ЗДЕСЬ. Кусок покраски — не отдельное тело и не отдельная деталь: это часть
+         той же поверхности, просто печатаемая другим филаментом. Разбив треугольник по дереву из
+         `paint_color`, получаем сетку, у которой у КАЖДОГО треугольника ровно один филамент, — и дальше
+         её можно и показать, и записать обратно, не заводя ни новых сущностей, ни открытых заплаток.
+         Поверхность при этом та же до микрона: слайсер делит только по серединам сторон. */
+      const code = stat && stat.ink && o.codes && o.codes[fi];
+      const cut = code ? paintFacets(code, p[0], p[1], p[2]) : null;
+      if (cut){
+        for (const q of cut){ out.push(q.tri.map(v => mfApply(mat, v))); stat.ink.push(q.state); }
+      } else {
+        out.push(p.map(q => mfApply(mat, q)));
+        if (stat && stat.ink) stat.ink.push(0);
+      }
     }
     // Ссылка без `p:path` — на объект СВОЕГО файла; с ним — на чужой.
     for (const c of o.comps) build(c.path ? mfPath(c.path) : path, c.id, mfMul(c.mat, mat), depth + 1, out, stat);
@@ -19273,22 +19439,22 @@ function parse3MFModels(files, mainPath, meta){
   while ((it = reItem.exec(xmlMain))){
     const a = '<item' + it[1] + '>', id = mfAttr(a, 'objectid'); if (id == null) continue;
     const path = a.indexOf('p:path') >= 0 ? mfPath(mfAttr(a, 'p:path')) : mainPath;
-    const out = [], stat = { paint: 0 };
+    const out = [], stat = { paint: 0, ink: palette.length ? [] : null };
     build(path, id, mfMat(mfAttr(a, 'transform')), 0, out, stat);
     const md = objMeta.get(id);
     if (out.length) parts.push({ name: mf3MFName(md, ((byFile.get(path) || new Map()).get(id) || {}).name, id),
                                  color: mf3MFColor(md, palette) || matColor(path, id),
-                                 painted: stat.paint, tris: out });
+                                 painted: stat.paint, ink: stat.ink, palette, tris: out });
   }
   // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой, из любого файла.
   if (!parts.length) for (const [path, m] of byFile) for (const [id, o] of m){
     if (!o.tris.length) continue;
-    const out = [], stat = { paint: 0 };
+    const out = [], stat = { paint: 0, ink: palette.length ? [] : null };
     build(path, id, null, 0, out, stat);
     const md = objMeta.get(id);
     if (out.length) parts.push({ name: mf3MFName(md, o.name, id),
                                  color: mf3MFColor(md, palette) || matColor(path, id),
-                                 painted: stat.paint, tris: out });
+                                 painted: stat.paint, ink: stat.ink, palette, tris: out });
   }
   if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
   return parts;
@@ -19315,7 +19481,7 @@ function parse3MF(buf){
 function parseMeshFileParts(buf, name){
   // Система координат меняется ЗДЕСЬ, на границе, а не в разборщиках: разборщик обязан отдавать то, что
   // написано в файле (на этом стоят его проверки), а «где верх» — вопрос не формата, а приложения.
-  const frame = parts => parts.map(p => Object.assign({}, p, { tris: fromPrintFrameTris(p.tris) }));
+  const frame = parts => parts.map(p => Object.assign({}, p, { tris: fromPrintFrameTris(p.tris) }));  // ink идёт по номерам, поворот их не трогает
   if (/\.3mf$/i.test(name||'')) return parse3MF(buf).then(frame);
   const tris = /\.obj$/i.test(name||'') ? parseOBJ(new TextDecoder().decode(buf)) : parseSTL(buf);
   return Promise.resolve(tris.length ? frame([{name:'', tris}]) : []);
@@ -22563,11 +22729,38 @@ function displayTris(tris){
   if (!lite){ lite = clusterDecimate(tris, PREVIEW_TRI_BUDGET); previewLite.set(tris, lite); }
   return lite;
 }
-function setMeshTrisGeometry(threeMesh, tris) {
+/* Цвет НА ВЕРШИНУ для раскрашенной детали. Материал у модели один, поэтому показать два филамента на
+   одной сетке можно только так — атрибутом цвета. Треугольник красится целиком (три одинаковые вершины):
+   раскраска и есть свойство треугольника, размазывать её интерполяцией по рёбрам значило бы нарисовать
+   градиент там, где в печати ровная граница. */
+function paintVertexColors(tris, paint, baseColor){
+  const arr = new Float32Array(tris.length * 9), cache = new Map();
+  const rgb = hex => { let v = cache.get(hex);
+    if (!v){ const c = new THREE.Color(hex); v = [c.r, c.g, c.b]; cache.set(hex, v); } return v; };
+  for (let i = 0; i < tris.length; i++){
+    const k = paint.ink[i], hex = (k > 0 && paint.palette[k-1]) ? paint.palette[k-1] : baseColor;
+    const c = rgb(hex);
+    for (let v = 0; v < 3; v++){ const o = i*9 + v*3; arr[o] = c[0]; arr[o+1] = c[1]; arr[o+2] = c[2]; }
+  }
+  return arr;
+}
+// Раскрасить меш модели или честно снять раскраску: `displayTris` на тяжёлой сетке отдаёт прореженную
+// копию, и соответствия «номер к номеру» там уже нет — тогда деталь показывается одним цветом.
+function applyMeshPaint(threeMesh, geo, tris, m){
+  const paint = m ? modelPaint(m, tris) : null;
+  const on = !!paint;
+  if (on) geo.setAttribute('color', new THREE.BufferAttribute(paintVertexColors(tris, paint, m.color || '#b9c5cd'), 3));
+  if (threeMesh.material && threeMesh.material.vertexColors !== on){
+    threeMesh.material.vertexColors = on; threeMesh.material.needsUpdate = true;
+  }
+  return on;
+}
+function setMeshTrisGeometry(threeMesh, tris, m) {
   tris = displayTris(tris);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(trisToPositions(tris), 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(computeWeldedNormals(tris), 3));
+  applyMeshPaint(threeMesh, geo, tris, m);
   if (threeMesh.geometry) threeMesh.geometry.dispose();
   threeMesh.geometry = geo;
 }
@@ -22587,7 +22780,7 @@ function ensureModelMesh(m) {
   scene.add(mm);
   modelMeshes.set(m.id, mm);
   if (m.rawTris && m.rawTris.length && m.id !== activeModelId)
-    setMeshTrisGeometry(mm, rotateTris(m.rawTris, m.rx, m.ry, m.rz));
+    setMeshTrisGeometry(mm, rotateTris(m.rawTris, m.rx, m.ry, m.rz), m);
   return mm;
 }
 // The ACTIVE mesh (and its wireframe overlay) follow the live position offset.
@@ -22615,6 +22808,7 @@ function updateScene3D(tris, bbox) {
   newGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   newGeo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 
+  applyMeshPaint(mesh, newGeo, tris, getActiveModel());
   if (mesh.geometry) mesh.geometry.dispose();
   mesh.geometry = newGeo;
   // Only pay for the wireframe when the overlay is actually shown; otherwise defer it (see toggle
@@ -22672,7 +22866,7 @@ function rebuildBodySiblings() {
       m.rawTris = raw;
       const rot = rotateTris(raw, m.rx, m.ry, m.rz);
       m.bbox = computeBBox(rot);
-      if (scene3DReady) { const mm = ensureModelMesh(m); if (mm) setMeshTrisGeometry(mm, rot); }
+      if (scene3DReady) { const mm = ensureModelMesh(m); if (mm) setMeshTrisGeometry(mm, rot, m); }
     }
   } finally {
     swap(logos, keepLogos); swap(boxHoles, keepHoles); swap(dieFaces, keepDie);

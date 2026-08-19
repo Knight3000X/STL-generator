@@ -533,6 +533,103 @@ console.log('=== 3MF: составная модель приходит дета�
         sanitizeImportParts(parts)[0].painted === 3, sanitizeImportParts(parts)[0].painted);
   }
 
+  /* 16) ПОКРАСКА РАЗБИРАЕТСЯ И ЗАПЕКАЕТСЯ. `paint_color` — не цвет, а дерево разбиения треугольника с
+         номером филамента в листьях; формат нигде не описан и разобран по исходникам Orca. Проверяется
+         он поэтому не «примерно похоже», а на КОДАХ ИЗ НАСТОЯЩЕГО ФАЙЛА и на обратимости. */
+  {
+    // Коды, которые лежат в присланном наборе с MakerWorld, и филаменты, которые они означают.
+    for (const [st, code] of [[1,'4'], [2,'8'], [3,'0C'], [4,'1C'], [5,'2C'], [18,'FC']]){
+      chk('филамент ' + st + ' пишется как «' + code + '»', paintLeafCode(st) === code, paintLeafCode(st));
+      const f = paintFacets(code, [0,0,0], [6,0,0], [0,6,0]);
+      chk('и читается обратно как ' + st, f && f.length === 1 && f[0].state === st, f && f.map(q=>q.state));
+    }
+    chk('битый код не притворяется разобранным', paintFacets('нет', [0,0,0], [1,0,0], [0,1,0]) === null);
+
+    // Разбиение: слайсер делит только по СЕРЕДИНАМ сторон, поэтому поверхность не меняется ни на микрон.
+    const A = [0,0,0], B = [6,0,0], C = [0,6,0];
+    const area = t => { const u = [t[1][0]-t[0][0], t[1][1]-t[0][1], t[1][2]-t[0][2]],
+                              v = [t[2][0]-t[0][0], t[2][1]-t[0][1], t[2][2]-t[0][2]];
+      const n = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+      return Math.hypot(n[0],n[1],n[2])/2; };
+    let bad = 0;
+    for (let k = 1; k <= 3; k++) for (let sd = 0; sd < 3; sd++){
+      const kids = paintSplitKids(A, B, C, k, sd);
+      if (kids.length !== k+1 || Math.abs(kids.reduce((n,t)=>n+area(t),0) - area([A,B,C])) > 1e-9) bad++;
+    }
+    chk('разбиение: детей k+1 и площадь сходится при любых k и стороне', bad === 0, bad);
+
+    /* Дети записаны В ОБРАТНОМ порядке, и это не косметика: перепутай — и номера филаментов приклеятся
+       не к тем кускам. Код «48483» — трёхстороннее разбиение с листьями 1,2,1,2 по порядку детей; у
+       четырёхстороннего разбиения ребёнок 0 держит вершину A, а ребёнок 3 — середину, без вершин вовсе. */
+    const cut = paintFacets('48483', A, B, C);
+    chk('трёхстороннее разбиение даёт четыре куска', cut && cut.length === 4, cut && cut.length);
+    const hasA = cut.filter(q => q.tri.some(v => v[0] === 0 && v[1] === 0 && v[2] === 0));
+    const middle = cut.filter(q => !q.tri.some(v => (v[0]===0&&v[1]===0&&v[2]===0) || (v[0]===6&&v[1]===0) || (v[1]===6&&v[0]===0)));
+    chk('угловой кусок при вершине A взял состояние ребёнка 0', hasA.length === 1 && hasA[0].state === 1,
+        hasA.map(q=>q.state));
+    chk('средний кусок — состояние ребёнка 3', middle.length === 1 && middle[0].state === 2, middle.map(q=>q.state));
+    chk('и площадь после разбора та же', Math.abs(cut.reduce((n,q)=>n+area(q.tri),0) - area([A,B,C])) < 1e-9);
+  }
+
+  /* 17) ПОКРАСКА ДОЕЗЖАЕТ ДО МОДЕЛИ. Номер филамента без палитры — просто число, поэтому переносится она
+         только вместе с `project_settings.config`; а применяется только там, где соответствие
+         «номер к номеру» ДОКАЗУЕМО (см. modelPaint). */
+  {
+    const mesh = '<mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="6" y="0" z="0"/><vertex x="0" y="6" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1" paint_color="4"/>' +      // филамент 1 — целиком
+      '<triangle v1="0" v2="1" v3="3" paint_color="48483"/>' +  // разбит на четыре
+      '<triangle v1="0" v2="3" v3="2"/>' +                      // не покрашен
+      '<triangle v1="1" v2="2" v3="3" paint_color="2C"/>' +     // филамент 5
+      '</triangles></mesh>';
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="1" type="model">' + mesh + '</object></resources>' +
+      '<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></build></model>';
+    const ms = '<?xml version="1.0"?><config><object id="1">' +
+      '<metadata key="name" value="Подставка"/><metadata key="extruder" value="2"/>' +
+      '<part id="1" subtype="normal_part"/></object></config>';
+    const ps = JSON.stringify({ filament_colour: ['#FFFFFF', '#000000', '#F4EE2A', '#545454', '#C12E1F'] });
+    const zip = extra => zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(model)},
+                                    {name:'Metadata/model_settings.config', method:0, data:enc.encode(ms)}]
+                                   .concat(extra || []));
+    const parts = sanitizeImportParts(await parseMeshFileParts(
+      zip([{name:'Metadata/project_settings.config', method:0, data:enc.encode(ps)}]), 'п.3mf'));
+    const p0 = parts[0];
+    chk('раскрашенных треугольников насчитано три', p0.painted === 3, p0.painted);
+    chk('сетка подразбита: 4 → 7 треугольников', p0.tris.length === 7, p0.tris.length);
+    chk('номера идут в ногу с треугольниками', p0.ink.length === p0.tris.length, [p0.ink.length, p0.tris.length]);
+    const cnt = {}; for (const k of p0.ink) cnt[k] = (cnt[k]||0)+1;
+    chk('филаменты те, что в кодах: 1×1, 4×(1,2), 1×нет, 1×5',
+        cnt[1] === 3 && cnt[2] === 2 && cnt[5] === 1 && cnt[0] === 1, cnt);
+    chk('палитра приехала с деталью', (p0.palette||[])[4] === '#C12E1F', p0.palette);
+    chk('цвет самой детали — её филамент', p0.color === '#000000', p0.color);
+
+    // Без палитры номера не выдумываются, и сетку тогда дробить незачем.
+    const bare = sanitizeImportParts(await parseMeshFileParts(zip(), 'п.3mf'))[0];
+    chk('без палитры покраска не переносится', !bare.ink, bare.ink);
+    chk('и сетка остаётся исходной', bare.tris.length === 4, bare.tris.length);
+    chk('но счётчик всё равно говорит, что она была', bare.painted === 3, bare.painted);
+
+    // Чистка обязана резать номера В НОГУ с треугольниками.
+    const broken = sanitizeImportParts([{ name:'x', tris: p0.tris.slice(0,3).concat([[[0,0,0],[1,0,0],[NaN,0,0]]], p0.tris.slice(3)),
+                                          ink: p0.ink.slice(0,3).concat([9], p0.ink.slice(3)), palette: p0.palette }])[0];
+    chk('чистка выбросила битый треугольник вместе с его номером',
+        broken.tris.length === 7 && broken.ink.join(',') === p0.ink.join(','), broken.ink);
+
+    // modelPaint применяет раскраску только там, где соответствие доказуемо.
+    const before = models.length;
+    const rec = addImportedPart(p0.tris, p0.name, false, p0.color, null, { ink: p0.ink, palette: p0.palette });
+    chk('у записи раскраска применима', !!modelPaint(rec), rec.rawTris.length + ' vs ' + p0.ink.length);
+    chk('и она та же самая', modelPaint(rec).ink.length === 7);
+    const keepBevel = rec.params.edgeBevelWhere, keepW = rec.params.edgeBevel;
+    rec.params.edgeBevelWhere = 'both'; rec.params.edgeBevel = 1;
+    chk('после фаски кромок соответствия нет — и раскраска не применяется', !modelPaint(rec));
+    rec.params.edgeBevelWhere = keepBevel; rec.params.edgeBevel = keepW;
+    chk('при несовпадении числа треугольников — тоже нет', !modelPaint(rec, p0.tris.slice(1)));
+    models.length = before;
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

@@ -380,6 +380,40 @@ console.log('=== палитра Orca: шаблон проекта ===');
   models.length = 0;
 }
 
+/* ПОКРАСКА УЕЗЖАЕТ ОБРАТНО. Импортированная многоцветная покраска — это номер филамента на каждый
+   треугольник; в файл она пишется тем же `paint_color`, каким пришла. Испортить это можно тихо тремя
+   способами: потерять соответствие треугольник↔номер (вырожденные грани отбрасываются по дороге), не
+   завести цвета покраски филаментами, и написать атрибут на КАЖДОМ треугольнике вместо тех, что
+   отличаются от собственного номера объекта, — файл раздуется вдвое, а выглядеть будет правильно. */
+console.log('=== покраска в выгрузке ===');
+{
+  models.length = 0; logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false});
+  // Четыре треугольника, три цвета: собственный (чёрный), плюс белый и красный из палитры.
+  const tris = [[[0,0,0],[6,0,0],[0,6,0]], [[0,0,0],[0,6,0],[0,0,6]],
+                [[0,0,0],[0,0,6],[6,0,0]], [[6,0,0],[0,0,6],[0,6,0]]];
+  const palette = ['#FFFFFF', '#000000', '#F4EE2A', '#545454', '#C12E1F'];
+  const rec = addImportedPart(tris, 'Подставка', false, '#000000', null, { ink: [1, 0, 2, 5], palette });
+  // Активная модель ЖИВЁТ В ГЛОБАЛЬНЫХ: экспорт первым делом сливает их обратно в запись, и без этой
+  // строки запись потеряла бы importId — то есть перестала бы быть импортом ещё до выгрузки.
+  Object.assign(paramState.box, rec.params);
+  activeModelId = rec.id; cachedRawTris = rec.rawTris;
+  const zip = readZip(new Uint8Array(await assemblyTo3MF().arrayBuffer()));
+  const xml = new TextDecoder().decode(zip['3D/3dmodel.model'].data);
+  const codes = (xml.match(/paint_color="([^"]*)"/g) || []).map(x => x.slice(13, -1));
+  check('цвета покраски заведены филаментами', (xml.match(/<base /g)||[]).length === 3,
+       (xml.match(/<base /g)||[]).length);
+  check('в файле есть и белый, и красный', /displaycolor="#FFFFFFFF"/.test(xml) && /displaycolor="#C12E1FFF"/.test(xml));
+  check('помечены только отличные от собственного номера', codes.length === 2, codes);
+  // Собственный номер детали — 1 (её цвет первый в списке филаментов), белый и красный — 2 и 3.
+  check('и помечены ИМЕННО те два', codes.join('|') === paintLeafCode(2) + '|' + paintLeafCode(3), codes);
+  // Номер 2 в ink — это #000000, то есть тот же цвет, что у детали: отдельным филаментом он не заводится
+  // и атрибутом не помечается.
+  check('цвет, совпавший с цветом детали, не удваивает филамент',
+       (xml.match(/displaycolor="#000000FF"/g)||[]).length === 1, xml.match(/displaycolor="#000000FF"/g));
+  models.length = 0;
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
 }

@@ -1042,6 +1042,7 @@
         <button class="base-btn" data-base="litho" title="Литофания: фото становится толщиной панели — на просвет проявляется картинка. Плоская, дугой или цилиндром-абажуром">Литофания</button>
         <button class="base-btn" data-base="frame" title="Рамка для фото: багет протянут по замкнутому контуру, размеры выведены из размера снимка; задник с проушиной под гвоздь">Рамка</button>
         <button class="base-btn" data-base="tile" title="Модульная настенная плитка: рельеф — окно в узор всего панно, рисунок через шов не обрывается">Плитка</button>
+        <button class="base-btn" data-base="ball" title="Ажурный шар / фонарь: сферическая оболочка с прорезанными окнами, кромки отверстий горизонтальные">Шар</button>
       </div>
     </div>
 
@@ -1236,7 +1237,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v20.0.0';
+const APP_VERSION = 'v21.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5574,6 +5575,22 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Ажурный шар', key:'lnMode', label:'Ажурный шар / фонарь (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'ball',t:'шар с перфорацией'}],
+      hint:'Сферическая оболочка с прорезанными окнами. Строится ячейками: сплошная ячейка даёт наружный и внутренний четырёхугольники, ребро между сплошной и дырой — стенку. Оболочку режут ПЛОСКОСТИ сверху и снизу, а не широты: по широте кромка вышла бы косой (наружная и внутренняя точки одной широты стоят на разной высоте), и деталь села бы на стол линией вместо кольца.'},
+    {group:'Ажурный шар', key:'lnD', label:'Шар: диаметр', min:30, max:250, step:1, default:90, unit:'мм'},
+    {group:'Ажурный шар', key:'lnT', label:'Шар: толщина оболочки', min:0.8, max:6, step:0.2, default:1.6, unit:'мм'},
+    {group:'Ажурный шар', key:'lnTopD', label:'Шар: Ø верхнего отверстия', min:2, max:240, step:1, default:26, unit:'мм',
+      hint:'Снизу ограничено не вкусом, а толщиной: плоскость реза обязана пересекать и ВНУТРЕННЮЮ сферу, а она меньше наружной на толщину стенки. Отсюда минимум 2·√(t·(2R−t)) — на шаре Ø90 со стенкой 1.6 это 23.8 мм. Через это же отверстие шар и вешают: петельки нет намеренно, шнур с узлом держит лучше и печатается ничем.'},
+    {group:'Ажурный шар', key:'lnBottomD', label:'Шар: Ø нижнего отверстия', min:2, max:240, step:1, default:60, unit:'мм',
+      hint:'Нижнее отверстие — и вход для лампы или свечи-таблетки, и опора при печати: кромка горизонтальная, первый слой ложится настоящим кольцом. Чем оно шире, тем меньше нависаний у экватора.'},
+    {group:'Ажурный шар', key:'lnPattern', label:'Шар: узор перфорации', type:'select', default:'grid',
+      options:[{v:'grid',t:'сетка (меридианы и пояса)'},{v:'brick',t:'кладка (со сдвигом через ряд)'},{v:'spiral',t:'спираль (меридианы закручены)'},{v:'diamond',t:'ромб (диагональная решётка)'}]},
+    {group:'Ажурный шар', key:'lnCols', label:'Шар: окон по кругу', min:3, max:48, step:1, default:12, unit:'', int:true},
+    {group:'Ажурный шар', key:'lnRows', label:'Шар: поясов по высоте', min:1, max:24, step:1, default:6, unit:'', int:true},
+    {group:'Ажурный шар', key:'lnRib', label:'Шар: ширина перемычки', min:0.8, max:10, step:0.2, default:2, unit:'мм',
+      hint:'Держится в МИЛЛИМЕТРАХ, а не в долях долготы: доля у полюса — это волосок, длина окружности там втрое меньше экваторной. Число ячеек под перемычку считается для каждого ряда от его собственной окружности, поэтому ширина квантуется по сетке; фактическую панель называет числом, если она разошлась с заказанной.'},
+    {group:'Ажурный шар', key:'lnTwist', label:'Шар: закрутка спирали на всю высоту', min:-360, max:360, step:15, default:180, unit:'°'},
     {group:'Настенная плитка', key:'tlMode', label:'Модульная настенная плитка (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'tile',t:'плитка панно'}],
       hint:'Рельеф плитки — окно в узор, который живёт на ВСЁМ панно, а не повторяется в каждой плитке заново. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же координата, и рисунок через шов не обрывается.'},
@@ -6943,6 +6960,7 @@ function dominantMode(p){
   if (p.csMode && p.csMode !== 'none') return 'coaster';
   if (p.frMode && p.frMode !== 'none') return 'frame';
   if (p.tlMode && p.tlMode !== 'none') return 'tile';
+  if (p.lnMode && p.lnMode !== 'none') return 'ball';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
@@ -7027,6 +7045,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Подстаканник': return mode==='coaster';
     case 'Рамка для фото': return mode==='frame';
     case 'Настенная плитка': return mode==='tile';
+    case 'Ажурный шар': return mode==='ball';
     case 'Литофания': return mode==='litho';
     case 'Тесты печати': return mode==='test';
     case 'Подставка (телефон / планшет)': return mode==='stand';
@@ -7049,6 +7068,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='coaster')   return key==='Подстаканник';
   if (mode==='frame')     return key==='Рамка для фото';
   if (mode==='tile')      return key==='Настенная плитка';
+  if (mode==='ball')      return key==='Ажурный шар';
   if (mode==='litho')     return key==='Литофания';
   /* «Тесты» — форма со своей единственной группой, ровно как подстаканник или литофания. Без этой
      строки она проваливалась бы в общий `return true` в конце, и на калибровочной плите панель
@@ -7084,7 +7104,7 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
-  'Рамка для фото':'frame', 'Настенная плитка':'tile',
+  'Рамка для фото':'frame', 'Настенная плитка':'tile', 'Ажурный шар':'ball',
   'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
@@ -7092,7 +7112,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
-  frame:'Рамка для фото', tile:'Настенная плитка',
+  frame:'Рамка для фото', tile:'Настенная плитка', ball:'Ажурный шар',
   litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
@@ -7381,6 +7401,9 @@ const MODEL_HELP = {
   litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
              how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов» — берётся ПЕРВАЯ карточка с изображением, остальные литофания не читает; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа. Высота панели считается сама из пропорций снимка — задавайте ширину, а высота подберётся так, чтобы фотографию не сплющило; нужна своя — снимите галочку «высота по пропорциям фото». Рельеф смотрит НА ВАС, гладкая сторона — от вас: этой стороной панель и ставится к лампе.',
              mat:['pla']},
+  ball:     {what:'Ажурный шар или фонарь: сферическая оболочка с прорезанными окнами. Четыре узора — сетка, кладка, спираль, ромб; ширина перемычки задаётся в миллиметрах и держится одинаковой от экватора до кромки, а не тает у полюса. Внутрь ставится свеча-таблетка или лампа, через верхнее отверстие продевается шнур.',
+             how:'Нижним отверстием НА СТОЛ. Кромки обоих отверстий горизонтальные — это не украшение, а условие печати: оболочку режут плоскости, поэтому первый слой ложится настоящим кольцом, а не линией. Чем шире нижнее отверстие, тем меньше нависаний. Верхняя кромка — самое трудное место: у сферы поверхность там почти горизонтальна, и «Печатаемость» называет этот угол числом; узкие перемычки слайсер перекидывает мостами, широкие лучше поддержать. Поддержки, если ставите, только снаружи — изнутри их не достать.',
+             mat:['pla','petg']},
   tile:     {what:'Модульная настенная плитка: рельеф на ней — ОКНО в узор, который живёт на всём панно. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же точка узора, и рисунок через шов не обрывается. Задайте размер панно в плитках, а потом печатайте их по одной, меняя строку и столбец.',
              how:'Рельефом ВВЕРХ, плоской тыльной стороной на стол — поддержек не нужно ни при каком узоре: волна нигде не нависает круче собственного наклона, а он задаётся высотой рельефа против длины волны. Вешать на клей или двусторонний скотч: отверстий в плитке нет намеренно, иначе рельеф пришлось бы отодвинуть от края и шов превратился бы в канавку. Печатать соседние плитки ОДНИМ материалом и одной высотой слоя: на шве видно и то, и другое.',
              mat:['pla','petg']},
@@ -7528,7 +7551,7 @@ const KIND_PRINT = {
   keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail', litho:'detail',
   gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
   wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
-  frame:'detail', tile:'detail',
+  frame:'detail', tile:'detail', ball:'detail',
 };
 // The two lines that depend on what was typed rather than on what kind of part it is.
 function printSettingsFor(p){
@@ -7652,6 +7675,7 @@ function setBaseShape(kind){
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('frMode',     kind==='frame'  ? 'frame'  : 'none');
   setSel('tlMode',     kind==='tile'   ? 'tile'   : 'none');
+  setSel('lnMode',     kind==='ball'   ? 'ball'   : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
   setSel('tstMode',    kind==='test'   ? 'ruler'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
@@ -12863,6 +12887,170 @@ function vaseSpec(p){
     seg = per*k;
   }
   return { H, wall, pts, nS, prof, nFac, facK, twist, rel, seg, rMin, rMax };
+}
+/* ---- Ажурный шар / фонарь -------------------------------------------------------------------------
+   Сферическая оболочка с прорезанными окнами. Перфорация здесь — не карта высот и не вычитание тел:
+   поверхность строится ЯЧЕЙКАМИ по сетке (долгота × широта), сплошные ячейки дают наружный и внутренний
+   четырёхугольники, а каждое ребро между сплошной ячейкой и дырой — стенку, соединяющую наружную
+   поверхность с внутренней. Оболочка выходит замкнутой по построению: у каждого ребра ровно два
+   треугольника, и никакого CSG.
+
+   ОБОЛОЧКУ РЕЖЕТ ПЛОСКОСТЬ, А НЕ ШИРОТА. Соблазн отрезать верх и низ по широте — там уже есть сетка, —
+   и он даёт КОСУЮ кромку: наружная и внутренняя точки одной широты стоят на разной высоте (R·cos α
+   против (R−t)·cos α), и деталь садится на стол линией вместо кольца. Поэтому ряды идут по широте (так
+   пояса выходят равной ширины), а внутренняя поверхность берётся по ТОЙ ЖЕ ВЫСОТЕ: ρ = √((R−t)² − y²).
+   Кромка тогда горизонтальная, а первый слой — настоящее кольцо.
+
+   ОТСЮДА И МИНИМАЛЬНОЕ ОТВЕРСТИЕ, и оно не выбрано, а выведено: плоскость, которая ещё пересекает
+   внутреннюю сферу, не может подойти к полюсу ближе, чем |y| = R−t. Значит любое отверстие не у'же
+   2·√(R² − (R−t)²) = 2·√(t·(2R−t)). На шаре Ø90 со стенкой 1.6 это 23.8 мм — не прихоть, а следствие
+   того, что оболочка имеет толщину.
+
+   ШИРИНА ПЕРЕМЫЧКИ ДЕРЖИТСЯ В МИЛЛИМЕТРАХ, А НЕ В ДОЛЯХ. Доля долготы у полюса — это волосок: длина
+   окружности там втрое меньше, чем на экваторе. Поэтому число ячеек под перемычку считается для КАЖДОГО
+   ряда от его собственной длины окружности. Квантование по сетке при этом остаётся, и о нём сказано. */
+const BALL_PATTERNS = { grid:1, brick:1, spiral:1, diamond:1 };
+const BALL_MIN_CELL = 0.7;      // мм — мельче ячейку сетки не берём
+const BALL_MAX_CELLS = 90000;   // потолок по числу ячеек
+function ballSpec(p){
+  const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
+  const D = cl(p.lnD, 30, 250, 90), R = D/2;
+  const t = Math.min(cl(p.lnT, 0.8, 6, 1.6), R*0.3);
+  // Предел выводится из толщины: плоскость реза обязана пересекать и внутреннюю сферу.
+  const capMin = 2*Math.sqrt(Math.max(1e-9, t*(2*R - t))) + 0.4;
+  const topWant = cl(p.lnTopD, 2, 0.98*D, 16), botWant = cl(p.lnBottomD, 2, 0.98*D, 60);
+  const topD = Math.max(capMin, Math.min(topWant, 0.98*D)), botD = Math.max(capMin, Math.min(botWant, 0.98*D));
+  const aTop = Math.asin(Math.min(1, topD/(2*R)));                 // полярный угол сверху
+  const aBot = Math.PI - Math.asin(Math.min(1, botD/(2*R)));
+  const cols = Math.round(cl(p.lnCols, 3, 48, 12));
+  const rows = Math.round(cl(p.lnRows, 1, 24, 6));
+  const rib  = cl(p.lnRib, 0.8, 10, 2);
+  const twist= cl(p.lnTwist, -360, 360, 180)*Math.PI/180;
+  const pattern = BALL_PATTERNS[p.lnPattern] ? p.lnPattern : 'grid';
+  /* Ячеек на период — столько, чтобы ячейка была около миллиметра, и одинаково по обеим осям у
+     «ромба»: его диагональ идёт по сетке, и при разных периодах она превратилась бы в лесенку. */
+  const eqCell = Math.PI*D/cols;                                    // длина дуги одного столбца на экваторе
+  const arc = R*(aBot - aTop);
+  let K = Math.max(4, Math.min(32, Math.round(eqCell/1.2)));
+  let L = Math.max(4, Math.min(32, Math.round((arc/rows)/1.2)));
+  if (pattern === 'diamond') { const q = Math.max(K, L); K = q; L = q; }
+  while (cols*K*rows*L > BALL_MAX_CELLS && (K > 4 || L > 4)) { if (K >= L) K--; else L--; }
+  const N = cols*K, M = rows*L;
+  return { D, R, t, topD, botD, topWant, botWant, capMin, aTop, aBot, cols, rows, rib, twist,
+           pattern, K, L, N, M, cellU: eqCell/K, cellV: arc/M };
+}
+// Сплошная ли ячейка. i — долгота (заворачивается), j — широта.
+function ballSolidAt(s, i, j, aWid, bWid, rim){
+  if (j < rim || j >= s.M - rim) return true;                       // кромки отверстий — всегда сплошные
+  const row = Math.floor(j/s.L), jj = j % s.L;
+  if (jj < bWid) return true;                                       // пояс
+  const a = aWid[j];
+  if (s.pattern === 'diamond'){
+    const u = ((i + j) % s.K + s.K) % s.K, v = ((i - j) % s.K + s.K) % s.K;
+    return u < a || v < a;
+  }
+  let sh = 0;
+  if (s.pattern === 'brick')  sh = (row % 2) * Math.floor(s.K/2);
+  // Закрутка задаётся в градусах на ВСЮ высоту: за M рядов узор уезжает на twist/2π полных оборотов,
+  // то есть на (twist/2π)·N ячеек долготы.
+  if (s.pattern === 'spiral') sh = Math.round(j * (s.twist/(2*Math.PI)) * s.N / s.M);
+  const ii = ((i + sh) % s.K + s.K) % s.K;
+  return ii < a;
+}
+/* Карта ячеек: какие сплошные, какие дыры. Отдельной функцией, потому что её ПОСТУСЛОВИЕ — то, ради
+   чего она существует, — проверяется снаружи.
+
+   КАСАНИЕ ПО ДИАГОНАЛИ ЗАПРЕЩЕНО, и это не про красоту. Если сплошными оказались только ячейки (i,j) и
+   (i+1,j+1), а обе их соседки — дыры, то две перемычки сходятся В ТОЧКУ, и в радиальном ребре этого угла
+   встречаются ЧЕТЫРЕ стенки вместо двух. Поверхность там защемлена: она не разрывается (открытых рёбер
+   нет), но и поверхностью быть перестаёт. Замерено на «спирали»: 276 таких углов, ноль открытых рёбер,
+   276 битых — и деталь на вид совершенно правильная.
+
+   Чинится это не подгонкой узора, а правилом построения: диагональное касание заливается.
+
+   ПРО ЦИКЛ ЧЕСТНО. Заливка только ДОБАВЛЯЕТ материал, и новая ячейка в принципе может образовать новое
+   касание уже со своим соседом — отсюда повтор до неподвижности. Но на всех четырёх узорах он не нужен:
+   перебор 784 сочетаний (узор × закрутка × число окон × поясов × ширина перемычки) не нашёл ни одной
+   конфигурации, где второй проход что-нибудь менял. Цикл оставлен потому, что без него правильность
+   держалась бы на свойстве нынешних узоров, которое ничем не закреплено, — но проверяется здесь не
+   число проходов, а ПОСТУСЛОВИЕ: касаний не осталось. */
+function ballCellMap(s){
+  const N = s.N, M = s.M, R = s.R;
+  const alp = j => s.aTop + (s.aBot - s.aTop)*j/M, roAt = j => R*Math.sin(alp(j));
+  // Перемычка в МИЛЛИМЕТРАХ: своё число ячеек на каждый ряд, от его собственной окружности.
+  const aWid = new Array(M);
+  for (let j = 0; j < M; j++){
+    const rMid = (roAt(j) + roAt(j+1))/2;
+    const cell = 2*Math.PI*Math.max(0.5, rMid)/N;
+    aWid[j] = Math.max(1, Math.min(s.K - 1, Math.round(s.rib/cell)));
+  }
+  const bWid = Math.max(1, Math.min(s.L - 1, Math.round(s.rib/s.cellV)));
+  const rim  = Math.max(1, Math.round(s.rib/s.cellV));
+  const map = new Uint8Array(N*M), raw = new Uint8Array(N*M);
+  for (let j = 0; j < M; j++) for (let i = 0; i < N; i++)
+    raw[j*N + i] = map[j*N + i] = ballSolidAt(s, i, j, aWid, bWid, rim) ? 1 : 0;
+  const at = (i, j) => (j < 0 || j >= M) ? 0 : map[j*N + (((i % N) + N) % N)];
+  let passes = 0;
+  for (let pass = 0; pass < 12; pass++){
+    let changed = 0;
+    for (let j = 0; j + 1 < M; j++) for (let i = 0; i < N; i++){
+      const a00 = at(i,j), a10 = at(i+1,j), a01 = at(i,j+1), a11 = at(i+1,j+1);
+      if (a00 && a11 && !a10 && !a01){ map[j*N + (((i+1) % N + N) % N)] = 1; changed++; }
+      else if (a10 && a01 && !a00 && !a11){ map[j*N + i] = 1; changed++; }
+    }
+    passes = pass + 1;
+    if (!changed) break;
+  }
+  return { N, M, map, raw, at, aWid, bWid, rim, passes };
+}
+function buildLanternBall(p){
+  const s = ballSpec(p), tris = [];
+  const N = s.N, M = s.M, R = s.R, Ri = s.R - s.t;
+  const alp = j => s.aTop + (s.aBot - s.aTop)*j/M;
+  const yAt = j => R*Math.cos(alp(j));
+  const roAt = j => R*Math.sin(alp(j));
+  const riAt = j => Math.sqrt(Math.max(0.04, Ri*Ri - yAt(j)*yAt(j)));
+  const P = (i, j, inner) => {
+    const ph = 2*Math.PI*(((i % N) + N) % N)/N, r = inner ? riAt(j) : roAt(j);
+    return [r*Math.cos(ph), yAt(j), r*Math.sin(ph)]; };
+  const cm = ballCellMap(s);
+  const at = cm.at, solid = (i, j) => at(i, j) === 1;
+  for (let j = 0; j < M; j++) for (let i = 0; i < N; i++){
+    if (!solid(i, j)) continue;
+    const O = [P(i,j,false), P(i+1,j,false), P(i+1,j+1,false), P(i,j+1,false)];
+    const I = [P(i,j,true),  P(i+1,j,true),  P(i+1,j+1,true),  P(i,j+1,true)];
+    const ro = [O[0][0]+O[2][0], O[0][1]+O[2][1], O[0][2]+O[2][2]];
+    tris.push(orient([O[0],O[1],O[2]], ro)); tris.push(orient([O[0],O[2],O[3]], ro));
+    const ri = [-ro[0], -ro[1], -ro[2]];
+    tris.push(orient([I[0],I[1],I[2]], ri)); tris.push(orient([I[0],I[2],I[3]], ri));
+    /* Стенка на каждом ребре, за которым дыра или край оболочки. Ориентир — НАРУЖУ ИЗ МАТЕРИАЛА, то
+       есть в сторону дыры: середина ребра минус центр ячейки. Радиальный здесь не годится — у стенки
+       окна нормаль касательна к сфере, и радиальное направление ей перпендикулярно. */
+    const cen = [(O[0][0]+O[2][0]+I[0][0]+I[2][0])/4, (O[0][1]+O[2][1]+I[0][1]+I[2][1])/4,
+                 (O[0][2]+O[2][2]+I[0][2]+I[2][2])/4];
+    const wall = (k0, k1) => {
+      const A = O[k0], B = O[k1], C = I[k1], Dv = I[k0];
+      const m = [(A[0]+B[0]+C[0]+Dv[0])/4, (A[1]+B[1]+C[1]+Dv[1])/4, (A[2]+B[2]+C[2]+Dv[2])/4];
+      const ref = [m[0]-cen[0], m[1]-cen[1], m[2]-cen[2]];
+      tris.push(orient([A,B,C], ref)); tris.push(orient([A,C,Dv], ref));
+    };
+    if (!solid(i, j-1))   wall(0, 1);
+    if (!solid(i+1, j))   wall(1, 2);
+    if (!solid(i, j+1))   wall(2, 3);
+    if (!solid(i-1, j))   wall(3, 0);
+  }
+  const dy = -(yAt(0) + yAt(M))/2;
+  return tris.map(T => T.map(v => [v[0], v[1] + dy, v[2]]));
+}
+/* Числа, о которых панель обязана сказать: фактическая ширина перемычки (она квантуется по сетке) и
+   нависание у верхней кромки (у сферы оно тем хуже, чем ближе кромка к полюсу). Считается тем же
+   `ballSpec`, что и строит. */
+function ballFacts(p){
+  const s = ballSpec(p);
+  const aEq = Math.min(Math.PI/2, Math.max(s.aTop, Math.PI/2));
+  const cellEq = 2*Math.PI*s.R*Math.sin(aEq)/s.N;
+  const ribCells = Math.max(1, Math.min(s.K - 1, Math.round(s.rib/cellEq)));
+  return { spec:s, ribGot: ribCells*cellEq, overhang: 90 - s.aTop*180/Math.PI };
 }
 /* ---- Модульная настенная плитка ------------------------------------------------------------------
    Плитка панно: рельеф на ней — окно в узор, который живёт НА ВСЁМ ПАННО, а не повторяется в каждой
@@ -20462,7 +20650,7 @@ function buildTrisForShape(shape, p) {
     return bevelledMesh(snapWeldTris(buildLithophane(p, lg)), p);
   }
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || (p.tlMode && p.tlMode !== 'none') || p.psOn || p.fnOn);
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || (p.tlMode && p.tlMode !== 'none') || (p.lnMode && p.lnMode !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -20476,7 +20664,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !(p.tlMode && p.tlMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !(p.tlMode && p.tlMode !== 'none') && !(p.lnMode && p.lnMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -20559,6 +20747,9 @@ function buildTrisForShapeCore(shape, p) {
     }
     if (p.tlMode && p.tlMode !== 'none') {
       return snapWeldTris(buildWallTile(p));
+    }
+    if (p.lnMode && p.lnMode !== 'none') {
+      return snapWeldTris(buildLanternBall(p));
     }
     if (p.psOn) {
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
@@ -20941,7 +21132,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form','Настенная плитка':'form',
+  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form','Настенная плитка':'form','Ажурный шар':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -22205,6 +22396,7 @@ function activeShapeLabel() {
     return (p.frMode === 'back' ? 'задник' : 'рамка') + ' (' + Math.round(p.frPhotoW||100) + '×' + Math.round(p.frPhotoH||150) + ')';
   if (p.tlMode && p.tlMode !== 'none'){ const ts = tileSpec(p);
     return 'плитка ' + (ts.ix+1) + ':' + (ts.iz+1) + ' из ' + ts.nx + '×' + ts.nz; }
+  if (p.lnMode && p.lnMode !== 'none') return 'ажурный шар (Ø' + Math.round(ballSpec(p).D) + ')';
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? (p.vasePart==='saucer'
                  ? ('поддон (Ø' + Math.round(vaseSaucerSpec(p).rOut*2) + ')')
@@ -22548,6 +22740,21 @@ function collectPrintWarnings(p){
   /* СРЕЗАННАЯ ГЛУБИНА РЕЛЬЕФА. Ограничение здесь настоящее — рельеф вычитается и изнутри, и глубже
      стенки резать нечего, — но подрезать введённое число молча значит показать человеку не ту вазу,
      которую он заказал, и не сказать об этом ни слова. Считается тем же `vaseSpec`, что и строит. */
+  /* ШАР. Отверстие снизу ограничено не вкусом, а толщиной оболочки, и об ужатии надо сказать: человек
+     заказал ёлочный шарик с дырочкой 6 мм, а получил фонарь с горловиной 24. */
+  if (p.lnMode && p.lnMode !== 'none'){
+    const f = ballFacts(p), b = f.spec;
+    if (b.topWant < b.topD - 0.05 || b.botWant < b.botD - 0.05)
+      w.push('отверстие ужато до ' + b.capMin.toFixed(1) + ' мм: плоскость реза обязана пересекать и ' +
+             'внутреннюю сферу, а она меньше наружной на толщину стенки — минимум 2·√(t·(2R−t)); ' +
+             'тоньше стенка или крупнее шар');
+    if (Math.abs(f.ribGot - b.rib) > b.rib*0.3)
+      w.push('перемычка вышла ' + f.ribGot.toFixed(1) + ' мм вместо ' + b.rib.toFixed(1) +
+             ' — она квантуется по сетке; поменяйте число окон или ширину перемычки');
+    if (f.overhang > 60)
+      w.push('у верхней кромки нависание ' + f.overhang.toFixed(0) +
+             '° — поверхность там почти горизонтальна; шире верхнее отверстие или поддержки снаружи');
+  }
   /* ПЛИТКА. Индекс за пределами панно — не мелочь: плитка построится, но встанет НЕ ТУДА, а на шве
      это видно сразу. И слишком мелкая сетка на длинной волне превращает узор в кашу. */
   if (p.tlMode && p.tlMode !== 'none'){

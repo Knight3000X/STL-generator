@@ -1041,6 +1041,7 @@
         <button class="base-btn" data-base="test" title="Тесты печати: калибровочные образцы — температурная башня, мосты и нависания, ретракт">Тесты</button>
         <button class="base-btn" data-base="litho" title="Литофания: фото становится толщиной панели — на просвет проявляется картинка. Плоская, дугой или цилиндром-абажуром">Литофания</button>
         <button class="base-btn" data-base="frame" title="Рамка для фото: багет протянут по замкнутому контуру, размеры выведены из размера снимка; задник с проушиной под гвоздь">Рамка</button>
+        <button class="base-btn" data-base="tile" title="Модульная настенная плитка: рельеф — окно в узор всего панно, рисунок через шов не обрывается">Плитка</button>
       </div>
     </div>
 
@@ -1235,7 +1236,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v19.0.0';
+const APP_VERSION = 'v20.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5573,6 +5574,24 @@ const SHAPE_PARAMS = {
     {group:'Корпус (электроника)', key:'pbBossBore', label:'PCB-стойки: Ø отверстия', min:1, max:8, step:0.2, default:2.6, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffX', label:'PCB-стойки: смещение по X', min:-100, max:100, step:0.5, default:0, unit:'мм'},
     {group:'Корпус (электроника)', key:'pbBossOffZ', label:'PCB-стойки: смещение по Z', min:-100, max:100, step:0.5, default:0, unit:'мм'},
+    {group:'Настенная плитка', key:'tlMode', label:'Модульная настенная плитка (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'tile',t:'плитка панно'}],
+      hint:'Рельеф плитки — окно в узор, который живёт на ВСЁМ панно, а не повторяется в каждой плитке заново. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же координата, и рисунок через шов не обрывается.'},
+    {group:'Настенная плитка', key:'tlPattern', label:'Плитка: узор', type:'select', default:'dunes',
+      options:[{v:'dunes',t:'дюны (параллельные волны)'},{v:'flow',t:'поток (волны с изгибом)'},{v:'ripple',t:'рябь (круги от центра панно)'},{v:'weave',t:'плетение (клетка)'},{v:'terrain',t:'рельеф (три волны разного масштаба)'}]},
+    {group:'Настенная плитка', key:'tlW', label:'Плитка: ширина', min:20, max:300, step:1, default:100, unit:'мм'},
+    {group:'Настенная плитка', key:'tlH', label:'Плитка: высота', min:20, max:300, step:1, default:100, unit:'мм'},
+    {group:'Настенная плитка', key:'tlT', label:'Плитка: толщина основания', min:1, max:20, step:0.5, default:3, unit:'мм'},
+    {group:'Настенная плитка', key:'tlAmp', label:'Плитка: высота рельефа', min:0, max:20, step:0.5, default:4, unit:'мм'},
+    {group:'Настенная плитка', key:'tlScale', label:'Плитка: длина волны узора', min:5, max:400, step:5, default:60, unit:'мм'},
+    {group:'Настенная плитка', key:'tlAngle', label:'Плитка: поворот узора', min:-180, max:180, step:5, default:30, unit:'°'},
+    {group:'Настенная плитка', key:'tlNX', label:'Панно: плиток по горизонтали', min:1, max:16, step:1, default:3, unit:'', int:true},
+    {group:'Настенная плитка', key:'tlNZ', label:'Панно: плиток по вертикали', min:1, max:16, step:1, default:3, unit:'', int:true},
+    {group:'Настенная плитка', key:'tlIX', label:'Плитка: столбец в панно (с нуля)', min:0, max:15, step:1, default:0, unit:'', int:true},
+    {group:'Настенная плитка', key:'tlIZ', label:'Плитка: строка в панно (с нуля)', min:0, max:15, step:1, default:0, unit:'', int:true},
+    {group:'Настенная плитка', key:'tlBorder', label:'Плитка: плоская кайма по краю (0 = рельеф до обреза)', min:0, max:40, step:0.5, default:0, unit:'мм',
+      hint:'Кайма гасит рельеф к краю. Шов при этом остаётся непрерывным — просто по нему идёт ровная канавка, и панно читается как набор плиток, а не как одна поверхность. Ноль — рельеф до самого обреза, шва не видно вовсе.'},
+    {group:'Настенная плитка', key:'tlRes', label:'Плитка: шаг сетки (0 = авто от длины волны)', min:0, max:10, step:0.1, default:0, unit:'мм'},
     {group:'Рамка для фото', key:'frMode', label:'Рамка для фото (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'frame',t:'рамка'},{v:'back',t:'задник'}],
       hint:'Профиль багета, протянутый по замкнутому контуру. Наружный габарит, проём и фальц СЧИТАЮТСЯ из размера снимка, ширины багета и нахлёста: ввести их отдельно значило бы завести второе место, где живёт размер фотографии.'},
@@ -6923,6 +6942,7 @@ function dominantMode(p){
   if (lithoOn(p)) return 'litho';
   if (p.csMode && p.csMode !== 'none') return 'coaster';
   if (p.frMode && p.frMode !== 'none') return 'frame';
+  if (p.tlMode && p.tlMode !== 'none') return 'tile';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
@@ -7006,6 +7026,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Корпус (электроника)': return mode==='pbox';
     case 'Подстаканник': return mode==='coaster';
     case 'Рамка для фото': return mode==='frame';
+    case 'Настенная плитка': return mode==='tile';
     case 'Литофания': return mode==='litho';
     case 'Тесты печати': return mode==='test';
     case 'Подставка (телефон / планшет)': return mode==='stand';
@@ -7027,6 +7048,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='pbox')      return key==='Корпус (электроника)';
   if (mode==='coaster')   return key==='Подстаканник';
   if (mode==='frame')     return key==='Рамка для фото';
+  if (mode==='tile')      return key==='Настенная плитка';
   if (mode==='litho')     return key==='Литофания';
   /* «Тесты» — форма со своей единственной группой, ровно как подстаканник или литофания. Без этой
      строки она проваливалась бы в общий `return true` в конце, и на калибровочной плите панель
@@ -7062,7 +7084,7 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
-  'Рамка для фото':'frame',
+  'Рамка для фото':'frame', 'Настенная плитка':'tile',
   'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
@@ -7070,7 +7092,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
-  frame:'Рамка для фото',
+  frame:'Рамка для фото', tile:'Настенная плитка',
   litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
@@ -7359,6 +7381,9 @@ const MODEL_HELP = {
   litho:    {what:'Литофания: фотография становится ТОЛЩИНОЙ панели — где на снимке светло, там тонко и свет проходит, где темно, там толсто и не проходит. На отражённом свету это невнятная серая плита; включите лампу за ней, и появится картинка. Плоская панель, дуга или цилиндр-абажур вокруг лампы.',
              how:'СТОЯ на короткой стороне, картинкой вдоль стола — не плашмя. Плашмя слои лягут вдоль картинки, каждая ступенька толщины станет нависанием, и понадобятся поддержки прямо по изображению; стоя слои идут поперёк, и каждый следующий опирается на предыдущий. Печатать белым и НЕпрозрачным: прозрачный филамент пропускает свет мимо картинки, цветной красит её в свой цвет. Заполнение 100 % и периметров побольше — любая полость внутри панели видна на просвет светлым пятном. Картинка приходит из «Логотипов» — берётся ПЕРВАЯ карточка с изображением, остальные литофания не читает; канал ставьте «Яркость», потому что литофания читает ПОЛУТОНА, а не силуэт, и ни порог, ни «Ступеней» здесь ни при чём. Снимок нужен контрастный и крупный: полутона в 2 мм пластика различаются хуже, чем на экране, и портрет выходит лучше пейзажа. Если на просвет получился негатив — «Инверсия» на карточке логотипа. Высота панели считается сама из пропорций снимка — задавайте ширину, а высота подберётся так, чтобы фотографию не сплющило; нужна своя — снимите галочку «высота по пропорциям фото». Рельеф смотрит НА ВАС, гладкая сторона — от вас: этой стороной панель и ставится к лампе.',
              mat:['pla']},
+  tile:     {what:'Модульная настенная плитка: рельеф на ней — ОКНО в узор, который живёт на всём панно. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же точка узора, и рисунок через шов не обрывается. Задайте размер панно в плитках, а потом печатайте их по одной, меняя строку и столбец.',
+             how:'Рельефом ВВЕРХ, плоской тыльной стороной на стол — поддержек не нужно ни при каком узоре: волна нигде не нависает круче собственного наклона, а он задаётся высотой рельефа против длины волны. Вешать на клей или двусторонний скотч: отверстий в плитке нет намеренно, иначе рельеф пришлось бы отодвинуть от края и шов превратился бы в канавку. Печатать соседние плитки ОДНИМ материалом и одной высотой слоя: на шве видно и то, и другое.',
+             mat:['pla','petg']},
   'frame:frame': {what:'Рамка для фото: багет заданного профиля, протянутый по замкнутому контуру, с фальцем сзади под снимок и задник. Наружный габарит, световой проём и фальц СЧИТАЮТСЯ из размера снимка, ширины багета и нахлёста губы — вводить их отдельно негде и не нужно.',
              how:'Лицом ВНИЗ, на стол. Лицевая грань — самая заметная поверхность рамки, а первый слой самый гладкий, какой даёт принтер; печатая лицом вверх, вы меняете эту гладкость на следы слоёв ради ничего. Фальц при такой ориентации смотрит вверх и остаётся навесом только на глубину своей полки — поддержек это не требует. Скос и вал печатаются сами: они уходят внутрь, то есть каждый слой у'+'же предыдущего.',
              mat:['pla','petg']},
@@ -7503,7 +7528,7 @@ const KIND_PRINT = {
   keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail', litho:'detail',
   gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
   wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
-  frame:'detail',
+  frame:'detail', tile:'detail',
 };
 // The two lines that depend on what was typed rather than on what kind of part it is.
 function printSettingsFor(p){
@@ -7626,6 +7651,7 @@ function setBaseShape(kind){
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('frMode',     kind==='frame'  ? 'frame'  : 'none');
+  setSel('tlMode',     kind==='tile'   ? 'tile'   : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
   setSel('tstMode',    kind==='test'   ? 'ruler'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
@@ -12837,6 +12863,115 @@ function vaseSpec(p){
     seg = per*k;
   }
   return { H, wall, pts, nS, prof, nFac, facK, twist, rel, seg, rMin, rMax };
+}
+/* ---- Модульная настенная плитка ------------------------------------------------------------------
+   Плитка панно: рельеф на ней — окно в узор, который живёт НА ВСЁМ ПАННО, а не повторяется в каждой
+   плитке заново. Соседние плитки стыкуются так, что рисунок через шов не обрывается.
+
+   ВСЁ ДЕРЖИТСЯ НА ОДНОМ: высота считается от ГЛОБАЛЬНОЙ координаты (индекс плитки × её размер плюс
+   местная), а не от местной. Тогда правый край плитки (i,j) и левый край плитки (i+1,j) — это одна и та
+   же глобальная координата, и высоты в них совпадают не приблизительно, а тождественно.
+
+   ДВЕ ЛОВУШКИ, КОТОРЫЕ ЭТО ЛОМАЮТ ТИХО:
+
+   1. ВЫБОРКА ПО ЦЕНТРАМ ЯЧЕЕК. Готовые текстуры приложения считаются в центрах: u = (x + 0.5)/S. Для
+      бесшовной плитки так нельзя — край не попадает в выборку вовсе, и два соседа расходятся на полшага
+      сетки. Узлы, включая ОБА конца, а не центры.
+
+   2. НОРМИРОВКА ПО ПЛИТКЕ. Соблазнительно растянуть рельеф на полную высоту: найти минимум и максимум
+      ПО ЭТОЙ ПЛИТКЕ и отобразить в [0,1]. Каждая плитка тогда красива по отдельности, а на шве ступенька:
+      у соседей свои минимум и максимум. Нормировка здесь АНАЛИТИЧЕСКАЯ — у каждого узора известен свой
+      диапазон, и он один на всё панно.
+
+   Крепление — на клей или двусторонний скотч, как и вешают декоративные панели; отверстий в плитке нет
+   намеренно: сквозное отверстие в поле высот требует разрезать сетку и сшить край дырки, а плоского
+   пятачка под него на плитке нет — рельеф идёт до самого обреза, иначе шов превратится в канавку. */
+const TILE_PATTERNS = { dunes:1, flow:1, ripple:1, weave:1, terrain:1 };
+const TILE_MIN_STEP = 0.6;      // мм — мельче сетку не строим: 100×100 при 0.6 это уже 55 тысяч треугольников
+const TILE_MAX_NODES = 260;     // узлов на сторону
+/* Узоры — непрерывные функции глобальных координат с ИЗВЕСТНЫМ диапазоном [0,1]. Диапазон именно
+   известен, а не измерен: измеренный по плитке и есть ловушка №2. */
+function tilePatternAt(kind, X, Z, s){
+  const k = 2*Math.PI/s.lam, ca = Math.cos(s.ang), sa = Math.sin(s.ang);
+  const U = X*ca + Z*sa, V = -X*sa + Z*ca;
+  if (kind === 'flow')   return 0.5 + 0.5*Math.sin(k*U + 0.9*Math.sin(0.6*k*V));
+  if (kind === 'ripple') return 0.5 + 0.5*Math.cos(k*Math.hypot(X - s.cx, Z - s.cz));
+  if (kind === 'weave')  return 0.5 + 0.5*Math.sin(k*U)*Math.sin(k*V);
+  if (kind === 'terrain'){
+    const a = Math.sin(k*U) + 0.5*Math.sin(2*k*V + 1.3) + 0.25*Math.sin(3.7*k*(U + V) + 2.1);
+    return 0.5 + 0.5*a/1.75;                                  // 1 + 0.5 + 0.25 — предел суммы, он и делит
+  }
+  return 0.5 + 0.5*Math.sin(k*U);                             // dunes
+}
+function tileSpec(p){
+  const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
+  const W = cl(p.tlW, 20, 300, 100), H = cl(p.tlH, 20, 300, 100);
+  const T = cl(p.tlT, 1, 20, 3), amp = cl(p.tlAmp, 0, 20, 4);
+  const lam = cl(p.tlScale, 5, 400, 60);
+  const ang = cl(p.tlAngle, -180, 180, 30)*Math.PI/180;
+  const nx = Math.round(cl(p.tlNX, 1, 16, 3)), nz = Math.round(cl(p.tlNZ, 1, 16, 3));
+  const ixWant = Math.round(cl(p.tlIX, 0, 15, 0)), izWant = Math.round(cl(p.tlIZ, 0, 15, 0));
+  const ix = Math.min(ixWant, nx - 1), iz = Math.min(izWant, nz - 1);
+  const border = cl(p.tlBorder, 0, Math.min(W, H)/3, 0);
+  const pattern = TILE_PATTERNS[p.tlPattern] ? p.tlPattern : 'dunes';
+  /* Шаг сетки от ДЛИНЫ ВОЛНЫ, а не от размера плитки: узор с шагом 20 мм на сетке в 3 мм превращается в
+     кашу независимо от того, метровая плитка или ладонь. Не меньше двадцати узлов на волну. */
+  const stepWant = cl(p.tlRes, 0, 10, 0);
+  const step = stepWant > 0 ? stepWant : Math.max(TILE_MIN_STEP, Math.min(2.0, lam/20));
+  const N = Math.max(2, Math.min(TILE_MAX_NODES, Math.round(W/step)));
+  const M = Math.max(2, Math.min(TILE_MAX_NODES, Math.round(H/step)));
+  // Центр «ряби» — центр ВСЕГО панно, а не плитки: иначе у каждой плитки своя рябь и шов рвётся.
+  return { W, H, T, amp, lam, ang, nx, nz, ix, iz, ixWant, izWant, border, pattern, step, N, M,
+           cx: nx*W/2, cz: nz*H/2 };
+}
+/* Высота в точке. x,z — МЕСТНЫЕ координаты от 0 до W,H; в узор уходит глобальная. */
+function tileHeightAt(s, x, z){
+  const X = s.ix*s.W + x, Z = s.iz*s.H + z;
+  let f = tilePatternAt(s.pattern, X, Z, s);
+  if (s.border > 0){
+    const d = Math.min(x, s.W - x, z, s.H - z);
+    f *= Math.max(0, Math.min(1, d/s.border));
+  }
+  return s.T + s.amp*f;
+}
+function buildWallTile(p){
+  const s = tileSpec(p), tris = [];
+  const N = s.N, M = s.M;
+  const xs = i => s.W*i/N, zs = j => s.H*j/M;
+  const top = (i, j) => [xs(i) - s.W/2, tileHeightAt(s, xs(i), zs(j)), zs(j) - s.H/2];
+  const bot = (i, j) => [xs(i) - s.W/2, 0, zs(j) - s.H/2];
+  for (let j = 0; j < M; j++) for (let i = 0; i < N; i++){
+    const A = top(i,j), B = top(i+1,j), C = top(i+1,j+1), D = top(i,j+1);
+    tris.push(orient([A,B,C], [0,1,0])); tris.push(orient([A,C,D], [0,1,0]));
+  }
+  /* Граничное кольцо узлов — один обход, каждый угол ровно раз. Низ плоский, но НЕ два треугольника:
+     его край обязан делиться на те же узлы, что и верх, иначе стенка не с чем сшивается. Веер из центра,
+     а не из угла: у веера из угла треугольники вдоль двух его же сторон вырождаются в нулевую площадь. */
+  const ring = [];
+  for (let i = 0; i < N; i++) ring.push([i, 0]);
+  for (let j = 0; j < M; j++) ring.push([N, j]);
+  for (let i = N; i > 0; i--) ring.push([i, M]);
+  for (let j = M; j > 0; j--) ring.push([0, j]);
+  const mid = [0, 0, 0];
+  for (let k = 0; k < ring.length; k++){
+    const a = bot(ring[k][0], ring[k][1]), b = bot(ring[(k+1)%ring.length][0], ring[(k+1)%ring.length][1]);
+    tris.push(orient([mid, a, b], [0,-1,0]));
+  }
+  for (let k = 0; k < ring.length; k++){
+    const q = ring[(k+1)%ring.length];
+    const A = bot(ring[k][0], ring[k][1]), B = bot(q[0], q[1]), C = top(q[0], q[1]), D = top(ring[k][0], ring[k][1]);
+    // Стенка вертикальна, её нормаль горизонтальна: прямоугольник выпуклый и содержит центр, поэтому
+    // радиальное направление от центра годится в ориентир без оговорок.
+    const ref = [A[0] + B[0], 0, A[2] + B[2]];
+    tris.push(orient([A,B,C], ref)); tris.push(orient([A,C,D], ref));
+  }
+  /* ЦЕНТРУЕМ ПО ПОЛНОМУ ДИАПАЗОНУ (T … T+amp), А НЕ ПО СВОЕМУ ГАБАРИТУ. Обычное «−(lo+hi)/2» здесь
+     ошибка, и тихая: у каждой плитки свой кусок узора, значит свой максимум, значит свой сдвиг — и
+     тыльные плоскости соседей оказываются на разной высоте. Замерено: панно 3×3, узор «рябь» с волной
+     220 мм — тыл гуляет на 0.858 мм, то есть панель встаёт ступеньками, хотя каждая плитка по
+     отдельности безупречна. Полный диапазон один на всё панно, поэтому и сдвиг один. */
+  const dy = -(s.T + s.amp)/2;
+  return tris.map(T2 => T2.map(v => [v[0], v[1] + dy, v[2]]));
 }
 /* ---- Рамка для фото ------------------------------------------------------------------------------
    Рамка — это ПРОФИЛЬ, протянутый по замкнутому прямоугольному контуру, а не стопка колец. Разница не
@@ -20327,7 +20462,7 @@ function buildTrisForShape(shape, p) {
     return bevelledMesh(snapWeldTris(buildLithophane(p, lg)), p);
   }
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || p.psOn || p.fnOn);
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || (p.tlMode && p.tlMode !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -20341,7 +20476,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !(p.tlMode && p.tlMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -20421,6 +20556,9 @@ function buildTrisForShapeCore(shape, p) {
     }
     if (p.frMode && p.frMode !== 'none') {
       return snapWeldTris(p.frMode === 'back' ? buildFrameBack(p) : buildPhotoFrame(p));
+    }
+    if (p.tlMode && p.tlMode !== 'none') {
+      return snapWeldTris(buildWallTile(p));
     }
     if (p.psOn) {
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
@@ -20803,7 +20941,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form',
+  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form','Настенная плитка':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -22065,6 +22203,8 @@ function activeShapeLabel() {
   if (p.psOn) return 'подставка (' + Math.round(p.psAngle||62) + '°)';
   if (p.frMode && p.frMode !== 'none')
     return (p.frMode === 'back' ? 'задник' : 'рамка') + ' (' + Math.round(p.frPhotoW||100) + '×' + Math.round(p.frPhotoH||150) + ')';
+  if (p.tlMode && p.tlMode !== 'none'){ const ts = tileSpec(p);
+    return 'плитка ' + (ts.ix+1) + ':' + (ts.iz+1) + ' из ' + ts.nx + '×' + ts.nz; }
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? (p.vasePart==='saucer'
                  ? ('поддон (Ø' + Math.round(vaseSaucerSpec(p).rOut*2) + ')')
@@ -22408,6 +22548,20 @@ function collectPrintWarnings(p){
   /* СРЕЗАННАЯ ГЛУБИНА РЕЛЬЕФА. Ограничение здесь настоящее — рельеф вычитается и изнутри, и глубже
      стенки резать нечего, — но подрезать введённое число молча значит показать человеку не ту вазу,
      которую он заказал, и не сказать об этом ни слова. Считается тем же `vaseSpec`, что и строит. */
+  /* ПЛИТКА. Индекс за пределами панно — не мелочь: плитка построится, но встанет НЕ ТУДА, а на шве
+     это видно сразу. И слишком мелкая сетка на длинной волне превращает узор в кашу. */
+  if (p.tlMode && p.tlMode !== 'none'){
+    const ts = tileSpec(p);
+    if (ts.ixWant > ts.ix || ts.izWant > ts.iz)
+      w.push('плитка ' + (ts.ixWant+1) + ':' + (ts.izWant+1) + ' не помещается в панно ' + ts.nx + '×' + ts.nz +
+             ' — взята ' + (ts.ix+1) + ':' + (ts.iz+1) + '; поднимите размер панно или уменьшите номер');
+    if (ts.lam/ts.step < 12)
+      w.push('на волну узора приходится ' + (ts.lam/ts.step).toFixed(0) +
+             ' узлов сетки — рисунок выйдет гранёным; мельче шаг сетки или длиннее волна');
+    if (ts.amp > 0 && ts.amp/ts.lam > 0.35)
+      w.push('рельеф ' + ts.amp.toFixed(1) + ' мм на волне ' + ts.lam.toFixed(0) +
+             ' мм — склон круче 45°, печать пойдёт с нависаниями');
+  }
   /* РАМКА. Три числа урезаются молча, и каждое из них меняет ДЕТАЛЬ, а не вид: мелкий фальц не примет
      задник со снимком, глубокий профиль съест переднюю губу, а слишком широкий багет схлопнет проём. */
   if (p.frMode && p.frMode !== 'none'){

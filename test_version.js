@@ -106,7 +106,7 @@ console.log('=== мажорный разряд — это счётчик баз�
                  mount:{mntMode:'lbracket'}, hook:{hookMount:'wall'}, wallorg:{woBack:'cleat'},
                  pbox:{pbPart:'tray'}, stand:{psOn:true}, funnel:{fnOn:true}, coaster:{csMode:'round'},
                  baseplate:{gfBaseplate:true}, logo3d:{logo3d:true}, litho:{ltMode:'flat'},
-                 frame:{frMode:'frame'},
+                 frame:{frMode:'frame'}, tile:{tlMode:'tile'},
                  test:{tstMode:'temptower'}};
   const D = defaultBoxParams();
   for (const k of shapes){

@@ -630,6 +630,50 @@ console.log('=== 3MF: составная модель приходит дета�
     models.length = before;
   }
 
+  /* 18) ЧТО ВИДНО НА ЭКРАНЕ. Раскраска кладётся в ЦВЕТ ВЕРШИНЫ, а он у THREE УМНОЖАЕТСЯ на цвет
+         материала. Забыть это — не «чуть темнее»: на чёрной детали любая раскраска умножается на ноль и
+         пропадает целиком, а на серой видна. Первая версия так и вышла — из четырнадцати раскрашенных
+         деталей эмблема появилась на одной, единственной не чёрной. Поэтому проверяется не «атрибут
+         выставлен», а ПРОИЗВЕДЕНИЕ: тот самый цвет, который увидит глаз. */
+  {
+    function FakeColor(hex){ this.set(hex || '#000000'); }
+    FakeColor.prototype.set = function(hex){
+      const h = String(hex).replace('#','');
+      this.r = parseInt(h.slice(0,2),16)/255; this.g = parseInt(h.slice(2,4),16)/255;
+      this.b = parseInt(h.slice(4,6),16)/255; this.hex = '#' + h.toLowerCase(); return this;
+    };
+    const keepTHREE = global.THREE;
+    global.THREE = { Color: FakeColor, BufferAttribute: function(a, n){ this.array = a; this.itemSize = n; } };
+    const fakeMesh = col => ({ material: { color: new FakeColor(col), vertexColors: false, needsUpdate: false } });
+    const fakeGeo = () => ({ attrs: {}, setAttribute(n, v){ this.attrs[n] = v; } });
+
+    const tris = [[[0,0,0],[6,0,0],[0,6,0]], [[0,0,0],[0,6,0],[0,0,6]], [[0,0,0],[0,0,6],[6,0,0]]];
+    const palette = ['#FFFFFF', '#000000', '#F4EE2A'];
+    const before = models.length;
+    // Деталь ЧЁРНАЯ — ровно тот случай, на котором раскраска и пропадала.
+    const rec = addImportedPart(tris, 'Чёрная', false, '#000000', null, { ink: [1, 0, 3], palette });
+    const mm = fakeMesh(rec.color), geo = fakeGeo();
+    const on = applyMeshPaint(mm, geo, rec.rawTris, rec);
+    chk('раскраска применилась', on === true && mm.material.vertexColors === true, on);
+    chk('материал под раскраской белый', mm.material.color.hex === '#ffffff', mm.material.color.hex);
+    const arr = geo.attrs.color.array;
+    chk('цвет на каждую вершину каждого треугольника', arr.length === rec.rawTris.length * 9, arr.length);
+    // Видимый цвет = материал × вершина. Именно его и увидит глаз.
+    const seen = i => [mm.material.color.r*arr[i*9], mm.material.color.g*arr[i*9+1], mm.material.color.b*arr[i*9+2]];
+    const near = (a, hex) => { const c = new FakeColor(hex);
+      return Math.abs(a[0]-c.r) < 1e-6 && Math.abs(a[1]-c.g) < 1e-6 && Math.abs(a[2]-c.b) < 1e-6; };
+    chk('покрашенный треугольник виден БЕЛЫМ, а не съеден чёрным материалом', near(seen(0), '#FFFFFF'), seen(0));
+    chk('непокрашенный виден цветом самой детали', near(seen(1), '#000000'), seen(1));
+    chk('второй покрашенный — своим филаментом', near(seen(2), '#F4EE2A'), seen(2));
+    // Без раскраски материал возвращает себе цвет детали — иначе она побелеет.
+    const plain = addImportedPart(tris, 'Обычная', false, '#BD1828', null, null);
+    const mp = fakeMesh('#ffffff'), gp = fakeGeo();
+    chk('без раскраски атрибут не заводится', applyMeshPaint(mp, gp, plain.rawTris, plain) === false && !gp.attrs.color);
+    chk('и материал берёт цвет детали', mp.material.color.hex === '#bd1828', mp.material.color.hex);
+    models.length = before;
+    if (keepTHREE === undefined) delete global.THREE; else global.THREE = keepTHREE;
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

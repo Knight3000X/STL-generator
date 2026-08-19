@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.38.0';
+const APP_VERSION = 'v18.38.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -20531,7 +20531,15 @@ function attachEventListeners() {
   lightUI();
   document.getElementById('color-picker').addEventListener('input', (e) => {
     const m = getActiveModel(); if (m) m.color = e.target.value;
-    if (scene3DReady && mesh) mesh.material.color.set(e.target.value);
+    /* У раскрашенной детали цвет живёт в ВЕРШИНАХ, а не в материале: там он белый, иначе раскраска
+       умножилась бы на него и пропала. Значит и менять его надо в вершинах — пересчётом одного атрибута,
+       а не перестройкой всей сетки: пипетка шлёт событие на каждое движение пальца. */
+    if (scene3DReady && mesh){
+      const pm = m ? modelPaint(m, currentTris) : null;
+      if (pm && mesh.geometry) mesh.geometry.setAttribute('color',
+        new THREE.BufferAttribute(paintVertexColors(currentTris, pm, e.target.value), 3));
+      else mesh.material.color.set(e.target.value);
+    }
   });
 
   document.getElementById('btn-export-3mf').addEventListener('click', () => {
@@ -22750,8 +22758,15 @@ function applyMeshPaint(threeMesh, geo, tris, m){
   const paint = m ? modelPaint(m, tris) : null;
   const on = !!paint;
   if (on) geo.setAttribute('color', new THREE.BufferAttribute(paintVertexColors(tris, paint, m.color || '#b9c5cd'), 3));
-  if (threeMesh.material && threeMesh.material.vertexColors !== on){
-    threeMesh.material.vertexColors = on; threeMesh.material.needsUpdate = true;
+  const mat = threeMesh.material;
+  if (mat){
+    if (mat.vertexColors !== on){ mat.vertexColors = on; mat.needsUpdate = true; }
+    /* Цвет материала УМНОЖАЕТСЯ на цвет вершины, поэтому под раскраской он обязан быть белым. Забыть это —
+       не «чуть темнее»: на ЧЁРНОЙ детали любая раскраска умножается на ноль и пропадает целиком, а на
+       серой видна. Первая версия так и вышла: из четырнадцати раскрашенных деталей эмблема появилась на
+       одной — единственной не чёрной. Свой цвет детали при этом никуда не девается, он уходит в сами
+       вершины: `paintVertexColors` красит им всё непокрашенное. */
+    mat.color.set(on ? '#ffffff' : ((m && m.color) || '#b9c5cd'));
   }
   return on;
 }

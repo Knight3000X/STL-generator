@@ -1209,7 +1209,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v18.37.2';
+const APP_VERSION = 'v18.37.3';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6525,6 +6525,16 @@ function importMeshFile(file){
         const nm = many ? (p.name || (stem + ' · ' + (i+1))) : (p.name || stem);
         last = addImportedPart(p.tris, nm, !many, p.color, origin);   // сборку не раскладываем: у неё своя
       });
+      /* Покраска НЕ импортируется, и это сказано вслух. Она свойство поверхности — какой филамент печатает
+         периметры вот этого куска, — а модель сборки красится целиком; разложить покраску по деталям
+         значило бы наделать открытых заплаток вместо тел. Молчать об этом нельзя: файл с MakerWorld почти
+         всегда раскрашен, и человек увидит одноцветную деталь там, где в слайсере эмблема. */
+      const painted = parts.reduce((n, p) => n + (p.painted || 0), 0);
+      if (painted) alert('В файле РАСКРАШЕНО ' + painted.toLocaleString('ru') + ' треугольников ' +
+        '(многоцветная покраска слайсера). Она не импортируется: покраска — это свойство поверхности, ' +
+        'какой филамент печатает вот этот кусок, а деталь сборки красится целиком.\n\n' +
+        'Каждая деталь получила цвет своего филамента — тот, которым слайсер печатает её основную часть. ' +
+        'Геометрия при этом взята вся, без потерь.');
       loadModel(last);
       regenerate();
       // Каждой записи — свой меш в сцене. Без этого прохода видно только ту деталь, которую loadModel
@@ -19115,14 +19125,22 @@ function parse3MFObjects(xml, self){
     const reV = /<vertex\b([^>]*)\/?>/g; let v;
     while ((v = reV.exec(body))){ const a = '<vertex' + v[1] + '>';
       verts.push([+mfAttr(a,'x'), +mfAttr(a,'y'), +mfAttr(a,'z')]); }
+    /* Заодно считаются ОКРАШЕННЫЕ треугольники. Многоцветная покраска слайсера (`paint_color` у Bambu и
+       Orca, `slic3rpe:mmu_segmentation` у PrusaSlicer) — это свойство ПОВЕРХНОСТИ: какой филамент печатает
+       периметры вот этого куска. Телом она не является и в модель сборки, у которой один цвет на всю
+       деталь, не ложится никак. Не импортировать её — решение; не сказать о ней — молчаливая потеря, а
+       файл с MakerWorld без покраски почти не встречается: в присланном наборе её несут двадцать тысяч
+       треугольников из ста двадцати, то есть каждая эмблема на каждой подставке. */
+    let paint = 0;
     const reT = /<triangle\b([^>]*)\/?>/g; let t;
     while ((t = reT.exec(body))){ const a = '<triangle' + t[1] + '>';
+      if (/\b(paint_color|mmu_segmentation)\s*=/.test(a)) paint++;
       tris.push([+mfAttr(a,'v1'), +mfAttr(a,'v2'), +mfAttr(a,'v3')]); }
     const reC = /<component\b([^>]*)\/?>/g; let c;
     while ((c = reC.exec(body))){ const a = '<component' + c[1] + '>';
       comps.push({ id: mfAttr(a,'objectid'), mat: mfMat(mfAttr(a,'transform')),
                    path: a.indexOf('p:path') >= 0 ? mfAttr(a,'p:path') : null }); }
-    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps,
+    objs.set(id, { name: mfAttr(attrs, 'name') || '', verts, tris, comps, paint,
                    pid: mfAttr(attrs, 'pid'), pindex: mfAttr(attrs, 'pindex') });
   }
   return objs;
@@ -19236,16 +19254,17 @@ function parse3MFModels(files, mainPath, meta){
     return out.size === 1 ? [...out][0] : null; };
   // Развёртка объекта в треугольники: своя сетка плюс всё, на что он ссылается. Глубина ограничена —
   // ссылка на самого себя в чужом файле встречается, и без предела это зависание, а не ошибка.
-  const build = (path, id, mat, depth, out) => {
+  const build = (path, id, mat, depth, out, stat) => {
     if (depth > 12) return;
     const o = (byFile.get(path) || new Map()).get(id); if (!o) return;
+    if (stat) stat.paint += o.paint || 0;
     for (const f of o.tris){
       const p = f.map(k => o.verts[k]);
       if (p.some(q => !q || q.some(x => !Number.isFinite(x)))) continue;
       out.push(p.map(q => mfApply(mat, q)));
     }
     // Ссылка без `p:path` — на объект СВОЕГО файла; с ним — на чужой.
-    for (const c of o.comps) build(c.path ? mfPath(c.path) : path, c.id, mfMul(c.mat, mat), depth + 1, out);
+    for (const c of o.comps) build(c.path ? mfPath(c.path) : path, c.id, mfMul(c.mat, mat), depth + 1, out, stat);
   };
   const objs = byFile.get(mainPath) || new Map();
   const objMeta = (meta && meta.objs) || new Map(), palette = (meta && meta.palette) || [];
@@ -19254,18 +19273,22 @@ function parse3MFModels(files, mainPath, meta){
   while ((it = reItem.exec(xmlMain))){
     const a = '<item' + it[1] + '>', id = mfAttr(a, 'objectid'); if (id == null) continue;
     const path = a.indexOf('p:path') >= 0 ? mfPath(mfAttr(a, 'p:path')) : mainPath;
-    const out = []; build(path, id, mfMat(mfAttr(a, 'transform')), 0, out);
+    const out = [], stat = { paint: 0 };
+    build(path, id, mfMat(mfAttr(a, 'transform')), 0, out, stat);
     const md = objMeta.get(id);
     if (out.length) parts.push({ name: mf3MFName(md, ((byFile.get(path) || new Map()).get(id) || {}).name, id),
-                                 color: mf3MFColor(md, palette) || matColor(path, id), tris: out });
+                                 color: mf3MFColor(md, palette) || matColor(path, id),
+                                 painted: stat.paint, tris: out });
   }
   // Файл без раскладки сборки — не ошибка: берём каждый объект с собственной сеткой, из любого файла.
   if (!parts.length) for (const [path, m] of byFile) for (const [id, o] of m){
     if (!o.tris.length) continue;
-    const out = []; build(path, id, null, 0, out);
+    const out = [], stat = { paint: 0 };
+    build(path, id, null, 0, out, stat);
     const md = objMeta.get(id);
     if (out.length) parts.push({ name: mf3MFName(md, o.name, id),
-                                 color: mf3MFColor(md, palette) || matColor(path, id), tris: out });
+                                 color: mf3MFColor(md, palette) || matColor(path, id),
+                                 painted: stat.paint, tris: out });
   }
   if (unit !== 1) for (const p of parts) p.tris = p.tris.map(T => T.map(v => v.map(c => c*unit)));
   return parts;

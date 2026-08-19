@@ -499,6 +499,40 @@ console.log('=== 3MF: составная модель приходит дета�
     activeModelId = keepActive; cachedRawTris = keepCached;
   }
 
+  /* 15) ПОКРАСКА СЧИТАЕТСЯ, ХОТЬ И НЕ ИМПОРТИРУЕТСЯ. Многоцветная покраска слайсера (`paint_color` у
+         Bambu и Orca, `mmu_segmentation` у PrusaSlicer) — свойство ПОВЕРХНОСТИ, а не тело: разложить её
+         по деталям значило бы наделать открытых заплаток. Не импортировать — решение; не сказать о ней —
+         молчаливая потеря, а файл с MakerWorld почти всегда раскрашен. */
+  {
+    const model = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      '<object id="1" type="model"><mesh><vertices>' +
+      '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/><vertex x="0" y="4" z="0"/><vertex x="0" y="0" z="6"/>' +
+      '</vertices><triangles>' +
+      '<triangle v1="0" v2="2" v3="1" paint_color="4"/>' +
+      '<triangle v1="0" v2="1" v3="3" paint_color="2C"/>' +
+      '<triangle v1="0" v2="3" v3="2"/>' +
+      '<triangle v1="1" v2="2" v3="3" slic3rpe:mmu_segmentation="8"/>' +
+      '</triangles></mesh></object></resources>' +
+      '<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></build></model>';
+    const parts = await parse3MF(zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(model)}]));
+    chk('геометрия взята вся, без потерь', parts[0].tris.length === 4, parts[0].tris.length);
+    chk('раскрашенные треугольники сосчитаны', parts[0].painted === 3, parts[0].painted);
+    // Счёт идёт по СВОЕЙ сетке и по всему, из чего деталь собрана: иначе у сборного тела он выйдет нулём.
+    const nested = '<?xml version="1.0"?><model unit="millimeter"><resources>' +
+      model.slice(model.indexOf('<object id="1"'), model.indexOf('</resources>')) +
+      '<object id="2" type="model"><components>' +
+      '<component objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object>' +
+      '</resources><build><item objectid="2" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></build></model>';
+    const nest = await parse3MF(zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(nested)}]));
+    chk('у сборного тела покраска тоже сосчитана', nest[0].painted === 3, nest[0].painted);
+    // Файл без покраски не должен ничего выдумывать.
+    const plainModel = model.replace(/ paint_color="[^"]*"/g, '').replace(/ slic3rpe:mmu_segmentation="[^"]*"/g, '');
+    const plain = await parse3MF(zipStored([{name:'3D/3dmodel.model', method:0, data:enc.encode(plainModel)}]));
+    chk('без покраски счёт нулевой', plain[0].painted === 0, plain[0].painted);
+    chk('и чистка счёт не теряет',
+        sanitizeImportParts(parts)[0].painted === 3, sanitizeImportParts(parts)[0].painted);
+  }
+
   console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
   process.exit(fail?1:0);
 })();

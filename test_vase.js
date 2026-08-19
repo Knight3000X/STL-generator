@@ -382,6 +382,186 @@ console.log('=== дно не торчит наружу ===');
       !runs2.some(([y0,y1]) => y0 < B2.minY+0.05 && y1 < B2.minY+3), runs2.map(x=>x.map(v=>+v.toFixed(2))));
 }
 
+/* ============ КАШПО И ПОДДОН =====================================================================
+   Кашпо — та же ваза с дренажом в дне. Поддон — отдельная деталь, размеры которой берутся от вазы.
+   Проверяется не «строится ли»: дно с нарисованными, но не прорезанными кружками тоже строится и тоже
+   герметично. Меряется луч СКВОЗЬ отверстие, число отверстий, выведенная окружность и то, что поддон
+   действительно вмещает вазу — включая гранёную и с рельефом. */
+
+/* Пуст ли столбик В ПЛОСКОСТИ ДНА в точке (x,z). Проверяется принадлежность точке внутри плиты дна, а
+   НЕ длина найденного отрезка: первая версия требовала, чтобы отрезок был короче 4 мм, и у самой стенки
+   честно врала — там столбик проходит сквозь стенку вазы и тянется вверх на десятки миллиметров, то есть
+   материал есть, а предикат отвечал «пусто». Промер диаметра отверстия из-за этого выдал 13.95 вместо 8. */
+function floorOpenAt(t, x, z){
+  const y=computeBBox(t).minY+0.3;
+  return !solidRunsY(t,x,z).some(([y0,y1]) => y0<=y && y1>=y);
+}
+
+console.log('=== кашпо: герметичность ===');
+for(const n of [1,2,3,6,12])
+  for(const d of [3,8,30]){
+    const t=base({vaseH:40,vaseDrain:n,vaseDrainD:d}), mc=manifoldCheck(t,4);
+    chk('дренаж n'+n+' Ø'+d+' watertight (+vol)', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
+  }
+for(const ov of [{vaseDrain:6,vaseDrainD:8,vaseFacets:6},{vaseDrain:6,vaseDrainD:8,vaseRelief:'flute',vaseReliefD:4},
+                 {vaseDrain:6,vaseDrainD:8,vaseRelief:'lobe',vaseReliefD:5,vaseTwist:180},
+                 {vaseDrain:12,vaseDrainD:8,vaseBaseD:10},{vaseDrain:4,vaseDrainD:8,fnWall:8}]){
+  const t=base(Object.assign({vaseH:40},ov)), mc=manifoldCheck(t,4);
+  chk('дренаж + '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
+}
+
+console.log('=== дренаж СКВОЗНОЙ, и его столько, сколько просили ===');
+{
+  const par=Object.assign({},base({vaseDrain:6,vaseDrainD:8})&&paramState.box);
+  const sp=vaseSpec(par);
+  const rFloor=Math.max(0.6,(Math.max(1.2,vaseProfileR(0.02,sp.pts))-sp.wall*0.4)*sp.facK-sp.rel.depth);
+  const dr=vaseDrainSpec(rFloor,6,8);
+  const t=base({vaseDrain:6,vaseDrainD:8});
+  chk('в центре отверстия дна нет', floorOpenAt(t, dr.rC, 0), dr);
+  chk('между отверстиями дно есть', !floorOpenAt(t, dr.rC*Math.cos(Math.PI/6), dr.rC*Math.sin(Math.PI/6)));
+  chk('и в самом центре тоже (шесть отверстий — не одно)', !floorOpenAt(t, 0, 0));
+  // Обход по окружности отверстий: сколько раз столбик открывается — столько и отверстий.
+  const K=720; let opens=0, prev=floorOpenAt(t, dr.rC*Math.cos(-2*Math.PI/K), dr.rC*Math.sin(-2*Math.PI/K));
+  for(let i=0;i<K;i++){ const a=2*Math.PI*i/K, o=floorOpenAt(t, dr.rC*Math.cos(a), dr.rC*Math.sin(a));
+    if(o && !prev) opens++; prev=o; }
+  chk('отверстий по кругу ровно шесть', opens===6, opens);
+  // Одно отверстие — по центру, а не на окружности.
+  const t1=base({vaseDrain:1,vaseDrainD:10});
+  chk('одно отверстие стоит в центре', floorOpenAt(t1,0,0) && vaseDrainSpec(rFloor,1,10).rC===0);
+  // Ноль отверстий — сплошное дно.
+  const t0=base({vaseDrain:0});
+  chk('без дренажа дно сплошное', !floorOpenAt(t0,0,0) && !floorOpenAt(t0, rFloor*0.6, 0));
+  // Ширина промежутка вдоль радиуса — это и есть Ø отверстия.
+  let lo=null, hi=null;
+  for(let i=0;i<=400;i++){ const r=dr.rC-10+20*i/400;
+    if(floorOpenAt(t, r, 0)){ if(lo===null) lo=r; hi=r; } }
+  chk('ширина промежутка = запрошенный Ø', Math.abs((hi-lo)-8)<0.6, {span:+(hi-lo).toFixed(2)});
+}
+
+console.log('=== окружность отверстий ВЫВЕДЕНА, а не выбрана ===');
+{
+  /* Условие: до края дна и до соседа остаётся поровну. Проверяется на самом определении — оба запаса
+     при выданном rC обязаны сойтись, — и на следствии: любое ДРУГОЕ положение окружности даёт отверстие
+     не больше. Коэффициент «0.55 от радиуса» на трёх отверстиях терял бы половину диаметра. */
+  const R=30, e=2.0;
+  for(const n of [2,3,6,12]){
+    const dr=vaseDrainSpec(R,n,1000);
+    const capEdge=2*(R-dr.rC-e), capNb=2*dr.rC*Math.sin(Math.PI/n)-e;
+    chk('n'+n+': запас до края и до соседа сошлись', Math.abs(capEdge-capNb)<1e-9,
+        {capEdge:+capEdge.toFixed(3), capNb:+capNb.toFixed(3)});
+    chk('n'+n+': выданный предел — это он и есть', Math.abs(dr.cap-capEdge)<1e-9, {cap:dr.cap});
+    // Ни одно другое положение не даёт большего отверстия.
+    let best=0; for(let i=1;i<400;i++){ const rc=R*i/400;
+      best=Math.max(best, Math.min(2*(R-rc-e), 2*rc*Math.sin(Math.PI/n)-e)); }
+    chk('n'+n+': это максимум по положению', dr.cap >= best-1e-6, {cap:+dr.cap.toFixed(3), best:+best.toFixed(3)});
+    /* И «0.55 от радиуса» действительно хуже — но не везде одинаково, и врать об этом не нужно: при
+       двух-трёх отверстиях разница мала (27.0 против 23.0), а при двенадцати наивный коэффициент
+       упирается в соседа и теряет треть диаметра. Сравнение стоит там, где оно что-то значит. */
+    const naive=Math.min(2*(R-0.55*R-e), 2*0.55*R*Math.sin(Math.PI/n)-e);
+    chk('n'+n+': выведенная окружность не хуже наивного 0.55R', dr.cap > naive-1e-9,
+        {cap:+dr.cap.toFixed(2), naive:+naive.toFixed(2)});
+    if(n>=12) chk('n'+n+': и заметно лучше — наивный упирается в соседа', dr.cap > naive*1.4,
+                  {cap:+dr.cap.toFixed(2), naive:+naive.toFixed(2)});
+  }
+  chk('одно отверстие — весь радиус минус запас', Math.abs(vaseDrainSpec(30,1,1000).cap-2*(30-2))<1e-9);
+  chk('на крошечном дне дренажа не бывает', vaseDrainSpec(1.5,6,8).n===0);
+}
+
+console.log('=== предел Ø и абажур названы вслух ===');
+{
+  const p1=Object.assign({},base({vaseDrain:6,vaseDrainD:40})&&paramState.box);
+  chk('о срезанном Ø сказано', collectPrintWarnings(p1).some(w=>/дренаж: просили/.test(w)), collectPrintWarnings(p1));
+  const p2=Object.assign({},base({vaseDrain:6,vaseDrainD:8})&&paramState.box);
+  chk('в пределах — молчит', !collectPrintWarnings(p2).some(w=>/дренаж/.test(w)));
+  const p3=Object.assign({},base({vaseDrain:6,vaseDrainD:8,vaseFloor:false})&&paramState.box);
+  chk('дренаж у абажура назван отдельно', collectPrintWarnings(p3).some(w=>/абажур/.test(w)), collectPrintWarnings(p3));
+  const t3=base({vaseDrain:6,vaseDrainD:8,vaseFloor:false});
+  chk('и дна у абажура правда нет', floorOpenAt(t3,0,0));
+}
+
+console.log('=== дренаж не трогает силуэт ===');
+{
+  const B0=computeBBox(base({})), B1=computeBBox(base({vaseDrain:6,vaseDrainD:8}));
+  chk('габарит не изменился', Math.abs((B1.maxX-B1.minX)-(B0.maxX-B0.minX))<1e-9 &&
+      Math.abs((B1.maxY-B1.minY)-(B0.maxY-B0.minY))<1e-9);
+  chk('материала стало меньше', vol(base({vaseDrain:6,vaseDrainD:8})) < vol(base({}))*0.9999);
+  chk('и чем больше отверстий, тем меньше',
+      vol(base({vaseDrain:12,vaseDrainD:8})) < vol(base({vaseDrain:3,vaseDrainD:8})));
+}
+
+console.log('=== поддон ===');
+for(const ov of [{},{vaseBaseD:10},{vaseBaseD:250},{vaseSaucerH:3},{vaseSaucerH:60},{vaseSaucerGap:0.2},
+                 {vaseSaucerGap:5},{vaseSaucerLift:0},{vaseSaucerLift:10},{fnWall:0.8},{fnWall:8},
+                 {vaseBaseD:10,fnWall:8},{vaseBaseD:10,vaseSaucerLift:10}]){
+  const t=base(Object.assign({vasePart:'saucer'},ov)), mc=manifoldCheck(t,4);
+  chk('поддон '+JSON.stringify(ov)+' watertight (+vol)', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
+}
+{
+  const t=base({vasePart:'saucer',vaseBaseD:60,vaseSaucerGap:0.8,fnWall:2,vaseSaucerH:12});
+  const B=computeBBox(t);
+  chk('наружный Ø = Ø дна + 2·зазор + 2·стенка', Math.abs((B.maxX-B.minX)-(60+1.6+4))<0.3,
+      {d:+(B.maxX-B.minX).toFixed(2)});
+  chk('высота = высота борта', Math.abs((B.maxY-B.minY)-12)<0.05, {h:+(B.maxY-B.minY).toFixed(2)});
+  /* Внутренний просвет — минимум радиуса ВЫШЕ бобышек. `radiiAt` здесь не годится: у поддона вершины
+     стоят только на четырёх высотах (дно, верх дна, верх бобышки, борт), а её окно в 0.6 % высоты между
+     ними просто ни во что не попадает и возвращает 1e9. */
+  const sc0=vaseSaucerSpec(paramState.box), B0=computeBBox(t);
+  let inner=1e9;
+  for(const T of t) for(const v of T) if(v[1] > B0.minY+sc0.wall+sc0.lift+0.5)
+    inner=Math.min(inner, Math.hypot(v[0],v[2]));
+  chk('внутренний Ø = Ø дна + 2·зазор', Math.abs(2*inner-(60+1.6))<0.4, {inner:+(2*inner).toFixed(2)});
+  chk('и он БОЛЬШЕ дна вазы — иначе она не встанет', 2*inner > 60, {inner:+(2*inner).toFixed(2)});
+}
+{
+  /* Поддон круглый, а ваза может быть гранёной и с рельефом. Проверяется не «похоже влезает», а то, что
+     САМАЯ ДАЛЁКАЯ точка дна вазы всё ещё внутри просвета поддона — для всех форм сразу. */
+  const sc=vaseSaucerSpec(Object.assign({},base({vasePart:'saucer'})&&paramState.box));
+  for(const ov of [{},{vaseFacets:6},{vaseFacets:3},{vaseRelief:'rib',vaseReliefD:4,vaseReliefN:12},
+                   {vaseRelief:'lobe',vaseReliefD:6,vaseReliefN:5}]){
+    const t=base(ov), B=computeBBox(t);
+    let rBot=0; for(const T of t) for(const v of T) if(v[1]<B.minY+1.0) rBot=Math.max(rBot, Math.hypot(v[0],v[2]));
+    chk('дно вазы '+JSON.stringify(ov)+' влезает в поддон', rBot < sc.rIn, {rBot:+rBot.toFixed(2), rIn:+sc.rIn.toFixed(2)});
+  }
+}
+{
+  // Бобышки: их три, они ниже борта и внутри стенки.
+  const sc=vaseSaucerSpec(Object.assign({},base({vasePart:'saucer'})&&paramState.box));
+  chk('бобышка не выше борта', sc.wall+sc.lift <= sc.H-0.5+1e-9, sc);
+  chk('и внутри стенки', sc.padC+sc.padR <= sc.rIn-1.0+1e-9, sc);
+  /* Дно кольца обязано лежать СТРОГО между его радиусами: совпавшая с кольцом грань — запрещённый
+     случай, и здесь он проверяется как УСЛОВИЕ. Проверять его по сетке нечем: у диска и у кольца разное
+     число сегментов, вершины не совпадают, и совпавшие поверхности не сварились бы — `manifoldCheck`
+     на них смолчал бы, а слайсер получил бы нулевую толщину. */
+  chk('дно поддона не совпадает ни с одной гранью кольца', sc.rIn < sc.rFloor && sc.rFloor < sc.rOut, sc);
+  const t=base({vasePart:'saucer'}), B=computeBBox(t);
+  // Столбиков ровно три: обход по окружности бобышек, считаем участки, где материал выше уровня дна.
+  const K=720, yTest=B.minY+sc.wall+sc.lift*0.5;
+  const solidAt=(x,z)=>solidRunsY(t,x,z).some(([y0,y1])=>y0<=yTest && y1>=yTest);
+  let runs=0, prev=solidAt(sc.padC*Math.cos(-2*Math.PI/K), sc.padC*Math.sin(-2*Math.PI/K));
+  for(let i=0;i<K;i++){ const a=2*Math.PI*i/K, o=solidAt(sc.padC*Math.cos(a), sc.padC*Math.sin(a));
+    if(o&&!prev) runs++; prev=o; }
+  // Число записано ЧИСЛОМ, а не через ту же константу: проверка, сверяющаяся сама с собой, переживает
+  // любую правку этой константы и ничего о ней не сообщает.
+  chk('бобышек ровно три', runs===3, runs);
+  chk('и три — не «побольше»: три точки задают плоскость, четвёртая качается', VASE_LIFT_N===3, VASE_LIFT_N);
+  chk('без них поддон легче', vol(base({vasePart:'saucer',vaseSaucerLift:0})) < vol(t));
+  // Просили выше борта — обрезано и названо.
+  const p4=Object.assign({},base({vasePart:'saucer',vaseSaucerH:3,vaseSaucerLift:8})&&paramState.box);
+  chk('о срезанной подставке сказано', collectPrintWarnings(p4).some(w=>/подставки поддона/.test(w)),
+      collectPrintWarnings(p4));
+  const small=vaseSaucerSpec(Object.assign({},base({vasePart:'saucer',vaseBaseD:10,vaseSaucerGap:0.2})&&paramState.box));
+  chk('на крошечном поддоне бобышка ужалась вместе с ним', small.padC+small.padR <= small.rIn-1.0+1e-9, small);
+  chk('и осталась печатаемой', small.padR >= 1.2, small.padR);
+}
+{
+  // Поддон не зависит от того, что нарисовано выше дна.
+  const a=vol(base({vasePart:'saucer'})), b=vol(base({vasePart:'saucer',vaseH:300,vaseBellyD:300,
+    vaseMouthD:250,vaseFacets:12,vaseRelief:'lobe',vaseReliefD:9,vaseTwist:270,vaseDrain:8}));
+  chk('поддону безразличен силуэт вазы над дном', Math.abs(a-b)<1e-9, {a,b});
+  const c=vol(base({vasePart:'saucer',vaseBaseD:100}));
+  chk('но не Ø её дна', Math.abs(c-a)>1, {a,c});
+}
+
 console.log('=== рельеф не трогает того, чего не касается ===');
 {
   const a=vol(base({fnMode:'funnel',vaseRelief:'rib',vaseReliefD:6,vaseReliefN:9}));

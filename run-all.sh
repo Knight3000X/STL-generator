@@ -71,17 +71,24 @@ add test_sw.js test_sw.js
 # Extraction tests: real <script> + DOM stubs, then the test appended. Ordered LONGEST FIRST, by measured
 # time: with a fixed pool, total wall time is bounded below by the single longest file, so starting it last
 # leaves three idle cores waiting on it. Re-sort this list if the timings in the summary line drift.
-for t in test_paramrows.js test_keycap.js test_thread.js test_battery.js test_hook_styles.js test_vase.js test_slice.js test_funnel.js test_squircle.js test_wormwheel.js test_poly.js test_funnel_cap.js test_winding.js test_cycloidal.js test_leadscrew.js test_bevelpair.js test_neck_adapter.js test_auger.js test_corkscrew.js test_spring.js test_barb.js test_snap.js test_balljoint.js test_chain.js test_livinghinge.js test_telescope.js test_energy.js test_geneva.js test_roots.js test_gauge.js test_radgauge.js test_polygauge.js test_cablecomb.js test_edgeclip.js test_cupholder.js test_loft.js test_earclip.js test_groups.js test_pan.js test_submodel.js test_headings.js test_help.js test_gauges2.js test_logo_channel.js test_coaster.js test_logo_ams.js test_litho.js test_anchor.js test_source.js test_stand_logo.js test_light_settings.js test_version.js test_panel_layout.js \
-          test_logo_plate.js test_gear.js test_hub.js test_dinclip.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js \
-          test_dice.js test_squircle_rport.js test_mount_fastener.js test_lattice_floor.js \
-          test_logo3d.js test_lattice_walls.js test_calibration.js test_tstjoin.js test_preview_lite.js test_keycover.js test_fillet_logo_hollow.js \
-          test_wall_bulge.js test_assembly.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js test_e2e_full.js test_rim_box.js test_ujoint.js \
-          test_fillet_logo.js test_hollow_taper.js test_stand.js test_pip_hinge.js test_scoop.js \
-          test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js \
-          test_grip.js test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js \
-          test_textures.js test_pbox.js test_gridfinity.js test_hook.js test_clips.js test_hole_patterns.js \
-          test_hinge.js test_print_check.js test_wallorg.js test_svg_hole.js test_baseplate.js \
-          test_import.js test_3mf.js test_palette.js; do
+# Последний замер (8 воркеров): paramrows 631s, wormwheel 544s, vase 429s, keycap 410s, slice 354s,
+# thread 311s, gear 254s — дальше меньше 175s.
+for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_slice.js test_thread.js test_gear.js \
+          test_battery.js test_hook_styles.js test_funnel.js test_squircle.js test_poly.js test_funnel_cap.js test_winding.js \
+          test_cycloidal.js test_leadscrew.js test_bevelpair.js test_neck_adapter.js test_auger.js test_corkscrew.js test_spring.js \
+          test_barb.js test_snap.js test_balljoint.js test_chain.js test_livinghinge.js test_telescope.js test_energy.js \
+          test_geneva.js test_roots.js test_gauge.js test_radgauge.js test_polygauge.js test_cablecomb.js test_edgeclip.js \
+          test_cupholder.js test_loft.js test_earclip.js test_groups.js test_pan.js test_submodel.js test_headings.js \
+          test_help.js test_gauges2.js test_logo_channel.js test_coaster.js test_logo_ams.js test_litho.js test_anchor.js \
+          test_source.js test_stand_logo.js test_light_settings.js test_version.js test_panel_layout.js test_logo_plate.js test_hub.js \
+          test_dinclip.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js test_dice.js test_squircle_rport.js test_mount_fastener.js \
+          test_lattice_floor.js test_logo3d.js test_lattice_walls.js test_calibration.js test_tstjoin.js test_preview_lite.js test_keycover.js \
+          test_fillet_logo_hollow.js test_wall_bulge.js test_assembly.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js \
+          test_e2e_full.js test_rim_box.js test_ujoint.js test_fillet_logo.js test_hollow_taper.js test_stand.js test_pip_hinge.js \
+          test_scoop.js test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js test_grip.js \
+          test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js test_textures.js test_pbox.js \
+          test_gridfinity.js test_hook.js test_clips.js test_hole_patterns.js test_hinge.js test_print_check.js test_wallorg.js \
+          test_svg_hole.js test_baseplate.js test_import.js test_3mf.js test_palette.js; do
   add "$t" stub_preamble.js "$LIB" "$t"
 done
 

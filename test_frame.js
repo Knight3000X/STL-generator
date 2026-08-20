@@ -239,6 +239,124 @@ console.log('=== пределы названы вслух ===');
       frameBackSpec({frMode:'back',frHang:'keyhole',frPhotoW:8,frPhotoH:8,frNailD:8}).hang === 'none');
 }
 
+console.log('=== подставка на стол ===');
+{
+  /* Паз держит рамку и задаёт наклон сам — ни петли, ни упора. Меряется ПО СЕТКЕ, а не по
+     спецификации: горизонтальный луч на двух высотах даёт и ширину паза (хорда t/cos θ), и сдвиг его
+     середины, из которого выводится сам угол. */
+  const runsZ = (t, x, y) => solidRuns(t, 2, x, y);          // вдоль Z: p→X, q→Y
+  const st = (ov) => { base(Object.assign({frMode:'stand'}, ov)); return frameStandSpec(paramState.box); };
+  const mesh = (ov) => base(Object.assign({frMode:'stand'}, ov));
+
+  for(const ov of [{}, {frStandAngle:3}, {frStandAngle:35}, {frT:4}, {frT:40}, {frT:40,frStandAngle:35},
+                   {frPhotoH:400}, {frPhotoH:20}, {frPhotoW:400}, {frWidth:60}, {frWidth:3},
+                   {frStandLen:20}, {frStandLen:400}, {frPhotoW:20,frPhotoH:20,frT:40}]){
+    const t = mesh(ov), mc = manifoldCheck(t,4);
+    chk('подставка '+JSON.stringify(ov)+' watertight (+vol)', mc.watertight && vol(t)>0,
+        {open:mc.openEdges, bad:mc.badEdges});
+  }
+
+  // Габарит совпадает со спецификацией — значит ничего не выпирает наружу.
+  for(const ov of [{}, {frT:40}, {frStandAngle:35}]){
+    const s2 = st(ov), B = computeBBox(mesh(ov));
+    chk('габарит = спецификация '+JSON.stringify(ov),
+        Math.abs((B.maxX-B.minX)-s2.L) < 0.02 && Math.abs((B.maxY-B.minY)-s2.hB) < 0.02 &&
+        Math.abs((B.maxZ-B.minZ)-s2.D) < 0.02,
+        {L:+(B.maxX-B.minX).toFixed(2), h:+(B.maxY-B.minY).toFixed(2), D:+(B.maxZ-B.minZ).toFixed(2),
+         want:[+s2.L.toFixed(2), +s2.hB.toFixed(2), +s2.D.toFixed(2)]});
+  }
+
+  /* ПАЗ ЦЕЛИКОМ ВНУТРИ БРУСКА. Первая версия считала высоту бруска по глубине паза и забывала, что
+     наклонённый паз опускает свой задний нижний угол ещё на (t/2)·sin θ: при рамке толщиной 40 мм это
+     5.2 мм, и паз прорезал основание насквозь. Брусок выходил 34.2 мм вместо 32.0 — контур
+     самопересёкся, а `manifoldCheck` смолчал, потому что триангуляция всё равно замкнулась. */
+  for(const ov of [{}, {frT:40}, {frT:40,frStandAngle:35}, {frWidth:3}]){
+    const s2 = st(ov), t = mesh(ov), B = computeBBox(t);
+    /* Луч ставится В СТОРОНЕ ОТ ОСИ. При x = 0 он идёт ровно по диагонали триангуляции торцевой крышки,
+       пересечение вырождается, и проба возвращает пусто на сплошном материале — первая версия этой
+       проверки падала именно так, а не из-за геометрии. */
+    const xp = s2.L*0.17;
+    let holes = 0, probes = 0;
+    for(let k=0;k<=60;k++){ probes++;
+      const z = B.minZ + 0.3 + (B.maxZ - B.minZ - 0.6)*k/60;
+      if (runsY(t, xp, z).length === 0) holes++;              // сквозная дыра снизу доверху
+    }
+    chk('снизу паз не выходит наружу '+JSON.stringify(ov), holes === 0, {holes, probes});
+    const col = runsY(t, xp, B.minZ + (B.maxZ-B.minZ)*0.83);  // заведомо позади паза
+    chk('под пазом остаётся дно '+JSON.stringify(ov), col.length === 1 && col[0][0] < B.minY+0.02,
+        col.map(x=>x.map(v=>+v.toFixed(2))));
+  }
+
+  // Ширина паза и его наклон — с меша.
+  for(const ov of [{}, {frT:4}, {frT:25}, {frStandAngle:30}]){
+    const s2 = st(ov), t = mesh(ov), B = computeBBox(t);
+    const chord = (y) => { const r = runsZ(t, s2.L*0.17, y);
+      if (r.length !== 2) return null;
+      return { w: r[1][0] - r[0][1], mid: (r[0][1] + r[1][0])/2 }; };
+    const y1 = B.maxY - 0.6, y2 = B.maxY - Math.min(4, s2.d*Math.cos(s2.th) - 0.6);
+    const c1 = chord(y1), c2 = chord(y2);
+    chk('луч встречает брусок по обе стороны паза '+JSON.stringify(ov), !!(c1 && c2), {c1, c2});
+    if (c1 && c2){
+      /* Сверяется с ТОЛЩИНОЙ РАМКИ плюс зазор, посчитанной здесь заново, а не с шириной паза из той же
+         спецификации: сверять спецификацию с самой собой — значит проверить, что она равна себе. Первая
+         версия так и делала, и мутация «убрать зазор» её проходила. */
+      const wantT = frameSpec(par(Object.assign({frMode:'stand'}, ov))).T + FRAME_STAND_GAP;
+      chk('ширина паза = толщина рамки + зазор '+JSON.stringify(ov),
+          Math.abs(c1.w - wantT/Math.cos(s2.th)) < 0.05,
+          {got:+c1.w.toFixed(3), want:+(wantT/Math.cos(s2.th)).toFixed(3)});
+      const ang = Math.atan2(c1.mid - c2.mid, y1 - y2)*180/Math.PI;
+      chk('наклон паза = заданному '+JSON.stringify(ov), Math.abs(Math.abs(ang) - s2.angDeg) < 0.6,
+          {got:+ang.toFixed(2), want:s2.angDeg});
+    }
+  }
+
+  /* ГЛУБИНА ОСНОВАНИЯ ВЫВЕДЕНА ИЗ ВЫСОТЫ РАМКИ, а не введена рядом. Наклонённая рамка держит центр
+     тяжести примерно на половине высоты, и по горизонтали он уезжает назад на (H/2)·sin θ. Основание
+     обязано доставать за эту точку — иначе опрокинется. */
+  for(const ov of [{}, {frPhotoH:400}, {frStandAngle:35}, {frPhotoH:400,frStandAngle:35}]){
+    const s2 = st(ov);
+    chk('основание достаёт за центр тяжести '+JSON.stringify(ov),
+        s2.back >= s2.f.H/2*Math.sin(s2.th) + FRAME_STAND_TIP - 1e-9,
+        {back:+s2.back.toFixed(2), need:+(s2.f.H/2*Math.sin(s2.th)).toFixed(2)});
+  }
+  chk('выше рамка — глубже основание', st({frPhotoH:400}).D > st({frPhotoH:100}).D*1.5,
+      {tall:+st({frPhotoH:400}).D.toFixed(1), short:+st({frPhotoH:100}).D.toFixed(1)});
+  chk('круче наклон — глубже основание', st({frStandAngle:35}).D > st({frStandAngle:5}).D*2,
+      {steep:+st({frStandAngle:35}).D.toFixed(1), flat:+st({frStandAngle:5}).D.toFixed(1)});
+  /* Глубина паза растёт вместе с толщиной рамки, иначе толстая рамка болтается в мелком пазу. Своим
+     числом это не проверить — «12 мм» проходит и там, и там; проверяется ЗАВИСИМОСТЬ. */
+  chk('толще рамка — глубже паз', st({frT:20}).d > st({frT:5}).d*1.9,
+      {thick:+st({frT:20}).d.toFixed(1), thin:+st({frT:5}).d.toFixed(1)});
+  chk('и глубина упирается в потолок, а не растёт без конца', st({frT:40}).d === st({frT:30}).d,
+      {t40:+st({frT:40}).d.toFixed(1), t30:+st({frT:30}).d.toFixed(1)});
+  chk('длина по умолчанию — от ширины рамки',
+      Math.abs(st({}).L - frameSpec(par({})).W*0.45) < 0.01, +st({}).L.toFixed(2));
+  chk('и заданная вручную перебивает авто', Math.abs(st({frStandLen:75}).L - 75) < 1e-9);
+
+  // Подставке безразлично то, от чего она не зависит.
+  {
+    const a2 = vol(mesh({frProfile:'round', frProfD:5, frCorner:20, frOverlap:0, frRabbetD:2}));
+    const b2 = vol(mesh({}));
+    chk('профиль, углы, нахлёст и фальц на подставку не влияют', Math.abs(a2-b2) < 1e-9, {a2, b2});
+    chk('а толщина рамки влияет', Math.abs(vol(mesh({frT:20})) - b2) > 1);
+  }
+  // Пределы названы вслух.
+  {
+    const wOf = ov => collectPrintWarnings(par(Object.assign({frMode:'stand'}, ov)));
+    chk('короткая подставка', wOf({frStandLen:20}).some(w=>/держать от заваливания/.test(w)), wOf({frStandLen:20}));
+    chk('обычная молчит', wOf({}).length === 0, wOf({}));
+    chk('глубокое основание названо', wOf({frPhotoH:20, frStandAngle:35}).some(w=>/опрокинется/.test(w)),
+        wOf({frPhotoH:20, frStandAngle:35}));
+  }
+  // Вырожденных граней нет.
+  for(const ov of [{}, {frT:40,frStandAngle:35}, {frStandAngle:3}]){
+    const t = mesh(ov); let mn = 1e9;
+    for(const T of t){ const u=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]], v=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+      mn = Math.min(mn, 0.5*Math.hypot(u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])); }
+    chk('нет граней нулевой площади '+JSON.stringify(ov), mn > 1e-6, mn.toExponential(2));
+  }
+}
+
 console.log('=== рамка не задевает остальное приложение ===');
 {
   const t=base({frMode:'none'}), B=computeBBox(t);

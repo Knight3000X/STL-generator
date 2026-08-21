@@ -999,6 +999,7 @@
       <button id="btn-add-lid" title="Накидная — колпак внахлёст; защёлки — бампы на стенках + окна в юбке; петля — проушины сзади + пластина, ось из филамента 1.75">+ Крышка</button>
     </div>
     <button id="btn-add-baseplate" title="Отдельная модель: Gridfinity-базплейт (сетка гнёзд под ножки бинов)">+ Базплейт (Gridfinity)</button>
+    <button id="btn-add-panel" title="Разложить всё панно отдельными моделями: каждая плитка со своим номером в панно и на своём месте. Узор через швы непрерывен — номера раздаются построителю, а не подбираются руками.">⊞ Всё панно (в сборку)</button>
     <button id="btn-slice-model" title="Разрезать активную модель на водонепроницаемые фрагменты не больше «Размер фрагмента» по каждой оси — чтобы напечатать деталь, не влезающую на стол. Каждый фрагмент станет отдельной моделью. С «Регистрационными штифтами» на срезах появятся штифт и ответное гнездо — фрагменты собираются без подгонки на глаз.">✂ Разрезать на фрагменты</button>
     <button id="btn-import-mesh" title="Загрузить готовую 3D-модель (STL, OBJ или 3MF) в сборку. 3MF несёт НЕСКОЛЬКО деталей со своими местами — каждая приходит отдельной моделью и встаёт туда, где стояла. Масштаб задаётся в «Импорт STL/OBJ»: равномерно в процентах или вписать в Ш×В×Г.">⤓ Импорт STL / OBJ / 3MF</button>
     <input type="file" id="mesh-import-input" accept=".stl,.obj,.3mf,model/stl,model/obj,model/3mf" style="display:none">
@@ -1238,7 +1239,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v22.0.0';
+const APP_VERSION = 'v22.1.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6783,6 +6784,88 @@ function addImportedPart(tris, name, place, color, origin, paint){
   rec.bbox = computeBBox(rec.rawTris);
   models.push(rec);
   return rec;
+}
+/* Всё панно — ОДНОЙ КНОПКОЙ, отдельными моделями сборки.
+
+   Узор на плитке с v20.0.0 считается от глобальной координаты, поэтому шов непрерывен по построению —
+   но чтобы напечатать панно 3×3, до сих пор надо было девять раз руками сменить строку со столбцом и
+   девять раз сохранить файл. Девять шансов ошибиться номером и ни одного способа увидеть панно целиком
+   до того, как оно склеено на стене.
+
+   Каждая плитка кладётся ОТДЕЛЬНОЙ МОДЕЛЬЮ с полной копией параметров и своими tlIX/tlIZ, а не
+   замороженной сеткой: плитки РАЗНЫЕ (у каждой свой кусок узора), и заморозка тут не сэкономила бы
+   ничего, зато отняла бы возможность подправить узор и увидеть панно перестроившимся.
+
+   ЗАЗОР 0.2 ММ МЕЖДУ ПЛИТКАМИ — НЕ ЩЕЛЬ, А ПРЕДПРОСМОТР. Встык боковые грани соседей совпадают, и в
+   сцене они мерцают друг сквозь друга; 0.2 мм на панно в полметра не видно, а мерцание исчезает.
+   На печать это не влияет вовсе: каждая плитка уходит своим телом со своим габаритом. */
+const PANEL_GAP = 0.2;
+function tilePanelPlan(p){
+  const s = tileSpec(p);
+  return { s, n: s.nx*s.nz,
+           at: (ix, iz) => ({ px: (ix - (s.nx - 1)/2)*(s.W + PANEL_GAP),
+                              pz: (iz - (s.nz - 1)/2)*(s.H + PANEL_GAP) }) };
+}
+function addTilePanel(){
+  if (!(paramState.box.tlMode && paramState.box.tlMode !== 'none')){
+    alert('Кнопка для настенной плитки: выберите базовую форму «Плитка».'); return;
+  }
+  saveActiveModel();
+  const src = getActiveModel();
+  const plan = tilePanelPlan(paramState.box), s = plan.s;
+  if (plan.n < 2){ alert('Панно из одной плитки — это просто плитка.\nЗадайте «Панно: плиток по горизонтали / по вертикали».'); return; }
+  const need = models.length - 1 + plan.n;
+  if (need > MAX_MODELS){
+    alert('Панно ' + s.nx + '×' + s.nz + ' — это ' + plan.n + ' моделей, всего вышло бы ' + need +
+          ' при лимите ' + MAX_MODELS + '.\nУменьшите размер панно.'); return;
+  }
+  /* Активная запись становится ПЕРВОЙ плиткой, а не остаётся лишней рядом с панно: иначе в сборке
+     оказалась бы десятая модель, ничем от одной из девяти не отличимая, и на стол уехали бы две
+     одинаковые плитки. Так же поступает резалка на фрагменты. */
+  /* ОПОРНАЯ ТОЧКА СНИМАЕТСЯ ДО РАСКЛАДКИ. Активная запись сама становится первой плиткой, и её px/pz
+     при этом сдвигаются; читать их дальше как «начало панно» значит складывать сдвиг со сдвигом —
+     панно уезжает ступеньками, причём первая плитка стоит правильно, и по ней это незаметно. */
+  const bx = src.px, by = src.py, bz = src.pz;
+  const fill = (rec, ix, iz) => {
+    rec.params = deepCopyParams(paramState.box);
+    rec.params.tlIX = ix; rec.params.tlIZ = iz;
+    rec.name = 'плитка ' + (ix+1) + ':' + (iz+1) + ' из ' + s.nx + '×' + s.nz;
+    const q = plan.at(ix, iz);
+    rec.px = bx + q.px; rec.py = by; rec.pz = bz + q.pz;
+    rec.rx = src.rx; rec.ry = src.ry; rec.rz = src.rz;
+    rec.color = src.color; rec.rawTris = []; rec.bbox = null;
+  };
+  fill(src, 0, 0);
+  const fresh = [];
+  for (let iz = 0; iz < s.nz; iz++) for (let ix = 0; ix < s.nx; ix++){
+    if (ix === 0 && iz === 0) continue;
+    const rec = makeModelRecord('', defaultBoxParams());
+    fill(rec, ix, iz);
+    models.push(rec); fresh.push(rec);
+  }
+  /* СЕТКА СТРОИТСЯ КАЖДОЙ ЗАПИСИ ЗДЕСЬ ЖЕ. `regenerate()` строит только АКТИВНУЮ модель, а показ,
+     экспорт, счётчик треугольников и габарит карточки читают `rawTris` записи — запись с пустым
+     массивом не покажется, не сохранится и не сосчитается, причём молча. Ровно на этом уже горели
+     наборы образцов, и лечится это одинаково: подменить глобальные логотипы с отверстиями пустыми,
+     подставить параметры записи, построить, вернуть всё на место. */
+  const keepP = Object.assign({}, paramState.box);
+  const keepL = logos.slice(), keepH = boxHoles.slice(), keepD = dieFaces.slice();
+  const swap = (arr, next) => { arr.length = 0; for (const q of (next || [])) arr.push(q); };
+  try {
+    swap(logos, []); swap(boxHoles, []); swap(dieFaces, []);
+    for (const rec of fresh){
+      Object.assign(paramState.box, rec.params);
+      rec.rawTris = buildTrisForShape('box', paramState.box);
+      rec.bbox = computeBBox(rotateTris(rec.rawTris, rec.rx, rec.ry, rec.rz));
+    }
+  } finally {
+    swap(logos, keepL); swap(boxHoles, keepH); swap(dieFaces, keepD);
+    Object.assign(paramState.box, keepP);
+  }
+  loadModel(src);
+  regenerate();
+  if (scene3DReady) { for (const m of models) ensureModelMesh(m); frameCamera(sceneUnionBBox()); }
+  renderModelCards(); updateExportTotal();
 }
 function importMeshFile(file){
   if (models.length >= MAX_MODELS){ alert('Достигнут лимит моделей ('+MAX_MODELS+').'); return; }
@@ -21887,6 +21970,16 @@ function renderModelCards() {
                       : 'Пары нет: есть крышка↔банка, болт/штуцер↔гайка, пара прямозубых, червяк↔червячное колесо, крючок на трубу↔труба, лоток↔крышка корпуса, Gridfinity бин↔плита'; } }
   const lid = document.getElementById('btn-add-lid'); if (lid) lid.disabled = full;
   const bp = document.getElementById('btn-add-baseplate'); if (bp) bp.disabled = full;
+  /* Кнопка панно мертва вне плитки и на панно из одной клетки — мёртвая кнопка, объясняющая себя,
+     лучше живой на вид, которая потом извиняется окном. */
+  { const pn = document.getElementById('btn-add-panel');
+    if (pn){ const on = paramState.box.tlMode && paramState.box.tlMode !== 'none';
+      const cnt = on ? tilePanelPlan(paramState.box).n : 0;
+      pn.disabled = full || !on || cnt < 2;
+      pn.textContent = cnt > 1 ? ('⊞ Всё панно: ' + cnt + ' плиток (в сборку)') : '⊞ Всё панно (в сборку)';
+      pn.title = !on ? 'Только для настенной плитки: выберите базовую форму «Плитка».'
+               : cnt < 2 ? 'Панно из одной плитки — это просто плитка; задайте размер панно.'
+               : 'Разложить всё панно отдельными моделями: каждая плитка со своим номером и на своём месте'; } }
 }
 function attachModelEventListeners() {
   document.getElementById('btn-add-model').addEventListener('click', addModel);
@@ -21897,6 +21990,7 @@ function attachModelEventListeners() {
     else addLidForActive(kind === 'clips');
   });
   document.getElementById('btn-add-baseplate').addEventListener('click', addGridfinityBaseplate);
+  { const b = document.getElementById('btn-add-panel'); if (b) b.addEventListener('click', addTilePanel); }
   document.getElementById('btn-slice-model').addEventListener('click', sliceActiveModel);
   /* ПРЕСЕТ ТИПОРАЗМЕРА. Выбор ряда или номера вписывает Ø, шаг и канал прямо в поля панели — через тот же
      путь, которым их правит рука (событие `input`), поэтому дальше всё идёт обычным чередом: пересчёт,

@@ -83,7 +83,7 @@ for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_sl
           test_source.js test_stand_logo.js test_light_settings.js test_version.js test_panel_layout.js test_logo_plate.js test_hub.js \
           test_dinclip.js test_hollow_inner_logo.js test_doser.js test_hollow_resolution.js test_dice.js test_squircle_rport.js test_mount_fastener.js \
           test_lattice_floor.js test_logo3d.js test_lattice_walls.js test_calibration.js test_tstjoin.js test_preview_lite.js test_keycover.js \
-          test_fillet_logo_hollow.js test_wall_bulge.js test_assembly.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js \
+          test_fillet_logo_hollow.js test_wall_bulge.js test_assembly.js test_tilepanel.js test_edge_bevel.js test_param_search.js test_sheet.js test_logo_mirror.js \
           test_e2e_full.js test_rim_box.js test_ujoint.js test_fillet_logo.js test_hollow_taper.js test_stand.js test_pip_hinge.js \
           test_scoop.js test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js test_grip.js \
           test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js test_textures.js test_pbox.js \

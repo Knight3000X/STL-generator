@@ -74,7 +74,7 @@ add test_sw.js test_sw.js
 # Последний замер (8 воркеров): paramrows 631s, wormwheel 544s, vase 429s, keycap 410s, slice 354s,
 # thread 311s, gear 254s — дальше меньше 175s.
 for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_slice.js test_thread.js test_gear.js \
-          test_frame.js test_tile.js test_ball.js test_clock.js test_lampshade.js test_battery.js test_hook_styles.js test_funnel.js test_squircle.js test_poly.js test_funnel_cap.js test_winding.js \
+          test_frame.js test_tile.js test_ball.js test_clock.js test_lampshade.js test_ballneck.js test_battery.js test_hook_styles.js test_funnel.js test_squircle.js test_poly.js test_funnel_cap.js test_winding.js \
           test_cycloidal.js test_leadscrew.js test_bevelpair.js test_neck_adapter.js test_auger.js test_corkscrew.js test_spring.js \
           test_barb.js test_snap.js test_balljoint.js test_chain.js test_livinghinge.js test_telescope.js test_energy.js \
           test_geneva.js test_roots.js test_gauge.js test_radgauge.js test_polygauge.js test_cablecomb.js test_edgeclip.js \

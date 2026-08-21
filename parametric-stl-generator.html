@@ -1043,6 +1043,7 @@
         <button class="base-btn" data-base="frame" title="Рамка для фото: багет протянут по замкнутому контуру, размеры выведены из размера снимка; задник с проушиной под гвоздь">Рамка</button>
         <button class="base-btn" data-base="tile" title="Модульная настенная плитка: рельеф — окно в узор всего панно, рисунок через шов не обрывается">Плитка</button>
         <button class="base-btn" data-base="ball" title="Ажурный шар / фонарь: сферическая оболочка с прорезанными окнами, кромки отверстий горизонтальные">Шар</button>
+        <button class="base-btn" data-base="clock" title="Настенные часы: циферблат под кварцевый механизм — диск или кольцо на лучах, метки отдельными телами под смену цвета">Часы</button>
       </div>
     </div>
 
@@ -1237,7 +1238,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v21.2.0';
+const APP_VERSION = 'v22.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5592,6 +5593,25 @@ const SHAPE_PARAMS = {
     {group:'Ажурный шар', key:'lnRib', label:'Шар: ширина перемычки', min:0.8, max:10, step:0.2, default:2, unit:'мм',
       hint:'Держится в МИЛЛИМЕТРАХ, а не в долях долготы: доля у полюса — это волосок, длина окружности там втрое меньше экваторной. Ширина выходит ровно заказанная и не квантуется по сетке: узор задан непрерывным полем, а граница — его изолиния, и проходит она внутри ячейки где угодно. У наклонных узоров расстояние берётся ПОПЕРЁК линии, а не вдоль параллели: винтовой перемычке параллель не перпендикулярна.'},
     {group:'Ажурный шар', key:'lnTwist', label:'Шар: закрутка спирали на всю высоту', min:-360, max:360, step:15, default:180, unit:'°'},
+    {group:'Настенные часы', key:'clMode', label:'Настенные часы (перекрывает всё)', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'dial',t:'циферблат'}],
+      hint:'Пластина с отверстием под вал кварцевого механизма; метки стоят на её лице отдельными телами и все начинаются и кончаются на одной высоте, поэтому одна смена филамента красит разом весь ряд.'},
+    {group:'Настенные часы', key:'clShape', label:'Часы: форма', type:'select', default:'disc',
+      options:[{v:'disc',t:'сплошной диск'},{v:'ring',t:'кольцо на лучах'}]},
+    {group:'Настенные часы', key:'clD', label:'Часы: диаметр', min:60, max:400, step:5, default:250, unit:'мм'},
+    {group:'Настенные часы', key:'clT', label:'Часы: толщина пластины', min:2, max:12, step:0.5, default:4, unit:'мм',
+      hint:'Упирается не в жёсткость, а в резьбу вала: гайка со стрелками садится на неё ПОВЕРХ циферблата, а резьбы у кварцевого механизма обычно 6–8 мм. Пластина толще резьбы — это часы, которые не собрать.'},
+    {group:'Настенные часы', key:'clShaftD', label:'Часы: Ø отверстия под вал', min:4, max:30, step:0.5, default:11, unit:'мм'},
+    {group:'Настенные часы', key:'clRimW', only:{clShape:['ring']}, label:'Часы: ширина обода (0 = авто)', min:0, max:120, step:1, default:0, unit:'мм'},
+    {group:'Настенные часы', key:'clHubD', only:{clShape:['ring']}, label:'Часы: Ø ступицы (0 = авто)', min:0, max:200, step:1, default:0, unit:'мм'},
+    {group:'Настенные часы', key:'clRays', only:{clShape:['ring']}, label:'Часы: сколько лучей', min:2, max:12, step:1, default:4, unit:'', int:true},
+    {group:'Настенные часы', key:'clRayW', only:{clShape:['ring']}, label:'Часы: ширина луча у ступицы', min:1.5, max:40, step:0.5, default:8, unit:'мм',
+      hint:'Луч — КЛИН, а не брусок: к ободу он расширяется. Ширина задаётся в самом узком его месте, у ступицы, потому что именно она решает, напечатается ли луч и не сломается ли.'},
+    {group:'Настенные часы', key:'clMarks', label:'Часы: метки', type:'select', default:'hours',
+      options:[{v:'none',t:'нет'},{v:'quarters',t:'четверти (4)'},{v:'hours',t:'часовые (12)'},{v:'all',t:'часовые и минутные (60)'}]},
+    {group:'Настенные часы', key:'clMarkH', label:'Часы: высота метки', min:0.4, max:10, step:0.2, default:2, unit:'мм'},
+    {group:'Настенные часы', key:'clMarkL', label:'Часы: длина часовой метки (0 = авто)', min:0, max:120, step:1, default:0, unit:'мм'},
+    {group:'Настенные часы', key:'clMarkW', label:'Часы: ширина часовой метки (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
     {group:'Настенная плитка', key:'tlMode', label:'Модульная настенная плитка (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'tile',t:'плитка панно'}],
       hint:'Рельеф плитки — окно в узор, который живёт на ВСЁМ панно, а не повторяется в каждой плитке заново. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же координата, и рисунок через шов не обрывается.'},
@@ -6965,6 +6985,7 @@ function dominantMode(p){
   if (p.frMode && p.frMode !== 'none') return 'frame';
   if (p.tlMode && p.tlMode !== 'none') return 'tile';
   if (p.lnMode && p.lnMode !== 'none') return 'ball';
+  if (p.clMode && p.clMode !== 'none') return 'clock';
   if (p.psOn) return 'stand';
   if (p.fnOn) return 'funnel';
   if (p.hookMount && p.hookMount !== 'none') return 'hook';
@@ -7050,6 +7071,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Рамка для фото': return mode==='frame';
     case 'Настенная плитка': return mode==='tile';
     case 'Ажурный шар': return mode==='ball';
+    case 'Настенные часы': return mode==='clock';
     case 'Литофания': return mode==='litho';
     case 'Тесты печати': return mode==='test';
     case 'Подставка (телефон / планшет)': return mode==='stand';
@@ -7073,6 +7095,7 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='frame')     return key==='Рамка для фото';
   if (mode==='tile')      return key==='Настенная плитка';
   if (mode==='ball')      return key==='Ажурный шар';
+  if (mode==='clock')     return key==='Настенные часы';
   if (mode==='litho')     return key==='Литофания';
   /* «Тесты» — форма со своей единственной группой, ровно как подстаканник или литофания. Без этой
      строки она проваливалась бы в общий `return true` в конце, и на калибровочной плите панель
@@ -7108,7 +7131,7 @@ const GROUP_KIND = {
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
   'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
-  'Рамка для фото':'frame', 'Настенная плитка':'tile', 'Ажурный шар':'ball',
+  'Рамка для фото':'frame', 'Настенная плитка':'tile', 'Ажурный шар':'ball', 'Настенные часы':'clock',
   'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
@@ -7116,7 +7139,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
-  frame:'Рамка для фото', tile:'Настенная плитка', ball:'Ажурный шар',
+  frame:'Рамка для фото', tile:'Настенная плитка', ball:'Ажурный шар', clock:'Настенные часы',
   litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
 };
@@ -7408,6 +7431,9 @@ const MODEL_HELP = {
   ball:     {what:'Ажурный шар или фонарь: сферическая оболочка с прорезанными окнами. Четыре узора — сетка, кладка, спираль, ромб; ширина перемычки задаётся в миллиметрах и держится одинаковой от экватора до кромки, а не тает у полюса. Внутрь ставится свеча-таблетка или лампа, через верхнее отверстие продевается шнур.',
              how:'Нижним отверстием НА СТОЛ. Кромки обоих отверстий горизонтальные — это не украшение, а условие печати: оболочку режут плоскости, поэтому первый слой ложится настоящим кольцом, а не линией. Чем шире нижнее отверстие, тем меньше нависаний. Верхняя кромка — самое трудное место: у сферы поверхность там почти горизонтальна, и «Печатаемость» называет этот угол числом; узкие перемычки слайсер перекидывает мостами, широкие лучше поддержать. Ширина перемычки выдерживается ровно заказанная на любой широте. Поддержки, если ставите, только снаружи — изнутри их не достать.',
              mat:['pla','petg']},
+  clock:    {what:'Настенные часы: циферблат под покупной кварцевый механизм — сплошной диск или кольцо на лучах, с отверстием под вал и метками. Метки — не рельеф, а отдельные тела, стоящие на лице пластины: все они начинаются и кончаются на одной высоте, поэтому ОДНА смена филамента красит разом весь ряд и ничего больше. Механизм, стрелки и гайку покупают отдельно; вешают часы за проушину самого механизма.',
+             how:'ЛИЦОМ ВВЕРХ, плоской спинкой на стол — поддержек не нужно нигде: метки стоят на уже напечатанной плоскости, а не висят над ней. Печатать лицом вниз соблазнительно ради гладкого первого слоя, но тогда метки печатаются первыми, а пластина ложится на них мостами через пустоту между метками. ГЛАВНОЕ ЧИСЛО — ТОЛЩИНА: гайка со стрелками садится на резьбу вала ПОВЕРХ циферблата, а резьбы у обычного механизма 6–8 мм, так что пластина толще этого превращает часы в несобираемые; измерьте свой вал прежде, чем печатать. Отверстие под вал по умолчанию 11 мм — под самый ходовой корпус; свой лучше промерить штангенциркулем, зазор тут не нужен, вал зажимается гайкой. Двухцветная печать: смена филамента на высоте пластины, продувочная башня не нужна — смена одна на всю деталь.',
+             mat:['pla','petg']},
   tile:     {what:'Модульная настенная плитка: рельеф на ней — ОКНО в узор, который живёт на всём панно. Высота считается от глобальной координаты (индекс плитки × её размер плюс местная), поэтому правый край плитки и левый край её соседа — одна и та же точка узора, и рисунок через шов не обрывается. Задайте размер панно в плитках, а потом печатайте их по одной, меняя строку и столбец.',
              how:'Рельефом ВВЕРХ, плоской тыльной стороной на стол — поддержек не нужно ни при каком узоре: волна нигде не нависает круче собственного наклона, а он задаётся высотой рельефа против длины волны. Вешать на клей или двусторонний скотч: отверстий в плитке нет намеренно, иначе рельеф пришлось бы отодвинуть от края и шов превратился бы в канавку. Печатать соседние плитки ОДНИМ материалом и одной высотой слоя: на шве видно и то, и другое.',
              mat:['pla','petg']},
@@ -7558,7 +7584,7 @@ const KIND_PRINT = {
   keycap:'detail', coaster:'detail', die:'detail', logo3d:'detail', litho:'detail',
   gear:'strong', thread:'strong', mount:'strong', hook:'strong', hinge:'strong',
   wallorg:'strong', stand:'general', pbox:'general', funnel:'general', sheet:'general',
-  frame:'detail', tile:'detail', ball:'detail',
+  frame:'detail', tile:'detail', ball:'detail', clock:'detail',
 };
 // The two lines that depend on what was typed rather than on what kind of part it is.
 function printSettingsFor(p){
@@ -7683,6 +7709,7 @@ function setBaseShape(kind){
   setSel('frMode',     kind==='frame'  ? 'frame'  : 'none');
   setSel('tlMode',     kind==='tile'   ? 'tile'   : 'none');
   setSel('lnMode',     kind==='ball'   ? 'ball'   : 'none');
+  setSel('clMode',     kind==='clock'  ? 'dial'   : 'none');
   setSel('ltMode',     kind==='litho'  ? 'flat'   : 'none');
   setSel('tstMode',    kind==='test'   ? 'ruler'  : 'none');
   setSel('psOn',       kind==='stand'  ? true     : false);
@@ -13077,6 +13104,194 @@ function buildLanternBall(p){
 function ballFacts(p){
   const s = ballSpec(p);
   return { spec:s, overhang: 90 - s.aTop*180/Math.PI };
+}
+/* ---- Настенные часы -------------------------------------------------------------------------------
+   Циферблат — ПЛАСТИНА С ОТВЕРСТИЕМ ПОД ВАЛ, на лице которой стоят метки. Метки — отдельные замкнутые
+   тела, ЗАХОДЯЩИЕ в пластину на CLOCK_MARK_OVL. Поставить их встык, подошвой ровно на лицо, значило бы
+   отдать слайсеру две совпадающие грани нулевой толщины — ровно тот случай, которого вся эта программа
+   избегает: пересекаться оболочкам можно, лежать друг на друге гранью — нельзя.
+
+   ПЛАСТИНА СТРОИТСЯ ЯЧЕЙКАМИ В ПОЛЯРНЫХ КООРДИНАТАХ, а не триангуляцией контура. Причина
+   арифметическая: контур кольца на четырёх лучах — это внешняя окружность плюс четыре выреза, вместе
+   под тысячу вершин, а ушное отсечение стоит O(n³) и на таком контуре считается секундами, то есть
+   предпросмотр перестаёт быть предпросмотром. Область же ПОЛЯРНО-ПРЯМОУГОЛЬНА: её граница состоит
+   только из дуг r=const и радиальных отрезков φ=const. Значит её можно разложить на ячейки (полоса по
+   радиусу × интервал по углу) и выпустить у каждой присутствующей ячейки крышку, дно и стенку С ТОЙ
+   СТОРОНЫ, ГДЕ СОСЕДА НЕТ. Сетка углов ОДНА на все полосы, поэтому рёбра соседних ячеек совпадают
+   вершина в вершину, и оболочка замкнута по построению, а не по проверке.
+
+   ОТСЮДА И ФОРМА ЛУЧА: он КЛИН, а не брусок постоянной ширины. Брусок в полярной сетке не выразим —
+   его боковая грань это хорда, а интерполяция по углу даёт дугу, и крышка вылезала бы за собственную
+   стенку. Немного: при луче 8 мм у ступицы Ø45 это 0.2 мм наружу. Но 0.2 мм здесь не погрешность, а
+   разрыв поверхности. Ширина луча поэтому задаётся У СТУПИЦЫ, в самом узком его месте: там она и
+   решает, напечатается ли луч и не сломается ли он, а к ободу клин только расширяется.
+
+   ТОЛЩИНА ПЛАСТИНЫ УПИРАЕТСЯ НЕ В ЖЁСТКОСТЬ, А В РЕЗЬБУ ВАЛА. У кварцевого механизма резьбы 6–8 мм, и
+   гайка со стрелками садится на неё ПОВЕРХ циферблата: пластина толще резьбы означает часы, которые не
+   собрать. Урезать молча тут нечего — длину резьбы знает только тот, у кого механизм в руках, — поэтому
+   толщина остаётся заказанной, а «Печатаемость» называет число и говорит, с чем его сверить.
+
+   ДВУХЦВЕТНАЯ ПЕЧАТЬ ДАЁТСЯ ДАРОМ, и это не побочный эффект, а причина, по которой метки — тела, а не
+   рельеф поля высот: все они начинаются и кончаются на одной высоте, поэтому одна смена филамента на
+   слое T красит разом все шестьдесят и ничего больше. «Палитра сборки» такую смену видит сама. */
+const CLOCK_SEG_MM    = 1.2;   // мм — целевая дуга одного углового шага по внешнему краю
+const CLOCK_SEG_MIN   = 96;    // угловых интервалов минимум
+const CLOCK_SEG_MAX   = 720;   // и максимум
+const CLOCK_MARK_OVL  = 0.6;   // мм захода метки внутрь пластины
+const CLOCK_RIM_KEEP  = 1.0;   // мм — метка не подходит к внутренней кромке обода ближе этого
+const CLOCK_MIN_RIM   = 6;     // мм — обод уже этого не несёт меток
+const CLOCK_SHAFT_LEN = 8;     // мм — типичная резьба вала кварцевого механизма
+const CLOCK_QUARTER   = 1.3;   // во сколько раз метка четверти крупнее часовой
+const CLOCK_EDGE_KEEP = 0.3;   // мм — угол метки не подходит к обрезу пластины ближе этого
+
+function clockSpec(p){
+  const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
+  const D = cl(p.clD, 60, 400, 250), R = D/2;
+  const T = cl(p.clT, 2, 12, 4);
+  const shaftD = cl(p.clShaftD, 4, 30, 11), shaftR = shaftD/2;
+  const shape  = (p.clShape === 'ring') ? 'ring' : 'disc';
+  const marks  = ({none:1, quarters:1, hours:1, all:1})[p.clMarks] ? p.clMarks : 'hours';
+  const markH  = cl(p.clMarkH, 0.4, 10, 2);
+  const rays   = Math.round(cl(p.clRays, 2, 12, 4));
+
+  /* Обод и ступица — ДОЛИ РАДИУСА по умолчанию, иначе кольцо на 400 мм и кольцо на 60 мм требуют разных
+     чисел, чтобы выглядеть одинаково. Порядок урезаний: обод не уже CLOCK_MIN_RIM и оставляет место
+     ступице, ступица не залезает в обод. */
+  const rimWant = cl(p.clRimW, 0, 120, 0) || R*0.16;
+  const rimW = Math.max(CLOCK_MIN_RIM, Math.min(rimWant, R - shaftR - 8));
+  const Rin  = R - rimW;
+  const hubWant = cl(p.clHubD, 0, 200, 0)/2 || shaftR + 10;
+  const hubR = Math.max(shaftR + 2, Math.min(hubWant, Rin - 4));
+  const rayWant = cl(p.clRayW, 1.5, 40, 8);
+  const rayW = Math.min(rayWant, 2*hubR*0.9);
+  // Полуугол клина: ширина rayW достигается У СТУПИЦЫ. Плюс потолок в 0.9 от шага лучей — иначе лучи
+  // сходятся боками, средняя полоса становится сплошной, и «кольцо» молча превращается в диск.
+  const rayHalf = Math.min(Math.asin(rayW/(2*hubR)), 0.9*Math.PI/rays);
+  const rayNarrow = 2*hubR*Math.sin(rayHalf);
+  const rayWide   = 2*Rin*Math.sin(rayHalf);
+  const rayGap    = 2*Math.PI*Rin/rays - rayWide;
+
+  const inset = Math.max(1.5, D*0.012);
+  const rOut  = R - inset;
+  const rIn   = shape === 'ring' ? Rin + CLOCK_RIM_KEEP : shaftR + 4;
+  /* ШИРИНА МЕТКИ УПИРАЕТСЯ В ДВА РАЗНЫХ ПОТОЛКА, и оба настоящие. Первый — шаг между метками: двенадцать
+     по 30° и шестьдесят по 6° это разные числа, и на мелком циферблате второе срабатывает сразу. Второй
+     тоньше: метка — ПРЯМОУГОЛЬНИК, а не сектор, поэтому её наружные углы лежат дальше от центра, чем её
+     середина, на √(r²+h²) − r. Забыть про них значит выпустить угол метки за обрез пластины, и это не
+     видно ни в одной проверке замкнутости: обе оболочки закрыты, просто одна торчит из другой. */
+  const nSlots = marks === 'all' ? 60 : (marks === 'quarters' ? 4 : 12);
+  const wStep  = 0.7*(2*Math.PI*rOut/nSlots)/CLOCK_QUARTER;
+  const hEdge  = Math.sqrt(Math.max(0, (R - CLOCK_EDGE_KEEP)*(R - CLOCK_EDGE_KEEP) - rOut*rOut));
+  const hourWwant = cl(p.clMarkW, 0, 40, 0) || Math.max(2, D*0.016);
+  const hourW = Math.min(hourWwant, wStep, 2*hEdge/CLOCK_QUARTER);
+  const hourLwant = cl(p.clMarkL, 0, 120, 0) || Math.max(5, D*0.085);
+  const hourL = Math.min(hourLwant, (rOut - rIn)/CLOCK_QUARTER);
+  const marksFit = hourL > 0.4 && hourW > 0.4;
+  return { D, R, T, shaftD, shaftR, shape, marks, markH, rays,
+           rimWant, rimW, Rin, hubWant: hubWant*2, hubD: hubR*2, hubR,
+           rayWant, rayW, rayHalf, rayNarrow, rayWide, rayGap,
+           inset, rOut, rIn, hourLwant, hourL, hourWwant, hourW, marksFit,
+           qL: hourL*CLOCK_QUARTER, qW: hourW*CLOCK_QUARTER,
+           minL: hourL*0.45, minW: hourW*0.55 };
+}
+/* Точка полярной сетки. φ=0 — «двенадцать», и она смотрит в −Z; угол растёт к +X, то есть к тройке.
+   Наблюдатель со стороны лица (+Y) видит поэтому нормальный, часовой обход, а не зеркальный. */
+function clockPt(r, a, y){ return [r*Math.sin(a), y, -r*Math.cos(a)]; }
+// Попал ли угол внутрь луча. Считается расстоянием до ближайшей оси луча, а не перебором лучей.
+function clockInRay(s, a){
+  const w = 2*Math.PI/s.rays, t = a/w;
+  return Math.abs(t - Math.round(t))*w <= s.rayHalf + 1e-9;
+}
+/* Сетка углов: сначала ГРАНИЦЫ ЛУЧЕЙ, потом равномерное дробление промежутков между ними. Порядок
+   именно такой — границы обязаны попасть в сетку узлами, иначе луч кончается посреди интервала, его
+   боковая стенка встаёт на половине ребра крышки, и шов расходится. */
+function clockAngles(s){
+  const n0 = Math.max(CLOCK_SEG_MIN, Math.min(CLOCK_SEG_MAX, Math.round(2*Math.PI*s.R/CLOCK_SEG_MM)));
+  const step = 2*Math.PI/n0, TAU = 2*Math.PI;
+  const raw = [];
+  if (s.shape === 'ring') for (let i = 0; i < s.rays; i++){
+    const a = i*TAU/s.rays;
+    raw.push(((a - s.rayHalf) % TAU + TAU) % TAU, ((a + s.rayHalf) % TAU + TAU) % TAU);
+  }
+  raw.sort((x, y) => x - y);
+  const bp = [];
+  for (const a of raw) if (!bp.length || a - bp[bp.length-1] > 1e-9) bp.push(a);
+  if (bp.length > 1 && bp[0] + TAU - bp[bp.length-1] < 1e-9) bp.pop();
+  if (!bp.length) bp.push(0);
+  const out = [];
+  for (let i = 0; i < bp.length; i++){
+    const a0 = bp[i], a1 = (i + 1 < bp.length) ? bp[i+1] : bp[0] + TAU;
+    const n = Math.max(1, Math.round((a1 - a0)/step));
+    for (let k = 0; k < n; k++) out.push(a0 + (a1 - a0)*k/n);
+  }
+  return out;
+}
+function buildClockPlate(s){
+  const A = clockAngles(s), n = A.length, TAU = 2*Math.PI, tris = [];
+  const bands = s.shape === 'ring'
+    ? [{r0:s.shaftR, r1:s.hubR, all:true}, {r0:s.hubR, r1:s.Rin, all:false}, {r0:s.Rin, r1:s.R, all:true}]
+    : [{r0:s.shaftR, r1:s.R, all:true}];
+  const lo = j => A[((j % n) + n) % n];
+  const hi = j => { const k = ((j % n) + n) % n; return A[(k+1) % n] + (k+1 === n ? TAU : 0); };
+  const has = (b, j) => b >= 0 && b < bands.length && (bands[b].all || clockInRay(s, (lo(j) + hi(j))/2));
+  for (let b = 0; b < bands.length; b++){
+    const r0 = bands[b].r0, r1 = bands[b].r1;
+    for (let j = 0; j < n; j++){
+      if (!has(b, j)) continue;
+      const a0 = lo(j), a1 = hi(j), am = (a0 + a1)/2;
+      for (const cap of [[s.T, [0,1,0]], [0, [0,-1,0]]]){
+        const y = cap[0], ref = cap[1];
+        const P0 = clockPt(r0,a0,y), P1 = clockPt(r1,a0,y), P2 = clockPt(r1,a1,y), P3 = clockPt(r0,a1,y);
+        tris.push(orient([P0,P1,P2], ref)); tris.push(orient([P0,P2,P3], ref));
+      }
+      // Стенка по дуге r=const. Ориентир радиальный и потому строго параллелен нормали — на дуге
+      // касательный ориентир дал бы скалярное произведение ноль, и orient молча оставил бы что дали.
+      const arc = (r, ref) => {
+        const B0 = clockPt(r,a0,0), B1 = clockPt(r,a1,0), U1 = clockPt(r,a1,s.T), U0 = clockPt(r,a0,s.T);
+        tris.push(orient([B0,B1,U1], ref)); tris.push(orient([B0,U1,U0], ref));
+      };
+      const rad = [Math.sin(am), 0, -Math.cos(am)];
+      if (!has(b-1, j)) arc(r0, [-rad[0], 0, -rad[2]]);
+      if (!has(b+1, j)) arc(r1, rad);
+      // Стенка по радиусу φ=const — грань клина. Её нормаль касательна, ориентир тоже.
+      const side = (a, ref) => {
+        const B0 = clockPt(r0,a,0), B1 = clockPt(r1,a,0), U1 = clockPt(r1,a,s.T), U0 = clockPt(r0,a,s.T);
+        tris.push(orient([B0,B1,U1], ref)); tris.push(orient([B0,U1,U0], ref));
+      };
+      if (!has(b, j-1)) side(a0, [-Math.cos(a0), 0, -Math.sin(a0)]);
+      if (!has(b, j+1)) side(a1, [ Math.cos(a1), 0,  Math.sin(a1)]);
+    }
+  }
+  return tris;
+}
+// Какие метки и какого размера. Чистая функция — тесты берут её напрямую, без построения сетки.
+function clockMarks(s){
+  const out = [];
+  if (s.marks === 'none' || !s.marksFit) return out;
+  for (let k = 0; k < 60; k++){
+    const isQ = k % 15 === 0, isH = k % 5 === 0;
+    if (s.marks === 'quarters' && !isQ) continue;
+    if (s.marks !== 'all' && !isH) continue;
+    const len = isQ ? s.qL : (isH ? s.hourL : s.minL);
+    const wid = isQ ? s.qW : (isH ? s.hourW : s.minW);
+    out.push({ k, ang: k*Math.PI/30, r1: s.rOut - len, r2: s.rOut, w: wid });
+  }
+  return out;
+}
+function clockMarkTris(s, m){
+  const dx = Math.sin(m.ang), dz = -Math.cos(m.ang);   // вдоль метки, от центра к краю
+  const px = Math.cos(m.ang), pz = Math.sin(m.ang);    // поперёк
+  const h = m.w/2, at = (r, u) => [dx*r + px*u, dz*r + pz*u];
+  return extrudePolyYTris([[at(m.r1, h), at(m.r2, h), at(m.r2, -h), at(m.r1, -h)]],
+                          s.T - CLOCK_MARK_OVL, s.T + s.markH);
+}
+function buildWallClock(p){
+  const s = clockSpec(p);
+  let tris = buildClockPlate(s);
+  const mk = clockMarks(s);
+  for (const m of mk) tris = tris.concat(clockMarkTris(s, m));
+  const top = s.T + (mk.length ? s.markH : 0);
+  return tris.map(T => T.map(v => [v[0], v[1] - top/2, v[2]]));
 }
 /* ---- Модульная настенная плитка ------------------------------------------------------------------
    Плитка панно: рельеф на ней — окно в узор, который живёт НА ВСЁМ ПАННО, а не повторяется в каждой
@@ -20782,7 +20997,7 @@ function buildTrisForShape(shape, p) {
     return bevelledMesh(snapWeldTris(buildLithophane(p, lg)), p);
   }
   // Polyhedron (N-gon prism / Platonic solid): the rectangular-wall organizer add-ons below don't apply.
-  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || (p.tlMode && p.tlMode !== 'none') || (p.lnMode && p.lnMode !== 'none') || p.psOn || p.fnOn);
+  const poly = shape === 'box' && !p.logo3d && ((p.polyN|0) >= 3 || (p.binRound||0) > 0 || (p.platonic && p.platonic !== 'none') || (p.keycapMode && p.keycapMode !== 'none') || (p.sheetShape && p.sheetShape !== 'none') || (p.threadMode && p.threadMode !== 'none') || (p.pipMode && p.pipMode !== 'none') || (p.gearMode && p.gearMode !== 'none') || (p.mntMode && p.mntMode !== 'none') || (p.hookMount && p.hookMount !== 'none') || (p.woBack && p.woBack !== 'none') || (p.pbPart && p.pbPart !== 'none') || (p.frMode && p.frMode !== 'none') || (p.tlMode && p.tlMode !== 'none') || (p.lnMode && p.lnMode !== 'none') || (p.clMode && p.clMode !== 'none') || p.psOn || p.fnOn);
   const gf = shape === 'box' && p.gfOn && !p.logo3d && !poly;
   if (gf) p = gfBodyParams(p);
   let tris = buildTrisForShapeCore(shape, p);
@@ -20796,7 +21011,7 @@ function buildTrisForShape(shape, p) {
     tris = tris.concat(buildStackFeet(p));
   if (shape === 'box' && !p.logo3d && !poly && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildDividers(p));
-  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !(p.tlMode && p.tlMode !== 'none') && !(p.lnMode && p.lnMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
+  if (shape === 'box' && !p.logo3d && poly && !(p.keycapMode && p.keycapMode !== 'none') && !(p.sheetShape && p.sheetShape !== 'none') && !(p.threadMode && p.threadMode !== 'none') && !(p.pipMode && p.pipMode !== 'none') && !(p.gearMode && p.gearMode !== 'none') && !(p.mntMode && p.mntMode !== 'none') && !(p.hookMount && p.hookMount !== 'none') && !(p.woBack && p.woBack !== 'none') && !(p.pbPart && p.pbPart !== 'none') && !(p.frMode && p.frMode !== 'none') && !(p.tlMode && p.tlMode !== 'none') && !(p.lnMode && p.lnMode !== 'none') && !(p.clMode && p.clMode !== 'none') && !p.psOn && !p.fnOn && ((p.divX||1) > 1 || (p.divZ||1) > 1))
     tris = tris.concat(buildPolyDividers(p));
   if (shape === 'box' && !p.logo3d && !poly && p.scoopDir && p.scoopDir !== 'none')
     tris = tris.concat(buildScoopRamp(p));
@@ -20884,6 +21099,9 @@ function buildTrisForShapeCore(shape, p) {
     }
     if (p.lnMode && p.lnMode !== 'none') {
       return snapWeldTris(buildLanternBall(p));
+    }
+    if (p.clMode && p.clMode !== 'none') {
+      return snapWeldTris(buildWallClock(p));
     }
     if (p.psOn) {
       const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
@@ -21266,7 +21484,7 @@ try { CAT_STATE = JSON.parse(localStorage.getItem('stl-cats') || '{}'); } catch(
 // Which tab each parameter group lives under. Form = the body & silhouette; Cavity = hollow container and its
 // interior features + holes; Finish = surface relief / appearance; Export = layout, print-prep & output.
 const GROUP_TAB = {
-  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form','Настенная плитка':'form','Ажурный шар':'form',
+  'Размеры':'form','Импорт STL / OBJ / 3MF':'form','Многогранник':'form','Кейкап':'form','Лист / панель':'form','Резьба (крышка / штуцер)':'form','Дюбель по гипсокартону':'form','Петля (печать в сборе)':'form','Шестерня':'form','Крепёж / монтаж':'form','Крючок':'form','Настенный органайзер':'form','Корпус (электроника)':'form','Подставка (телефон / планшет)':'form','Воронка':'form','Подстаканник':'form','Литофания':'form','Тесты печати':'form','Рамка для фото':'form','Настенная плитка':'form','Ажурный шар':'form','Настенные часы':'form',
   'Squircle / супереллипс':'form','Скругление углов':'form','Наклон стенок':'form','Выгиб стенок (купол)':'form',
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
@@ -22532,6 +22750,8 @@ function activeShapeLabel() {
   if (p.tlMode && p.tlMode !== 'none'){ const ts = tileSpec(p);
     return 'плитка ' + (ts.ix+1) + ':' + (ts.iz+1) + ' из ' + ts.nx + '×' + ts.nz; }
   if (p.lnMode && p.lnMode !== 'none') return 'ажурный шар (Ø' + Math.round(ballSpec(p).D) + ')';
+  if (p.clMode && p.clMode !== 'none'){ const cs = clockSpec(p);
+    return 'часы ' + (cs.shape === 'ring' ? 'кольцо' : 'диск') + ' (Ø' + Math.round(cs.D) + ')'; }
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? (p.vasePart==='saucer'
                  ? ('поддон (Ø' + Math.round(vaseSaucerSpec(p).rOut*2) + ')')
@@ -22900,6 +23120,39 @@ function collectPrintWarnings(p){
     if (ts.amp > 0 && ts.amp/ts.lam > 0.35)
       w.push('рельеф ' + ts.amp.toFixed(1) + ' мм на волне ' + ts.lam.toFixed(0) +
              ' мм — склон круче 45°, печать пойдёт с нависаниями');
+  }
+  /* ЧАСЫ. Три урезания и одно предупреждение, которое НЕ урезание: толщину пластины никто не трогает,
+     потому что длину резьбы вала знает только тот, у кого механизм в руках — и именно поэтому о ней надо
+     сказать вслух. Остальное считается: метка длиннее обода вылезла бы в пустоту, метка шире шага между
+     метками слиплась бы с соседкой, а её наружный УГОЛ лежит дальше от центра, чем середина. */
+  if (p.clMode && p.clMode !== 'none'){
+    const cs = clockSpec(p);
+    if (cs.T > CLOCK_SHAFT_LEN)
+      w.push('пластина ' + cs.T.toFixed(1) + ' мм: у кварцевого механизма резьба вала обычно 6–8 мм, и гайка ' +
+             'со стрелками садится на неё ПОВЕРХ циферблата — промерьте свой вал или возьмите механизм с длинным');
+    if (cs.marks !== 'none' && !cs.marksFit)
+      w.push('меткам не осталось места: между ' + (cs.shape === 'ring' ? 'кромками обода' : 'валом и краем') +
+             ' помещается ' + (cs.rOut - cs.rIn).toFixed(1) + ' мм — шире обод или мельче отверстие под вал');
+    else if (cs.hourLwant > cs.hourL + 0.05)
+      w.push('метка укорочена с ' + cs.hourLwant.toFixed(1) + ' до ' + cs.hourL.toFixed(1) + ' мм: длиннее она ' +
+             'вышла бы за ' + (cs.shape === 'ring' ? 'внутреннюю кромку обода' : 'площадку у вала'));
+    if (cs.marksFit && cs.hourWwant > cs.hourW + 0.05)
+      w.push('метка сужена с ' + cs.hourWwant.toFixed(1) + ' до ' + cs.hourW.toFixed(1) + ' мм: шире она ' +
+             'сошлась бы с соседней или вылезла бы углом за обрез пластины');
+    if (cs.markH > cs.T)
+      w.push('метки выше пластины (' + cs.markH.toFixed(1) + ' против ' + cs.T.toFixed(1) +
+             ' мм) — циферблат читается рельефом, а не плоскостью; это можно, но проверьте, что так и задумано');
+    if (cs.shape === 'ring'){
+      if (cs.rayNarrow < 2)
+        w.push('луч у ступицы ' + cs.rayNarrow.toFixed(1) + ' мм — тоньше двух миллиметров он ломается ' +
+               'при затяжке гайки; шире луч или крупнее ступица');
+      if (cs.rayGap < 6)
+        w.push('просвет между лучами ' + cs.rayGap.toFixed(0) + ' мм — кольцо на такой ширине читается ' +
+               'сплошным диском; меньше лучей или уже луч');
+      if (cs.rimWant > cs.rimW + 0.05)
+        w.push('обод сужен с ' + cs.rimWant.toFixed(1) + ' до ' + cs.rimW.toFixed(1) +
+               ' мм: ступице и валу нужно место внутри');
+    }
   }
   /* РАМКА. Три числа урезаются молча, и каждое из них меняет ДЕТАЛЬ, а не вид: мелкий фальц не примет
      задник со снимком, глубокий профиль съест переднюю губу, а слишком широкий багет схлопнет проём. */

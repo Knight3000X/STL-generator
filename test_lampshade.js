@@ -258,6 +258,27 @@ console.log('=== лучей столько, сколько заказано, и 
   }
 }
 
+{
+  /* ПОТОЛОК УГЛА ЛУЧА. Полуугол берётся по ширине у ступицы, и на тесной ступице с широким лучом он
+     перевалил бы за половину шага лучей — соседние лучи сомкнулись бы боками, и крестовина стала бы
+     сплошным диском. Диск герметичен, объём у него верный, лучи «есть» — просто между ними ничего нет.
+     Набор подобран перебором: из 22 638 сочетаний лучи смыкались бы в 1898, и почти все требуют тесной
+     ступицы при широком луче — «на глаз» такой не берётся. */
+  const ov = {vaseSocket:'custom', vaseSocketD:10, vaseBaseD:40, vaseBellyD:95, vaseSpiderN:5, vaseSpiderW:16};
+  const s2 = spec(ov), sp = s2.spider, t = build(ov), bb = bbox(t);
+  chk('крестовина при этом встаёт', sp && sp.fits, sp);
+  chk('полуугол упёрся в потолок, а не в заказ', sp.half < Math.asin(16/(2*sp.rHub)) - 1e-9,
+      {half: sp.half, bare: Math.asin(16/(2*sp.rHub))});
+  chk('и ширина луча вышла меньше заказанных 16', sp.armNarrow < 16 - 0.05, sp.armNarrow);
+  const r = (sp.rHub + sp.rTop)/2;
+  let on = 0, between = 0;
+  for(let k=0;k<5;k++){
+    if(inWeb(t, bb.lo[1], sp.T, r, (k + 0.002)*2*Math.PI/5)) on++;
+    if(inWeb(t, bb.lo[1], sp.T, r, (k + 0.5)*2*Math.PI/5)) between++;
+  }
+  chk('пять лучей остались пятью, а не слились в диск', on === 5 && between === 0, {on, between});
+}
+
 console.log('=== крестовина печатается плоско: наклон её граней не круче 20° ===');
 {
   for(const ov of [{vaseSocket:'e27', vaseBaseD:80}, {vaseSocket:'e27', vaseBaseD:140, vaseSpiderT:8},

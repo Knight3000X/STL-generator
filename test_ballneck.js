@@ -114,6 +114,21 @@ console.log('=== подошва шейки лежит в толще стенки
   }
 }
 
+{
+  /* ПОДОШВА ВО ВСЮ ТОЛЩИНУ ТАМ, ГДЕ СТЕНКА ЭТО ПОЗВОЛЯЕТ. Утончать кольцо — крайняя мера, а не норма:
+     на шаре Ø250 со стенкой 6 захвата в два миллиметра не хватает, и кольцо выходит обрезком в 1.8 мм
+     при том, что стенка держит все шесть. Ошибка не ломает ни герметичность, ни просвет, ни уклон —
+     она делает подошву втрое тоньше, чем могла быть, и заметна только сравнением с толщиной стенки. */
+  const nk = ballNeckSpec(P({lnNeck:true, lnD:250, lnT:6}));
+  chk('на толстой стенке подошва во всю толщину, а не обрезок',
+      Math.abs(nk.wBase - nk.wall) < 1e-12, {wBase: nk.wBase, wall: nk.wall});
+  chk('и об утончении не сообщается', !W({lnNeck:true, lnD:250, lnT:6}).some(x => /подошва шейки утончена/.test(x)),
+      W({lnNeck:true, lnD:250, lnT:6}));
+  const thin = ballNeckSpec(P({lnNeck:true, lnTopD:200}));
+  chk('а там, где стенка тонка, кольцо всё-таки утончается', thin.wBase < thin.wall - 0.05,
+      {wBase: thin.wBase, wall: thin.wall});
+}
+
 console.log('=== конус не круче 45° ===');
 {
   for(const ov of [{lnNeck:true}, {lnNeck:true, lnNeckD:2}, {lnNeck:true, lnNeckD:20},
@@ -143,6 +158,15 @@ console.log('=== высота шейки — заказанная прямая �
           Math.abs((nk.rBase - nk.wBase - nk.bore) - nk.hCone) < 1e-12,
           {inner: nk.rBase - nk.wBase - nk.bore, outer: nk.rBase - nk.wall - nk.bore, h: nk.hCone});
   }
+  /* ВЫСОТА МЕРЯЕТСЯ ПО СЕТКЕ. Сверять nk.top с nk.hCone + h — это сверка спецификации с самой собой:
+     перестань построитель выпускать прямую часть, оба числа останутся прежними, а деталь станет ниже. */
+  const h0 = bbox(raw({lnNeck:true, lnNeckH:0})), h20 = bbox(raw({lnNeck:true, lnNeckH:20}));
+  chk('прямая часть действительно строится: 20 мм заказа = 20 мм детали',
+      Math.abs(((h20.hi[1]-h20.lo[1]) - (h0.hi[1]-h0.lo[1])) - 20) < 1e-9,
+      (h20.hi[1]-h20.lo[1]) - (h0.hi[1]-h0.lo[1]));
+  const h5 = bbox(raw({lnNeck:true, lnNeckH:5}));
+  chk('и пять мм — ровно пять', Math.abs(((h5.hi[1]-h5.lo[1]) - (h0.hi[1]-h0.lo[1])) - 5) < 1e-9,
+      (h5.hi[1]-h5.lo[1]) - (h0.hi[1]-h0.lo[1]));
   const tall = ballNeckSpec(P({lnNeck:true, lnTopD:200}));
   chk('на широком отверстии конус вырастает', tall.hCone > 20, tall.hCone);
   chk('и об этом сказано', W({lnNeck:true, lnTopD:200}).some(x => /это уже труба/.test(x)) ||
@@ -158,15 +182,31 @@ console.log('=== шейка выключена — шар прежний ===');
   const withNeck = raw({lnNeck:true});
   chk('а с шейкой деталь становится выше', bbox(withNeck).hi[1] - bbox(withNeck).lo[1] >
       bbox(a).hi[1] - bbox(a).lo[1] + 5, [bbox(withNeck).hi[1]-bbox(withNeck).lo[1], bbox(a).hi[1]-bbox(a).lo[1]]);
+  /* И ОСТАЁТСЯ ЦЕНТРИРОВАННОЙ. Центрировать по плоскостям реза шара — соблазнительно (так было до
+     шейки) и неверно: шейка выше верхней плоскости, и деталь уезжает вверх на пол-её высоты. Без шейки
+     оба способа дают одно число до последнего знака, поэтому проверка обязана быть ИМЕННО с шейкой. */
+  for(const ov of [{lnNeck:true}, {lnNeck:true, lnNeckH:20}, {lnNeck:true, lnTopD:200}]){
+    const b = bbox(raw(ov));
+    chk(JSON.stringify(ov) + ': центрировано по фактическому размаху', Math.abs(b.hi[1] + b.lo[1]) < 1e-9,
+        {lo: b.lo[1], hi: b.hi[1]});
+  }
 }
 
 console.log('=== отказы и предупреждения ===');
 {
-  // Шнуровое отверстие шире самого просвета — сводить нечего.
-  const nk = ballNeckSpec(P({lnNeck:true, lnD:30, lnT:0.8, lnNeckD:20}));
-  chk('шейка шире просвета не ставится', !nk.fits, nk);
-  chk('и об этом сказано', W({lnNeck:true, lnD:30, lnT:0.8, lnNeckD:20}).some(x => /шейка не встала/.test(x)),
-      W({lnNeck:true, lnD:30, lnT:0.8, lnNeckD:20}));
+  /* ОТКАЗ, В КОТОРОМ РЕШАЕТ ИМЕННО «СВОДИТЬ НЕЧЕГО». Набор подобран перебором области определения: из
+     248 640 сочетаний это условие решает в 383, и во всех прочих его опережают либо тонкое кольцо, либо
+     не помещающийся конус. Взять «на глаз» шар поменьше и отверстие побольше недостаточно — отказ
+     случится, но по другой причине, и сторож останется непроверенным. */
+  const tight = {lnNeck:true, lnD:30, lnT:2.4, lnTopD:20, lnNeckD:14};
+  const nk = ballNeckSpec(P(tight));
+  chk('шнуровое отверстие шире просвета — шейка не ставится', !nk.fits, nk);
+  chk('  и решает именно это: кольцо и конус помещаются',
+      nk.wBase >= 0.8 && nk.bore + nk.wall <= nk.rBase - 0.5 && nk.bore + 0.5 > nk.rIn0,
+      {wBase:nk.wBase, bore:nk.bore, wall:nk.wall, rBase:nk.rBase, rIn0:nk.rIn0});
+  chk('  и об этом сказано', W(tight).some(x => /шейка не встала/.test(x)), W(tight));
+  const thinRing = ballNeckSpec(P({lnNeck:true, lnD:30, lnT:0.8, lnNeckD:20}));
+  chk('а тонкое кольцо отказывает по своей причине', !thinRing.fits && thinRing.wBase < 0.8, thinRing.wBase);
   chk('на настройках по умолчанию шейка встаёт молча',
       !W({lnNeck:true}).some(x => /шейка/.test(x)), W({lnNeck:true}));
   chk('без шейки про неё не говорится', !W({}).some(x => /шейка/.test(x)));

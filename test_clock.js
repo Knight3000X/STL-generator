@@ -30,6 +30,7 @@ function chk(n,c,e){ if(c){pass++;console.log('  OK  ',n);} else {fail++;console
 function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;}return v;}
 const CL = ov => Object.assign({}, defaultBoxParams(), {clMode:'dial'}, ov||{});
 const raw = ov => buildWallClock(CL(ov));
+const W   = ov => collectPrintWarnings(CL(ov));
 function ship(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), {clMode:'dial'}, ov||{});
   return buildTrisForShape('box', paramState.box); }
@@ -299,6 +300,183 @@ console.log('=== часовая, четвертная и минутная — р
   chk('часовая метка шириной ровно 4 мм (0.016 от Ø250)', Math.abs(wH - 4) < 0.05, wH);
 }
 
+console.log('=== цифры: римские и греческие ===');
+{
+  /* САМАЯ ДОРОГАЯ ОШИБКА ЗДЕСЬ — ГОМОГЛИФ. Греческая йота «Ι» (U+0399) и латинская «I» (U+0049)
+     выглядят одинаково и печатаются одной клавишей, но это разные символы: запись одиннадцати «ΙΑ»
+     набрана греческими буквами, и без отдельного ключа в таблице глифов первый знак просто пропадал —
+     молча, потому что отсутствующий глиф пропускается. Проверка перебирает КАЖДЫЙ символ КАЖДОЙ записи. */
+  for(const set of ['roman','greek']){
+    const miss = [];
+    for(const str of CLOCK_NUMERALS[set]) for(const ch of str)
+      if(!CLOCK_GLYPHS[ch]) miss.push(ch + ' (U+' + ch.charCodeAt(0).toString(16).toUpperCase() + ')');
+    chk('«' + set + '»: у каждого символа есть глиф', miss.length === 0, miss);
+    chk('«' + set + '»: записей ровно двенадцать', CLOCK_NUMERALS[set].length === 12);
+  }
+  chk('римская четвёрка — IIII, а не IV (часовая традиция)', CLOCK_NUMERALS.roman[3] === 'IIII',
+      CLOCK_NUMERALS.roman[3]);
+  chk('греческая шестёрка — дигамма Ϝ', CLOCK_NUMERALS.greek[5] === '\u03DC', CLOCK_NUMERALS.greek[5]);
+  chk('одиннадцать и двенадцать — ΙΑ и ΙΒ',
+      CLOCK_NUMERALS.greek[10] === '\u0399\u0391' && CLOCK_NUMERALS.greek[11] === '\u0399\u0392',
+      [CLOCK_NUMERALS.greek[10], CLOCK_NUMERALS.greek[11]]);
+}
+{
+  /* КАЖДЫЙ ГЛИФ ПО ОТДЕЛЬНОСТИ ГЕРМЕТИЧЕН. Здесь ловится совпадение граней на стыке штрихов: у «Γ», «Ε»
+     и «Ϝ» верх стойки — это ещё и начало перекладины, и при продлении концов ровно на полтолщины торец
+     одного прямоугольника вставал заподлицо с боковой гранью другого. Открытых рёбер при этом ноль,
+     объём верен, вид правильный — видно только по пересчёту рёбер. */
+  const glyphTris = ch => {
+    const out = [], h = 20, half = 1.5;
+    for(const g of clockStrStrokes(ch)){
+      const A = [g[0][0]*h, g[0][1]*h], B = [g[1][0]*h, g[1][1]*h];
+      const dx = B[0]-A[0], dz = B[1]-A[1], L = Math.hypot(dx,dz); if(L < 1e-9) continue;
+      const px = -dz/L*half, pz = dx/L*half, ex = dx/L*half*CLOCK_JOINT, ez = dz/L*half*CLOCK_JOINT;
+      for(const T of extrudePolyYTris([[[A[0]-ex+px,A[1]-ez+pz],[B[0]+ex+px,B[1]+ez+pz],
+        [B[0]+ex-px,B[1]+ez-pz],[A[0]-ex-px,A[1]-ez-pz]]], 0, 3)) out.push(T);
+    }
+    return out;
+  };
+  let bad = 0, worst = null;
+  for(const ch of Object.keys(CLOCK_GLYPHS)){
+    const m = manifoldCheck(glyphTris(ch), 6);
+    if(!m.watertight){ bad++; if(!worst) worst = {ch, open:m.openEdges, bad:m.badEdges}; }
+  }
+  chk('каждый глиф в отдельности герметичен', bad === 0, worst);
+  chk('продление на стыке НЕ равно полтолщины — иначе грани совпадут', CLOCK_JOINT !== 1, CLOCK_JOINT);
+  /* НИ ОДНА ПАРА ШТРИХОВ НЕ ЛЕЖИТ НА ОДНОЙ ПРЯМОЙ, ПЕРЕКРЫВАЯСЬ. Пересчёт рёбер этого не видит и не
+     может: у двух пересекающихся штрихов верхние грани и так на одной высоте — это не порок, материал
+     есть под обеими. Порок — когда штрихи СООСНЫ и один лежит внутри другого: тогда совпадают ещё и
+     боковые грани, а лишний прямоугольник вдобавок торчит наружу шпорой. Так получалось на «Γ», «Ε» и
+     «Ϝ», где верх стойки — это ещё и начало перекладины: засечка по правилу вставала ровно на неё. */
+  let over = 0, ovAt = null;
+  for(const ch of Object.keys(CLOCK_GLYPHS)){
+    const g = clockStrStrokes(ch);
+    for(let i = 0; i < g.length; i++) for(let j = i+1; j < g.length; j++){
+      const a1 = g[i][0], b1 = g[i][1], a2 = g[j][0], b2 = g[j][1];
+      const d1 = [b1[0]-a1[0], b1[1]-a1[1]], d2 = [b2[0]-a2[0], b2[1]-a2[1]];
+      const L1 = Math.hypot(d1[0], d1[1]), L2 = Math.hypot(d2[0], d2[1]);
+      if(L1 < 1e-9 || L2 < 1e-9) continue;
+      if(Math.abs(d1[0]*d2[1] - d1[1]*d2[0])/(L1*L2) > 1e-9) continue;      // не параллельны
+      const off = Math.abs((a2[0]-a1[0])*d1[1] - (a2[1]-a1[1])*d1[0])/L1;
+      if(off > 1e-9) continue;                                              // параллельны, но не соосны
+      const t1 = ((a2[0]-a1[0])*d1[0] + (a2[1]-a1[1])*d1[1])/(L1*L1);
+      const t2 = ((b2[0]-a1[0])*d1[0] + (b2[1]-a1[1])*d1[1])/(L1*L1);
+      if(Math.min(t1,t2) < 1 - 1e-9 && Math.max(t1,t2) > 1e-9){ over++; if(!ovAt) ovAt = {ch, i, j}; }
+    }
+  }
+  chk('соосных перекрывающихся штрихов нет ни в одном глифе', over === 0, ovAt);
+}
+{
+  let bad = 0, worst = null, n = 0;
+  for(const set of ['roman','greek'])
+    for(const D of [60, 130, 250, 400])
+      for(const marks of ['none','hours','all'])
+        for(const up of [false, true])
+          for(const shape of ['disc','ring']){
+            const ov = {clNum:set, clD:D, clMarks:marks, clNumUp:up, clShape:shape};
+            const t = raw(ov), m = manifoldCheck(t, 6); n++;
+            if(!m.watertight){ bad++; if(!worst) worst = {ov, open:m.openEdges, badE:m.badEdges}; }
+          }
+  chk('96 сочетаний с цифрами герметичны', bad === 0 && n === 96, worst || n);
+}
+{
+  /* СЧИТАТЬ НАДО ЦИФРЫ, А НЕ ШТРИХИ. Первая версия считала угловые группы приподнятого материала и
+     насчитала 32 у римских: «III» — это три отдельных штриха, и каждый читается своей группой. И щупать
+     ровно в середине цифры тоже нельзя: у «II» там ПРОСВЕТ между двумя единицами. Меряем иначе — есть ли
+     материал хоть где-то в пределах своей цифры, и нет ли его ровно между часами. */
+  for(const set of ['roman','greek']){
+    const ov = {clNum:set, clD:250, clMarks:'none'};
+    const t = raw(ov), s = clockSpec(CL(ov)), b = bbox(t);
+    const topPlate = b.lo[1] + s.T;
+    const upAt = a => { const rr = atR(t, s.numR, a); return rr.length === 1 && rr[0][1] > topPlate + 1e-9; };
+    const halfSpan = (s.wMax*s.numH/2)/s.numR;
+    let miss = 0;
+    for(let k = 1; k <= 12; k++){
+      let seen = false;
+      for(let j = -20; j <= 20 && !seen; j++) if(upAt(k*Math.PI/6 + halfSpan*j/20)) seen = true;
+      if(!seen) miss++;
+    }
+    chk('«' + set + '»: цифра стоит на каждом из двенадцати часов', miss === 0, miss);
+    let between = 0;
+    for(let k = 0; k < 12; k++) if(upAt((k + 0.5)*Math.PI/6)) between++;
+    chk('  а ровно между часами пусто', between === 0, between);
+  }
+}
+{
+  /* РАЗВОРОТ. По радиусу «III» на трёх часах ложится на бок: три штриха расходятся вдоль Z. Прямо —
+     вдоль X. А на двенадцати часах оба разворота ОБЯЗАНЫ совпасть: там радиус и вертикаль — одно и то
+     же направление, и несовпадение означало бы перепутанные орты. */
+  const spread = (ov, k) => {
+    const t = raw(ov), s = clockSpec(CL(ov)), b = bbox(t), top = b.lo[1] + s.T;
+    const a = k*Math.PI/6, cx = s.numR*Math.sin(a), cz = -s.numR*Math.cos(a);
+    let lo = [1e9,1e9], hi = [-1e9,-1e9];
+    for(const T of t) for(const v of T) if(v[1] > top + 1e-9 && Math.hypot(v[0]-cx, v[2]-cz) < s.numH*1.2){
+      lo[0] = Math.min(lo[0], v[0]); hi[0] = Math.max(hi[0], v[0]);
+      lo[1] = Math.min(lo[1], v[2]); hi[1] = Math.max(hi[1], v[2]); }
+    return [hi[0]-lo[0], hi[1]-lo[1]];
+  };
+  const rad3 = spread({clNum:'roman', clMarks:'none'}, 3);
+  const up3  = spread({clNum:'roman', clMarks:'none', clNumUp:true}, 3);
+  chk('по радиусу «III» на трёх часах вытянута вдоль Z', rad3[1] > rad3[0], rad3);
+  chk('прямо — вдоль X', up3[0] > up3[1], up3);
+  /* И ЭТО РОВНО ПОВОРОТ НА 90°, а не «примерно на бок»: габариты обязаны ПЕРЕСТАВИТЬСЯ. Утверждение про
+     отношение сторон было бы слабее и притом неверным — у «III» стороны отличаются всего в 1.1 раза. */
+  chk('и один разворот — точная перестановка другого',
+      Math.abs(rad3[0] - up3[1]) < 1e-9 && Math.abs(rad3[1] - up3[0]) < 1e-9, [rad3, up3]);
+  const rad12 = spread({clNum:'roman', clMarks:'none'}, 12);
+  const up12  = spread({clNum:'roman', clMarks:'none', clNumUp:true}, 12);
+  chk('а на двенадцати часах развороты совпадают',
+      Math.abs(rad12[0]-up12[0]) < 1e-9 && Math.abs(rad12[1]-up12[1]) < 1e-9, [rad12, up12]);
+}
+{
+  /* ВЫСОТА. Осевые линии глифа лежат ровно между нулём и единицей — это проверяется на чистой функции,
+     без сетки. В сетке к ним прибавляется толщина штриха на обоих концах, и не ровно она: у «X» концы
+     диагоналей срезаны наискось и уходят чуть дальше. Поэтому по сетке проверяется не равенство, а то,
+     что превышение — это именно толщина штриха, а не что-то ещё. */
+  for(const set of ['roman','greek']){
+    let lo = 1e9, hi = -1e9;
+    for(const str of CLOCK_NUMERALS[set]) for(const g of clockStrStrokes(str)) for(const q of g){
+      lo = Math.min(lo, q[1]); hi = Math.max(hi, q[1]); }
+    chk('«' + set + '»: осевые линии стоят ровно от нуля до единицы',
+        Math.abs(lo) < 1e-12 && Math.abs(hi - 1) < 1e-12, [lo, hi]);
+  }
+  for(const h of [8, 14, 22]){
+    const ov = {clNum:'roman', clD:400, clMarks:'none', clNumH:h};
+    const t = raw(ov), s = clockSpec(CL(ov)), b = bbox(t), top = b.lo[1] + s.T;
+    let rlo = 1e9, rhi = 0;
+    for(const T of t) for(const v of T) if(v[1] > top + 1e-9 && Math.abs(v[0]) < s.numH && v[2] < 0){
+      const r = Math.hypot(v[0], v[2]); rlo = Math.min(rlo, r); rhi = Math.max(rhi, r); }
+    const over = (rhi - rlo) - h;
+    chk('высота цифры ' + h + ' мм получилась, а лишнее — толщина штриха',
+        over > s.numStroke*0.8 && over < s.numStroke*1.6, {measured: rhi - rlo, h, stroke: s.numStroke, over});
+  }
+}
+{
+  // Цифры не вылезают за обрез и не лезут в метки.
+  for(const ov of [{clNum:'roman'}, {clNum:'greek'}, {clNum:'roman', clD:60}, {clNum:'greek', clNumH:60}]){
+    const t = raw(ov), s = clockSpec(CL(ov)), R = (ov.clD || 250)/2;
+    chk(JSON.stringify(ov) + ': самая дальняя вершина — по-прежнему край пластины',
+        Math.abs(maxRad(t) - R) < 1e-6, maxRad(t));
+    chk('  и цифры не выходят за наружный край меток',
+        s.numR + s.numH/2 <= s.rOut - (s.marksFit ? s.qL : 0) + 1e-9,
+        {numOuter: s.numR + s.numH/2, marksInner: s.rOut - s.qL});
+  }
+}
+{
+  // Толщина штриха — заказанная.
+  for(const wv of [1, 2.4, 5]){
+    const s = clockSpec(CL({clNum:'roman', clD:400, clNumW:wv}));
+    chk('толщина штриха ' + wv + ' мм принята', Math.abs(s.numStroke - wv) < 1e-9, s.numStroke);
+  }
+  chk('на кольце с метками цифрам места нет — и об этом сказано',
+      W({clNum:'roman', clShape:'ring'}).some(x => /цифрам не осталось места/.test(x)),
+      W({clNum:'roman', clShape:'ring'}));
+  chk('автовысота не считается урезанием и не жалуется',
+      !W({clNum:'roman'}).some(x => /цифра уменьшена/.test(x)), W({clNum:'roman'}));
+  chk('а введённая — жалуется', W({clNum:'greek', clNumH:60}).some(x => /цифра уменьшена/.test(x)));
+  chk('без цифр про них не говорится', !W({}).some(x => /цифр/.test(x)));
+}
+
 console.log('=== метка не вылезает за обрез пластины ===');
 {
   for(const ov of [{clD:250}, {clD:100, clMarks:'quarters', clMarkW:40}, {clD:400, clMarkW:40},
@@ -522,7 +700,7 @@ console.log('=== форма зарегистрирована как базова
   chk('чужие группы под часами скрыты', !sectionRelevant('Ажурный шар', 'clock') &&
       !sectionRelevant('Настенная плитка', 'clock') && !sectionRelevant('Воронка', 'clock'));
   chk('строки параметров живут в своей группе',
-      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 13,
+      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 17,
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length);
   chk('строки кольца показываются только у кольца',
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы' && r.only && r.only.clShape).length === 4);

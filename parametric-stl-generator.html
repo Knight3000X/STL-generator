@@ -1239,7 +1239,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v22.7.0';
+const APP_VERSION = 'v22.8.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5626,12 +5626,15 @@ const SHAPE_PARAMS = {
     {group:'Настенные часы', key:'clMarks', label:'Часы: метки', type:'select', default:'hours',
       options:[{v:'none',t:'нет'},{v:'quarters',t:'четверти (4)'},{v:'hours',t:'часовые (12)'},{v:'all',t:'часовые и минутные (60)'}]},
     {group:'Настенные часы', key:'clNum', label:'Часы: цифры', type:'select', default:'none',
-      options:[{v:'none',t:'нет'},{v:'roman',t:'римские (I…XII)'},{v:'greek',t:'греческие (Α…ΙΒ)'}],
+      options:[{v:'none',t:'нет'},{v:'arabic',t:'арабские (1…12)'},{v:'roman',t:'римские (I…XII)'},{v:'greek',t:'греческие (Α…ΙΒ)'}],
       hint:'Цифры стоят ВНУТРИ меток, а не вместо них: метки идут у самого обреза, цифры под ними. Шрифт штриховой — глиф задан осевыми линиями, толщину им даёт протяжка прямоугольником. Римская четвёрка набрана IIII, а не IV: так на циферблатах со времён башенных часов, и так она уравновешивает VIII напротив. Греческая шестёрка — дигамма Ϝ: в поздней традиции на её месте стигма Ϛ, но стигма лигатура с двумя дугами, а дигамма старше и состоит из трёх прямых.'},
-    {group:'Настенные часы', key:'clNumUp', only:{clNum:['roman','greek']}, label:'Часы: цифры стоят прямо (не по радиусу)', type:'bool', default:false,
+    {group:'Настенные часы', key:'clRoman4', only:{clNum:['roman']}, label:'Часы: римская четвёрка', type:'select', default:'iv',
+      options:[{v:'iv',t:'IV — обычная запись'},{v:'iiii',t:'IIII — как на башенных часах'}],
+      hint:'Обе формы правильные. IV — вычитательная запись, её ожидают. IIII — часовая традиция: она уравновешивает VIII напротив, обе по четыре знака, и на литых циферблатах так было проще отливать.'},
+    {group:'Настенные часы', key:'clNumUp', only:{clNum:['arabic','roman','greek']}, label:'Часы: цифры стоят прямо (не по радиусу)', type:'bool', default:false,
       hint:'По радиусу — классика башенных часов: верх цифры смотрит наружу, и на трёх часах цифра лежит на боку. Прямо — современный вариант: все двенадцать стоят вертикально.'},
-    {group:'Настенные часы', key:'clNumH', only:{clNum:['roman','greek']}, label:'Часы: высота цифры (0 = авто)', min:0, max:80, step:1, default:0, unit:'мм'},
-    {group:'Настенные часы', key:'clNumW', only:{clNum:['roman','greek']}, label:'Часы: толщина штриха цифры (0 = авто)', min:0, max:10, step:0.2, default:0, unit:'мм'},
+    {group:'Настенные часы', key:'clNumH', only:{clNum:['arabic','roman','greek']}, label:'Часы: высота цифры (0 = авто)', min:0, max:80, step:1, default:0, unit:'мм'},
+    {group:'Настенные часы', key:'clNumW', only:{clNum:['arabic','roman','greek']}, label:'Часы: толщина штриха цифры (0 = авто)', min:0, max:10, step:0.2, default:0, unit:'мм'},
     {group:'Настенные часы', key:'clMarkH', label:'Часы: высота метки', min:0.4, max:10, step:0.2, default:2, unit:'мм'},
     {group:'Настенные часы', key:'clMarkL', label:'Часы: длина часовой метки (0 = авто)', min:0, max:120, step:1, default:0, unit:'мм'},
     {group:'Настенные часы', key:'clMarkW', label:'Часы: ширина часовой метки (0 = авто)', min:0, max:40, step:0.5, default:0, unit:'мм'},
@@ -13594,12 +13597,45 @@ const CLOCK_GLYPHS = (() => {
   G['Ζ'] = { w:0.56, s:[[[-0.28,1],[0.28,1]], [[0.28,1],[-0.28,0]], [[-0.28,0],[0.28,0]]] };
   G['Η'] = { w:0.58, s:[[[-0.29,0],[-0.29,1]], [[0.29,0],[0.29,1]], [[-0.29,0.5],[0.29,0.5]]] };
   G['Θ'] = { w:0.64, s:[clockArc(0, 0.5, 0.32, 0.5, 0, 2*Math.PI, 20), [[-0.27,0.5],[0.27,0.5]]] };
+  G['0'] = { w:0.62, s:[clockArc(0, 0.5, 0.28, 0.5, 0, 2*Math.PI, 20)] };
+  G['1'] = { w:0.44, s:[[[0,0],[0,1]], [[-0.20,0.76],[0,1]], [[-0.20,0],[0.20,0]]] };
+  G['2'] = { w:0.60, s:[clockArc(0, 0.70, 0.27, 0.30, Math.PI, -0.35, 12).concat([[-0.27,0]]),
+                      [[-0.27,0],[0.29,0]]] };
+  G['3'] = { w:0.58, s:[clockArc(0, 0.74, 0.26, 0.26, 2.6, -Math.PI/2, 10),
+                      clockArc(0, 0.26, 0.28, 0.26, Math.PI/2, -2.6, 10)] };
+  G['4'] = { w:0.64, s:[[[0.10,1],[-0.30,0.30]], [[-0.30,0.30],[0.30,0.30]], [[0.10,1],[0.10,0]]] };
+  G['5'] = { w:0.58, s:[[[0.26,1],[-0.24,1]], [[-0.24,1],[-0.24,0.60]],
+                      [[-0.24,0.60]].concat(clockArc(0, 0.30, 0.29, 0.30, 1.6, -2.3, 12))] };
+  G['6'] = { w:0.62, s:[clockArc(0, 0.30, 0.28, 0.30, 0, 2*Math.PI, 16),
+                      clockArc(0, 0.45, 0.30, 0.50, Math.PI*190/180, Math.PI/3, 12)] };
+  G['7'] = { w:0.60, s:[[[-0.27,1],[0.29,1]], [[0.29,1],[-0.05,0]]] };
+  G['8'] = { w:0.62, s:[clockArc(0, 0.74, 0.24, 0.26, 0, 2*Math.PI, 14),
+                      clockArc(0, 0.26, 0.29, 0.26, 0, 2*Math.PI, 16)] };
+  G['9'] = { w:0.62, s:[clockArc(0, 0.70, 0.27, 0.30, 0, 2*Math.PI, 16),
+                      clockArc(0, 0.55, 0.30, 0.50, Math.PI/18, -Math.PI*2/3, 12)] };
   return G;
 })();
 const CLOCK_NUMERALS = {
-  roman: ['I','II','III','IIII','V','VI','VII','VIII','IX','X','XI','XII'],
-  greek: ['Α','Β','Γ','Δ','Ε','Ϝ','Ζ','Η','Θ','Ι','ΙΑ','ΙΒ'],
+  roman:  ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'],
+  greek:  ['Α','Β','Γ','Δ','Ε','Ϝ','Ζ','Η','Θ','Ι','ΙΑ','ΙΒ'],
+  arabic: ['1','2','3','4','5','6','7','8','9','10','11','12'],
 };
+/* ЗАСЕЧКИ — СВОЙСТВО НАБОРА, А НЕ ГЛИФА. Римские и греческие цифры — это ПРОПИСНЫЕ БУКВЫ, и на
+   циферблатах они набраны антиквой: засечки там не украшение, а то, по чему их узнают. Арабские цифры на
+   циферблатах набирают гротеском, и засечка на конце «1» превратила бы её в чужую букву. */
+const CLOCK_SERIFED = { roman: 1, greek: 1 };
+/* РИМСКАЯ ЧЕТВЁРКА — ВЫБОР, А НЕ РЕШЕНИЕ ПРОГРАММЫ. IV — обычная запись, вычитательная, и её ожидают.
+   IIII — узкая часовая традиция: на башенных и напольных часах ставят её, потому что она уравновешивает
+   VIII напротив (обе по четыре знака) и потому что на литых циферблатах так было проще отливать. Обе
+   формы правильные; по умолчанию стоит та, которая никого не удивляет. */
+function clockNumerals(set, four){
+  const base = CLOCK_NUMERALS[set];
+  if (!base) return null;
+  if (set !== 'roman' || four !== 'iiii') return base;
+  const out = base.slice();
+  out[3] = 'IIII';
+  return out;
+}
 function clockStrWidth(str){
   let w = 0;
   for (let i = 0; i < str.length; i++){
@@ -13611,14 +13647,17 @@ function clockStrWidth(str){
 }
 /* Осевые отрезки строки в долях высоты: глифы в ряд, засечки по правилу. Чистая функция — тесты берут
    её напрямую, без сетки. */
-function clockStrStrokes(str){
+function clockStrStrokes(str, serif){
+  if (serif === undefined) serif = true;
   /* ЗАСЕЧКА СМОТРИТ НЕ ТОЛЬКО НА СВОЙ ШТРИХ. У «Γ», «Ε» и «Ϝ» верх стойки — это ещё и начало
      ПЕРЕКЛАДИНЫ, и засечка, поставленная по правилу «конец штриха на линии роста», ложилась ровно на неё:
      два совпадающих прямоугольника, то есть совпадающие грани. Замерено — по одному негерметичному ребру
      на «Γ» и «Ϝ» и два на «Ε» при нуле открытых: пересчёт рёбер это видит, а объём и вид — нет. Поэтому
-     сначала собираются все точки, из которых хоть один штрих уходит ВДОЛЬ линии, и в них засечка не
-     ставится: перекладина там сама себе засечка. */
-  const segs = [], ends = [], flat = [];
+     засечка не ставится там, где уже ЛЕЖИТ горизонтальный штрих — и не только на его концах, а в любой
+     его точке. У арабской «1» стойка стоит посреди базовой перекладины: концы у перекладины по краям, а
+     засечка встала бы в середину, соосно с ней и внутри неё. Проверка на соосные перекрывающиеся штрихи
+     это и поймала — а пересчёт рёбер не поймал бы. */
+  const segs = [], ends = [];
   let x = 0;
   for (let i = 0; i < str.length; i++){
     const g = CLOCK_GLYPHS[str[i]];
@@ -13634,17 +13673,23 @@ function clockStrStrokes(str){
       if (closed) continue;
       for (const [pt, nb] of [[line[0], line[1]], [line[line.length-1], line[line.length-2]]]){
         if (Math.abs(pt[1]) > 1e-9 && Math.abs(pt[1] - 1) > 1e-9) continue;
-        if (Math.abs(nb[1] - pt[1]) < Math.abs(nb[0] - pt[0])) flat.push([cx + pt[0], pt[1]]);
-        else ends.push([cx + pt[0], pt[1]]);
+        if (Math.abs(nb[1] - pt[1]) >= Math.abs(nb[0] - pt[0])) ends.push([cx + pt[0], pt[1]]);
       }
     }
     x += g.w;
   }
   // Совпадающие концы дают совпадающие засечки — склеиваем по координате.
+  // Лежит ли точка НА горизонтальном штрихе — где угодно по его длине, а не только на конце.
+  const onFlat = pt => segs.some(g => {
+    if (Math.abs(g[1][1] - g[0][1]) > 1e-9) return false;              // штрих не горизонтален
+    if (Math.abs(g[0][1] - pt[1]) > 1e-9) return false;                // и не на той же высоте
+    const lo = Math.min(g[0][0], g[1][0]), hi = Math.max(g[0][0], g[1][0]);
+    return pt[0] >= lo - 1e-9 && pt[0] <= hi + 1e-9;
+  });
   const seen = [];
   const same = (q, e) => Math.abs(q[0]-e[0]) < 1e-9 && Math.abs(q[1]-e[1]) < 1e-9;
-  for (const e of ends){
-    if (flat.some(q => same(q, e))) continue;                 // там уже лежит перекладина
+  for (const e of (serif ? ends : [])){
+    if (onFlat(e)) continue;                                  // там уже лежит перекладина
     if (seen.some(q => same(q, e))) continue;
     seen.push(e);
     segs.push([[e[0] - CLOCK_SERIF/2, e[1]], [e[0] + CLOCK_SERIF/2, e[1]]]);
@@ -13663,7 +13708,7 @@ function clockStrStrokes(str){
    ВЕРТИКАЛЬНО — современный вариант: все двенадцать стоят прямо. Оба задаются одной парой ортов, и на
    двенадцати часах они совпадают — это и есть проверка, что орты не перепутаны. */
 function clockNumeralTris(s){
-  const set = CLOCK_NUMERALS[s.num];
+  const set = s.numList;
   if (!set || !s.numFits) return [];
   const out = [], h = s.numH, half = s.numStroke/2;
   for (let k = 1; k <= 12; k++){
@@ -13673,7 +13718,7 @@ function clockNumeralTris(s){
     const cx = s.numR*Math.sin(a), cz = -s.numR*Math.cos(a);
     const at = q => [cx + rt[0]*q[0]*h + up[0]*(q[1] - 0.5)*h,
                      cz + rt[1]*q[0]*h + up[1]*(q[1] - 0.5)*h];
-    for (const g of clockStrStrokes(set[k-1])){
+    for (const g of clockStrStrokes(set[k-1], s.numSerif)){
       const A = at(g[0]), B = at(g[1]);
       const dx = B[0] - A[0], dz = B[1] - A[1], L = Math.hypot(dx, dz);
       if (L < 1e-9) continue;
@@ -13737,8 +13782,11 @@ function clockSpec(p){
      Угловой потолок зависит от высоты через радиус середины строки, поэтому берётся двумя итерациями:
      одной мало, разница доходит до десятой доли миллиметра. */
   const num = CLOCK_NUMERALS[p.clNum] ? p.clNum : 'none';
+  const four = p.clRoman4 === 'iiii' ? 'iiii' : 'iv';
+  const numList = clockNumerals(num, four);
+  const numSerif = !!CLOCK_SERIFED[num];
   let wMax = 0;
-  for (const str of (CLOCK_NUMERALS[num] || [])) wMax = Math.max(wMax, clockStrWidth(str));
+  for (const str of (numList || [])) wMax = Math.max(wMax, clockStrWidth(str));
   const numUp = !!p.clNumUp;
   const numOut = rOut - ((marks !== 'none' && marksFit) ? qLcalc + Math.max(1.5, D*0.01) : Math.max(1.5, D*0.008));
   /* «АВТО» — ПОДСКАЗКА, А НЕ ЗАКАЗ. Автовысота выводится из диаметра и почти всегда чуть больше того,
@@ -13758,7 +13806,7 @@ function clockSpec(p){
            inset, rOut, rIn, hourLwant, hourL, hourWwant, hourW, marksFit,
            qL: qLcalc, qW: hourW*CLOCK_QUARTER,
            minL: hourL*0.45, minW: hourW*0.55,
-           num, numUp, numH, numWant, numAsked, numStroke, numR, numOut, numFits, wMax };
+           num, four, numList, numSerif, numUp, numH, numWant, numAsked, numStroke, numR, numOut, numFits, wMax };
 }
 /* Точка полярной сетки. φ=0 — «двенадцать», и она смотрит в −Z; угол растёт к +X, то есть к тройке.
    Наблюдатель со стороны лица (+Y) видит поэтому нормальный, часовой обход, а не зеркальный. */

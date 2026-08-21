@@ -306,15 +306,49 @@ console.log('=== цифры: римские и греческие ===');
      выглядят одинаково и печатаются одной клавишей, но это разные символы: запись одиннадцати «ΙΑ»
      набрана греческими буквами, и без отдельного ключа в таблице глифов первый знак просто пропадал —
      молча, потому что отсутствующий глиф пропускается. Проверка перебирает КАЖДЫЙ символ КАЖДОЙ записи. */
-  for(const set of ['roman','greek']){
-    const miss = [];
-    for(const str of CLOCK_NUMERALS[set]) for(const ch of str)
-      if(!CLOCK_GLYPHS[ch]) miss.push(ch + ' (U+' + ch.charCodeAt(0).toString(16).toUpperCase() + ')');
-    chk('«' + set + '»: у каждого символа есть глиф', miss.length === 0, miss);
-    chk('«' + set + '»: записей ровно двенадцать', CLOCK_NUMERALS[set].length === 12);
+  for(const set of ['arabic','roman','greek'])
+    for(const four of ['iv','iiii']){
+      const list = clockNumerals(set, four), miss = [];
+      for(const str of list) for(const ch of str)
+        if(!CLOCK_GLYPHS[ch]) miss.push(ch + ' (U+' + ch.charCodeAt(0).toString(16).toUpperCase() + ')');
+      chk('«' + set + '/' + four + '»: у каждого символа есть глиф', miss.length === 0, miss);
+      chk('  и записей ровно двенадцать', list.length === 12, list.length);
+    }
+  /* ЧЕТВЁРКА — ВЫБОР. По умолчанию IV: это обычная, вычитательная запись, и её ожидают. IIII — часовая
+     традиция, и она доступна, но не навязана. Меняется только четвёртая запись и больше ничего. */
+  chk('по умолчанию римская четвёрка — IV', clockNumerals('roman', 'iv')[3] === 'IV',
+      clockNumerals('roman', 'iv')[3]);
+  chk('а по выбору — IIII', clockNumerals('roman', 'iiii')[3] === 'IIII', clockNumerals('roman', 'iiii')[3]);
+  chk('и больше ничего не меняется', clockNumerals('roman','iv').filter((x,i) => x !== clockNumerals('roman','iiii')[i]).length === 1);
+  chk('выбор не трогает другие наборы',
+      clockNumerals('greek','iiii').join() === clockNumerals('greek','iv').join() &&
+      clockNumerals('arabic','iiii').join() === clockNumerals('arabic','iv').join());
+  chk('спецификация берёт заказанную четвёрку',
+      clockSpec(CL({clNum:'roman'})).numList[3] === 'IV' &&
+      clockSpec(CL({clNum:'roman', clRoman4:'iiii'})).numList[3] === 'IIII');
+  /* УМОЛЧАНИЕ ПРОВЕРЯЕТСЯ ТОЛЬКО ТАМ, ГДЕ ЗАКАЗА НЕТ. Заказ 'iv' проходит и при перевёрнутом условии
+     («всё, кроме iiii» и «только iv» совпадают на самом 'iv'), поэтому спрашивается пустое, чужое и
+     набранное не в том регистре: IIII должна получаться ровно по одному слову и ни по какому другому. */
+  chk('а незаданный или чужой выбор — это IV, а не молчаливая IIII',
+      ['', undefined, 'IV', 'IIII', 'римская'].every(v =>
+        clockSpec(CL({clNum:'roman', clRoman4:v})).numList[3] === 'IV'));
+  /* И ДО СЕТКИ ВЫБОР ТОЖЕ ДОХОДИТ. Если бы цифры брались из таблицы напрямую, а не из спецификации,
+     обе четвёрки нарисовались бы одинаково: IIII — это четыре стойки, IV — стойка и галка, и штрихов
+     у них разное число. Ширина wMax при этом считается из спецификации в обоих случаях, так что
+     подмена не выдала бы себя ни размером цифр, ни их положением — только числом треугольников. */
+  {
+    const nIV = clockNumeralTris(clockSpec(CL({clNum:'roman'}))).length;
+    const n4  = clockNumeralTris(clockSpec(CL({clNum:'roman', clRoman4:'iiii'}))).length;
+    chk('и в сетку идёт заказанная четвёрка, а не табличная', n4 > nIV, [nIV, n4]);
   }
-  chk('римская четвёрка — IIII, а не IV (часовая традиция)', CLOCK_NUMERALS.roman[3] === 'IIII',
-      CLOCK_NUMERALS.roman[3]);
+  /* ЗАСЕЧКИ — СВОЙСТВО НАБОРА. Римские и греческие цифры это прописные буквы, набранные антиквой;
+     арабские на циферблатах набирают гротеском, и засечка на конце «1» сделала бы из неё чужую букву. */
+  chk('римские и греческие с засечками, арабские без',
+      clockSpec(CL({clNum:'roman'})).numSerif && clockSpec(CL({clNum:'greek'})).numSerif &&
+      !clockSpec(CL({clNum:'arabic'})).numSerif);
+  chk('и засечки действительно добавляют штрихи',
+      clockStrStrokes('I', true).length > clockStrStrokes('I', false).length,
+      [clockStrStrokes('I', true).length, clockStrStrokes('I', false).length]);
   chk('греческая шестёрка — дигамма Ϝ', CLOCK_NUMERALS.greek[5] === '\u03DC', CLOCK_NUMERALS.greek[5]);
   chk('одиннадцать и двенадцать — ΙΑ и ΙΒ',
       CLOCK_NUMERALS.greek[10] === '\u0399\u0391' && CLOCK_NUMERALS.greek[11] === '\u0399\u0392',
@@ -368,23 +402,24 @@ console.log('=== цифры: римские и греческие ===');
 }
 {
   let bad = 0, worst = null, n = 0;
-  for(const set of ['roman','greek'])
+  for(const set of ['arabic','roman','greek'])
     for(const D of [60, 130, 250, 400])
       for(const marks of ['none','hours','all'])
         for(const up of [false, true])
           for(const shape of ['disc','ring']){
-            const ov = {clNum:set, clD:D, clMarks:marks, clNumUp:up, clShape:shape};
+            const ov = {clNum:set, clD:D, clMarks:marks, clNumUp:up, clShape:shape,
+                        clRoman4: set === 'roman' && D === 250 ? 'iiii' : 'iv'};
             const t = raw(ov), m = manifoldCheck(t, 6); n++;
             if(!m.watertight){ bad++; if(!worst) worst = {ov, open:m.openEdges, badE:m.badEdges}; }
           }
-  chk('96 сочетаний с цифрами герметичны', bad === 0 && n === 96, worst || n);
+  chk('144 сочетания с цифрами герметичны', bad === 0 && n === 144, worst || n);
 }
 {
   /* СЧИТАТЬ НАДО ЦИФРЫ, А НЕ ШТРИХИ. Первая версия считала угловые группы приподнятого материала и
      насчитала 32 у римских: «III» — это три отдельных штриха, и каждый читается своей группой. И щупать
      ровно в середине цифры тоже нельзя: у «II» там ПРОСВЕТ между двумя единицами. Меряем иначе — есть ли
      материал хоть где-то в пределах своей цифры, и нет ли его ровно между часами. */
-  for(const set of ['roman','greek']){
+  for(const set of ['arabic','roman','greek']){
     const ov = {clNum:set, clD:250, clMarks:'none'};
     const t = raw(ov), s = clockSpec(CL(ov)), b = bbox(t);
     const topPlate = b.lo[1] + s.T;
@@ -433,9 +468,9 @@ console.log('=== цифры: римские и греческие ===');
      без сетки. В сетке к ним прибавляется толщина штриха на обоих концах, и не ровно она: у «X» концы
      диагоналей срезаны наискось и уходят чуть дальше. Поэтому по сетке проверяется не равенство, а то,
      что превышение — это именно толщина штриха, а не что-то ещё. */
-  for(const set of ['roman','greek']){
+  for(const set of ['arabic','roman','greek']){
     let lo = 1e9, hi = -1e9;
-    for(const str of CLOCK_NUMERALS[set]) for(const g of clockStrStrokes(str)) for(const q of g){
+    for(const str of CLOCK_NUMERALS[set]) for(const g of clockStrStrokes(str, !!CLOCK_SERIFED[set])) for(const q of g){
       lo = Math.min(lo, q[1]); hi = Math.max(hi, q[1]); }
     chk('«' + set + '»: осевые линии стоят ровно от нуля до единицы',
         Math.abs(lo) < 1e-12 && Math.abs(hi - 1) < 1e-12, [lo, hi]);
@@ -700,7 +735,7 @@ console.log('=== форма зарегистрирована как базова
   chk('чужие группы под часами скрыты', !sectionRelevant('Ажурный шар', 'clock') &&
       !sectionRelevant('Настенная плитка', 'clock') && !sectionRelevant('Воронка', 'clock'));
   chk('строки параметров живут в своей группе',
-      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 17,
+      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 18,
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length);
   chk('строки кольца показываются только у кольца',
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы' && r.only && r.only.clShape).length === 4);

@@ -269,6 +269,13 @@ console.log('=== выбор половинки ===');
   chk('поясок только у нижней половины',
       ballLipTris(P({lnSplit:true})).length > 0 && bot.length > ballBandTris(s, s.vSplit, 1).length,
       [bot.length, ballBandTris(s, s.vSplit, 1).length]);
+  /* А ШЕЙКА — ТОЛЬКО У ВЕРХНЕЙ, и это не симметрия ради симметрии: шейка садится на ВЕРХНЕЕ отверстие,
+     которого у нижней половины нет вовсе. Уйди она вниз — встала бы на нижнее, то есть на то, которым
+     половинка стоит на столе. Меряется тем, что от неё прибавляется треугольников. */
+  const topN = raw({lnSplit:true, lnPart:'top', lnNeck:true});
+  const botN = raw({lnSplit:true, lnPart:'bottom', lnNeck:true});
+  chk('шейка прибавляется верхней половине', topN.length > top.length, [top.length, topN.length]);
+  chk('и НЕ прибавляется нижней', botN.length === bot.length, [bot.length, botN.length]);
 }
 
 console.log('=== без разъёма шар прежний ===');

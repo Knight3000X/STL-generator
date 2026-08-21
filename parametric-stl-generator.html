@@ -1239,7 +1239,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v22.1.1';
+const APP_VERSION = 'v22.2.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5672,6 +5672,11 @@ const SHAPE_PARAMS = {
     {group:'Воронка', key:'vaseReliefSharp', label:'Ваза: рельеф — острота', min:0, max:1, step:0.05, default:0.5, unit:''},
     {group:'Воронка', key:'vaseTwist', label:'Ваза: закрутка граней/рельефа на всю высоту', min:-360, max:360, step:5, default:0, unit:'°'},
     {group:'Воронка', key:'vaseFloor', label:'Ваза: дно (выкл = абажур)', type:'bool', default:true},
+    {group:'Воронка', key:'vaseSocket', label:'Абажур: посадка на патрон', type:'select', default:'none',
+      options:[{v:'none',t:'нет (просто устье)'},{v:'e27',t:'E27 — хомут Ø40'},{v:'e14',t:'E14 — хомут Ø28'},{v:'custom',t:'свой Ø'}],
+      hint:'Делает из верхнего отверстия ХОМУТ — короткий прямой цилиндр под кольцо патрона: абажур зажимается между корпусом патрона и накидным кольцом, как и покупной. Работает только при выключенном дне (иначе это ваза, а не абажур) и перекрывает «Ø устья». Огранка и рельеф на хомуте выключаются: оба только убавляют радиус, и кольцо в огранённый хомут не пройдёт. Диаметры названы типовыми — свой патрон лучше промерить штангенциркулем и взять «свой Ø».'},
+    {group:'Воронка', key:'vaseSocketD', label:'Абажур: свой Ø хомута', min:10, max:120, step:0.5, default:40, unit:'мм'},
+    {group:'Воронка', key:'vaseSocketH', label:'Абажур: высота хомута', min:4, max:60, step:1, default:8, unit:'мм'},
     {group:'Воронка', key:'vasePart', label:'Ваза: что печатаем', type:'select', default:'body',
       options:[{v:'body',t:'саму вазу / кашпо'},{v:'saucer',t:'поддон под неё'}],
       hint:'Поддон — отдельная деталь, но размер у неё не свой: внутренний Ø берётся от Ø дна вазы плюс зазор. Поддон круглый при любой огранке и любом рельефе, и это не упрощение — огранка и рельеф ТОЛЬКО убавляют радиус, поэтому круг по названному Ø дна обходит их все.'},
@@ -7545,7 +7550,7 @@ const MODEL_HELP = {
              ],
              mat:['pla','petg']},
   stand:    {what:'Подставка под телефон или планшет: угол, упор и вырез под кабель. Логотип можно класть на дно, на спинку снаружи или на передний борт — «Подставка: логотип на».', how:'Плоской спинкой на стол, чтобы наклонная площадка была навесом, а не поддержкой. Рельеф на спинке печатается по её наклону и поддержек не требует; на переднем борте — вертикальной стенкой, там он выходит чётче всего. Поверхность под логотип выбирается на его КАРТОЧКЕ (дно, спинка, передний борт) — как грань у остальных форм; двум логотипам можно дать две разные поверхности. Строка «логотип по умолчанию на» в этой группе решает только за карточки, где поверхность не выбрана.', mat:['petg','pla']},
-  funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режим дозатора.', how:'Носиком вверх — конус тогда сам себе поддержка. Печатать вазовым режимом можно, если стенка равна одному проходу.', mat:['petg','pla']},
+  funnel:   {what:'Воронка: конус со сливным носиком и оболочкой постоянной толщины. Есть режимы дозатора и тела вращения — ваза, кашпо с дренажом и поддоном, абажур. У абажура (дно выключено) есть ПОСАДКА НА ПАТРОН: верхнее отверстие превращается в хомут под кольцо патрона E27 или E14, и абажур зажимается между корпусом патрона и накидным кольцом, как покупной.', how:'Воронку — носиком вверх, конус тогда сам себе поддержка. Вазу и абажур — дном на стол, вазовым режимом, если стенка равна одному проходу. У абажура с посадкой хомут печатается последним и висит над пустотой ровно настолько, насколько стенка заваливается внутрь: «Печатаемость» называет этот угол числом, и круче 50° он требует поддержек. Огранка и рельеф выше хомута выключены — иначе кольцо патрона в него не пройдёт, потому что и то и другое только убавляет радиус. Диаметры E27/E14 названы типовыми: свой патрон промерьте.', mat:['petg','pla']},
   baseplate:{what:'База Gridfinity: сетка гнёзд под стандартные корзины 42 × 42 мм.', how:'Плашмя, гнёздами вверх. Скос гнезда печатается навесом и поддержек не требует.', mat:['pla','petg']},
   logo3d:   {what:'Логотип, текст или QR отдельной моделью — не рельефом на детали, а самостоятельным телом с подложкой.', how:'Подложкой на стол. Мелкий рельеф выходит чище соплом 0,25 мм.', mat:['pla','petg']},
 
@@ -12960,6 +12965,26 @@ function lcmInt(a, b){
 }
 /* Вся арифметика вазы одним местом: строитель и предупреждение о срезанной глубине обязаны считать
    ОДНИМ правилом, иначе панель начнёт обещать одно, а модель приезжать другой. */
+/* ---- Посадка абажура на патрон --------------------------------------------------------------------
+   Абажур у вазы был с самого начала — это та же оболочка без дна, — но садиться ему было не на что:
+   верхнее отверстие задавалось «на глаз» через Ø устья, и совпадёт оно с патроном или нет, выяснялось
+   на лампе. Посадка делает из отверстия ХОМУТ: короткий прямой цилиндр с внутренним диаметром ровно под
+   кольцо патрона. Абажур зажимается между корпусом патрона и его накидным кольцом — так и держатся
+   покупные абажуры, и ничего печатать сверх этого не нужно.
+
+   ХОМУТ ПОЛУЧАЕТСЯ ИЗ ПОСЛЕДНЕЙ КОНТРОЛЬНОЙ ТОЧКИ, а не из пятой. Профиль — Catmull-Rom по четырём
+   точкам, и добавить пятую с тем же радиусом не значит получить прямой участок: касательная в точке
+   считается по СОСЕДЯМ, поэтому между двумя точками одного радиуса кривая проседает внутрь. Зато
+   `vaseProfileR` зажимает параметр отрезка в [0,1] — значит достаточно поставить ПОСЛЕДНЮЮ точку не в
+   t=1, а в t=tC, и всё, что выше, выходит ровно её радиусом. Прямой цилиндр без единой правки сплайна.
+
+   ОГРАНКА И РЕЛЬЕФ НА ХОМУТЕ ВЫКЛЮЧАЮТСЯ, и это не украшательство. Оба ТОЛЬКО убавляют радиус: на
+   шестиграннике середина грани уходит внутрь в cos(π/6) раз, то есть на 13 %, и кольцо патрона Ø40 в
+   такой хомут просто не пройдёт. Выше tC сечение круглое, а ступенька на границе — плечо, в которое
+   кольцо и упирается. Ниже хомута всё остаётся как было. */
+const VASE_SOCKETS = { e27: 40, e14: 28 };   // мм — типичный Ø посадки под кольцо патрона
+const VASE_SOCKET_MIN_H = 4;                 // мм — короче хомут не удержит кольцо
+const VASE_LEAN_MAX = 50;                    // ° от вертикали, дальше стенка висит над пустотой
 function vaseSpec(p){
   const H    = Math.max(20, p.vaseH||120);
   const wall = Math.max(0.8, p.fnWall||1.6);
@@ -12971,16 +12996,55 @@ function vaseSpec(p){
   const tN   = Math.max(tBe+0.08, Math.min(0.95, (p.vaseNeckAt||75)/100));
   const nFac = Math.max(0, Math.min(24, Math.round(p.vaseFacets||0)));
   const twist= (p.vaseTwist||0)*Math.PI/180;
-  const pts  = [[0,rB],[tBe,rBe],[tN,rN],[1,rM]];
-  const nS   = Math.max(24, Math.round(H/1.5));
+  const sockWant = VASE_SOCKETS[p.vaseSocket] || p.vaseSocket === 'custom' ? p.vaseSocket : 'none';
+  const sockOn = sockWant !== 'none' && sockWant != null && p.vaseFloor === false;
+  let pts = [[0,rB],[tBe,rBe],[tN,rN],[1,rM]];
+  let sock = null;
+  if (sockOn){
+    const dWant = sockWant === 'custom' ? Math.max(10, Math.min(120, p.vaseSocketD || 40)) : VASE_SOCKETS[sockWant];
+    const rC = dWant/2 + wall;
+    const hWant = p.vaseSocketH == null ? 8 : +p.vaseSocketH;
+    const hUse  = Math.max(VASE_SOCKET_MIN_H, Math.min(H*0.4, isFinite(hWant) ? hWant : 8));
+    const tC  = Math.max(tBe + 0.12, Math.min(0.97, 1 - hUse/H));
+    const tNu = Math.max(tBe + 0.06, Math.min(tN, tC - 0.06));
+    pts = [[0,rB],[tBe,rBe],[tNu,rN],[tC,rC]];
+    sock = { kind: sockWant, d: dWant, rIn: dWant/2, rC, hWant, h: (1 - tC)*H, tC };
+  }
+  /* РЯДЫ ПРОФИЛЯ РАВНОМЕРНЫ — КРОМЕ СЛУЧАЯ С ХОМУТОМ, где один ряд обязан лечь РОВНО на его начало.
+     Иначе прямой участок квантуется шагом сетки: при 1.5 мм на ряд заказанные 4 мм хомута дают 3 мм
+     настоящего цилиндра, а верхние полтора миллиметра остаются конусом — и посадочная высота, о которой
+     панель отчиталась, не та, что напечатается. Поэтому при хомуте сетка режется надвое: до tC и после,
+     каждая половина равномерна внутри себя, а стык приходится точно на tC. */
+  const nS0 = Math.max(24, Math.round(H/1.5));
+  const ts = [];
+  /* НОМЕР РЯДА, С КОТОРОГО СЕЧЕНИЕ КРУГЛОЕ, БЕРЁТСЯ ОТСЮДА ЖЕ, а не ищется потом поиском по ts.
+     Искать нельзя: ts[nA] считается как tC·nA/nA и на плавающей точке не обязано совпасть с tC до
+     последнего бита. `indexOf` тогда возвращает −1, а −1 как «начиная с этого ряда» означает ВСЕ ряды:
+     огранка исчезала со всего абажура целиком, а не только с хомута. Оболочка при этом оставалась
+     замкнутой, размеры хомута — верными, и заметить это можно было только по тому, что абажур перестал
+     быть шестигранным. */
+  let iPlain = null;
+  if (sock){
+    const nA = Math.max(12, Math.round(sock.tC*nS0)), nB = Math.max(2, Math.round((1 - sock.tC)*nS0));
+    for(let i=0;i<=nA;i++) ts.push(sock.tC*i/nA);
+    for(let i=1;i<=nB;i++) ts.push(sock.tC + (1 - sock.tC)*i/nB);
+    iPlain = nA;
+  } else for(let i=0;i<=nS0;i++) ts.push(i/nS0);
+  const nS = ts.length - 1;
   const prof = [];
   let rMin = Infinity, rMax = 0;
-  for(let i=0;i<=nS;i++){ const r = Math.max(1.2, vaseProfileR(i/nS, pts));
+  for(let i=0;i<=nS;i++){ const r = Math.max(1.2, vaseProfileR(ts[i], pts));
     prof.push(r); if(r<rMin) rMin=r; if(r>rMax) rMax=r; }
   /* Огранка только УБАВЛЯЕТ радиус: cos(π/N)/cos(m) ≤ 1, минимум приходится на середину грани. Значит
      самое тонкое место оболочки — внутренний радиус, умноженный на cos(π/N), и запас под рельеф надо
      мерить от него, а не от круглого профиля: иначе на шестиграннике рельеф прорезал бы стенку насквозь. */
   const facK = nFac>=3 ? Math.cos(Math.PI/nFac) : 1;
+  /* САМЫЙ КРУТОЙ ЗАВАЛ СТЕНКИ ВНУТРЬ — число, которое решает, нужны ли поддержки, и до сих пор его
+     никто не называл. Меряется по построенному профилю, а не по контрольным точкам: Catmull-Rom между
+     ними идёт круче хорды, и на узкой шейке разница доходит до градусов. */
+  let leanMax = 0;
+  for(let i=1;i<=nS;i++){ const dr = prof[i-1] - prof[i], dy = (ts[i] - ts[i-1])*H;
+    if(dr > 0 && dy > 0) leanMax = Math.max(leanMax, Math.atan2(dr, dy)*180/Math.PI); }
   const kind = VASE_RELIEF_KIND[p.vaseRelief] ? p.vaseRelief : 'none';
   const n    = Math.max(2, Math.min(48, Math.round(p.vaseReliefN||8)));
   const sharp= Math.max(0, Math.min(1, p.vaseReliefSharp == null ? 0.5 : p.vaseReliefSharp));
@@ -13003,7 +13067,7 @@ function vaseSpec(p){
     if (kMax >= 1 && k > kMax) k = kMax;
     seg = per*k;
   }
-  return { H, wall, pts, nS, prof, nFac, facK, twist, rel, seg, rMin, rMax };
+  return { H, wall, pts, nS, ts, prof, nFac, facK, twist, rel, seg, rMin, rMax, sock, leanMax, iPlain };
 }
 /* ---- Ажурный шар / фонарь -------------------------------------------------------------------------
    Сферическая оболочка с прорезанными окнами. Перфорация здесь — не карта высот и не вычитание тел:
@@ -13827,11 +13891,20 @@ function vaseSectionR(r, a, nFac, rel){
   if(nFac>=3){ const k=2*Math.PI/nFac, m=((a%k)+k)%k - k/2; R = R*Math.cos(Math.PI/nFac)/Math.cos(m); }
   return vaseReliefR(R, a, rel);
 }
-function vaseShellTris(outer, inner, seg, nFac, twist, rel){
+// Как назвать абажур в списке моделей: с посадкой — её именем, без неё — никак.
+function vaseSocketTag(p){
+  const sk = vaseSpec(p).sock;
+  if (!sk) return '';
+  return ' ' + (sk.kind === 'custom' ? ('Ø' + sk.d.toFixed(0)) : sk.kind.toUpperCase());
+}
+function vaseShellTris(outer, inner, seg, nFac, twist, rel, plainFrom){
   const out=[], n=outer.length, TAU=2*Math.PI;
-  const rad=(r, a, f)=>vaseSectionR(r, a + twist*f, nFac, rel);
+  // plainFrom — ряд, начиная с которого сечение КРУГЛОЕ: хомут под патрон не терпит ни огранки, ни
+  // рельефа, потому что оба только убавляют радиус. Не задан — поведение прежнее до последнего знака.
+  const pf = (plainFrom == null) ? Infinity : plainFrom;
   const V=(prof,i,k)=>{ const a=TAU*(k%seg)/seg, f=n>1 ? i/(n-1) : 0;
-    const r=rad(prof[i][0], a, f); return [r*Math.cos(a), prof[i][1], r*Math.sin(a)]; };
+    const r = i >= pf ? prof[i][0] : vaseSectionR(prof[i][0], a + twist*f, nFac, rel);
+    return [r*Math.cos(a), prof[i][1], r*Math.sin(a)]; };
   for(let s=0;s<n-1;s++) for(let k=0;k<seg;k++){
     const A=V(outer,s,k),B=V(outer,s,k+1),C=V(outer,s+1,k+1),D=V(outer,s+1,k), ro=[A[0]+B[0],0,A[2]+B[2]];
     out.push(orient([A,B,C],ro)); out.push(orient([A,C,D],ro));
@@ -13847,9 +13920,9 @@ function vaseShellTris(outer, inner, seg, nFac, twist, rel){
 function buildVase(p){
   const s = vaseSpec(p);
   const outer=[], inner=[];
-  for(let i=0;i<=s.nS;i++){ const r=s.prof[i], y=s.H*(i/s.nS);
+  for(let i=0;i<=s.nS;i++){ const r=s.prof[i], y=s.H*s.ts[i];
     outer.push([r,y]); inner.push([Math.max(0.4, r-s.wall), y]); }
-  const tris = vaseShellTris(outer, inner, s.seg, s.nFac, s.twist, s.rel);
+  const tris = vaseShellTris(outer, inner, s.seg, s.nFac, s.twist, s.rel, s.iPlain);
   if(p.vaseFloor!==false){                                        // a lampshade is the same shell, open
     /* ДНО — ДИСК ВНУТРИ ОБОЛОЧКИ, и радиус ему нужен меньше САМОГО УЗКОГО места стенки, а не круглого
        профиля. Огранка ужимает стенку в середине грани в cos(π/N) раз, рельеф вычитает свою глубину —
@@ -22849,7 +22922,7 @@ function activeShapeLabel() {
   if (p.fnOn) return (p.fnMode==='doser') ? ('дозатор (' + (p.fnDose||10) + ' мл)')
             : (p.fnMode==='vase') ? (p.vasePart==='saucer'
                  ? ('поддон (Ø' + Math.round(vaseSaucerSpec(p).rOut*2) + ')')
-                 : ((p.vaseFloor===false ? 'абажур' : (p.vaseDrain>0 ? 'кашпо' : 'ваза')) + ' (H' + Math.round(p.vaseH||120) + ')'))
+                 : ((p.vaseFloor===false ? ('абажур' + vaseSocketTag(p)) : (p.vaseDrain>0 ? 'кашпо' : 'ваза')) + ' (H' + Math.round(p.vaseH||120) + ')'))
             : ('воронка (Ø' + Math.round(p.fnMouthD||70) + ')');
   if (p.hookMount && p.hookMount !== 'none') return ({bar:'крючок',headphone:'вешалка наушников',brush:'держатель щёток',soap:'мыльница'})[p.hookStyle||'bar'] + (p.hookMount==='pipe' ? ' (на трубу)' : ' (на стену)');
   if (p.mntMode && p.mntMode !== 'none') return ({lbracket:'L-кронштейн',vesa:'VESA-адаптер',boss:'стойки (heat-set)',tool:'держатель инструмента',pipe:'хомут-кронштейн трубы',foot:'ножка мебели',fittest:'калибровка зазора',battery:'батарейный холдер',temptech:'',temptower:'темп-башня',bridgetest:'мосты + нависания',retract:'тест ретракта',dovetail:'ласточкин хвост',gauge:'калибр go/no-go',
@@ -23304,6 +23377,27 @@ function collectPrintWarnings(p){
        узком дне отверстие ужимается до того, что перестаёт быть дренажом. */
     if ((p.vaseDrain||0) > 0 && p.vaseFloor === false)
       w.push('дренаж просят у абажура: дна нет — сверлить нечего');
+    /* ПОСАДКА. Три вещи, и все три меняют деталь, а не вид: посадка при включённом дне не строится
+       вовсе, хомут перекрывает заказанное устье, а высота хомута упирается в высоту абажура. */
+    { const vs = vaseSpec(p);
+      const sockAsked = p.vaseSocket && p.vaseSocket !== 'none';
+      if (sockAsked && p.vaseFloor !== false)
+        w.push('посадка на патрон просится у вазы с дном — это абажур, выключите «Ваза: дно»');
+      if (vs.sock){
+        if (Math.abs((p.vaseMouthD||70)/2 - vs.sock.rC) > 0.05)
+          w.push('устье задаёт патрон: хомут Ø' + vs.sock.d.toFixed(0) + ' изнутри, поэтому «Ø устья» ' +
+                 (p.vaseMouthD||70) + ' мм не используется');
+        if (Math.abs(vs.sock.hWant - vs.sock.h) > 0.05)
+          w.push('высота хомута ' + vs.sock.h.toFixed(1) + ' мм вместо ' + vs.sock.hWant +
+                 ': выше он съел бы шейку — она стоит на ' + Math.round(p.vaseNeckAt||75) + ' % высоты');
+        if (vs.sock.rC*2 > vs.rMax*1.2)
+          w.push('хомут Ø' + (vs.sock.rC*2).toFixed(0) + ' шире самого абажура — это уже труба, а не абажур');
+        if ((vs.nFac >= 3 || vs.rel.depth > 0))
+          w.push('огранка и рельеф выше хомута выключены — на границе будет плечо; кольцо патрона в него и упирается');
+      }
+      if (vs.leanMax > VASE_LEAN_MAX)
+        w.push('стенка заваливается внутрь на ' + vs.leanMax.toFixed(0) + '° от вертикали — круче ' +
+               VASE_LEAN_MAX + '° слой висит над пустотой; мягче переход между Ø или ниже шейка'); }
     if ((p.vaseDrain||0) > 0 && p.vaseFloor !== false){
       // Тот же минимум контура дна, что и у строителя: дренаж обязан уместиться в САМОМ УЗКОМ месте.
       const rBase = Math.max(1.2, vaseProfileR(0.02, sp.pts)) - sp.wall*0.4;

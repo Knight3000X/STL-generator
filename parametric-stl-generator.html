@@ -1241,7 +1241,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v22.9.0';
+const APP_VERSION = 'v22.10.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3380,14 +3380,19 @@ function assemblyGrams(){
     b.parts.forEach((m, i) => {
       const tris = m.rawTris || [];
       const base = b.inks[i], v = meshVolume(tris)/1000;
+      /* Годность раскладки здесь НЕ ПЕРЕПРОВЕРЯЕТСЯ, и это не забывчивость: `modelPaint` отказывает
+         раскладке, длина которой не совпала с сеткой, а сетка у него та же самая — `m.rawTris`. Второй
+         такой же проверкой нельзя было бы отличить работающую от лишней. */
       const pp = b.paint[i];
-      // Раскладка по треугольникам, не пережившая пересборку сетки, к этой сетке не относится.
-      if (!pp || !pp.pm || pp.pm.ink.length !== tris.length){ if (cc[base] != null) cc[base] += v; return; }
+      if (!pp){ if (cc[base] != null) cc[base] += v; return; }
       const area = cc.map(() => 0);
       let total = 0;
+      /* Площадь берётся УДВОЕННОЙ — длиной векторного произведения без деления пополам. Дальше из неё
+         считаются только ДОЛИ, и общий множитель в них сокращается; писать `/2` значило бы поставить
+         строку, поломку которой ни один тест не отличил бы от исправности. */
       for (let k = 0; k < tris.length; k++){
         const t = tris[k];
-        const A = vlength(cross(sub(t[1], t[0]), sub(t[2], t[0])))/2;
+        const A = vlength(cross(sub(t[1], t[0]), sub(t[2], t[0])));
         const q = pp.pm.ink[k];
         const ink = (q > 0 && pp.to[q-1] != null) ? pp.to[q-1] : base;
         if (area[ink] == null) continue;

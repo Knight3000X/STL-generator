@@ -488,14 +488,14 @@
     color:var(--ink); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
     transition:border-color .13s, background .13s; }
   #btn-export-3mf:hover{ border-color:var(--accent); background:var(--accent-soft); }
-  #btn-save-config, #btn-load-config, #btn-orca-tpl, #btn-orca-clear{
+  #btn-save-config, #btn-load-config, #btn-orca-tpl, #btn-orca-clear, #btn-arrange{
     width:100%; padding:9px 0; margin-bottom:6px;
     background:var(--field-bg); border:1px solid var(--paper-line); border-radius:var(--r-sm);
     box-shadow:var(--sh-1);
     color:var(--ink); font-family:inherit; font-size:13px; cursor:pointer;
     transition:background 0.12s, border-color 0.12s;
   }
-  #btn-save-config:hover, #btn-load-config:hover, #btn-orca-tpl:hover, #btn-orca-clear:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  #btn-save-config:hover, #btn-load-config:hover, #btn-orca-tpl:hover, #btn-orca-clear:hover, #btn-arrange:hover{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
   #btn-install-app{
     width:100%; padding:10px 0; margin-bottom:6px;
     background:var(--redline); border:none; border-radius:2px;
@@ -1202,6 +1202,8 @@
     <button id="btn-orca-clear" style="display:none">✕ Убрать шаблон Orca</button>
     <input type="file" id="orca-tpl-input" accept=".3mf,model/3mf" style="display:none">
     <div class="export-note" id="orca-tpl-note"></div>
+    <button id="btn-arrange" title="Разложить видимые модели по столу принтера: габарит стола берётся из того же шаблона проекта Orca, что и палитра филамента">⌗ Разложить по столу</button>
+    <div class="export-note" id="arrange-note"></div>
     </details>
 
     <details class="panel-fold" data-def-closed data-tab="export" data-fold="Палитра сборки"><summary class="section-label">Палитра сборки</summary>
@@ -1242,7 +1244,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v23.1.0';
+const APP_VERSION = 'v23.2.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3257,6 +3259,105 @@ function orcaNoteText(tpl, want){
   return head + (want > slots
     ? 'Лишние ' + (want - slots) + ' в файл не попадут: добавьте слоты в Orca и пересохраните проект.'
     : 'Палитра уедет в файл — открывайте его «как проект».');
+}
+/* ---- Стол принтера и раскладка по нему ----------------------------------------------------------
+   Габарит стола лежит там же, где палитра филамента, — в `Metadata/project_settings.config` шаблона:
+   `printable_area` (многоугольник стола) и `printable_height`. То есть один раз отданный проект Orca
+   отвечает сразу на два вопроса: каким цветом печатать и во что укладывать.
+
+   БЕРЁТСЯ ГАБАРИТНЫЙ ПРЯМОУГОЛЬНИК многоугольника, а не он сам. Круглые и вырезанные столы бывают, но
+   раскладка полками всё равно оперирует прямоугольниками, и вписывать их в невыпуклый контур — задача
+   другого порядка. Что при этом теряется, СКАЗАНО, а не замолчано: если у стола объявлена запретная
+   зона (`bed_exclude_area` — у A1 там стоит лоток смены филамента), про неё говорится отдельно. */
+const ARRANGE_GAP = 3;         // просвет между деталями: юбка и раздув первого слоя
+const ARRANGE_BED = 256;       // стол по умолчанию, когда шаблона нет
+function orcaBedSpec(cfg){
+  let j; try { j = JSON.parse(cfg); } catch(e){ return null; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+  const raw = j.printable_area;
+  if (!Array.isArray(raw) || raw.length < 3) return null;
+  let lo = [1e9, 1e9], hi = [-1e9, -1e9];
+  for (const s of raw){
+    const m = /^\s*(-?[\d.]+)\s*[x,×]\s*(-?[\d.]+)\s*$/.exec(String(s));
+    if (!m) return null;
+    const q = [+m[1], +m[2]];
+    if (!isFinite(q[0]) || !isFinite(q[1])) return null;
+    lo = [Math.min(lo[0], q[0]), Math.min(lo[1], q[1])];
+    hi = [Math.max(hi[0], q[0]), Math.max(hi[1], q[1])];
+  }
+  const w = hi[0] - lo[0], d = hi[1] - lo[1];
+  if (!(w > 1) || !(d > 1)) return null;
+  const hRaw = Array.isArray(j.printable_height) ? j.printable_height[0] : j.printable_height;
+  const h = parseFloat(hRaw);
+  const ex = Array.isArray(j.bed_exclude_area) ? j.bed_exclude_area.filter(x => String(x).trim()) : [];
+  return { w, d, h: isFinite(h) && h > 1 ? h : 0, exclude: ex.length > 0,
+           name: String(j.printer_settings_id || j.printer_model || '').trim() };
+}
+/* Раскладка ПОЛКАМИ, по убыванию глубины. Не оптимальная — оптимальная это упаковка в полосу, задача
+   NP-трудная, — но предсказуемая: результат зависит только от габаритов, а не от порядка, в котором
+   модели добавляли. Ровно тот же довод, что у разбивки палитры на партии, и названо это так же честно.
+
+   ЧТО НЕ ВЛЕЗЛО — ВОЗВРАЩАЕТСЯ СПИСКОМ, а не выбрасывается. Деталь, которую молча оставили лежать где
+   лежала, выглядит разложенной: человек видит аккуратную плиту и не видит, что одна модель за её
+   краем. */
+function arrangePlan(items, bed, gap){
+  const g = gap > 0 ? gap : ARRANGE_GAP;
+  /* Третьего ключа сравнения — по исходному номеру — здесь НЕТ, и это не забывчивость. `Array.sort`
+     обязана быть устойчивой начиная с ES2019, то есть равные элементы и так сохраняют входной порядок;
+     дописать «|| a.i - b.i» значило бы поставить строку, поломку которой ни один тест не отличит от
+     исправности. Само же требование — одинаковые детали не тасуются — стоит проверкой в test_arrange.js. */
+  const order = items.map((it, i) => ({ i, w: +it.w || 0, d: +it.d || 0 }))
+                     .sort((a, b) => (b.d - a.d) || (b.w - a.w));
+  const placed = [], over = [];
+  let rowZ = 0, rowD = 0, x = 0;
+  for (const it of order){
+    if (!(it.w > 0) || !(it.d > 0)) { over.push(it.i); continue; }
+    if (it.w > bed.w || it.d > bed.d) { over.push(it.i); continue; }   // не влезает и в одиночку
+    if (x > 0 && x + it.w > bed.w) { rowZ += rowD + g; x = 0; rowD = 0; }
+    if (rowZ + it.d > bed.d) { over.push(it.i); continue; }
+    placed.push({ i: it.i, x, z: rowZ, w: it.w, d: it.d });
+    x += it.w + g;
+    if (it.d > rowD) rowD = it.d;
+  }
+  // Пятно центруется целиком: раскладка отвечает за ВЗАИМНОЕ расположение, а край стола у слайсера свой.
+  let xh = -1e9, zh = -1e9;
+  for (const q of placed){ xh = Math.max(xh, q.x + q.w); zh = Math.max(zh, q.z + q.d); }
+  const dx = placed.length ? -xh/2 : 0, dz = placed.length ? -zh/2 : 0;
+  for (const q of placed){ q.cx = q.x + q.w/2 + dx; q.cz = q.z + q.d/2 + dz; }
+  return { placed, over, used: { w: Math.max(0, xh), d: Math.max(0, zh) } };
+}
+// Габариты видимых моделей в плане, уже повёрнутых. Отдельно от применения, потому что это же число
+// нужно строке под кнопкой — до того, как что-нибудь сдвинулось.
+function arrangeItems(){
+  const out = [];
+  for (const m of models){
+    if (!m.visible || !m.rawTris || !m.rawTris.length) continue;
+    const b = computeBBox(rotateTris(m.rawTris, m.rx, m.ry, m.rz));
+    out.push({ m, w: b.maxX - b.minX, d: b.maxZ - b.minZ,
+               cx: (b.minX + b.maxX)/2, cz: (b.minZ + b.maxZ)/2 });
+  }
+  return out;
+}
+function arrangeBed(){
+  const b = orcaTemplate ? orcaBedSpec(orcaTemplate.cfg) : null;
+  return b || { w: ARRANGE_BED, d: ARRANGE_BED, h: 0, exclude: false, name: '', fallback: true };
+}
+/* Строка под кнопкой. Считается той же парой функций, что и сама раскладка, — второе правило разошлось
+   бы с первым молча, и человек читал бы «влезает» под деталью, которая не влезла. */
+function arrangeNoteText(){
+  const bed = arrangeBed(), items = arrangeItems();
+  if (!items.length) return 'В сборке нет видимых моделей — раскладывать нечего.';
+  const plan = arrangePlan(items, bed, ARRANGE_GAP);
+  const where = bed.fallback
+    ? 'Стол не объявлен: считаю по ' + ARRANGE_BED + '×' + ARRANGE_BED + ' мм. Отдайте шаблон проекта ' +
+      'Orca — там лежит габарит ВАШЕГО стола, ровно как и палитра филамента. '
+    : 'Стол' + (bed.name ? ' «' + bed.name + '»' : '') + ': ' + Math.round(bed.w) + '×' + Math.round(bed.d) +
+      (bed.h ? '×' + Math.round(bed.h) : '') + ' мм. ';
+  const fit = plan.over.length
+    ? 'Не влезло ' + plan.over.length + ' из ' + items.length + ' — их не трогаю: деталь, оставленную ' +
+      'лежать где лежала, легко принять за разложенную.'
+    : 'Все ' + items.length + ' укладываются в ' + Math.round(plan.used.w) + '×' + Math.round(plan.used.d) + ' мм.';
+  return where + fit + (bed.exclude ? ' У стола объявлена запретная зона — раскладка её НЕ учитывает.' : '');
 }
 /* Кто на каком филаменте — без всякого XML. Вынесено из построителя файла, потому что это же число —
    сколько ЦВЕТОВ просит сборка — нужно панели: от него зависит, влезает ли палитра в слоты шаблона Orca.
@@ -22723,6 +22824,8 @@ function attachEventListeners() {
       orcaTemplateStore(); orcaNoteRefresh();
     }).catch(err => alert('Шаблон Orca: ' + err.message));
   });
+  { const ab = document.getElementById('btn-arrange');
+    if (ab) ab.addEventListener('click', arrangeApplyUI); }
   document.getElementById('btn-orca-clear').addEventListener('click', () => {
     orcaTemplate = null; orcaTemplateStore(); orcaNoteRefresh();
   });
@@ -25236,6 +25339,7 @@ function orcaNoteRefresh(){
   el.textContent = orcaNoteText(orcaTemplate, assemblyInks().colors.length);
   const clr = document.getElementById('btn-orca-clear');
   if (clr) clr.style.display = orcaTemplate ? '' : 'none';
+  arrangeNoteRefresh();          // стол приезжает тем же шаблоном, что и палитра — и строка та же
 }
 /* ---- Панель «Палитра сборки» ---------------------------------------------------------------------
    Раздел отвечает на вопрос, который до него решался на глаз: цветов в сборке больше, чем слотов в
@@ -25285,6 +25389,41 @@ function paletteRefreshMeshes(){
     if (m.id === activeModelId) setMeshTrisGeometry(mm, currentTris, m);
     else if (m.rawTris && m.rawTris.length) setMeshTrisGeometry(mm, rotateTris(m.rawTris, m.rx, m.ry, m.rz), m);
   }
+}
+/* Применить раскладку. Двигается ТОЛЬКО положение в плане: поворот, высота и всё остальное — чужое
+   хозяйство, и трогать его раскладке незачем. Модель, которая не влезла, остаётся где была; сказать об
+   этом обязана строка под кнопкой, а не молчание. */
+function arrangeApply(){
+  const items = arrangeItems();
+  if (!items.length) return 0;
+  const plan = arrangePlan(items, arrangeBed(), ARRANGE_GAP);
+  let moved = 0;
+  for (const q of plan.placed){
+    const it = items[q.i];
+    // Центр детали в плане уже учитывает её собственное смещение относительно нуля сетки.
+    const px = q.cx - it.cx, pz = q.cz - it.cz;
+    if (it.m.px !== px || it.m.pz !== pz){ it.m.px = px; it.m.pz = pz; moved++; }
+    if (it.m.id === activeModelId){ positionState.px = px; positionState.pz = pz; }
+  }
+  return moved;
+}
+function arrangeApplyUI(){
+  const items = arrangeItems();
+  if (!items.length) return;
+  const plan = arrangePlan(items, arrangeBed(), ARRANGE_GAP);
+  if (plan.over.length && !confirm('Не влезает ' + plan.over.length + ' из ' + items.length +
+      ' — эти останутся на своих местах. Разложить остальные?')) return;
+  arrangeApply();
+  if (typeof scene3DReady !== 'undefined' && scene3DReady){
+    for (const m of models){ const mm = modelMeshes.get(m.id);
+      if (mm) mm.position.set(m.px || 0, m.py || 0, m.pz || 0); }
+    if (typeof applyMeshTransform === 'function') applyMeshTransform();
+  }
+  refreshActiveModelUI(); renderModelCards(); arrangeNoteRefresh();
+}
+function arrangeNoteRefresh(){
+  const el = document.getElementById('arrange-note'); if (!el) return;
+  el.textContent = arrangeNoteText();
 }
 function paletteApplyUI(){
   const steps = paletteSteps;

@@ -650,5 +650,298 @@ console.log('=== the funnel and the doser are untouched ===');
   const a=vol(base({fnMode:'funnel',vaseH:20,vaseFacets:3})), b=vol(base({fnMode:'funnel',vaseH:300,vaseFacets:24}));
   chk('the vase knobs do nothing to the funnel', Math.abs(a-b)<1e-9, {}); }
 
+/* ================================ АВТОПОЛИВ ========================================================
+   Резервуаром служит сама ваза, а внутрь на устье вешается второй горшок с фитильной ножкой. Проверяется
+   не «похоже ли на горшок», а связи, которые ломаются тихо:
+
+   1. ШИРИНА МЕРЯЕТСЯ ПО САМОМУ УЗКОМУ МЕСТУ, а не по устью. У вазы с шейкой устье шире горла, и горшок,
+      скроенный по устью, в неё просто не пролезет — понять это можно будет только с деталью в руках.
+
+   2. НОЖКА НЕ ШИРЕ ДНА, В КОТОРОМ СТОИТ. Иначе «кольцо» дна выворачивается наизнанку: отверстие больше
+      контура, а ушное отсечение сошьёт из этого тело замкнутое, объёмное и бессмысленное. Проверка
+      герметичности пропустит — она сшивает рёбра, а рёбра там парны.
+
+   3. ДРЕНАЖ СТАВИТСЯ, ТОЛЬКО ЕСЛИ ЕМУ ЕСТЬ ГДЕ СТОЯТЬ. Шесть дырок вплотную друг к другу на дне Ø8
+      ломают само построение: мосты в отверстия начинают пересекаться, и дно выходит с открытыми рёбрами.
+
+   4. СОВПАДАЮЩИЕ ГРАНИ. Дно, ободок и конус сходятся торцами, и сложить их заподлицо — самое
+      естественное, что можно сделать. Проверка герметичности этого не видит вовсе.                  */
+console.log('\n=== автополив: ширина по самому узкому месту ===');
+{
+  const IN = ov => Object.assign({vasePart:'inner'}, ov || {});
+  const sp = ov => vaseInnerSpec(Object.assign({}, paramState.box,
+    {fnOn:true, fnMode:'vase', vaseH:120, vaseBaseD:60, vaseBellyD:95, vaseBellyAt:35,
+     vaseNeckD:55, vaseNeckAt:75, vaseMouthD:70, vaseFacets:0, vaseTwist:0, fnWall:2,
+     vaseRelief:'none', vaseReliefD:0}, IN(ov)));
+  const wide = sp({});
+  chk('горшок уже самого узкого места', wide.rTop < wide.rNarrow, [wide.rTop, wide.rNarrow]);
+  chk('и уже устья тоже, потому что шейка ещё уже',
+      wide.rTop < wide.rMouth - 2, [wide.rTop, wide.rMouth]);
+  chk('уже шейка — уже горшок', sp({vaseNeckD:35}).rTop < wide.rTop - 8,
+      [sp({vaseNeckD:35}).rTop, wide.rTop]);
+  chk('огранка тоже ужимает горшок', sp({vaseFacets:6}).rTop < wide.rTop, [sp({vaseFacets:6}).rTop, wide.rTop]);
+  chk('и рельеф, врезанный внутрь, — тоже',
+      sp({vaseRelief:'flute', vaseReliefD:4}).rTop < wide.rTop,
+      [sp({vaseRelief:'flute', vaseReliefD:4}).rTop, wide.rTop]);
+  chk('конус расширяется кверху — и вставляется, и печатается', wide.rBot < wide.rTop, [wide.rBot, wide.rTop]);
+  chk('ободок шире устья изнутри — на нём горшок и висит',
+      wide.rLip > wide.rMouth - 2, [wide.rLip, wide.rMouth]);
+  /* У ГОРШКА ЕСТЬ МИНИМАЛЬНАЯ ШИРИНА. Ваза с горлом в десять миллиметров дала бы иглу, у которой
+     стенка и канал сходятся в одну точку; радиус поднимается до внятного, а о том, что в эту вазу
+     горшок теперь не пролезет, говорится вслух. */
+  const thin = sp({vaseNeckD:10, vaseMouthD:10, vaseBellyD:10, vaseBaseD:10});
+  chk('в узкую вазу горшок не влезает — и это помечено', thin.wide === false, thin.rTopWant);
+  chk('но иглой он не становится', thin.rTop >= thin.wall + 4, [thin.rTop, thin.wall]);
+  chk('и просторная ваза этим флагом не помечена', wide.wide === true);
+}
+
+console.log('\n=== автополив: резервуар и фитильная ножка ===');
+{
+  const IN = ov => Object.assign({}, paramState.box, {fnOn:true, fnMode:'vase', vasePart:'inner',
+    vaseH:120, vaseBaseD:60, vaseBellyD:95, vaseBellyAt:35, vaseNeckD:55, vaseNeckAt:75,
+    vaseMouthD:70, vaseFacets:0, vaseTwist:0, fnWall:2, vaseRelief:'none', vaseReliefD:0}, ov || {});
+  const sp = ov => vaseInnerSpec(IN(ov));
+  const auto = sp({});
+  /* «Примерно пятая часть» — это ДОЛЯ, а не число. Проверять её на одной высоте бессмысленно: там
+     доля и константа неотличимы, и подстановка «26.4» прошла бы молча. Нужны две высоты. */
+  chk('авто-резервуар — примерно пятая часть высоты',
+      Math.abs(auto.water - 120*0.22) < 1e-9, auto.water);
+  chk('и на другой вазе — та же ДОЛЯ, а не то же число',
+      Math.abs(sp({vaseH:200}).water - 200*0.22) < 1e-9, sp({vaseH:200}).water);
+  chk('то есть выше ваза — глубже резервуар', sp({vaseH:200}).water > auto.water + 10);
+  chk('и помечен как авто', auto.waterAuto === true && auto.waterCut === false);
+  chk('заказанный берётся как есть', Math.abs(sp({vaseWater:40}).water - 40) < 1e-9);
+  chk('выше половины вазы не поднимается', sp({vaseWater:400}).water <= 60 + 1e-9, sp({vaseWater:400}).water);
+  chk('и об урезании сказано', sp({vaseWater:400}).waterCut === true);
+  chk('глубже резервуар — мельче горшок', sp({vaseWater:40}).depth < auto.depth, [sp({vaseWater:40}).depth, auto.depth]);
+  chk('выше ваза — глубже горшок', sp({vaseH:200}).depth > auto.depth + 50);
+  // Ножка идёт от дна горшка почти до дна резервуара, но НЕ упирается в него: воде надо затечь.
+  chk('ножка не достаёт до дна резервуара', auto.legLen < auto.water + 6, [auto.legLen, auto.water]);
+  chk('и не короче самого резервуара', auto.legLen > auto.water, [auto.legLen, auto.water]);
+  chk('ножка заказанного диаметра', Math.abs(2*sp({vaseWick:20}).rWick - 20) < 1e-9);
+  chk('шире дна ей быть негде', sp({vaseWick:40}).wickCut === true && 2*sp({vaseWick:40}).rWick < 40);
+  chk('и урезана она до места, которое есть',
+      Math.abs(sp({vaseWick:40}).rWick - sp({vaseWick:40}).rWickMax) < 1e-9);
+  /* А ЕСЛИ МЕСТА НЕТ ВОВСЕ, НОЖКИ НЕ БУДЕТ. Это не отказ строить: горшок остаётся горшком, только
+     поливать его придётся сверху, — и об этом сказано, а не оставлено выясняться на подоконнике. */
+  const tiny = sp({vaseNeckD:10, vaseMouthD:10, vaseBellyD:10, vaseBaseD:10});
+  chk('на узкой вазе ножки нет', tiny.hasWick === false, tiny.rWickMax);
+  chk('и горшком он всё равно считается негодным', tiny.fits === false);
+  chk('а на просторной ножка есть', auto.hasWick === true);
+}
+
+console.log('\n=== автополив: сетка ===');
+{
+  const mk = ov => base(Object.assign({vasePart:'inner', vaseWater:0, vaseWick:12, vaseInnerDrain:6}, ov || {}));
+  const t = mk({});
+  chk('строится через настоящий путь приложения', t.length > 0);
+  chk('и герметично', manifoldCheck(t, 6).watertight, manifoldCheck(t, 6));
+  chk('и объём положительный', vol(t) > 0, vol(t));
+  chk('это не сама ваза', Math.abs(vol(t) - vol(base({vasePart:'body'}))) > 1000,
+      [vol(t), vol(base({vasePart:'body'}))]);
+  chk('и не поддон', Math.abs(vol(t) - vol(base({vasePart:'saucer'}))) > 1000);
+  /* КАНАЛ ФИТИЛЯ ПРОТКНУТ НАСКВОЗЬ — от низа ножки до верха горшка. Луч по оси не должен встретить
+     ничего: ни дна, ни ножкиного донышка, которого там быть не должно. */
+  const rayHits = (tris, x0, z0) => { const x = x0 + 0.013, z = z0 + 0.0071; let n = 0;
+    for (const T of tris){
+      const e1 = sub(T[1], T[0]), e2 = sub(T[2], T[0]), d = [0, 1, 0];
+      const h = cross(d, e2), a = e1[0]*h[0] + e1[1]*h[1] + e1[2]*h[2];
+      if (Math.abs(a) < 1e-12) continue;
+      const sv = [x - T[0][0], -1e6 - T[0][1], z - T[0][2]], f = 1/a;
+      const u = f*(sv[0]*h[0] + sv[1]*h[1] + sv[2]*h[2]);
+      if (u < 1e-9 || u > 1 - 1e-9) continue;
+      const q = cross(sv, e1), v = f*(d[0]*q[0] + d[1]*q[1] + d[2]*q[2]);
+      if (v < 1e-9 || u + v > 1 - 1e-9) continue;
+      if (f*(e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]) > 1e-9) n++;
+    } return n; };
+  chk('канал фитиля сквозной', rayHits(t, 0, 0) === 0, rayHits(t, 0, 0));
+  /* ОТВЕРСТИЕ В ДНЕ ШИРЕ КАНАЛА, НО УЖЕ НАРУЖНОГО ДИАМЕТРА НОЖКИ — обе границы настоящие. Уже канала,
+     и дно полезет в него кольцевым уступом, за который цепляется шнур; шире наружного, и между дном и
+     ножкой останется щель прямо в резервуар: горшок будет течь, оставаясь при этом герметичной сеткой.
+     Щупается лучом сразу за наружной стенкой ножки — там дно обязано быть. */
+  {
+    const sp2 = vaseInnerSpec(Object.assign({}, paramState.box, {fnOn:true, fnMode:'vase', vasePart:'inner',
+      vaseH:120, vaseBaseD:60, vaseBellyD:95, vaseNeckD:55, vaseMouthD:70, fnWall:2,
+      vaseWick:12, vaseWater:0, vaseInnerDrain:0}));
+    const t0 = mk({vaseInnerDrain:0});
+    const rOut = sp2.rWick + sp2.wall;
+    chk('дно смыкается с наружной стенкой ножки', rayHits(t0, rOut + 0.25, 0) === 2,
+        rayHits(t0, rOut + 0.25, 0));
+    chk('а внутри канала дна нет', rayHits(t0, sp2.rWick - 0.25, 0) === 0,
+        rayHits(t0, sp2.rWick - 0.25, 0));
+  }
+  /* ОБОДОК САДИТСЯ В СТЕНКУ КОНУСА, А НЕ РЯДОМ С НЕЙ. Выйди его внутренний радиус за наружную
+     поверхность конуса — и ободок повиснет свободным кольцом: сетка останется замкнутой и объёмной,
+     а деталь распадётся на два тела, ничем не соединённых. */
+  {
+    const sp3 = vaseInnerSpec(Object.assign({}, paramState.box, {fnOn:true, fnMode:'vase', vasePart:'inner',
+      vaseH:120, vaseBaseD:60, vaseBellyD:95, vaseNeckD:55, vaseMouthD:70, fnWall:2}));
+    chk('ободок заходит внутрь стенки конуса', sp3.rLipIn < sp3.rTop - 0.3, [sp3.rLipIn, sp3.rTop]);
+    chk('но не сквозь неё', sp3.rLipIn > sp3.rTop - sp3.wall, [sp3.rLipIn, sp3.rTop - sp3.wall]);
+  }
+  chk('а стенка ножки на месте', rayHits(t, 7.4, 0) > 0, rayHits(t, 7.4, 0));
+  chk('шире ножка — шире канал', rayHits(mk({vaseWick:24}), 7.4, 0) === 0,
+      rayHits(mk({vaseWick:24}), 7.4, 0));
+  // Дренажные отверстия: есть, когда есть место, и нет, когда места нет.
+  chk('дренаж добавляет треугольников', mk({vaseInnerDrain:6}).length > mk({vaseInnerDrain:0}).length,
+      [mk({vaseInnerDrain:0}).length, mk({vaseInnerDrain:6}).length]);
+  chk('и он не ломает герметичность', manifoldCheck(mk({vaseInnerDrain:12}), 6).watertight);
+  chk('а на тесном дне его не ставят вовсе',
+      mk({vaseWick:24, vaseInnerDrain:12}).length === mk({vaseWick:24, vaseInnerDrain:0}).length,
+      [mk({vaseWick:24, vaseInnerDrain:0}).length, mk({vaseWick:24, vaseInnerDrain:12}).length]);
+  chk('и деталь при этом остаётся герметичной',
+      manifoldCheck(mk({vaseWick:24, vaseInnerDrain:12}), 6).watertight);
+  // Ободок выступает над кромкой конуса, а не заканчивается с ним заподлицо.
+  const B = computeBBox(t);
+  const topR = (() => { let r = 0; const y = B.maxY - 0.5;
+    for (const T of t) for (const v of T) if (v[1] > y) r = Math.max(r, Math.hypot(v[0], v[2]));
+    return r; })();
+  chk('наверху остаётся один ободок', topR > 30, topR);
+  chk('и это он определяет габарит', Math.abs(topR - Math.max(B.maxX, -B.minX)) < 0.6,
+      [topR, Math.max(B.maxX, -B.minX)]);
+}
+
+/* СОВПАДАЮЩИЕ ГРАНИ. Дно, ободок и конус сходятся торцами, и сложить их заподлицо — самое естественное,
+   что можно сделать; канал ножки и отверстие в дне — соосны, и приравнять их радиусы тоже. Проверка
+   герметичности не видит НИ ТОГО, НИ ДРУГОГО: она сшивает рёбра, а у совпадающей пары все рёбра парны.
+   Пять таких дефектов нашлись при разработке ПЕРЕБОРОМ — и это ровно тот случай, когда чинить дефект без
+   сторожа бессмысленно: следующая правка вернёт его молча. */
+function coplanarPairs(tris){
+  const key = T => { const n = cross(sub(T[1],T[0]), sub(T[2],T[0])), L = vlength(n);
+    if (L < 1e-12) return null;
+    let u = [n[0]/L, n[1]/L, n[2]/L];
+    if (u[0] < -1e-9 || (Math.abs(u[0]) < 1e-9 && (u[1] < -1e-9 || (Math.abs(u[1]) < 1e-9 && u[2] < 0))))
+      u = [-u[0], -u[1], -u[2]];
+    const d = u[0]*T[0][0] + u[1]*T[0][1] + u[2]*T[0][2];
+    return u.map(q => Math.round(q*1e4)/1e4).join(',') + '|' + Math.round(d*1e3)/1e3; };
+  const by = new Map();
+  tris.forEach((T, i) => { const k = key(T); if (!k) return;
+    if (!by.has(k)) by.set(k, []); by.get(k).push(i); });
+  let hits = 0, where = null;
+  for (const [k, list] of by){
+    if (list.length < 2) continue;
+    const u = k.split('|')[0].split(',').map(Number);
+    const ax = Math.abs(u[0]) < 0.9 ? [1,0,0] : [0,1,0];
+    const e1 = cross(u, ax), L1 = vlength(e1), E1 = e1.map(q => q/L1), E2 = cross(u, E1);
+    const P = T => T.map(v => [v[0]*E1[0]+v[1]*E1[1]+v[2]*E1[2], v[0]*E2[0]+v[1]*E2[1]+v[2]*E2[2]]);
+    const polys = list.map(i => P(tris[i]));
+    const side = (q,a,b) => (b[0]-a[0])*(q[1]-a[1]) - (b[1]-a[1])*(q[0]-a[0]);
+    const inside = (q,T) => { const d1=side(q,T[0],T[1]), d2=side(q,T[1],T[2]), d3=side(q,T[2],T[0]);
+      return (d1>1e-9&&d2>1e-9&&d3>1e-9) || (d1<-1e-9&&d2<-1e-9&&d3<-1e-9); };
+    const mid = T => [(T[0][0]+T[1][0]+T[2][0])/3, (T[0][1]+T[1][1]+T[2][1])/3];
+    for (let a = 0; a < polys.length; a++) for (let b = a+1; b < polys.length; b++)
+      if (inside(mid(polys[a]), polys[b]) || inside(mid(polys[b]), polys[a])){
+        hits++; if (!where) where = {plane:k, a:list[a], b:list[b]}; }
+  }
+  return { hits, where };
+}
+/* СОВПАДАЮЩИЕ ЦИЛИНДРЫ — ОТДЕЛЬНАЯ БЕДА, и поиск по плоскостям её не видит. Канал фитильной ножки и
+   отверстие в дне СООСНЫ; приравняй им радиусы — и на всей общей высоте совпадут две цилиндрические
+   поверхности. Ни одна плоскость при этом не совпадает, рёбра парны, объём верен.
+
+   Ловится это лучом: две совпадающие поверхности дают ДВА ПЕРЕСЕЧЕНИЯ НА ОДНОМ И ТОМ ЖЕ РАССТОЯНИИ, то
+   есть оболочку нулевой толщины. Лучи пускаются вдоль всех трёх осей — вертикальный вдоль оси вращения
+   параллелен стенкам и о них ничего не скажет, — и из точек, сдвинутых на иррациональные доли
+   миллиметра: попав ровно в ребро, луч даёт двойной счёт и на исправной детали. */
+function zeroThickHits(tris){
+  const axes = [[0,1,2],[1,0,2],[2,0,1]];      // ось луча и две поперечные
+  let hits = 0, where = null;
+  for (const [ax, u, v] of axes){
+    for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++){
+      const O = [0,0,0], D = [0,0,0];
+      D[ax] = 1;
+      O[ax] = -1e5;
+      O[u] = i*7.3 + 0.137; O[v] = j*5.9 + 0.211;
+      const ts = [];
+      for (const T of tris){
+        const e1 = sub(T[1], T[0]), e2 = sub(T[2], T[0]);
+        const h = cross(D, e2), a = e1[0]*h[0] + e1[1]*h[1] + e1[2]*h[2];
+        if (Math.abs(a) < 1e-12) continue;
+        const sv = [O[0]-T[0][0], O[1]-T[0][1], O[2]-T[0][2]], f = 1/a;
+        const uu = f*(sv[0]*h[0] + sv[1]*h[1] + sv[2]*h[2]);
+        if (uu < 1e-9 || uu > 1 - 1e-9) continue;
+        const q = cross(sv, e1), vv = f*(D[0]*q[0] + D[1]*q[1] + D[2]*q[2]);
+        if (vv < 1e-9 || uu + vv > 1 - 1e-9) continue;
+        const tt = f*(e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]);
+        if (tt > 1e-9) ts.push(tt);
+      }
+      ts.sort((a, b) => a - b);
+      for (let k = 1; k < ts.length; k++)
+        if (ts[k] - ts[k-1] < 1e-6){ hits++; if (!where) where = {ax, u:O[u], v:O[v], t:ts[k]}; }
+    }
+  }
+  return { hits, where };
+}
+console.log('\n=== автополив: совпадающих граней нет ни в одном наборе ===');
+{
+  const mk = ov => base(Object.assign({vasePart:'inner'}, ov || {}));
+  chk('на умолчаниях их нет', coplanarPairs(mk({})).hits === 0, coplanarPairs(mk({})).where);
+  chk('и оболочек нулевой толщины тоже', zeroThickHits(mk({})).hits === 0, zeroThickHits(mk({})).where);
+  chk('и на широкой ножке', zeroThickHits(mk({vaseWick:24})).hits === 0, zeroThickHits(mk({vaseWick:24})).where);
+  chk('и без дренажа', zeroThickHits(mk({vaseInnerDrain:0})).hits === 0, zeroThickHits(mk({vaseInnerDrain:0})).where);
+  /* ПЕРЕБОР ПО ВСЕЙ ОБЛАСТИ. Каждая из найденных при разработке поломок жила ровно в одном углу:
+     дно с ободком совпадали ВСЕГДА, игла на узкой вазе — только при горле в десять миллиметров, а
+     дренаж ломал построение только на тесном дне. Одной точки не хватило бы ни для одной. */
+  let bad = 0, badAt = null, cop = 0, copAt = null, n = 0;
+  for (const H of [30, 120, 300])
+    for (const wick of [6, 12, 40])
+      for (const water of [0, 40, 400])
+        for (const neck of [10, 55, 120])
+          for (const drain of [0, 6, 12])
+            for (const fac of [0, 6]){
+              const ov = {vaseH:H, vaseWick:wick, vaseWater:water, vaseNeckD:neck,
+                          vaseInnerDrain:drain, vaseFacets:fac};
+              const tr = mk(ov); n++;
+              const m = manifoldCheck(tr, 6);
+              if (!m.watertight || vol(tr) <= 0){ bad++; if (!badAt) badAt = {ov, open:m.openEdges, bad:m.badEdges}; }
+
+            }
+  chk('486 наборов герметичны', bad === 0 && n === 486, badAt || n);
+  /* ДВА ДЕТЕКТОРА ГОНЯЮТСЯ ПО ОТОБРАННЫМ УГЛАМ, а не по всей области, и это осознанный размен. Поиск по
+     плоскостям квадратичен внутри каждой плоскости, лучевой стоит трёх осей на восемьдесят лучей по
+     десять тысяч треугольников — на 486 наборах любой из них делает тест вторым по медленности во всей
+     батарее, а каждая мутация платит ту же цену. Герметичность, наоборот, дёшева, и её проверяет весь
+     перебор целиком.
+
+     Углы отобраны там, где тела сходятся ИНАЧЕ, чем в середине области: тесное дно, широкая ножка, нет
+     дренажа и полный дренаж, вырожденно узкая ваза, мелкая и высокая, переполненный резервуар, огранка.
+     Все пять дефектов, найденных при разработке, жили ровно в таких углах. */
+  let z = 0, zAt = null;
+  for (const ov of [{}, {vaseWick:24}, {vaseWick:40}, {vaseInnerDrain:0}, {vaseInnerDrain:12},
+                    {vaseNeckD:10, vaseMouthD:10, vaseBellyD:10, vaseBaseD:10},
+                    {vaseH:30}, {vaseH:300}, {vaseWater:400}, {vaseFacets:6}]){
+    const tr = mk(ov);
+    const c = coplanarPairs(tr);
+    if (c.hits){ z++; if (!zAt) zAt = {ov, совпалиГрани:c.hits, where:c.where}; }
+    const h = zeroThickHits(tr);
+    if (h.hits){ z++; if (!zAt) zAt = {ov, нулеваяТолщина:h.hits, where:h.where}; }
+  }
+  chk('и в десяти углах нет ни совпадающих граней, ни нулевой толщины', z === 0, zAt);
+}
+
+console.log('\n=== автополив: сказано то, чего не видно ===');
+{
+  const W = ov => collectPrintWarnings(Object.assign({}, paramState.box,
+    {fnOn:true, fnMode:'vase', vasePart:'inner', vaseH:120, vaseBaseD:60, vaseBellyD:95,
+     vaseNeckD:55, vaseMouthD:70, fnWall:2}, ov || {}));
+  chk('про дренаж в самой вазе сказано всегда',
+      W({}).some(x => /дренажных отверстий быть не должно/.test(x)), W({}));
+  chk('и про хлопчатобумажный шнур', W({}).some(x => /синтетика воду не тянет/.test(x)));
+  chk('про урезанный резервуар', W({vaseWater:400}).some(x => /резервуар урезан/.test(x)));
+  chk('а про неурезанный — молчат', !W({vaseWater:40}).some(x => /резервуар урезан/.test(x)));
+  chk('про урезанную ножку', W({vaseWick:40}).some(x => /ножка урезана/.test(x)));
+  chk('про отсутствующую ножку',
+      W({vaseNeckD:10, vaseMouthD:10, vaseBellyD:10, vaseBaseD:10}).some(x => /её НЕТ/.test(x)));
+  chk('про горшок, который не пролезет',
+      W({vaseNeckD:10, vaseMouthD:10, vaseBellyD:10, vaseBaseD:10}).some(x => /НЕ пролезет/.test(x)));
+  chk('про слишком мелкий горшок', W({vaseH:30}).some(x => /это уже не горшок/.test(x)), W({vaseH:30}));
+  chk('а на нормальной вазе про мелкость молчат', !W({}).some(x => /это уже не горшок/.test(x)));
+  // Ничего из этого не звучит на самой вазе и на поддоне.
+  const body = ov => collectPrintWarnings(Object.assign({}, paramState.box,
+    {fnOn:true, fnMode:'vase', vasePart:'body', vaseH:120, fnWall:2}, ov || {}));
+  chk('на самой вазе про автополив не говорят',
+      !body({}).some(x => /резервуар|фитил|шнур/.test(x)), body({}));
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

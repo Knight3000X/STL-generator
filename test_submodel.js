@@ -22,7 +22,12 @@ const rowOf = k => SHAPE_PARAMS.box.find(r => r.key === k);
 console.log('=== у каждого семейства ровно одна головная форма ===');
 {
   const fams = new Set(Object.keys(FAMILY_MODE).map(g => FAMILY_MODE[g]));
-  chk('семейств шесть', fams.size === 6, [...fams]);
+  /* Число названо, а не выведено, и это нарочно: семейство — редкое событие (седьмое за двадцать три
+     базовые формы), и появление восьмого должно уронить батарею, а не пройти молча. Список рядом с
+     числом, чтобы падение сразу говорило, кто прибавился. */
+  chk('семейств семь', fams.size === 7, [...fams]);
+  chk('и это они', [...fams].sort().join() === 'frMode,gearMode,mntMode,pipMode,spMode,threadMode,tstMode',
+      [...fams].sort());
   const found = {};
   for(const m of MODES){ const k = subModelKey(m); if(k){ chk('форма '+m+' → '+k+' (единственный раз)', !found[k], found[k]); found[k] = m; } }
   chk('каждое семейство досягаемо с какой-то базовой формы',

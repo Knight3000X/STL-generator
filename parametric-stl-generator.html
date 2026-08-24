@@ -1193,7 +1193,7 @@
 
     <input type="text" id="filename" value="model" spellcheck="false">
     <button id="btn-export">⬇ СКАЧАТЬ STL</button>
-    <button id="btn-export-3mf" title="3MF: каждая видимая модель — отдельный объект (в слайсере сборка приедет раздельными деталями)">⬇ Скачать 3MF (детали раздельно)</button>
+    <button id="btn-export-3mf" title="3MF: каждая видимая модель — отдельный объект (в слайсере сборка приедет раздельными деталями). В имени каждой детали стоят номер слота и его цвет">⬇ Скачать 3MF (детали раздельно)</button>
     <div class="export-note">STL не хранит единицы измерения — большинство слайсеров считают введённые значения миллиметрами.</div>
     <button id="btn-orca-tpl" title="Один раз отдать генератору сохранённый проект Orca — дальше 3MF будет приезжать с готовой палитрой">🎨 Палитра Orca: шаблон проекта</button>
     <button id="btn-orca-clear" style="display:none">✕ Убрать шаблон Orca</button>
@@ -1239,7 +1239,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v22.8.0';
+const APP_VERSION = 'v22.9.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3227,6 +3227,12 @@ function orcaTemplateFrom3MF(buf){
     'Нужен СОХРАНЁННЫЙ ПРОЕКТ: в Orca «Файл → Сохранить проект как…»'));
   return zipRead(buf, e).then(b => new TextDecoder().decode(b));
 }
+/* Спрошено — и хватит. Вопрос про шаблон полезен ровно один раз: он объясняет, почему цвета не
+   приезжают. У кого слайсер не Orca, для того правильный ответ «никогда», и переспрашивать его на
+   каждом экспорте значит превратить объяснение в помеху. */
+const ORCA_NAG_STORE = 'stl-orca-nag';
+function orcaNagSeen(){ try { return localStorage.getItem(ORCA_NAG_STORE) === '1'; } catch(e){ return false; } }
+function orcaNagStore(){ try { localStorage.setItem(ORCA_NAG_STORE, '1'); } catch(e) {} }
 function orcaTemplateStore(){
   try { orcaTemplate ? localStorage.setItem(ORCA_TPL_STORE, JSON.stringify(orcaTemplate))
                      : localStorage.removeItem(ORCA_TPL_STORE); } catch(e) {}
@@ -3241,7 +3247,8 @@ function orcaTemplateRestore(){
 function orcaNoteText(tpl, want){
   if (!tpl) return 'Цвета филамента Orca берёт из ПРОЕКТА, а не из модели, поэтому в обычный 3MF их класть ' +
     'некуда. Отдайте свой сохранённый проект Orca — экспорт будет класть в файл вашу же конфигурацию с ' +
-    'подставленной палитрой, и цвета приедут сами. Файл открывать «как проект».';
+    'подставленной палитрой, и цвета приедут сами. Файл открывать «как проект». Номер слота и его hex ' +
+    'стоят в именах деталей в любом случае — по ним видно, что чем заряжать.';
   const slots = orcaTemplateSlots(tpl.cfg);
   const head = 'Шаблон: ' + tpl.name + ', слотов в нём ' + slots + ', сборке нужно ' + want + '. ';
   return head + (want > slots
@@ -3410,17 +3417,35 @@ function paletteApplyMerges(steps){
   }
   return changed;
 }
+/* КАКОЙ СЛОТ КАКИМ ЦВЕТОМ — ПРЯМО В ИМЕНИ ДЕТАЛИ. Цвет филамента у Orca свойство ПРОЕКТА, и без
+   шаблона его в файле не будет вовсе: слайсер покажет серую сборку с номерами слотов и ни словом не
+   скажет, какой из них какой. Номера были и раньше; чего не было — ответа на вопрос «а этот второй
+   слот какого цвета», и человек шёл выяснять это назад в генератор.
+
+   Имя же читают ВСЕ: Orca, Bambu Studio, PrusaSlicer, Cura, любой просмотрщик 3MF, — и стоит оно в
+   дереве объектов прямо рядом с деталью. Поэтому номер слота и его hex приписываются к имени. Это не
+   замена палитре: цвет от этого не приедет, приедет ЗНАНИЕ о нём, и работает оно даже там, где файл
+   открыли импортом геометрии, а не проектом.
+
+   Деталь может просить не один слот, а несколько: у раскрашенной поверхности свой филамент у каждого
+   куска. Тогда названы все — по возрастанию номера и без повторов. */
+function inkTag(inks, colors){
+  const list = [...new Set(inks)].filter(i => i != null && colors[i]).sort((a, b) => a - b);
+  if (!list.length) return '';
+  return ' \u00b7 ' + (list.length > 1 ? 'слоты ' : 'слот ') + list.map(i => i + 1).join(',') +
+         ' \u00b7 ' + list.map(i => colors[i]).join(' ');
+}
 function assemblyTo3MF(){
   saveActiveModel();
   const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   const MAT_ID = 1;
   const { bodies, colors, names } = assemblyInks();
   const mats = colors.map((col, i) =>
-    '<base name="' + esc(names[i]) + '" displaycolor="' + col + 'FF"/>');
+    '<base name="' + esc(names[i] + inkTag([i], colors)) + '" displaycolor="' + col + 'FF"/>');
   const objects = [], items = [], cfg = [];
   let id = MAT_ID + 1;
   for (const body of bodies){
-    const comps = [], parts = [];
+    const comps = [], parts = [], bodyInks = [];
     for (let k = 0; k < body.parts.length; k++){
       const m = body.parts[k];
       let tris = rotateTris(m.rawTris, m.rx, m.ry, m.rz);
@@ -3428,10 +3453,12 @@ function assemblyTo3MF(){
       const ink = body.inks[k];
       const pp = body.paint[k];
       const nums = pp ? pp.pm.ink.map(q => (q > 0 && pp.to[q-1] != null) ? pp.to[q-1] + 1 : pp.base) : null;
+      bodyInks.push(ink); if (pp) for (const q of pp.to) if (q != null) bodyInks.push(q);
       objects.push(tris3MFObject(id, tris, MAT_ID, ink, nums));
       comps.push('<component objectid="' + id + '" transform="' + MF_IDENT3 + '"/>');
       parts.push('<part id="' + id + '" subtype="normal_part">' +
-        '<metadata key="name" value="' + esc(m.name || ('Деталь ' + id)) + '"/>' +
+        '<metadata key="name" value="' +
+          esc((m.name || ('Деталь ' + id)) + inkTag([ink].concat(pp ? pp.to : []), colors)) + '"/>' +
         '<metadata key="matrix" value="' + MF_IDENT4 + '"/>' +
         '<metadata key="extruder" value="' + (ink + 1) + '"/>' +
         '<mesh_stat edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>' +
@@ -3442,7 +3469,7 @@ function assemblyTo3MF(){
     objects.push('<object id="' + gid + '" type="model"><components>' + comps.join('') + '</components></object>');
     items.push('<item objectid="' + gid + '" transform="' + MF_IDENT3 + '"/>');
     cfg.push('<object id="' + gid + '">' +
-      '<metadata key="name" value="' + esc(body.name) + '"/>' +
+      '<metadata key="name" value="' + esc(body.name + inkTag(bodyInks, colors)) + '"/>' +
       '<metadata key="extruder" value="1"/>' + parts.join('') + '</object>');
   }
   const model = '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -21267,9 +21294,14 @@ function parse3MFMeta(modelSettings, projectSettings){
 }
 // Имя детали: своё из метаданных слайсера, иначе из XML, иначе номер. Расширение исходного файла в имени
 // объекта («Orbital Laser.stl») — след импорта в слайсер, а не часть названия.
+/* Хвост «· слот 2 · #BD1828» приписывает к имени НАШ ЖЕ экспорт, чтобы в слайсере было видно, каким
+   цветом заряжать слот. На обратном пути его надо снять, иначе имя обрастает хвостами по одному за
+   каждый круг «выгрузил — вернул», а цвет и слот у вернувшейся детали и так свои. Снимается только
+   собственный формат целиком — чужое имя, где просто есть слово «слот», не трогается. */
+const MF_INK_TAG = / \u00b7 слот(?:ы)? [\d,]+ \u00b7 (?:#[0-9A-Fa-f]{6}(?: |$))+$/;
 function mf3MFName(meta, xmlName, id){
   const n = (meta && meta.name) || xmlName || '';
-  return n.replace(/\.(stl|obj|3mf|step|stp)$/i, '') || ('Деталь ' + id);
+  return n.replace(MF_INK_TAG, '').replace(/\.(stl|obj|3mf|step|stp)$/i, '') || ('Деталь ' + id);
 }
 function mf3MFColor(meta, palette){
   const k = meta ? meta.extruder : 0;
@@ -22456,8 +22488,20 @@ function attachEventListeners() {
     }
   });
 
+  /* СКАЗАТЬ ДО СКАЧИВАНИЯ, А НЕ ПОСЛЕ. Строка про шаблон Orca стояла под кнопкой в панели, свёрнутой по
+     умолчанию, — то есть человек про неё узнавал, уже глядя на серую сборку в слайсере. Многоцветная
+     сборка без шаблона это ровно тот случай, ради которого в проекте вообще заведён alert: дальше
+     молчание стоит испорченной печати. Спрашивается ОДИН раз: у кого слайсер не Orca, тому этот вопрос
+     не нужен вовсе, и ответ запоминается. */
   document.getElementById('btn-export-3mf').addEventListener('click', () => {
     if (pendingChanges) applyPendingNow();
+    if (!orcaTemplate && assemblyInks().colors.length > 1 && !orcaNagSeen()){
+      const go = confirm(orcaNoteText(null, assemblyInks().colors.length) +
+        '\n\nНомера слотов и их цвета в файле есть — они приписаны к именам деталей, и в слайсере видно, ' +
+        'что чем заряжать. Сами цвета филамента без шаблона не приедут.\n\nСкачать всё равно?');
+      if (!go) return;          // отказ значит «пойду заведу шаблон», а не «больше не спрашивай»
+      orcaNagStore();
+    }
     const nameRaw = document.getElementById('filename').value.trim() || 'model';
     downloadBlob(assemblyTo3MF(), nameRaw.replace(/\.(stl|3mf)$/i,'') + '.3mf');
   });

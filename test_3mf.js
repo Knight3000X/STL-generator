@@ -241,7 +241,86 @@ console.log('\n=== AMS colour parts are PARTS, not objects ===');
         parts[5].extruder === 1 && parts[6].extruder === 2, parts.map(p=>p.extruder));
   check('config bodies are the component bodies',
         [...cfg.matchAll(/<object id="(\d+)"/g)].map(m=>m[1]).join() === compObjs.join());
-  check('part names survive', parts[1].name === 'Цвет 1 (AMS)', parts.map(p=>p.name));
+  /* ИМЯ ДЕТАЛИ НЕСЁТ СЛОТ И ЕГО ЦВЕТ. Без шаблона проекта цветов филамента в файле нет вовсе, и слайсер
+     показывает серую сборку с номерами слотов — а какой слот какого цвета, человек шёл выяснять назад в
+     генератор. Имя читают все слайсеры и все просмотрщики, и стоит оно рядом с деталью, поэтому ответ
+     кладётся туда. Своё имя при этом обязано уцелеть: хвост приписывается, а не заменяет. */
+  check('имя детали уцелело', parts[1].name.indexOf('Цвет 1 (AMS)') === 0, parts[1].name);
+  check('и несёт номер слота и его цвет', parts[1].name === 'Цвет 1 (AMS) \u00b7 слот 2 \u00b7 #AA0000',
+        parts[1].name);
+  check('слот в имени — тот же, что в metadata',
+        parts.every(q => q.name.indexOf('\u00b7 слот ' + q.extruder + ' \u00b7') > 0),
+        parts.map(q => [q.extruder, q.name]));
+  check('и цвет в имени — тот же, что у его материала',
+        parts.every(q => bases.indexOf(q.name.slice(-7).toUpperCase() + 'FF') === q.extruder - 1),
+        parts.map(q => [q.extruder, q.name.slice(-7)]));
+  // Тело целиком названо тем же правилом: у одноцветного объекта хвост один, у составного — все слоты.
+  const objNames = [...cfg.matchAll(/<object id="\d+"><metadata key="name" value="([^"]*)"/g)].map(m=>m[1]);
+  check('составное тело называет все свои слоты',
+        objNames.some(n => /\u00b7 слоты 1,2,3 \u00b7 #101010 #AA0000 #00AA00$/.test(n)), objNames);
+  check('а одноцветное — один', objNames.some(n => /\u00b7 слот 4 \u00b7 #0000AA$/.test(n)), objNames);
+}
+
+/* ХВОСТ С ЦВЕТОМ: СОБИРАЕТСЯ И СНИМАЕТСЯ. Собирается — чтобы в слайсере было видно, чем заряжать слот.
+   Снимается на импорте — иначе имя обрастает хвостами по одному за каждый круг «выгрузил — вернул», а
+   слот и цвет у вернувшейся детали и так свои. */
+console.log('\n=== слот и цвет в имени детали ===');
+{
+  const C = ['#101010', '#AA0000', '#00AA00'];
+  check('без слотов хвоста нет', inkTag([], C) === '');
+  check('неизвестный слот хвоста не даёт', inkTag([7, null], C) === '');
+  check('один слот', inkTag([1], C) === ' \u00b7 слот 2 \u00b7 #AA0000', inkTag([1], C));
+  check('несколько — по возрастанию и без повторов',
+        inkTag([2, 0, 2, 0, 1], C) === ' \u00b7 слоты 1,2,3 \u00b7 #101010 #AA0000 #00AA00', inkTag([2,0,2,0,1], C));
+  check('нули не теряются', inkTag([0], C) === ' \u00b7 слот 1 \u00b7 #101010', inkTag([0], C));
+
+  // Снятие: свой хвост уходит целиком, чужое имя со словом «слот» не трогается.
+  const back = n => mf3MFName({name: n}, null, 9);
+  check('свой хвост снимается', back('Пробка \u00b7 слот 2 \u00b7 #BD1828') === 'Пробка', back('Пробка \u00b7 слот 2 \u00b7 #BD1828'));
+  check('и многослотовый тоже',
+        back('Тело \u00b7 слоты 1,3 \u00b7 #101010 #00AA00') === 'Тело', back('Тело \u00b7 слоты 1,3 \u00b7 #101010 #00AA00'));
+  check('чужое имя со словом «слот» не трогается',
+        back('Держатель слот 12 мм') === 'Держатель слот 12 мм', back('Держатель слот 12 мм'));
+  check('хвост снимается только с конца',
+        back('A \u00b7 слот 1 \u00b7 #101010 и ещё что-то') === 'A \u00b7 слот 1 \u00b7 #101010 и ещё что-то');
+  check('пустое имя после снятия не остаётся пустым', back(' \u00b7 слот 1 \u00b7 #101010') !== '');
+
+  // И через настоящий файл: выгрузили — вернули — имя чистое и ровно одно.
+  models.length = 0; logos.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false});
+  const tris = buildTrisForShape('box', paramState.box);
+  const put = (name, color) => models.push({ name, visible:true, rawTris:tris, shape:'box',
+    params:JSON.parse(JSON.stringify(paramState.box)), color, rx:0, ry:0, rz:0, px:0, py:0, pz:0 });
+  put('Тело', '#101010'); put('Крышка', '#AA0000');
+  const buf = new Uint8Array(await assemblyTo3MF().arrayBuffer()).buffer;
+  const got = await parse3MF(buf);
+  check('вернулись обе детали', got.length === 2, got.length);
+  check('и с чистыми именами', got.map(q => q.name).join() === 'Тело,Крышка', got.map(q => q.name));
+
+  /* РАСКРАШЕННАЯ ДЕТАЛЬ ПРОСИТ НЕ ОДИН СЛОТ. Покраска слайсера — это номер филамента у каждого
+     треугольника: деталь печатается своим цветом И цветами покраски сразу. Назвать в её имени только
+     базовый слот значило бы умолчать ровно о тех цветах, которые труднее всего вычислить обратно. */
+  models.length = 0; importedPaint.clear();
+  const tri2 = [[[0,0,0],[6,0,0],[0,6,0]], [[0,0,0],[0,6,0],[0,0,6]]];
+  addImportedPart(tri2, 'Крашеная', false, '#101010', null, { ink: [1, 2], palette: ['#AA0000', '#00AA00'] });
+  const xml2 = readZip(new Uint8Array(await assemblyTo3MF().arrayBuffer()));
+  const cfg2 = new TextDecoder().decode(xml2['Metadata/model_settings.config'].data);
+  const nm2 = /<part [^>]*><metadata key="name" value="([^"]*)"/.exec(cfg2);
+  check('имя раскрашенной детали называет ВСЕ её слоты',
+        nm2 && nm2[1] === 'Крашеная \u00b7 слоты 1,2,3 \u00b7 #101010 #AA0000 #00AA00', nm2 && nm2[1]);
+  const on2 = /<object id="\d+"><metadata key="name" value="([^"]*)"/.exec(cfg2);
+  check('и тело над ней — тоже все', on2 && /\u00b7 слоты 1,2,3 \u00b7/.test(on2[1]), on2 && on2[1]);
+
+  /* И МАТЕРИАЛ НАЗЫВАЕТ СВОЙ СЛОТ. `<basematerials>` читают просмотрщики и PrusaSlicer, а Orca не читает
+     вовсе — но список материалов это единственное место в файле, где палитра лежит СПИСКОМ, по порядку
+     слотов, и подписать его номером слота стоит одной строки. */
+  const mdl2 = new TextDecoder().decode(xml2['3D/3dmodel.model'].data);
+  const bn2 = [...mdl2.matchAll(/<base name="([^"]*)" displaycolor="(#[0-9A-F]{8})"\/>/g)];
+  check('материалов столько же, сколько слотов', bn2.length === 3, bn2.length);
+  check('каждый материал назван своим слотом и своим цветом',
+        bn2.every((b, i) => b[1].endsWith('\u00b7 слот ' + (i+1) + ' \u00b7 ' + b[2].slice(0,7))),
+        bn2.map(b => b[1]));
+  models.length = 0; importedPaint.clear();
 }
 
 console.log('\n=== two parts of one body are never one filament ===');

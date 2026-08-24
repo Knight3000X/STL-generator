@@ -31,6 +31,63 @@ function vol(t){let v=0;for(const T of t){const a=T[0],b=T[1],c=T[2];v+=(a[0]*(b
 const CL = ov => Object.assign({}, defaultBoxParams(), {clMode:'dial'}, ov||{});
 const raw = ov => buildWallClock(CL(ov));
 const W   = ov => collectPrintWarnings(CL(ov));
+/* ---- инструменты для стрелок ------------------------------------------------------------------- */
+const hands = ov => buildClockHands(CL(Object.assign({clMode:'hands'}, ov || {})));
+const bboxOf = t => { const b = {x:[1e9,-1e9], y:[1e9,-1e9], z:[1e9,-1e9]};
+  for (const T of t) for (const v of T){
+    b.x[0]=Math.min(b.x[0],v[0]); b.x[1]=Math.max(b.x[1],v[0]);
+    b.y[0]=Math.min(b.y[0],v[1]); b.y[1]=Math.max(b.y[1],v[1]);
+    b.z[0]=Math.min(b.z[0],v[2]); b.z[1]=Math.max(b.z[1],v[2]); } return b; };
+/* Луч вверх из точки (x, z): сколько раз протыкает тело. Сквозь отверстие — ни разу, сквозь пластину —
+   дважды. Смещён на сотую миллиметра: пущенный точно из центра прямоугольной грани, он попадает в
+   диагональ между её треугольниками, строгий тест отвергает оба, и «материала нет» получается на
+   сплошном теле. */
+const rayHits = (tris, x0, z0) => {
+  const x = x0 + 0.013, z = z0 + 0.0071; let n = 0;
+  for (const T of tris){
+    const e1 = sub(T[1], T[0]), e2 = sub(T[2], T[0]), d = [0, 1, 0];
+    const h = cross(d, e2), a = e1[0]*h[0] + e1[1]*h[1] + e1[2]*h[2];
+    if (Math.abs(a) < 1e-12) continue;
+    const sv = [x - T[0][0], -1e6 - T[0][1], z - T[0][2]], f = 1/a;
+    const u = f*(sv[0]*h[0] + sv[1]*h[1] + sv[2]*h[2]);
+    if (u < 1e-9 || u > 1 - 1e-9) continue;
+    const q = cross(sv, e1), v = f*(d[0]*q[0] + d[1]*q[1] + d[2]*q[2]);
+    if (v < 1e-9 || u + v > 1 - 1e-9) continue;
+    if (f*(e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]) > 1e-9) n++;
+  } return n; };
+/* Совпадающие грани: треугольники группируются по ПЛОСКОСТИ (нормаль с приведённым знаком плюс
+   смещение), и внутри группы ищется пара, накладывающаяся по площади. Знак приводится нарочно: у пары
+   «одно тело кончилось, другое началось» нормали противоположны, и без приведения они попали бы в
+   разные группы — то есть проверка искала бы всё, кроме того, ради чего написана. */
+function coplanarPairs(tris){
+  const key = T => { const n = cross(sub(T[1],T[0]), sub(T[2],T[0])), L = vlength(n);
+    if (L < 1e-12) return null;
+    let u = [n[0]/L, n[1]/L, n[2]/L];
+    if (u[0] < -1e-9 || (Math.abs(u[0]) < 1e-9 && (u[1] < -1e-9 || (Math.abs(u[1]) < 1e-9 && u[2] < 0))))
+      u = [-u[0], -u[1], -u[2]];
+    const d = u[0]*T[0][0] + u[1]*T[0][1] + u[2]*T[0][2];
+    return u.map(q => Math.round(q*1e4)/1e4).join(',') + '|' + Math.round(d*1e3)/1e3; };
+  const by = new Map();
+  tris.forEach((T, i) => { const k = key(T); if (!k) return;
+    if (!by.has(k)) by.set(k, []); by.get(k).push(i); });
+  let hits = 0, where = null;
+  for (const [k, list] of by){
+    if (list.length < 2) continue;
+    const u = k.split('|')[0].split(',').map(Number);
+    const ax = Math.abs(u[0]) < 0.9 ? [1,0,0] : [0,1,0];
+    const e1 = cross(u, ax), L1 = vlength(e1), E1 = e1.map(q => q/L1), E2 = cross(u, E1);
+    const P = T => T.map(v => [v[0]*E1[0]+v[1]*E1[1]+v[2]*E1[2], v[0]*E2[0]+v[1]*E2[1]+v[2]*E2[2]]);
+    const polys = list.map(i => P(tris[i]));
+    const side = (q,a,b) => (b[0]-a[0])*(q[1]-a[1]) - (b[1]-a[1])*(q[0]-a[0]);
+    const inside = (q,T) => { const d1=side(q,T[0],T[1]), d2=side(q,T[1],T[2]), d3=side(q,T[2],T[0]);
+      return (d1>1e-9&&d2>1e-9&&d3>1e-9) || (d1<-1e-9&&d2<-1e-9&&d3<-1e-9); };
+    const mid = T => [(T[0][0]+T[1][0]+T[2][0])/3, (T[0][1]+T[1][1]+T[2][1])/3];
+    for (let a = 0; a < polys.length; a++) for (let b = a+1; b < polys.length; b++)
+      if (inside(mid(polys[a]), polys[b]) || inside(mid(polys[b]), polys[a])){
+        hits++; if (!where) where = {plane:k, a:list[a], b:list[b]}; }
+  }
+  return { hits, where };
+}
 function ship(ov){ logos.length=0; boxHoles.length=0; dieFaces.length=0;
   Object.assign(paramState.box, defaultBoxParams(), {clMode:'dial'}, ov||{});
   return buildTrisForShape('box', paramState.box); }
@@ -728,14 +785,19 @@ console.log('=== форма зарегистрирована как базова
   chk('GROUP_KIND', GROUP_KIND['Настенные часы'] === 'clock');
   chk('GROUP_TAB', GROUP_TAB['Настенные часы'] === 'form');
   chk('KIND_PRINT', KIND_PRINT.clock === 'detail');
-  chk('MODEL_HELP есть и говорит про печать лицом вверх',
-      !!MODEL_HELP.clock && /ЛИЦОМ ВВЕРХ/.test(MODEL_HELP.clock.how));
+  // Ключ справки стал составным, когда у часов появилась вторая разновидность: у семейства справка
+  // своя на каждую, и общей «clock» больше нет — иначе стрелкам показывали бы, как печатать циферблат.
+  chk('справка циферблата говорит про печать лицом вверх',
+      !!MODEL_HELP['clock:dial'] && /ЛИЦОМ ВВЕРХ/.test(MODEL_HELP['clock:dial'].how));
+  chk('а справка стрелок — про промер валов',
+      !!MODEL_HELP['clock:hands'] && /ПРОМЕРЬТЕ ВАЛЫ/.test(MODEL_HELP['clock:hands'].how));
+  chk('общей справки у семейства не осталось', !MODEL_HELP.clock);
   chk('своя группа видна под своей формой', sectionRelevant('Настенные часы', 'clock'));
   chk('и не видна под чужой', !sectionRelevant('Настенные часы', 'ball'));
   chk('чужие группы под часами скрыты', !sectionRelevant('Ажурный шар', 'clock') &&
       !sectionRelevant('Настенная плитка', 'clock') && !sectionRelevant('Воронка', 'clock'));
   chk('строки параметров живут в своей группе',
-      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 18,
+      SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length === 24,
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы').length);
   chk('строки кольца показываются только у кольца',
       SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы' && r.only && r.only.clShape).length === 4);
@@ -749,6 +811,211 @@ console.log('=== форма зарегистрирована как базова
   const t = ship({clShape:'ring', clMarks:'all'});
   chk('через настоящий путь приложения строится то же тело', t.length > 0 && manifoldCheck(t, 3).watertight);
   chk('и это часы, а не куб', Math.abs(bbox(t).hi[0] - 125) < 1e-6, bbox(t).hi[0]);
+}
+
+/* ================================ СТРЕЛКИ ==========================================================
+   Вторая разновидность часов. Проверяется не «похоже ли на стрелку», а связи, которые ломаются тихо.
+
+   1. ДЛИНЫ ВЫВОДЯТСЯ ИЗ ЦИФЕРБЛАТА. Минутная идёт до обреза пластины, часовая — две трети от неё. Задай
+      длину числом, и стрелки от Ø250 молча уехали бы на циферблат Ø400.
+
+   2. ОТВЕРСТИЯ, НАОБОРОТ, НЕ ВЫВОДЯТСЯ НИОТКУДА: у кварцевых механизмов валы разные. Поэтому у них
+      «0 = ходовое», и умолчание обязано быть ОТЛИЧИМО от введённого числа — иначе совет промерить свой
+      механизм либо звучит на каждой сборке, либо не звучит никогда.
+
+   3. ОТВЕРСТИЕ В ПЛАСТИНЕ ШИРЕ ОТВЕРСТИЯ СТУПИЦЫ, и ступица начинается выше подошвы. Оба смещения —
+      про совпадающие грани, которых проверка герметичности не видит: она сшивает рёбра, а у совпадающей
+      пары все рёбра парны.                                                                          */
+console.log('\n=== стрелки: длины считаются из циферблата ===');
+{
+  const H = ov => clockHandSpecs(CL(Object.assign({clMode:'hands'}, ov || {})));
+  const by = (ov, k) => H(ov).find(h => h.key === k);
+  const cs = clockSpec(CL({clMode:'hands'}));
+  chk('минутная идёт почти до обреза пластины',
+      Math.abs(by({}, 'minute').L - (cs.rOut - 1.5)) < 1e-9, [by({}, 'minute').L, cs.rOut]);
+  chk('часовая — две трети от неё',
+      Math.abs(by({}, 'hour').L / by({}, 'minute').L - 0.66) < 1e-9, by({}, 'hour').L / by({}, 'minute').L);
+  chk('секундная между ними, ближе к минутной',
+      by({}, 'second').L < by({}, 'minute').L && by({}, 'second').L > by({}, 'hour').L,
+      H({}).map(h => +h.L.toFixed(1)));
+  chk('шире циферблат — длиннее стрелки',
+      by({clD:400}, 'minute').L > by({clD:250}, 'minute').L + 70,
+      [+by({clD:250}, 'minute').L.toFixed(1), +by({clD:400}, 'minute').L.toFixed(1)]);
+  const zLen = ov => { const b = bboxOf(hands(ov)); return b.z[1] - b.z[0]; };
+  chk('и это доходит до сетки, а не остаётся в спецификации',
+      zLen({clD:400}) > zLen({clD:250}) + 70, [+zLen({clD:250}).toFixed(1), +zLen({clD:400}).toFixed(1)]);
+  /* ИНВАРИАНТ ВМЕСТО СТРАХОВКИ. В спецификации нет пола у длины, и это проверено счётом: при самом
+     мелком циферблате, какой даёт панель, и самом толстом валу самая короткая стрелка всё равно втрое
+     длиннее своей ступицы. Держит это утверждение ПРОВЕРКА, а не `Math.max` в коде: опустись
+     когда-нибудь нижняя граница диаметра — упадёт батарея, а не деталь у человека. */
+  chk('на самом мелком циферблате стрелка всё ещё длиннее ступицы',
+      H({clD:60, clBoreH:8, clBoreM:6, clBoreS:4}).every(h => h.L > h.hubR + 4),
+      H({clD:60, clBoreH:8, clBoreM:6, clBoreS:4}).map(h => [+h.L.toFixed(1), +h.hubR.toFixed(1)]));
+  /* А У ХВОСТОВИКА ПОЛ ЕСТЬ, И ОН ЖИВОЙ: без него хвостовая окружность тонет в ступице и на оболочке не
+     показывается вовсе. Проверяется по СЕТКЕ — тело обязано уходить назад дальше, чем радиус ступицы. */
+  const tailOut = ov => { const h = clockHandSpecs(CL(Object.assign({clMode:'hands'}, ov)))
+                            .find(q => q.key === 'minute');
+    return -bboxOf(hands(Object.assign({clHandPart:'minute'}, ov))).z[0] - h.hubR; };
+  chk('хвостовик выступает за ступицу', tailOut({}) > 2, tailOut({}));
+  chk('и на мелком циферблате с толстым валом тоже',
+      tailOut({clD:60, clBoreM:6}) > 2, tailOut({clD:60, clBoreM:6}));
+  // ...потому что вылет хвостовика — не пропорция от длины, а НЕ МЕНЬШЕ радиуса ступицы с запасом.
+  // На мелком циферблате с толстым валом живёт именно второе слагаемое, и без него хвост тонет.
+  chk('и это утверждение, а не совпадение',
+      H({clD:60, clBoreH:8, clBoreM:6, clBoreS:4}).every(h => h.tailL >= h.hubR + 1.5 - 1e-9),
+      H({clD:60, clBoreH:8, clBoreM:6, clBoreS:4}).map(h => [+h.tailL.toFixed(2), +h.hubR.toFixed(2)]));
+}
+
+console.log('\n=== стрелки: отверстия задаются, а не выводятся ===');
+{
+  const H = ov => clockHandSpecs(CL(Object.assign({clMode:'hands'}, ov || {})));
+  const by = (ov, k) => H(ov).find(h => h.key === k);
+  chk('по умолчанию стоят ходовые числа',
+      H({}).map(h => +(2*h.bore).toFixed(2)).join('/') === '3.1/1.9/1.1',
+      H({}).map(h => +(2*h.bore).toFixed(2)));
+  chk('и они помечены как НЕ введённые', H({}).every(h => !h.boreAsked));
+  chk('введённое число берётся вместо ходового',
+      Math.abs(2*by({clBoreM:2.5}, 'minute').bore - 2.5) < 1e-9, 2*by({clBoreM:2.5}, 'minute').bore);
+  chk('и помечается введённым', by({clBoreM:2.5}, 'minute').boreAsked);
+  chk('а соседние остаются ходовыми',
+      !by({clBoreM:2.5}, 'hour').boreAsked && Math.abs(2*by({clBoreM:2.5}, 'hour').bore - 3.1) < 1e-9);
+  chk('при умолчаниях сказано промерить свой механизм',
+      W({clMode:'hands'}).some(x => /Промерьте валы СВОЕГО механизма/.test(x)), W({clMode:'hands'}));
+  chk('а с введённым числом — молчит',
+      !W({clMode:'hands', clBoreM:2.0}).some(x => /Промерьте валы/.test(x)), W({clMode:'hands', clBoreM:2.0}));
+  chk('на циферблате этого совета нет вовсе', !W({clMode:'dial'}).some(x => /Промерьте валы/.test(x)));
+  chk('вал проходит сквозь ступицу', rayHits(hands({clHandPart:'minute'}), 0, 0) === 0,
+      rayHits(hands({clHandPart:'minute'}), 0, 0));
+  // Щуп ставится ПО ДЛИНЕ стрелки, а не рядом со ступицей: у ступицы луч прошёл бы и сквозь пластину,
+  // и сквозь саму ступицу, и «два» превратилось бы в четыре — на исправной детали.
+  chk('а по длине стрелки материал есть',
+      rayHits(hands({clHandPart:'minute'}), 0, 20) === 2, rayHits(hands({clHandPart:'minute'}), 0, 20));
+  chk('шире заказ — шире дырка',
+      rayHits(hands({clHandPart:'minute', clBoreM:5}), 0, 2.2) === 0,
+      rayHits(hands({clHandPart:'minute', clBoreM:5}), 0, 2.2));
+}
+
+console.log('\n=== стрелки: провисание и вес ===');
+{
+  /* Порог провисания выше, чем кажется на глаз: стрелка гнётся ИЗ ПЛОСКОСТИ циферблата, то есть работает
+     своей ТОЛЩИНОЙ, а жёсткость идёт с её кубом. Печатные два миллиметра PLA жёстче стальной стрелки в
+     четыре десятых, и ругать умолчания тут не за что — проверка это и утверждает. */
+  chk('умолчания не ругаются', !W({clMode:'hands'}).some(x => /провиснет/.test(x)), W({clMode:'hands'}));
+  chk('а миллиметровая стрелка на Ø400 — ругается',
+      W({clMode:'hands', clHandT:1, clD:400}).some(x => /провиснет/.test(x)));
+  chk('и толстая тоже, но другими словами',
+      W({clMode:'hands', clHandT:5}).some(x => /тяжелы для кварцевого механизма/.test(x)));
+  chk('а на циферблате ни того, ни другого',
+      !W({clMode:'dial', clHandT:1}).some(x => /провиснет|тяжелы/.test(x)));
+}
+
+console.log('\n=== стрелки: форма и герметичность ===');
+{
+  for (const part of ['all','hm','hour','minute','second']){
+    const t = hands({clHandPart:part}), m = manifoldCheck(t, 6);
+    chk('«' + part + '» герметична', m.watertight, {open:m.openEdges, bad:m.badEdges});
+    chk('  и объём положительный', meshVolume(t) > 0);
+  }
+  // Сколько стрелок на плите — по числу отверстий: у каждой своё, и луч сквозь него пуст.
+  /* ОТВЕРСТИЕ — ЭТО ПУСТОТА В ТЕЛЕ, а не просто пустота. Считать «переходы в ноль» вдоль одной строки
+     нельзя дважды: между стрелками на плите тоже воздух, и такой счётчик насчитал бы семь дырок вместо
+     трёх; «пустота с материалом по бокам» тоже не годится — межстрелочный зазор ровно таков. Работает
+     ВТОРАЯ строка: у оси ступицы пусто, а на шести миллиметрах вдоль той же стрелки — материал. У
+     зазора между стрелками пусто и там, и там. */
+  const holes = t => {
+    let n = 0, inHole = false;
+    for (let x = -70; x <= 70; x += 0.2){
+      const here = rayHits(t, x, 0) === 0 && rayHits(t, x, 6) > 0;
+      if (here && !inHole) n++;
+      inHole = here;
+    }
+    return n; };
+  chk('«все три» — это три отверстия', holes(hands({clHandPart:'all'})) === 3, holes(hands({clHandPart:'all'})));
+  chk('«часовая и минутная» — два', holes(hands({clHandPart:'hm'})) === 2, holes(hands({clHandPart:'hm'})));
+  chk('поштучно — одно', holes(hands({clHandPart:'hour'})) === 1, holes(hands({clHandPart:'hour'})));
+  // Пика острее батона — при той же длине её кончик уже.
+  const wAt = (t, z) => { let lo = 1e9, hi = -1e9;
+    for (const T of t) for (let i = 0; i < 3; i++){ const a = T[i], b = T[(i+1)%3];
+      if ((a[2]-z)*(b[2]-z) > 0) continue; const d = b[2]-a[2]; if (Math.abs(d) < 1e-12) continue;
+      const x = a[0] + (z-a[2])/d*(b[0]-a[0]); if (x < lo) lo = x; if (x > hi) hi = x; }
+    return hi - lo; };
+  const mB = hands({clHandPart:'minute', clHandStyle:'baton'});
+  const mP = hands({clHandPart:'minute', clHandStyle:'pointer'});
+  const zTip = bboxOf(mB).z[1] - 1.2;
+  chk('у пики кончик уже, чем у батона', wAt(mP, zTip) < wAt(mB, zTip),
+      [+wAt(mB, zTip).toFixed(2), +wAt(mP, zTip).toFixed(2)]);
+  /* А длина у них — одна и та же ОСЬ: отличается только радиус кончика, на который оболочка выступает
+     за него. Утверждать «габариты равны» было бы неправдой, и проверка ловила бы правильную геометрию. */
+  const sB = clockHandSpecs(CL({clMode:'hands', clHandStyle:'baton'})).find(h => h.key === 'minute');
+  const sP = clockHandSpecs(CL({clMode:'hands', clHandStyle:'pointer'})).find(h => h.key === 'minute');
+  chk('ось у них одна', Math.abs(sB.L - sP.L) < 1e-9, [sB.L, sP.L]);
+  chk('а габарит длиннее ровно на радиус кончика',
+      Math.abs(((bboxOf(mB).z[1]-bboxOf(mB).z[0]) - (bboxOf(mP).z[1]-bboxOf(mP).z[0]))
+               - ((sB.rTip - sP.rTip) + (sB.tailR - sP.tailR))) < 1e-6,
+      [(bboxOf(mB).z[1]-bboxOf(mB).z[0]), (bboxOf(mP).z[1]-bboxOf(mP).z[0]), sB.rTip, sP.rTip]);
+  const one = hands({clHandPart:'minute'}), bb = bboxOf(one);
+  const hSpec = clockHandSpecs(CL({clMode:'hands'})).find(h => h.key === 'minute');
+  chk('ступица выступает над пластиной', Math.abs((bb.y[1]-bb.y[0]) - hSpec.hubH) < 1e-6,
+      [bb.y[1]-bb.y[0], hSpec.hubH]);
+  chk('и это заметно больше самой толщины', hSpec.hubH > hSpec.t + 1, [hSpec.hubH, hSpec.t]);
+  /* И СТУПИЦА УЖЕ СВОЕГО ГНЕЗДА В ПЛАСТИНЕ. Сделай её шире — она вылезет из контура кольцевым буртиком:
+     деталь останется герметичной (тела и так взаимопроникают), но на стрелке появится ободок, которого
+     никто не заказывал. Меряется по сетке: на срезе НАД пластиной тело обязано быть уже, чем на срезе
+     внутри неё. */
+  const spanY = (t, y) => { let r = 0;
+    for (const T of t) for (let i = 0; i < 3; i++){ const a = T[i], b = T[(i+1)%3];
+      if ((a[1]-y)*(b[1]-y) > 0) continue; const d = b[1]-a[1]; if (Math.abs(d) < 1e-12) continue;
+      const u = (y-a[1])/d;
+      r = Math.max(r, Math.abs(a[0] + u*(b[0]-a[0]))); }
+    return r; };
+  const y0 = bb.y[0];
+  chk('над пластиной остаётся только ступица, и она уже пластины',
+      spanY(one, y0 + hSpec.t + 0.5) + 0.3 < spanY(one, y0 + hSpec.t*0.5),
+      [+spanY(one, y0 + hSpec.t*0.5).toFixed(2), +spanY(one, y0 + hSpec.t + 0.5).toFixed(2)]);
+  chk('и это ровно её радиус',
+      Math.abs(spanY(one, y0 + hSpec.t + 0.5) - hSpec.hubR2) < 1e-6,
+      [spanY(one, y0 + hSpec.t + 0.5), hSpec.hubR2]);
+  /* УЖЕ ПЛАСТИНЫ — ЕЩЁ НЕ ЗНАЧИТ «ГОДИТСЯ». Ступица тем и живёт, что у неё есть стенка вокруг вала:
+     сожми её к отверстию, и держаться будет нечем, а деталь останется и герметичной, и уже пластины. */
+  chk('и стенка ступицы не тоньше полутора миллиметров',
+      clockHandSpecs(CL({clMode:'hands'})).every(h => h.hubR2 - h.bore >= 1.5),
+      clockHandSpecs(CL({clMode:'hands'})).map(h => +(h.hubR2 - h.bore).toFixed(2)));
+  let bad = 0, badAt = null, nn = 0;
+  for (const part of ['all','hour','minute','second'])
+    for (const D of [60, 250, 400])
+      for (const t of [1, 2, 6])
+        for (const style of ['baton','pointer']){
+          const tr = hands({clHandPart:part, clD:D, clHandT:t, clHandStyle:style}); nn++;
+          if (!manifoldCheck(tr, 6).watertight){ bad++; if (!badAt) badAt = {part, D, t, style, негерметично:1}; }
+          const c = coplanarPairs(tr);
+          if (c.hits){ bad++; if (!badAt) badAt = {part, D, t, style, совпало:c.hits, где:c.where}; }
+        }
+  chk('72 набора стрелок герметичны и без совпадающих граней', bad === 0 && nn === 72, badAt || nn);
+}
+
+console.log('\n=== стрелки: часы стали семейством ===');
+{
+  chk('у часов появилась подмодель', subModelKey('clock') === 'clMode', subModelKey('clock'));
+  chk('и плиток ровно две', subModelTiles('clock').map(t => t.v).join() === 'dial,hands',
+      subModelTiles('clock').map(t => t.v));
+  const rows = SHAPE_PARAMS.box.filter(r => r.group === 'Настенные часы');
+  const dialOnly = rows.filter(r => r.w && r.w.indexOf('dial') >= 0 && r.w.indexOf('hands') < 0);
+  const handOnly = rows.filter(r => r.w && r.w.length === 1 && r.w[0] === 'hands');
+  chk('строк только-циферблата шестнадцать', dialOnly.length === 16, dialOnly.length);
+  chk('строк только-стрелок шесть', handOnly.length === 6, handOnly.length);
+  chk('строки циферблата на стрелках не показываются',
+      dialOnly.every(r => !paramRowRelevant(r, CL({clMode:'hands'}))),
+      dialOnly.filter(r => paramRowRelevant(r, CL({clMode:'hands'}))).map(r => r.key));
+  chk('и наоборот',
+      handOnly.every(r => !paramRowRelevant(r, CL({clMode:'dial'})) && paramRowRelevant(r, CL({clMode:'hands'}))),
+      handOnly.filter(r => paramRowRelevant(r, CL({clMode:'dial'}))).map(r => r.key));
+  chk('а диаметр нужен обоим',
+      paramRowRelevant(rows.find(r => r.key === 'clD'), CL({clMode:'dial'})) &&
+      paramRowRelevant(rows.find(r => r.key === 'clD'), CL({clMode:'hands'})));
+  const t = ship({clMode:'hands'});
+  chk('через настоящий путь строятся стрелки, а не циферблат',
+      Math.abs(meshVolume(t) - meshVolume(hands({}))) < 1e-6, [meshVolume(t), meshVolume(hands({}))]);
+  chk('и имя модели это говорит', /стрелки часов: все три/.test(activeShapeLabel()), activeShapeLabel());
 }
 
 console.log((fail? 'FAIL ':'OK   ') + pass + ' passed, ' + fail + ' failed');

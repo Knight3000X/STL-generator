@@ -25,8 +25,9 @@ console.log('=== у каждого семейства ровно одна гол
   /* Число названо, а не выведено, и это нарочно: семейство — редкое событие (седьмое за двадцать три
      базовые формы), и появление восьмого должно уронить батарею, а не пройти молча. Список рядом с
      числом, чтобы падение сразу говорило, кто прибавился. */
-  chk('семейств семь', fams.size === 7, [...fams]);
-  chk('и это они', [...fams].sort().join() === 'frMode,gearMode,mntMode,pipMode,spMode,threadMode,tstMode',
+  chk('семейств восемь', fams.size === 8, [...fams]);
+  chk('и это они',
+      [...fams].sort().join() === 'clMode,frMode,gearMode,mntMode,pipMode,spMode,threadMode,tstMode',
       [...fams].sort());
   const found = {};
   for(const m of MODES){ const k = subModelKey(m); if(k){ chk('форма '+m+' → '+k+' (единственный раз)', !found[k], found[k]); found[k] = m; } }

@@ -562,6 +562,8 @@
   .pal-row + .pal-row{ border-top:1px solid var(--paper-line); }
   .pal-sw{ width:15px; height:15px; border-radius:4px; border:1px solid var(--paper-line); flex:0 0 auto; }
   .pal-hex{ font-family:'IBM Plex Mono', monospace; font-weight:600; flex:0 0 auto; }
+  .pal-g{ font-family:'IBM Plex Mono', monospace; color:var(--ink-soft); flex:0 0 auto;
+    min-width:44px; text-align:right; }
   .pal-use{ color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pal-btns{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
   .pal-btn{ padding:6px 9px; font-size:11px; font-weight:600; cursor:pointer; border-radius:var(--r-sm);
@@ -3354,6 +3356,49 @@ function assemblyPalette(){
       for (const j of pp.to) if (j != null && use[j] && use[j].indexOf(nm) < 0) use[j].push(nm); });
   }
   return { colors: ink.colors, names: ink.names, use, bodies: ink.bodies };
+}
+/* ПЛОТНОСТЬ ФИЛАМЕНТА, г/см³. Названа один раз: по этим же числам считается вес всей сборки в
+   статистике и вес каждого слота в палитре, а два места с одной константой расходятся молча. */
+const FIL_G_CM3 = { pla: 1.24, petg: 1.27 };
+/* СКОЛЬКО КАКОГО ЦВЕТА. Панель говорила, КАКИЕ филаменты нужны сборке; чего она не говорила — сколько
+   каждого, а именно этот ответ нужен, пока катушки ещё только покупают.
+
+   Объём берётся тот же, что у общей статистики: СПЛОШНОЙ объём сетки, то есть заполнение 100 %.
+   Настоящая печать с 15 % возьмёт заметно меньше, и перекос тут осознанный: ошибка «купил лишнюю
+   катушку» дешевле ошибки «встал посреди печати».
+
+   У РАСКРАШЕННОЙ детали своего объёма у покраски НЕТ. Покраска — свойство поверхности: номер филамента
+   стоит у каждого треугольника, а не у куска тела. Поэтому объём такой детали делится между её
+   филаментами по ПЛОЩАДИ, которую каждый занимает. Это оценка, и она названа оценкой: точный ответ
+   знает только слайсер, потому что он один знает толщину стенок и заполнение.
+
+   Поворот и сдвиг объёма не меняют, поэтому берётся `rawTris` — та же сетка, что и везде. */
+function assemblyGrams(){
+  const pal = assemblyPalette();
+  const cc = pal.colors.map(() => 0);
+  for (const b of pal.bodies){
+    b.parts.forEach((m, i) => {
+      const tris = m.rawTris || [];
+      const base = b.inks[i], v = meshVolume(tris)/1000;
+      const pp = b.paint[i];
+      // Раскладка по треугольникам, не пережившая пересборку сетки, к этой сетке не относится.
+      if (!pp || !pp.pm || pp.pm.ink.length !== tris.length){ if (cc[base] != null) cc[base] += v; return; }
+      const area = cc.map(() => 0);
+      let total = 0;
+      for (let k = 0; k < tris.length; k++){
+        const t = tris[k];
+        const A = vlength(cross(sub(t[1], t[0]), sub(t[2], t[0])))/2;
+        const q = pp.pm.ink[k];
+        const ink = (q > 0 && pp.to[q-1] != null) ? pp.to[q-1] : base;
+        if (area[ink] == null) continue;
+        area[ink] += A; total += A;
+      }
+      if (!(total > 0)){ if (cc[base] != null) cc[base] += v; return; }
+      for (let j = 0; j < cc.length; j++) cc[j] += v*area[j]/total;
+    });
+  }
+  return { colors: pal.colors, names: pal.names, use: pal.use, cc,
+           g: cc.map(x => x*FIL_G_CM3.pla), total: cc.reduce((a, x) => a + x, 0) };
 }
 /* Партии. Жадно и по убыванию «цветастости»: самое требовательное тело кладётся первым, дальше каждое
    следующее — в первую партию, которой оно не сломает лимит. Это ЭВРИСТИКА, а не доказанный минимум, и
@@ -24777,7 +24822,7 @@ function meshVolume(tris){
 // time from a typical 0.4mm-nozzle throughput ≈ 12 г/ч at 0.2mm layers. Order-of-magnitude only.
 function updatePrintStats(tris){
   const cc = meshVolume(tris)/1000; // см³
-  const gPLA = cc*1.24, gPETG = cc*1.27, hours = gPLA/12;
+  const gPLA = cc*FIL_G_CM3.pla, gPETG = cc*FIL_G_CM3.petg, hours = gPLA/12;
   const volEl = document.getElementById('stat-volume');
   if (!volEl) return;
   volEl.textContent = cc >= 100 ? cc.toFixed(0)+' см³' : cc.toFixed(2)+' см³';
@@ -24871,6 +24916,12 @@ function paletteApplyUI(){
   if (cp && am && am.color) cp.value = am.color;
   renderPaletteSection();
 }
+/* Граммы строкой. Ниже десяти — с десятой долей, выше — целыми: «0.4 г» это осмысленно, «43.2 г» —
+   ложная точность при оценке, которая и так считает заполнение сплошным. */
+function palGrams(g){
+  if (!(g > 0)) return '0 г';
+  return (g < 10 ? g.toFixed(1) : Math.round(g).toString()) + ' г';
+}
 function renderPaletteSection(){
   const listEl = document.getElementById('palette-list');
   const noteEl = document.getElementById('palette-note');
@@ -24882,20 +24933,27 @@ function renderPaletteSection(){
   const n = pal.colors.length;
   const lit = paletteView && plan[paletteView.batch] ? new Set(plan[paletteView.batch].inks) : null;
 
+  const gr = assemblyGrams();
   listEl.innerHTML = pal.colors.map((c, i) => {
     const who = pal.use[i].join(', ') || pal.names[i];
     return '<div class="pal-row"' + (lit && !lit.has(i) ? ' style="opacity:.3"' : '') + '>' +
       '<span class="pal-sw" style="background:' + escapeHtml(c) + '"></span>' +
       '<span class="pal-hex">' + escapeHtml(c) + '</span>' +
+      '<span class="pal-g" title="Сплошной объём, заполнение 100 % — настоящая печать возьмёт меньше">' +
+        escapeHtml(palGrams(gr.g[i])) + '</span>' +
       '<span class="pal-use" title="' + escapeHtml(who) + '">' + escapeHtml(who) + '</span></div>';
   }).join('');
 
-  noteEl.textContent = !n
+  /* ИТОГ ГОВОРИТ, ОТКУДА ЧИСЛА. Граммы посчитаны по сплошному объёму, то есть при заполнении 100 %:
+     настоящая печать возьмёт меньше, и знать об этом надо ДО того, как по этим числам закажут катушки. */
+  const weigh = !n ? '' : ' Материала ≈ ' + palGrams(gr.g.reduce((a, x) => a + x, 0)) +
+    ' при заполнении 100 % — настоящая печать возьмёт меньше.';
+  noteEl.textContent = (!n
     ? 'В сборке нет видимых моделей — считать нечего.'
     : (n <= slots
         ? 'Цветов в сборке: ' + n + ', слотов ' + slots + ' — влезает целиком.'
         : 'Цветов в сборке: ' + n + ', слотов ' + slots + '. Лишних ' + (n - slots) +
-          ': либо печатать партиями, либо слить ближайшие.');
+          ': либо печатать партиями, либо слить ближайшие.')) + weigh;
 
   let html = '';
   if (n > slots || paletteView){

@@ -342,5 +342,87 @@ console.log('\n=== число слотов ===');
   el.value = '4';
 }
 
+/* СКОЛЬКО КАКОГО ЦВЕТА. Панель говорила, какие филаменты нужны; сколько каждого — не говорил никто, а
+   заказывают катушки именно по этому числу. Портится расчёт тихо: «работает», посчитав объём одной
+   детали дважды или отдав раскрашенную деталь целиком её базовому филаменту. */
+console.log('\n=== граммы по слотам ===');
+{
+  reset(); importedPaint.clear();
+  // Куб 10×10×10 = 1 см³: объём считается точно, поэтому граммы можно сверять с числом, а не с «примерно».
+  const cube = v => { const V = [[0,0,0],[v,0,0],[v,0,v],[0,0,v],[0,v,0],[v,v,0],[v,v,v],[0,v,v]];
+    const F = [[0,1,2],[0,2,3],[4,7,6],[4,6,5],[0,4,5],[0,5,1],[1,5,6],[1,6,2],[2,6,7],[2,7,3],[3,7,4],[3,4,0]];
+    return F.map(f => f.map(i => V[i])); };
+  const put = (name, color, tris) => { const rec = { id:'g'+(models.length+1), name, color, visible:true,
+    rawTris: tris, shape:'box', params:{}, rx:0, ry:0, rz:0, px:0, py:0, pz:0 }; models.push(rec); return rec; };
+
+  put('Куб', '#101010', cube(10));
+  let gr = assemblyGrams();
+  check('один куб 10 мм — это 1 см³', near(gr.cc[0], 1, 1e-9), gr.cc);
+  check('и 1.24 г при плотности PLA', near(gr.g[0], 1.24, 1e-9), gr.g);
+  check('итог сходится с суммой по слотам', near(gr.total, 1, 1e-9), gr.total);
+
+  put('Второй', '#AA0000', cube(20));           // 8 см³
+  gr = assemblyGrams();
+  check('второй цвет считается своим слотом', near(gr.cc[1], 8, 1e-9), gr.cc);
+  check('первый от этого не изменился', near(gr.cc[0], 1, 1e-9), gr.cc);
+  check('итог — сумма обоих', near(gr.total, 9, 1e-9), gr.total);
+
+  // Один цвет на двух телах — ОДИН слот: это и есть смысл слота AMS.
+  put('Третий', '#101010', cube(10));
+  gr = assemblyGrams();
+  check('одинаковый цвет копится в один слот', near(gr.cc[0], 2, 1e-9), gr.cc);
+  check('слотов по-прежнему два', gr.cc.length === 2, gr.cc.length);
+  // Невидимая модель не печатается — значит, и филамента не просит.
+  models[models.length-1].visible = false;
+  check('невидимая модель в счёт не идёт', near(assemblyGrams().total, 9, 1e-9), assemblyGrams().total);
+  models[models.length-1].visible = true;
+
+  /* РАСКРАШЕННАЯ ДЕТАЛЬ. Своего объёма у покраски нет — номер филамента стоит у треугольника, а не у
+     куска тела, — поэтому объём делится по ПЛОЩАДИ. Куб 10 мм: одна грань из шести это ровно 1/6, и
+     проверить долю можно точно, а не «примерно». */
+  reset(); importedPaint.clear();
+  const c10 = cube(10);
+  const ink = c10.map((t, i) => (i < 2 ? 2 : 1));      // две трёхугольные половины одной грани = 1/6 куба
+  addImportedPart(c10, 'Крашеный', false, '#101010', null, { ink, palette: ['#101010', '#00AA00'] });
+  gr = assemblyGrams();
+  check('раскрашенная деталь просит два слота', gr.cc.length === 2, gr.cc);
+  check('покраске досталась её доля площади', near(gr.cc[1], 1/6, 1e-9), gr.cc[1]);
+  check('остальное — базовому цвету', near(gr.cc[0], 5/6, 1e-9), gr.cc[0]);
+  check('и объём детали не потерялся и не удвоился', near(gr.total, 1, 1e-9), gr.total);
+
+  // Раскладка, не подходящая к сетке, к ней и не применяется — деталь целиком своего цвета.
+  reset(); importedPaint.clear();
+  const rec2 = addImportedPart(cube(10), 'Битая раскраска', false, '#101010', null,
+                               { ink: [1, 2], palette: ['#101010', '#00AA00'] });
+  gr = assemblyGrams();
+  check('негодная раскладка не делит объём', gr.cc.length === 1 && near(gr.cc[0], 1, 1e-9), gr.cc);
+
+  reset(); importedPaint.clear();
+  check('пустая сборка просит ноль', assemblyGrams().total === 0, assemblyGrams().total);
+
+  // Строка: до десяти граммов — с десятой долей, выше — целыми. Ложная точность в оценке хуже, чем её нет.
+  check('меньше десяти — с десятой', palGrams(4.26) === '4.3 г', palGrams(4.26));
+  check('больше десяти — целыми', palGrams(43.2) === '43 г', palGrams(43.2));
+  check('ноль так и говорит', palGrams(0) === '0 г' && palGrams(-1) === '0 г');
+}
+
+console.log('\n=== граммы в панели ===');
+{
+  const listEl = document.getElementById('palette-list');
+  const noteEl = document.getElementById('palette-note');
+  reset(); importedPaint.clear();
+  const cube10 = (() => { const v = 10, V = [[0,0,0],[v,0,0],[v,0,v],[0,0,v],[0,v,0],[v,v,0],[v,v,v],[0,v,v]];
+    const F = [[0,1,2],[0,2,3],[4,7,6],[4,6,5],[0,4,5],[0,5,1],[1,5,6],[1,6,2],[2,6,7],[2,7,3],[3,7,4],[3,4,0]];
+    return F.map(f => f.map(i => V[i])); })();
+  models.push({ id:'p1', name:'Куб', color:'#101010', visible:true, rawTris:cube10, shape:'box',
+                params:{}, rx:0, ry:0, rz:0, px:0, py:0, pz:0 });
+  renderPaletteSection();
+  check('в строке слота стоят граммы', /1\.2 г/.test(listEl.innerHTML), listEl.innerHTML.slice(0, 300));
+  check('и итог назван вместе с оговоркой про заполнение',
+        /Материала ≈ 1\.2 г/.test(noteEl.textContent) && /100 %/.test(noteEl.textContent), noteEl.textContent);
+  reset(); importedPaint.clear(); renderPaletteSection();
+  check('у пустой сборки граммов не обещают', !/Материала/.test(noteEl.textContent), noteEl.textContent);
+}
+
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

@@ -329,9 +329,74 @@ console.log('=== подставка на стол ===');
       {thick:+st({frT:20}).d.toFixed(1), thin:+st({frT:5}).d.toFixed(1)});
   chk('и глубина упирается в потолок, а не растёт без конца', st({frT:40}).d === st({frT:30}).d,
       {t40:+st({frT:40}).d.toFixed(1), t30:+st({frT:30}).d.toFixed(1)});
+  chk('заданная вручную глубина перебивает авто', Math.abs(st({frStandDepth:45}).d - 45) < 1e-9,
+      st({frStandDepth:45}).d);
+  chk('и высота бруска идёт за ней', st({frStandDepth:45}).hB > st({}).hB + 20,
+      [st({}).hB, st({frStandDepth:45}).hB]);
   chk('длина по умолчанию — от ширины рамки',
       Math.abs(st({}).L - frameSpec(par({})).W*0.45) < 0.01, +st({}).L.toFixed(2));
   chk('и заданная вручную перебивает авто', Math.abs(st({frStandLen:75}).L - 75) < 1e-9);
+
+  /* ОБЛЕГЧЕНИЕ. За задней губой паза материал не несёт ничего, и вместо бруска там косое ребро.
+     Проверяется это тремя разными способами, потому что каждый ловит своё:
+       1. ОБЪЁМ СЕТКИ СХОДИТСЯ С АНАЛИТИЧЕСКОЙ ПЛОЩАДЬЮ ПРОФИЛЯ. Площадь считается здесь заново, из
+          габаритов и паза, и умножается на длину. Разойдись построитель со спецификацией — сойтись
+          эти два числа не смогут.
+       2. СКОС ЕСТЬ В СЕТКЕ: у задней кромки высота материала равна пятке, а не высоте бруска.
+       3. РОВНАЯ ПЛОЩАДКА ЗА ГУБОЙ ОСТАЛАСЬ: губа, сведённая в клин прямо от кромки паза, тонка ровно
+          там, где в неё упирается рамка. */
+  {
+    for (const ov of [{}, {frStandAngle:35}, {frT:40}, {frStandDepth:45}]){
+      const s2 = st(ov), t = mesh(ov);
+      const want = (s2.areaFull - s2.areaCut)*s2.L;
+      chk('объём сетки = площадь профиля × длину '+JSON.stringify(ov), Math.abs(vol(t) - want) < 0.5,
+          {сетка:+vol(t).toFixed(1), профиль:+want.toFixed(1)});
+    }
+    for (const ov of [{}, {frStandAngle:35}, {frT:40}]){
+      const s2 = st(ov), t = mesh(ov), B = computeBBox(t), xp = s2.L*0.17;
+      chk('скос есть: у задней кромки высота — пятка '+JSON.stringify(ov), s2.sloped === true);
+      /* Щуп стоит НЕ у самой кромки, а в четырёх десятых от неё, и скос там ещё не дошёл до пятки.
+         Ожидание считается точно — пятка плюс наклон на этом отступе, — и тем самым проверяется заодно
+         и сам наклон скоса: «примерно пятка» прошло бы и при вдвое более пологом ребре. */
+      const dz = 0.4, slope = (s2.hB - s2.heel)/(s2.D - s2.xLip);
+      const back = runsY(t, xp, B.maxZ - dz);
+      chk('  и в сетке она равна пятке плюс наклон '+JSON.stringify(ov),
+          back.length === 1 && Math.abs((back[0][1] - back[0][0]) - (s2.heel + dz*slope)) < 0.03,
+          {дали:back.map(x => +(x[1]-x[0]).toFixed(3)), ждём:+(s2.heel + dz*slope).toFixed(3)});
+      // ...а спереди, у паза, брусок остался полной высоты
+      const front = runsY(t, xp, B.minZ + 0.4);
+      chk('  а спереди брусок полной высоты '+JSON.stringify(ov),
+          front.length === 1 && Math.abs((front[0][1] - front[0][0]) - s2.hB) < 0.05,
+          front.map(x => x.map(v => +v.toFixed(2))));
+      // ...и ровно на площадке за губой — тоже
+      const lip = runsY(t, xp, B.minZ + s2.xLip - 0.3);
+      chk('  и на площадке за губой паза тоже '+JSON.stringify(ov),
+          lip.length >= 1 && Math.abs(lip[lip.length-1][1] - B.maxY) < 0.05,
+          lip.map(x => x.map(v => +v.toFixed(2))));
+    }
+    /* И ЭТО НЕ КОСМЕТИКА: снято должно быть заметно, иначе весь скос — украшение. */
+    const s3 = st({});
+    chk('скос снимает больше пятой части профиля', s3.areaCut > s3.areaFull*0.2,
+        {снято:+s3.areaCut.toFixed(0), было:+s3.areaFull.toFixed(0),
+         доля:+(s3.areaCut/s3.areaFull).toFixed(2)});
+    chk('и вес назван числом', s3.grams > 0 && s3.grams < s3.gramsFull*0.85,
+        {скошенный:+s3.grams.toFixed(1), сплошной:+s3.gramsFull.toFixed(1)});
+    /* Вес идёт за материалом: та же деталь в ABS легче, чем в PLA, ровно как плотности. */
+    chk('вес идёт за плотностью материала',
+        Math.abs(st({printMat:'abs'}).grams/st({printMat:'pla'}).grams - FIL_MAT.abs.g/FIL_MAT.pla.g) < 1e-9,
+        {abs:+st({printMat:'abs'}).grams.toFixed(1), pla:+st({printMat:'pla'}).grams.toFixed(1)});
+  }
+  /* ОПРОКИДЫВАНИЕ ОБЛЕГЧЕНИЕ НЕ ТРОГАЕТ, и это проверяемое утверждение, а не обещание: глубина
+     основания обязана остаться ровно той же, что и без скоса. Считается она из центра тяжести РАМКИ,
+     собственный вес подставки в неё не входит — то есть подставка полагается невесомой, а это худший
+     случай, и снятие материала его не ухудшает. */
+  for (const ov of [{}, {frStandAngle:35}, {frPhotoH:400}]){
+    const s2 = st(ov);
+    chk('глубина основания не зависит от скоса '+JSON.stringify(ov),
+        Math.abs(s2.back - Math.max(s2.f.H/2*Math.sin(s2.th) + FRAME_STAND_TIP,
+                                    (s2.t/2)/Math.cos(s2.th) + FRAME_STAND_EDGE)) < 1e-9,
+        {back:+s2.back.toFixed(2)});
+  }
 
   // Подставке безразлично то, от чего она не зависит.
   {
@@ -344,7 +409,8 @@ console.log('=== подставка на стол ===');
   {
     const wOf = ov => collectPrintWarnings(par(Object.assign({frMode:'stand'}, ov)));
     chk('короткая подставка', wOf({frStandLen:20}).some(w=>/держать от заваливания/.test(w)), wOf({frStandLen:20}));
-    chk('обычная молчит', wOf({}).length === 0, wOf({}));
+    chk('обычная не жалуется', !wOf({}).some(w=>/опрокинется|болтаться|заваливания/.test(w)), wOf({}));
+    chk('но вес называет', wOf({}).some(w=>/г сплошной печатью/.test(w)), wOf({}));
     chk('глубокое основание названо', wOf({frPhotoH:20, frStandAngle:35}).some(w=>/опрокинется/.test(w)),
         wOf({frPhotoH:20, frStandAngle:35}));
   }

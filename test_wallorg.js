@@ -31,43 +31,83 @@ for(const back of ['cleat','peg','hex']) for(const front of ['cleatrail','gfshel
   const t=base({woBack:back,woFront:front}); const mc=manifoldCheck(t,4);
   chk(back+' → '+front+' герметично (+объём)', mc.watertight&&vol(t)>0, {wt:mc.watertight,open:mc.openEdges});
 }
-console.log('=== переходник: рейка сходится с ответным задником ===');
+/* РЕЙКА ПРОВЕРЯЕТСЯ СБОРКОЙ, А НЕ НАКЛОНОМ ГРАНИ. Прежняя проверка сравнивала наклоны двух граней и
+   требовала их совпадения после поворота на пол-оборота. Наклон совпадал — а переходник не работал:
+   материал у клина оказался НАД скосом вместо под ним, и ответной планке было не на что лечь.
+   Совпадение наклона не есть зацепление, и разница видна только если детали СОБРАТЬ.
+
+   Собираются они без разворота: «стеной» для ответной детали служит лицевая грань переходника, и
+   обе модели строятся в одном соглашении — стена сзади, тело вперёд. Дальше проверяются три вещи,
+   и вместе они и есть французская планка:
+     ОПОРА     — опусти деталь, и она упрётся: ей есть на чём висеть;
+     УПОР      — потяни ПРЯМО НА СЕБЯ, и она упрётся в скос: просто так не снимается;
+     СЪЁМ      — потяни вверх-и-на-себя, и она сходит: это не замок, а планка.
+   Считается всё по сечению при одном x: обе детали в этом месте — призмы вдоль X. */
+console.log('=== переходник: рейка ДЕРЖИТ ответную деталь ===');
 {
-  // Наклонные грани в плоскости YZ: у них нет составляющей по X, а обе остальные заметны.
-  const slopes = t => {
-    const out = [];
-    for(const T of t){
-      const e1=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]];
-      const e2=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
-      let n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-      const L=Math.hypot(n[0],n[1],n[2]); if(L<1e-9) continue; n=n.map(q=>q/L);
-      if(Math.abs(n[0])<1e-6 && Math.abs(n[1])>0.2 && Math.abs(n[2])>0.2)
-        out.push([+n[1].toFixed(6), +n[2].toFixed(6)]);
+  const spansZ = (t,x,y) => { const hs=[];
+    for(const T of t){ const [a,b,c]=T;
+      const d1=(b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0]);
+      const d2=(c[0]-b[0])*(y-b[1])-(c[1]-b[1])*(x-b[0]);
+      const d3=(a[0]-c[0])*(y-c[1])-(a[1]-c[1])*(x-c[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[0]-x)*(c[1]-y)-(b[1]-y)*(c[0]-x))/A, w2=((c[0]-x)*(a[1]-y)-(c[1]-y)*(a[0]-x))/A;
+      const z=w1*a[2]+w2*b[2]+(1-w1-w2)*c[2];
+      const nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+      hs.push([z, nz>0?1:-1]); }
+    hs.sort((u,v)=>u[0]-v[0]);
+    const out=[]; let w=0, st=0;
+    for(const [z,sg] of hs){ if(w===0) st=z; w-=sg; if(w===0) out.push([st,z]); }
+    return out; };
+  const STEP = 0.25, X = 0.37;
+  const A = base({woBack:'peg', woFront:'cleatrail'});
+  const I = base({woBack:'cleat', woFront:'none'});
+  const bA = computeBBox(A), bI = computeBBox(I);
+  const rowsA = new Map(), rowsI = new Map();
+  for(let y=bA.minY; y<=bA.maxY; y+=STEP) rowsA.set(+y.toFixed(2), spansZ(A, X, y));
+  for(let y=bI.minY; y<=bI.maxY; y+=STEP) rowsI.set(+y.toFixed(2), spansZ(I, X, y));
+  /* Сдвиги обязаны быть КРАТНЫ шагу выборки: строка ответной детали ищется по точному ключу, и сдвиг
+     на 0.4 при шаге 0.25 не попадал в сетку — «опирается ли деталь» отвечало «нет» всегда, при любой
+     геометрии. Проверка при этом выглядела работающей. */
+  const overlap = (dy, dz) => { let sum = 0;
+    for(const [y, sa] of rowsA){
+      const si = rowsI.get(+(y-dy).toFixed(2)); if(!si) continue;
+      for(const [a0,a1] of sa) for(const [i0,i1] of si){
+        const lo = Math.max(a0, i0+dz), hi = Math.min(a1, i1+dz);
+        if (hi > lo) sum += hi-lo; } }
+    return sum*STEP; };
+  const lip = 8, t = 5;
+  const good = [];
+  for(let dz = t; dz <= t + 3*lip; dz += STEP)
+    for(let dy = 0; dy <= lip + 4; dy += STEP){
+      if (overlap(dy, dz) > 1e-9) continue;
+      const rest = overlap(dy - 0.5, dz), fwd = overlap(dy, dz + 1.0), up = overlap(dy + 1.0, dz + 1.0);
+      if (rest > 0.1 && fwd > 0.5 && up < 1e-9) good.push({dy:+dy.toFixed(2), dz:+dz.toFixed(2), опора:+rest.toFixed(2)});
     }
-    return [...new Set(out.map(q=>q.join(',')))].sort();
-  };
-  const backSlopes = slopes(base({woBack:'cleat',woFront:'none'}));
-  const railSlopes = slopes(base({woBack:'peg',woFront:'cleatrail'}));
-  chk('у задника-планки есть наклонная грань', backSlopes.length === 1, backSlopes);
-  chk('и у лицевой рейки тоже', railSlopes.length === 1, railSlopes);
-  /* ПОВОРОТ НА ПОЛ-ОБОРОТА вокруг оси Y меняет знак z и оставляет y. Если рейка и задник — одна и та
-     же грань, повёрнутая, их нормали после этого совпадут ТОЧНО, а не примерно. */
-  const [by, bz] = backSlopes[0].split(',').map(Number);
-  const [ry, rz] = railSlopes[0].split(',').map(Number);
-  chk('и это одна и та же грань, повёрнутая на пол-оборота',
-      Math.abs(by - ry) < 1e-6 && Math.abs(bz + rz) < 1e-6,
-      {задник:[by,bz], рейка:[ry,rz]});
-  chk('наклон при этом не вертикальный и не горизонтальный — это клин',
-      Math.abs(ry) > 0.3 && Math.abs(rz) > 0.3, {рейка:[ry,rz]});
-  /* И он обязан ЕХАТЬ ЗА ВЫЛЕТОМ: жёстко вписанные 45° сошлись бы с задником только при одном
-     значении вылета, а при любом другом — молча разъехались. */
-  const railA = slopes(base({woBack:'peg',woFront:'cleatrail',woCleatLip:20}));
-  const backA = slopes(base({woBack:'cleat',woFront:'none',woCleatLip:20}));
-  chk('и едет за вылетом зацепа — вместе с задником',
-      railA.length===1 && backA.length===1 &&
-      Math.abs(backA[0].split(',').map(Number)[1] + railA[0].split(',').map(Number)[1]) < 1e-6,
-      {рейка:railA, задник:backA});
-  chk('а при другом вылете наклон и правда другой', railA[0] !== railSlopes[0], {было:railSlopes, стало:railA});
+  chk('ответная деталь СЦЕПЛЯЕТСЯ с рейкой — такая посадка есть', good.length > 0, {посадок:good.length});
+  if (good.length){
+    good.sort((a,b) => b.опора - a.опора);
+    const g = good[0];
+    chk('  в посадке детали не пересекаются', overlap(g.dy, g.dz) < 1e-9, overlap(g.dy, g.dz));
+    chk('  она на чём-то ВИСИТ: опустить нельзя', overlap(g.dy - 0.5, g.dz) > 0.1, g.опора);
+    chk('  ПРЯМО НА СЕБЯ не снимается: упирается в скос', overlap(g.dy, g.dz + 1.0) > 0.5,
+        +overlap(g.dy, g.dz + 1.0).toFixed(2));
+    chk('  а вверх-и-на-себя сходит: это планка, а не замок',
+        overlap(g.dy + 1.0, g.dz + 1.0) < 1e-9, +overlap(g.dy + 1.0, g.dz + 1.0).toFixed(3));
+    /* СКОЛЬЖЕНИЕ ПО СКОСУ — подпись параллельных граней. Если сцепленные посадки образуют дорожку,
+       где dy и dz растут шаг в шаг, значит грани лежат друг на друге, а не касаются углом. */
+    const track = good.filter(q => Math.abs((q.dz - g.dz) - (q.dy - g.dy)) < 1e-6);
+    chk('  и грани лежат друг на друге, а не углом: посадки идут дорожкой по скосу',
+        track.length >= 4, {надорожке:track.length, всего:good.length});
+  }
+  /* И РЕЙКА ОБЯЗАНА ЕХАТЬ ЗА ВЫЛЕТОМ: жёстко вписанный скос сошёлся бы при одном вылете и разъехался
+     при любом другом, а деталь строилась бы и выглядела правильно при всех. */
+  const depth = ov => { const b = computeBBox(base(Object.assign({woBack:'peg', woFront:'cleatrail'}, ov)));
+    return b.maxZ - b.minZ; };
+  chk('вылет рейки едет за вылетом зацепа',
+      Math.abs((depth({woCleatLip:20}) - depth({woCleatLip:8})) - 12) < 0.6,
+      {вылет8:+depth({woCleatLip:8}).toFixed(1), вылет20:+depth({woCleatLip:20}).toFixed(1)});
 }
 console.log('=== переходник: полка Gridfinity — та же плита, а не вторая копия ===');
 {

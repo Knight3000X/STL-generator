@@ -98,6 +98,32 @@ console.log('=== мажорный разряд — это счётчик баз�
   chk('и мажорный разряд версии — это их число',
       +APP_VERSION.slice(1).split('.')[0] === shapes.length,
       {версия:APP_VERSION, форм:shapes.length});
+  /* У КАЖДОЙ ФОРМЫ ЕСТЬ СВОЯ ПЛИТКА, И НА НЕЙ ЗНАЧОК. Плитки — единственный способ выбрать базовую
+     форму, и список их живёт в разметке, а не в коде: форма, названная в KIND_LABEL и забытая в
+     разметке, раздувает мажорный разряд, а выбрать её нельзя. Значок здесь не украшение: плиток
+     двадцать две, они одного размера и различаются только словом, а слово в узком столбце
+     обрезается — по значку плитка находится взглядом, по обрезанному слову нет. */
+  {
+    const html = fs.readFileSync('parametric-stl-generator.html', 'utf8');
+    const btns = [...html.matchAll(/data-base="([a-z0-9]+)"[^>]*>([^<]*)</g)].map(m => [m[1], m[2].trim()]);
+    const have = new Set(btns.map(b => b[0]));
+    /* ДВЕ ФОРМЫ ВЫБИРАЮТСЯ НЕ ПЛИТКОЙ, а собственным выключателем внутри своего раздела: плита
+       Gridfinity — флажком в «Gridfinity», объёмный логотип — флажком в «Логотипах». Так сложилось
+       исторически, и обе досягаемы (это проверено выше отдельно). Список назван поимённо, а не
+       выброшен из проверки: третья такая форма должна уронить батарею, а не тихо остаться без
+       плитки — иначе выбрать её будет негде, а мажорный разряд она поднимет. */
+    const NO_TILE = ['baseplate', 'logo3d'];
+    const missing = shapes.filter(k => !have.has(k) && NO_TILE.indexOf(k) < 0);
+    chk('у каждой базовой формы есть плитка выбора', missing.length === 0, missing);
+    chk('и формы без плитки — только названные', NO_TILE.every(k => !have.has(k)), NO_TILE.filter(k => have.has(k)));
+    const extra = [...have].filter(k => !KIND_LABEL[k]);
+    chk('и ни одной плитки без формы', extra.length === 0, extra);
+    const noIcon = btns.filter(([, t]) => !t || t.codePointAt(0) < 0x2000);
+    chk('и на каждой плитке есть значок', noIcon.length === 0, noIcon.map(b => b[0]));
+    const icons = btns.map(([, t]) => [...t][0]);
+    const dup = icons.filter((c, i) => icons.indexOf(c) !== i);
+    chk('и значки не повторяются — иначе они не различают', dup.length === 0, dup);
+  }
   chk('у каждой формы есть человеческое имя',
       shapes.every(k => KIND_LABEL[k] && KIND_LABEL[k].length > 2), shapes);
   // ...and each of those shapes is reachable — a name for a shape nobody can pick would inflate the digit

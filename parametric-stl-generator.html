@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.1.0';
+const APP_VERSION = 'v24.2.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5245,6 +5245,8 @@ const SHAPE_PARAMS = {
     {group:'Резьба (крышка / штуцер)', key:'threadFlat', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland'], label:'Резьба: плоскость гребня/впадины (доля)', min:0, max:0.24, step:0.02, default:0.14, unit:''},
     {group:'Резьба (крышка / штуцер)', key:'threadHand', w:['cap','jar','stud','leadscrew','auger','corkscrew','bolt','nut','wingnut','gland','anchor'], label:'Резьба: направление', type:'select', default:'right',
       options:[{v:'right',t:'правая'},{v:'left',t:'левая'}]},
+    {group:'Резьба (крышка / штуцер)', key:'threadGasket', w:['cap'], label:'Крышка: канавка под манжету — Ø сечения (0 = без)', min:0, max:8, step:0.2, default:0, unit:'мм',
+      hint:'Печатная резьбовая пара не герметична сама по себе: витки ложатся слоями, между слоями остаются капилляры. Уплотняет манжета на ТОРЦЕ ГОРЛА, а не резьба. Радиус канавки следует из банки — середина кольца между расточкой и резьбой, — и задавать его руками нельзя: разъехался бы незаметно. Само кольцо предлагается в пару.'},
     {group:'Резьба (крышка / штуцер)', key:'threadWall', w:['cap','jar'], label:'Крышка: толщина стенки', min:1.2, max:8, step:0.1, default:2.5, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadTop', w:['cap'], label:'Крышка: толщина верха', min:1, max:10, step:0.1, default:2.5, unit:'мм'},
     // NB: this select used to be spelled `threadTop` as well — the same key as the slider above it, so the
@@ -6630,6 +6632,7 @@ function threadNeckSpec(p){
 // `seat(A, B, p)` places B — A and B are the two ROTATED bounding boxes, A already carrying the active
 // model's own position, so the answer is an absolute px/py/pz for the newcomer.
 function assemblyMate(p){
+  const gk = capGasketSpec(p);
   /* A colour label, on whatever shape it was put on: the same chain the coaster walks, one part per tone.
      It goes FIRST because it is asked for explicitly — a jar with a colour logo has both a cap and a set
      of inks to offer, and the one the person just switched on is the one they mean. Switch colour
@@ -6661,6 +6664,18 @@ function assemblyMate(p){
     over:{threadMode:'cap', threadD:nsp.D, threadPitch:nsp.pitch, threadLen:nsp.len,
           threadTopMode:'none', threadTop:2.5, threadFunnelD:0},
     seat:(A,B,S)=>({px:S.px, py:A.maxY - Math.max(1, nsp.len - seatGap(p)) - B.minY, pz:S.pz}) };
+  /* ЦЕПОЧКА ИЗ ТРЁХ, а не пара из двух. С канавкой под манжету у крышки появляется третья деталь, и
+     её нельзя ни выкинуть, ни оставить сбоку: без неё канавка бессмысленна, а размер кольца человеку
+     пришлось бы сводить руками по четырём числам. Поэтому крышка ведёт к манжете, манжета — к банке,
+     банка обратно к крышке. Манжета знает, откуда пришла, потому что параметры резьбы никуда не
+     делись: `over` их не стирает, а только накрывает своими. */
+  if (gk && gk.fits && p.sealMode && p.sealMode !== 'none')
+    return { name:'Банка', over:{sealMode:'none', threadMode:'jar'}, back:-1,
+      seat:(A,B,S)=>({px:S.px, py:S.py - B.maxY - 2, pz:S.pz}) };
+  if (th === 'cap' && gk && gk.fits)
+    return { name:'Манжета', back:-1,
+      over:{sealMode:'oring', sealSect:'d', sealD:gk.ringD, sealCord:gk.cord, sealW:0, sealSqueeze:Math.round(gk.sqActual)},
+      seat:(A,B,S)=>({px:S.px, py:(A.maxY - gk.top + gk.depth - gk.cord/2) - (B.minY + B.maxY)/2, pz:S.pz}) };
   if (th === 'cap') return { name:'Банка', over:{threadMode:'jar'}, back:-1,
     seat:(A,B,S)=>({px:S.px, py:A.minY + threadEngagement(p) - B.maxY, pz:S.pz}) };
   if (th === 'jar') return { name:'Крышка', over:{threadMode:'cap'}, back:+1,
@@ -10512,7 +10527,31 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); }
     const Rt=(y,r)=>{ const out=[]; for(let i=0;i<Nth;i++){ const a=th(i); out.push([r*Math.cos(a), y, r*Math.sin(a)]); } return out; };
     const cc=[0,boreDepth,0];                            // bore ceiling (underside of top slab)
-    if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); } }
+    /* КАНАВКА ПОД МАНЖЕТУ — ступенька в потолке, а не отдельное тело. Отдельным телом её пришлось бы
+       ВЫЧИТАТЬ, а это приложение вычитать не умеет вовсе: всё здесь строится сложением замкнутых
+       оболочек. Потолок и так строится веером из центра — веер заменяется профилем со ступенькой,
+       и лишним не становится ни один треугольник. */
+    const gk = (!funnel) ? capGasketSpec(p) : null;
+    if(gk && gk.fits){
+      const yC = boreDepth, prof = [[0, yC], [gk.rIn, yC], [gk.rIn, yC+gk.depth],
+                                    [gk.rOut, yC+gk.depth], [gk.rOut, yC]];
+      for(let s2=0;s2<prof.length-1;s2++){ const [r0,y0]=prof[s2], [r1,y1]=prof[s2+1];
+        const nr=y1-y0, ny=-(r1-r0);
+        for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, a0=th(i), a1=th(i2);
+          const A=[r0*Math.cos(a0),y0,r0*Math.sin(a0)], B=[r0*Math.cos(a1),y0,r0*Math.sin(a1)];
+          const C=[r1*Math.cos(a1),y1,r1*Math.sin(a1)], Dd=[r1*Math.cos(a0),y1,r1*Math.sin(a0)];
+          const cx=A[0]+B[0], cz=A[2]+B[2], rl=Math.max(1e-9, Math.hypot(cx,cz));
+          const ref=[nr*cx/rl, ny, nr*cz/rl];
+          if(Math.abs(r0)<1e-9 && Math.abs(r1)<1e-9) continue;
+          if(Math.abs(r0)<1e-9){ tris.push(orient([A,C,Dd],ref)); continue; }
+          if(Math.abs(r1)<1e-9){ tris.push(orient([A,B,C],ref)); continue; }
+          tris.push(orient([A,B,C],ref)); tris.push(orient([A,C,Dd],ref)); } }
+      for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, a0=th(i), a1=th(i2);
+        const A=[gk.rOut*Math.cos(a0),yC,gk.rOut*Math.sin(a0)], B=[gk.rOut*Math.cos(a1),yC,gk.rOut*Math.sin(a1)];
+        tris.push(orient([A,B,Vb(i2,Ny)],[0,-1,0]));
+        tris.push(orient([A,Vb(i2,Ny),Vb(i,Ny)],[0,-1,0])); }
+    }
+    else if(!funnel){ for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth; tris.push(orient([cc,Vb(i,Ny),Vb(i2,Ny)],[0,-1,0])); } }
     else { const ring=Rt(boreDepth, rThroat);            // ceiling becomes an annulus around the throat
       for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
         tris.push(orient([Vb(i,Ny),ring[i],ring[i2]],[0,-1,0]));
@@ -14492,6 +14531,22 @@ function prismXPolyTris(poly, x0, x1){
 const SEAL_SQ_MIN = 15, SEAL_SQ_MAX = 25;   // рекомендуемое сжатие статического уплотнения, %
 const SEAL_FILL = 0.75;                     // целевое заполнение канавки смятой резиной
 const SEAL_MIN_CORD = 1.2;                  // тоньше этого TPU печатать бессмысленно
+/* Площадь сечения манжеты названа ОДИН раз: по ней считается ширина канавки, и считает её теперь не
+   только само уплотнение, но и крышка банки, которая эту канавку в себе прорезает. Две копии одной
+   формулы разошлись бы молча — канавка в крышке перестала бы соответствовать кольцу, и заметить это
+   можно было бы только напечатав обе детали. */
+function sealSectionArea(sect, cord, w){
+  return sect === 'round' ? Math.PI*cord*cord/4
+       : sect === 'rect'  ? w*cord
+       : w*Math.max(0, cord - w/2) + Math.PI*w*w/8;      // D: прямая часть + полукруг сверху
+}
+// Канавка под манжету заданного сечения: глубина из сжатия, ширина — чтобы смятой резине было куда
+// растечься. Одна на всех, кто её считает.
+function sealGroove(sect, cord, w, sq){
+  const area = sealSectionArea(sect, cord, w);
+  const h = cord*(1 - sq/100);
+  return { area, h, w: h > 1e-6 ? area/(SEAL_FILL*h) : 0 };
+}
 /* ВИБРОНОЖКА СЧИТАЕТСЯ, А НЕ РИСУЕТСЯ. Опора «помягче» — не конструкция, а надежда: гасит не
    мягкость сама по себе, а СОБСТВЕННАЯ ЧАСТОТА системы «масса на пружине». Изоляция начинается
    только выше f₀·√2, а ниже неё опора не гасит, а УСИЛИВАЕТ — на резонансе в разы. Поэтому здесь
@@ -14556,12 +14611,9 @@ function sealSpec(p){
   const d1 = Math.max(1, p.sealD > 0 ? p.sealD : 30);          // внутренний Ø кольца
   const Rm = d1/2 + w/2;                                        // радиус середины сечения
   const sq = Math.max(5, Math.min(40, p.sealSqueeze > 0 ? p.sealSqueeze : 20));
-  // Площадь сечения — она и решает, какой ширины нужна канавка.
-  const area = sect === 'round' ? Math.PI*cord*cord/4
-             : sect === 'rect'  ? w*cord
-             : w*Math.max(0, cord - w/2) + Math.PI*w*w/8;       // D: прямая часть + полукруг сверху
-  const grooveH = cord*(1 - sq/100);
-  const grooveW = grooveH > 1e-6 ? area/(SEAL_FILL*grooveH) : 0;
+  // Площадь сечения и канавка — общей функцией: их же считает крышка банки, прорезающая эту канавку.
+  const gr = sealGroove(sect, cord, w, sq);
+  const area = gr.area, grooveH = gr.h, grooveW = gr.w;
   const flatShape = ['round','rect','roundrect'].indexOf(p.sealFlatShape) >= 0 ? p.sealFlatShape : 'round';
   const fD = Math.max(4, p.sealFlatD > 0 ? p.sealFlatD : 60);   // наружный размер по Z
   const fW = Math.max(4, p.sealFlatW > 0 ? p.sealFlatW : fD);   // по X (0 = как Z)
@@ -14641,6 +14693,50 @@ function sealFlatLoops(s){
       loops.push(ring(s.boltD/2, s.boltD/2, 24).map(q => [q[0]+cx, q[1]+cz]).reverse());
     }
   return loops;
+}
+/* МАНЖЕТА В КРЫШКУ. Печатная резьбовая пара не герметична сама по себе: витки ложатся слоями, между
+   слоями остаются капилляры, и банка «закрыта» ровно до первого наклона. Уплотняет не резьба, а
+   МАНЖЕТА НА ТОРЦЕ ГОРЛА — кольцо, которое крышка при затяжке прижимает к римке.
+
+   Радиус канавки не выбирается, а СЛЕДУЕТ ИЗ БАНКИ. Торец горла — кольцо между расточкой и внутренним
+   радиусом резьбы, то есть [minorR − стенка, minorR]; манжета садится на его середину. Оба числа
+   крышка знает: они у неё и у банки из одних параметров — тот же номинальный Ø, тот же шаг, та же
+   стенка. Если бы радиус задавался руками, разъехаться он мог бы совершенно незаметно: канавка есть,
+   кольцо есть, а прижимается оно к воздуху.
+
+   Глубина канавки — из того же сжатия 15–25 %, что и у отдельного кольца, и той же функцией: канавка
+   в крышке ОБЯЗАНА совпадать с кольцом, которое ей предлагается в пару. */
+function capGasketSpec(p){
+  const cord = Math.max(0, p.threadGasket > 0 ? p.threadGasket : 0);
+  if (cord <= 0) return null;
+  const D = Math.max(4, p.threadD || 30), P = Math.max(0.5, p.threadPitch || 3), majorR = D/2;
+  const h = (p.threadDepth > 0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
+  const minorR = Math.max(0.5, majorR - h);
+  const wall = Math.max(1.2, p.threadWall > 0 ? p.threadWall : 2.5);
+  const top  = Math.max(1.0, (typeof p.threadTop === 'number' && p.threadTop > 0) ? p.threadTop : 2.5);
+  const rG = minorR - wall/2;                                   // середина торца горла
+  const sq = Math.max(5, Math.min(40, p.sealSqueeze > 0 ? p.sealSqueeze : 20));
+  const g = sealGroove('d', cord, cord, sq);
+  /* Канавка не должна прорезать крышку насквозь: над потолком всего `top` миллиметров слаба, и
+     последние восемь десятых оставляются на то, чтобы там ещё был материал, а не плёнка. Если глубину
+     пришлось урезать, СЖАТИЕ ВЫХОДИТ БОЛЬШЕ ЗАКАЗАННОГО — и это считается и называется, а не молчит. */
+  const depth = Math.min(g.h, Math.max(0, top - 0.8));
+  const sqActual = (1 - depth/cord)*100;
+  /* ДВА ТРЕБОВАНИЯ, И ОНИ РАЗНЫЕ. Само КОЛЬЦО обязано лечь на торец горла — на кольцо между расточкой
+     и резьбой, [minorR − стенка, minorR]: то, что за его краем, прижимается к воздуху. А КАНАВКЕ быть
+     шире торца не только можно, но и нужно — это выемка в крышке, под ней материал не требуется, и
+     смятой резине надо куда растекаться. Спутать их значило бы запретить любое разумное сечение:
+     ширина канавки почти всегда больше стенки. Ограничение у канавки своё и другое — не вылезти за
+     потолок наружу, то есть не дойти до резьбы. */
+  const rimIn = minorR - wall, rimOut = minorR;
+  const rIn = Math.max(0.5, rG - g.w/2), rOut = Math.min(minorR - 0.2, rG + g.w/2);
+  const width = rOut - rIn;
+  const fill = (width > 1e-6 && depth > 1e-6) ? g.area/(width*depth) : Infinity;
+  const onRim = (rG - cord/2) >= rimIn - 1e-9 && (rG + cord/2) <= rimOut + 1e-9;
+  const fits = cord >= SEAL_MIN_CORD && depth > 0.2 && onRim && fill <= 1;
+  return { cord, rG, rIn, rOut, width, depth, want: g.h, gw: g.w, area: g.area, fill, sq, sqActual,
+           fits, onRim, tight: fill > 0.9, squeezed: depth < g.h - 1e-9,
+           minorR, wall, rimIn, rimOut, ringD: 2*rG - cord, top };
 }
 function buildSeal(p){
   const s = sealSpec(p);
@@ -25160,6 +25256,31 @@ function collectPrintWarnings(p){
   /* ДЕРЖАТЕЛЬ КАТУШКИ. Названо только то, чего человек не видит на экране: что деталей нужно две, что
      катушка поднялась выше заказанного, и что палец кронштейна не пролезет в ступицу. Остальное — его
      собственные числа, и повторять их значило бы заполнить предупреждения пересказом панели. */
+  if (p.threadMode === 'cap' && p.threadGasket > 0){
+    const gk = capGasketSpec(p);
+    if (!gk || gk.cord < SEAL_MIN_CORD)
+      w.push('манжета сечением ' + (p.threadGasket) + ' мм тоньше ' + SEAL_MIN_CORD
+           + ' мм — мягкий пластик печатается ниткой, а не стенкой; канавка не прорезана');
+    else if (!gk.onRim)
+      w.push('манжета Ø' + gk.cord + ' не ложится на торец горла (' + (2*gk.rimIn).toFixed(1) + '..'
+           + (2*gk.rimOut).toFixed(1) + ' мм по Ø): за краем торца она прижимается к воздуху. '
+           + 'Сечение не больше стенки горла (' + gk.wall + ' мм); канавка не прорезана');
+    else if (gk.fill > 1)
+      w.push('канавке не хватает места: смятой резине нужно ' + gk.area.toFixed(1) + ' мм², а в канавке '
+           + (gk.width*gk.depth).toFixed(1) + ' мм². Резине некуда растечься, и она разорвёт крышку. '
+           + 'Толще крышку сверху (сейчас ' + gk.top + ' мм) или тоньше манжету; канавка не прорезана');
+    else {
+      w.push('манжета: кольцо Ø' + gk.ringD.toFixed(1) + ' сечением ' + gk.cord + ' мм, D-образное — '
+           + 'она и предлагается в пару. Уплотняет она, а не резьба: витки ложатся слоями, и между '
+           + 'слоями остаются капилляры');
+      if (gk.squeezed)
+        w.push('канавка урезана до ' + gk.depth.toFixed(2) + ' мм крышкой в ' + gk.top
+             + ' мм — сжатие вышло ' + Math.round(gk.sqActual) + ' % вместо ' + Math.round(gk.sq) + ' %');
+      if (gk.tight)
+        w.push('канавка заполнена смятой резиной на ' + Math.round(gk.fill*100)
+             + ' % — растекаться почти некуда; надёжнее сечение поменьше');
+    }
+  }
   if (p.sealMode && p.sealMode !== 'none'){
     const ss = sealSpec(p);
     if (ss.mode === 'oring'){

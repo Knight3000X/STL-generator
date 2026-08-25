@@ -163,6 +163,129 @@ console.log('=== jar: плечо из материала, а не из возд�
    НИЖЕ дна. Банка при этом остаётся герметичной, объём положителен, кольцо под горлом сплошное —
    и все проверки выше молчат: они спрашивают про плечо, а схлопывается полость. Мутация «убрать
    зажим» прошла сквозь них насквозь, поэтому здесь спрашивается прямо: полость есть? */
+/* МАНЖЕТА В КРЫШКЕ. Печатная резьбовая пара не герметична сама по себе: витки ложатся слоями, между
+   слоями остаются капилляры, и банка «закрыта» ровно до первого наклона. Уплотняет манжета на ТОРЦЕ
+   ГОРЛА. Проверяется здесь то, что разъезжается тихо:
+
+     1. РАДИУС КАНАВКИ СЛЕДУЕТ ИЗ БАНКИ, а не задаётся. Торец горла — кольцо между расточкой и резьбой;
+        манжета садится на его середину. Задавай его руками — и он разъехался бы незаметно: канавка
+        есть, кольцо есть, а прижимается оно к воздуху.
+     2. КАНАВКЕ ШИРЕ ТОРЦА БЫТЬ МОЖНО И НУЖНО, а кольцу — нельзя. Это разные требования, и спутать их
+        значит либо запретить любое разумное сечение, либо пустить кольцо мимо торца.
+     3. КАНАВКА НЕ ДОЛЖНА ПРОРЕЗАТЬ КРЫШКУ НАСКВОЗЬ, а урезанная глубина меняет сжатие — и кольцу в
+        пару отдаётся ДОСТИГНУТОЕ сжатие, а не заказанное.
+     4. НЕГОДНАЯ КАНАВКА НЕ РЕЖЕТСЯ МОЛЧА — как и болтовые отверстия прокладки. */
+console.log('=== крышка: канавка под манжету ===');
+{
+  const gk = ov => capGasketSpec(Object.assign({}, base.p || {}, {}, Object.assign({threadMode:'cap'}, ov)));
+  const G = ov => capGasketSpec(Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov));
+  const Vc = ov => vol(base(Object.assign({threadMode:'cap'}, ov)));
+  chk('без параметра канавки нет вовсе', G({}) === null);
+  const g = G({threadGasket:2});
+  chk('канавка стоит на середине торца горла',
+      Math.abs(g.rG - (g.minorR - g.wall/2)) < 1e-9, {rG:g.rG, minorR:g.minorR, стенка:g.wall});
+  chk('и торец — это кольцо между расточкой и резьбой',
+      Math.abs(g.rimIn - (g.minorR - g.wall)) < 1e-9 && Math.abs(g.rimOut - g.minorR) < 1e-9);
+  /* Радиус ОБЯЗАН ехать за резьбой и за стенкой. Жёстко вписанное число выглядело бы верным на
+     умолчаниях и молча мимо — на любом другом Ø. */
+  chk('радиус едет за номинальным Ø', G({threadGasket:2, threadD:60}).rG > G({threadGasket:2, threadD:30}).rG + 10);
+  chk('и за толщиной стенки', G({threadGasket:2, threadWall:5}).rG < G({threadGasket:2, threadWall:2.5}).rG);
+  chk('и за шагом (шаг меняет глубину профиля, а с ней внутренний радиус резьбы)',
+      G({threadGasket:2, threadPitch:1.5}).rG !== G({threadGasket:2, threadPitch:5}).rG);
+  chk('САМО КОЛЬЦО ложится на торец целиком',
+      g.rG - g.cord/2 >= g.rimIn - 1e-9 && g.rG + g.cord/2 <= g.rimOut + 1e-9,
+      {кольцо:[+(g.rG-g.cord/2).toFixed(2), +(g.rG+g.cord/2).toFixed(2)], торец:[+g.rimIn.toFixed(2), +g.rimOut.toFixed(2)]});
+  chk('а КАНАВКА при этом шире торца — и так и должно быть',
+      g.width > g.wall, {канавка:+g.width.toFixed(2), торец:+g.wall.toFixed(2)});
+  chk('и не доходит до резьбы', g.rOut <= g.minorR - 0.2 + 1e-9, {rOut:+g.rOut.toFixed(2), minorR:+g.minorR.toFixed(2)});
+  chk('и не прорезает крышку насквозь', g.depth <= g.top - 0.8 + 1e-9, {глубина:g.depth, крышка:g.top});
+}
+console.log('=== крышка: канавка действительно вынута, и ровно своего объёма ===');
+{
+  const G = ov => capGasketSpec(Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov));
+  const Vc = ov => vol(base(Object.assign({threadMode:'cap'}, ov)));
+  const g = G({threadGasket:2});
+  const cut = Vc({}) - Vc({threadGasket:2});
+  const want = Math.PI*(g.rOut*g.rOut - g.rIn*g.rIn)*g.depth;
+  chk('вынуто ровно кольцо канавки', Math.abs(cut - want) < want*0.02,
+      {вынуто:+cut.toFixed(1), кольцо:+want.toFixed(1)});
+  chk('и крышка осталась герметичной', manifoldCheck(base({threadMode:'cap', threadGasket:2}), 4).watertight);
+  for (const [D, cord] of [[16, 1.4], [30, 2], [60, 2], [120, 2.5]]){
+    const t = base({threadMode:'cap', threadD:D, threadGasket:cord});
+    chk('крышка Ø'+D+' с манжетой '+cord+' герметична (+объём)',
+        manifoldCheck(t, 4).watertight && vol(t) > 0);
+  }
+}
+console.log('=== крышка: негодная канавка не режется и названа ===');
+{
+  const Vc = ov => vol(base(Object.assign({threadMode:'cap'}, ov)));
+  const W = ov => collectPrintWarnings(Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov)) || [];
+  const G = ov => capGasketSpec(Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov));
+  chk('слишком тонкая манжета: канавки нет', Math.abs(Vc({threadGasket:1}) - Vc({})) < 1e-6);
+  chk('  и сказано, почему', W({threadGasket:1}).some(x => /ниткой/i.test(x)), W({threadGasket:1}));
+  chk('мимо торца: канавки нет', Math.abs(Vc({threadGasket:3}) - Vc({})) < 1e-6);
+  chk('  и сказано, почему', W({threadGasket:3}).some(x => /не ложится на торец/i.test(x)), W({threadGasket:3}));
+  chk('  и это именно про торец, а не про глубину', !G({threadGasket:3}).onRim);
+  /* Резине некуда растечься — канавка заполнена больше чем на сто процентов. Отдельный отказ, и он
+     не совпадает с предыдущим: бывает сечение, которое НА ТОРЕЦ ложится, а в канавку не помещается. */
+  const over = G({threadGasket:2, threadTop:1.2});
+  chk('канавке не хватает места: канавки нет', over.fill > 1 && !over.fits, {заполнение:+over.fill.toFixed(2)});
+  chk('  и сказано, почему', W({threadGasket:2, threadTop:1.2}).some(x => /некуда растечься/i.test(x)),
+      W({threadGasket:2, threadTop:1.2}));
+  chk('  и объём крышки при этом не тронут',
+      Math.abs(Vc({threadGasket:2, threadTop:1.2}) - Vc({threadTop:1.2})) < 1e-6);
+  chk('годная канавка ни на что не жалуется',
+      !W({threadGasket:2}).some(x => /не прорезана|некуда растечься/i.test(x)), W({threadGasket:2}));
+  chk('а размер кольца называет всегда', W({threadGasket:2}).some(x => /кольцо Ø/i.test(x)));
+}
+console.log('=== крышка: манжета идёт в пару, и это цепочка из трёх ===');
+{
+  const P = ov => Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov);
+  const m1 = assemblyMate(P({threadGasket:2}));
+  chk('крышка с канавкой ведёт к манжете', m1 && m1.name === 'Манжета', m1 && m1.name);
+  chk('и манжета — это кольцо ровно того сечения', m1.over.sealCord === 2 && m1.over.sealSect === 'd', m1.over);
+  const g = capGasketSpec(P({threadGasket:2}));
+  /* Кольцо задаётся ВНУТРЕННИМ Ø, а сесть должно серединой на торец: середина = внутренний радиус
+     плюс полсечения. Сойтись это обязано с точностью до нуля, а не «примерно». */
+  chk('и внутренний Ø такой, что середина кольца попадает на середину торца',
+      Math.abs((m1.over.sealD/2 + m1.over.sealCord/2) - g.rG) < 1e-9,
+      {середина:m1.over.sealD/2 + m1.over.sealCord/2, торец:g.rG});
+  const ring = Object.assign({}, P({threadGasket:2}), m1.over);
+  chk('манжета строится и она — уплотнение, а не крышка', dominantMode(ring) === 'seal');
+  const rs = sealSpec(ring);
+  chk('и её собственный расчёт даёт ту же середину', Math.abs(rs.Rm - g.rG) < 1e-9, {кольцо:rs.Rm, торец:g.rG});
+  const m2 = assemblyMate(ring);
+  chk('манжета ведёт к банке', m2 && m2.name === 'Банка', m2 && m2.name);
+  const jar = Object.assign({}, ring, m2.over);
+  const m3 = assemblyMate(jar);
+  chk('а банка обратно к крышке — цепочка замкнулась', m3 && m3.name === 'Крышка', m3 && m3.name);
+  chk('без канавки цепочка прежняя, из двух', assemblyMate(P({})).name === 'Банка');
+}
+console.log('=== крышка: урезанная глубина меняет сжатие, и это сказано ===');
+{
+  const P = ov => Object.assign(defaultBoxParams(), {threadMode:'cap'}, ov);
+  const G = ov => capGasketSpec(P(ov));
+  const W = ov => collectPrintWarnings(P(ov)) || [];
+  const full = G({threadGasket:2, threadTop:6});
+  chk('толстая крышка даёт заказанную глубину', !full.squeezed && Math.abs(full.sqActual - full.sq) < 1e-9,
+      {достигнуто:+full.sqActual.toFixed(1), заказано:full.sq});
+  /* УРЕЗАНИЕ И ПЕРЕПОЛНЕНИЕ — РАЗНЫЕ ОТКАЗЫ, и приставка не должна попадать сразу в оба. На крышке
+     Ø30 сечение 2.4 и урезается по глубине, И не влезает по площади: канавка не режется вовсе, и
+     проверять на ней «сжатие вышло больше» нечего — манжеты просто нет. Крышка Ø60 со стенкой 4 даёт
+     чистый случай: глубину урезало, а места хватило. */
+  const CUT = {threadGasket:2.4, threadTop:2.5, threadD:60, threadWall:4};
+  const cut = G(CUT);
+  chk('тонкая крышка урезает глубину', cut.squeezed && cut.depth < cut.want,
+      {глубина:+cut.depth.toFixed(2), хотели:+cut.want.toFixed(2)});
+  chk('  и канавка при этом всё-таки годна', cut.fits, {заполнение:+cut.fill.toFixed(2), наторце:cut.onRim});
+  chk('  и сжатие выходит БОЛЬШЕ заказанного', cut.sqActual > cut.sq, {достигнуто:+cut.sqActual.toFixed(1), заказано:cut.sq});
+  chk('  и об этом сказано', W(CUT).some(x => /урезана/i.test(x)), W(CUT));
+  /* КОЛЬЦУ ОТДАЁТСЯ ДОСТИГНУТОЕ СЖАТИЕ, а не заказанное. Иначе кольцо посчитает себе канавку, какой
+     в крышке нет, и человек прочтёт в двух местах два разных числа про одну деталь. */
+  const m = assemblyMate(P(CUT));
+  chk('и кольцу в пару отдано ДОСТИГНУТОЕ сжатие', m && m.over.sealSqueeze === Math.round(cut.sqActual),
+      {кольцу:m && m.over.sealSqueeze, достигнуто:Math.round(cut.sqActual), заказано:cut.sq});
+}
 console.log('=== jar: полость не схлопывается на низкой толстостенной банке ===');
 for (const [H, wall] of [[5,8],[5,2.5],[12,8],[30,8]]){
   const t=base({threadMode:'jar',threadD:30,threadBodyH:H,threadWall:wall});

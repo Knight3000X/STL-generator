@@ -1185,7 +1185,7 @@
       <div class="stats-row"><span class="k">Габариты (Ш×В×Г)</span><span class="v mono" id="stat-size">—</span></div>
       <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
       <div class="stats-row"><span class="k">Объём детали</span><span class="v mono" id="stat-volume">—</span></div>
-      <div class="stats-row"><span class="k">Вес (PLA / PETG)</span><span class="v mono" id="stat-weight">—</span></div>
+      <div class="stats-row"><span class="k" id="stat-weight-k">Вес (PLA)</span><span class="v mono" id="stat-weight">—</span></div>
       <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
       <div class="stats-row"><span class="k">Нависания &gt;45°</span><span class="v mono" id="stat-overhang">—</span></div>
       <div class="stats-row"><span class="k">Печатаемость</span><span class="v mono" id="stat-printable">—</span></div>
@@ -1244,7 +1244,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v23.5.1';
+const APP_VERSION = 'v23.6.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3459,9 +3459,53 @@ function assemblyPalette(){
   }
   return { colors: ink.colors, names: ink.names, use, bodies: ink.bodies };
 }
-/* ПЛОТНОСТЬ ФИЛАМЕНТА, г/см³. Названа один раз: по этим же числам считается вес всей сборки в
-   статистике и вес каждого слота в палитре, а два места с одной константой расходятся молча. */
-const FIL_G_CM3 = { pla: 1.24, petg: 1.27 };
+/* ФИЛАМЕНТ В ЧИСЛАХ. До сих пор материал был у генератора ТОЛЬКО СОВЕТОМ: PRINT_MATERIALS честно
+   рассказывал, что нейлон вязкий, а ASA не боится солнца, — и ни одно число в геометрии от этого не
+   менялось. Плотностей было две из десяти, так что вес на TPU, ABS и нейлоне просто врал; допуск
+   посадки был один на все материалы сразу; усадки не было вовсе, при том что на нейлоне она
+   полтора процента и резьбовая пара, посчитанная на PLA, в нейлоне уже не свинчивается.
+
+   Здесь материал становится числом, и чисел ровно три: плотность (г/см³ — по ней вес сборки и вес
+   каждого слота палитры), усадка (%, при остывании) и поправка посадки (мм). Каждое названо ОДИН
+   раз: два места с одной константой расходятся молча.
+
+   Плотности — паспортные, с оговорками там, где семейство неоднородно: ABS 1.04 и ASA 1.07 сведены
+   к 1.05, нейлон разбегается от PA12 1.01 до PA6 1.14 и сведён к 1.10. Точнее одной сотой здесь
+   не нужно: оценка всё равно считает СПЛОШНОЙ объём, а печатают с заполнением. */
+const FIL_MAT = {
+  pla:     {g:1.24, shrink:0.2, fit: 0.00, t:'PLA'},
+  plaplus: {g:1.24, shrink:0.3, fit: 0.00, t:'PLA+ / Tough PLA'},
+  petg:    {g:1.27, shrink:0.4, fit:+0.05, t:'PETG'},
+  abs:     {g:1.05, shrink:0.7, fit:+0.05, t:'ABS / ASA'},
+  tpu:     {g:1.21, shrink:0.6, fit:-0.15, t:'TPU (гибкий)'},
+  tpe:     {g:1.20, shrink:0.8, fit:-0.20, t:'TPE / TPC'},
+  nylon:   {g:1.10, shrink:1.2, fit:+0.10, t:'PA (нейлон)'},
+  pacf:    {g:1.17, shrink:0.4, fit:+0.10, t:'PA-CF (нейлон с углем)'},
+  pc:      {g:1.20, shrink:0.7, fit:+0.05, t:'PC (поликарбонат)'},
+  cf:      {g:1.25, shrink:0.2, fit:+0.10, t:'PLA-CF / PETG-CF'},
+};
+/* Старое имя оставлено и СЧИТАЕТСЯ из таблицы, а не пишется рядом. Две таблицы плотностей разошлись бы
+   ровно так же, как расходятся два места с одной константой, — только тише. */
+const FIL_G_CM3 = Object.fromEntries(Object.entries(FIL_MAT).map(([k, v]) => [k, v.g]));
+function matKey(p){ return (p && FIL_MAT[p.printMat]) ? p.printMat : 'pla'; }
+function matDensity(p){ return FIL_MAT[matKey(p)].g; }
+/* КОМПЕНСАЦИЯ УСАДКИ — РАЗНИЦА, а не сама усадка. Отсчёт от PLA не произвол: все допуски этого
+   приложения выверены на PLA-печати, и «как нарисовано» здесь всегда означало «как выйдет в PLA».
+   Поэтому на PLA множитель равен ровно единице и ни один существующий размер не съезжает от
+   появления этой таблицы, а ABS получает свои недостающие полпроцента.
+   Выключатель нужен: слайсеры и прошивки некоторых принтеров компенсируют усадку сами, и две
+   компенсации подряд — это уже не точность, а перебор в ту же сторону. */
+function matShrinkScale(p){
+  if (!p || p.matShrink === false) return 1;
+  return 1 + (FIL_MAT[matKey(p)].shrink - FIL_MAT.pla.shrink)/100;
+}
+/* ПОСАДКА — другое дело, и путать её с усадкой нельзя. Усадка тянет ВСЮ деталь, поэтому две детали
+   из одного материала после неё всё так же друг к другу подходят. Посадка правит зазор там, где
+   ответная часть НЕ печатается (болт, подшипник, труба) или где материал ведёт себя не как пластик:
+   TPU сминается при затяжке, и номинальный зазор в резине означает болтанку; нейлон разбухает от
+   влаги уже после печати; наполненные углем печатают чуть шире номинала — волокно не даёт струе
+   сойтись. */
+function matFitBias(p){ return FIL_MAT[matKey(p)].fit - FIL_MAT.pla.fit; }
 /* СКОЛЬКО КАКОГО ЦВЕТА. Панель говорила, КАКИЕ филаменты нужны сборке; чего она не говорила — сколько
    каждого, а именно этот ответ нужен, пока катушки ещё только покупают.
 
@@ -3505,7 +3549,7 @@ function assemblyGrams(){
     });
   }
   return { colors: pal.colors, names: pal.names, use: pal.use, cc,
-           g: cc.map(x => x*FIL_G_CM3.pla), total: cc.reduce((a, x) => a + x, 0) };
+           g: cc.map(x => x*matDensity(paramState.box)), total: cc.reduce((a, x) => a + x, 0) };
 }
 /* Партии. Жадно и по убыванию «цветастости»: самое требовательное тело кладётся первым, дальше каждое
    следующее — в первую партию, которой оно не сломает лимит. Это ЭВРИСТИКА, а не доказанный минимум, и
@@ -5306,8 +5350,8 @@ const SHAPE_PARAMS = {
     {group:'Защёлка-консоль', key:'snapRetAngle', w:['snap'], label:'Защёлка: угол удержания α₂ (90 = неразъёмная)', min:30, max:90, step:1, default:45, unit:'°'},
     {group:'Защёлка-консоль', key:'snapBaseT', w:['snap'], label:'Защёлка: толщина основания', min:2, max:20, step:0.5, default:3, unit:'мм'},
     {group:'Защёлка-консоль', key:'snapTaper', w:['snap'], label:'Защёлка: сужать консоль к концу (даёт 1.64× прогиба)', type:'bool', default:true},
-    {group:'Защёлка-консоль', key:'snapMat', w:['snap'], label:'Защёлка: материал (модуль и допустимая деформация)', type:'select', default:'pla',
-      options:[{v:'pla',t:'PLA (2600 МПа, 2.5 %)'},{v:'petg',t:'PETG (2100 МПа, 4 %)'},{v:'abs',t:'ABS (2200 МПа, 5 %)'},{v:'nylon',t:'нейлон (1700 МПа, 8 %)'}]},
+    {group:'Защёлка-консоль', key:'snapMat', w:['snap'], label:'Защёлка: материал (модуль и допустимая деформация)', type:'select', default:'auto',
+      options:[{v:'auto',t:'как материал печати'},{v:'pla',t:'PLA (2600 МПа, 2.5 %)'},{v:'petg',t:'PETG (2100 МПа, 4 %)'},{v:'abs',t:'ABS (2200 МПа, 5 %)'},{v:'nylon',t:'нейлон (1700 МПа, 8 %)'}]},
     {group:'Петля (печать в сборе)', key:'pipLen', w:['flat','box'], label:'Петля: длина (вдоль оси штифта)', min:15, max:300, step:1, default:60, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafW', w:['flat','box'], label:'Петля: ширина каждого листа', min:6, max:120, step:1, default:22, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLeafT', w:['flat','box'], label:'Петля: толщина листа (= Ø узла)', min:2, max:16, step:0.5, default:6, unit:'мм'},
@@ -5337,8 +5381,8 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipBattLen', w:['box'], only:{pipBattType:['custom']}, label:'Футляр: длина элемента (свой размер)', min:5, max:140, step:0.5, default:50.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipBattClear', w:['box'], only:{pipBoxKind:['batt']}, label:'Футляр: зазор посадки элемента', min:0, max:1.5, step:0.05, default:0.4, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipLatchN', w:['box'], label:'Футляр: число защёлок (0 = без)', min:0, max:6, step:1, default:2, unit:'', int:true},
-    {group:'Петля (печать в сборе)', key:'pipLatchMat', w:['box'], label:'Футляр: материал (для расчёта защёлки)', type:'select', default:'petg',
-      options:[{v:'petg',t:'PETG'},{v:'pla',t:'PLA'},{v:'abs',t:'ABS'},{v:'nylon',t:'нейлон'}],
+    {group:'Петля (печать в сборе)', key:'pipLatchMat', w:['box'], label:'Футляр: материал (для расчёта защёлки)', type:'select', default:'auto',
+      options:[{v:'auto',t:'как материал печати'},{v:'petg',t:'PETG'},{v:'pla',t:'PLA'},{v:'abs',t:'ABS'},{v:'nylon',t:'нейлон'}],
       hint:'Длина язычка не рисуется, а считается из допустимой деформации материала: ε = 1.5·y·t/L². У PLA она вдвое ниже, чем у PETG, поэтому язычок под него выходит длиннее при том же заходе.'},
     {group:'Петля (печать в сборе)', key:'pipLatchW', w:['box'], label:'Футляр: ширина защёлки', min:7, max:60, step:1, default:14, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipBoxH', w:['box'], label:'Коробка: высота бортика лотка', min:2, max:60, step:1, default:12, unit:'мм'},
@@ -6071,6 +6115,15 @@ const SHAPE_PARAMS = {
       options:[{v:'none',t:'нет'},{v:'body',t:'тело (карман под логотип)'},
                {v:'ink1',t:'AMS: цвет 1'},{v:'ink2',t:'AMS: цвет 2'},{v:'ink3',t:'AMS: цвет 3'},
                {v:'ink4',t:'AMS: цвет 4'},{v:'ink5',t:'AMS: цвет 5'},{v:'ink6',t:'AMS: цвет 6'}]},
+    /* МАТЕРИАЛ — ОДИН НА МОДЕЛЬ. Он и раньше был у приложения в двух местах: в подсказках
+       (PRINT_MATERIALS — что это и куда годится) и в расчёте защёлки (SNAP_MATERIALS — модуль и
+       допустимая деформация). Два выбора материала на одну деталь разошлись бы обязательно, поэтому
+       здесь он один, а расчёт защёлки берёт свой материал отсюда, если тот ему известен. */
+    {group:'Допуски печати', key:'printMat', label:'Материал печати (плотность, усадка, посадка)', type:'select', default:'pla',
+      options:[{v:'pla',t:'PLA'},{v:'plaplus',t:'PLA+ / Tough PLA'},{v:'petg',t:'PETG'},{v:'abs',t:'ABS / ASA'},
+               {v:'tpu',t:'TPU (гибкий)'},{v:'tpe',t:'TPE / TPC'},{v:'nylon',t:'PA (нейлон)'},
+               {v:'pacf',t:'PA-CF (нейлон с углем)'},{v:'pc',t:'PC (поликарбонат)'},{v:'cf',t:'PLA-CF / PETG-CF'}]},
+    {group:'Допуски печати', key:'matShrink', label:'Компенсировать усадку материала (выключить, если её компенсирует слайсер)', type:'bool', default:true},
     {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
@@ -9759,7 +9812,7 @@ function augerProfile(t, duty, rampDuty){
 // Global print-fit trim: ONE slider that nudges every mating clearance at once. Printers vary far more than
 // designs do, so calibrating this once beats hand-editing five separate numbers on every model. Applied where
 // each clearance is read; each site still clamps to its own valid range afterwards.
-function fitTuned(p, v){ return Math.max(0, v + (p.fitTune||0)); }
+function fitTuned(p, v){ return Math.max(0, v + (p.fitTune||0) + matFitBias(p)); }
 /* Дюбель целиком — ОДНА поверхность вращения с винтовым витком, вывернутая наизнанку по полости.
    Ни одного вычитания: наружная оболочка и полость строятся как два кольцевых столбика станций
    (y, радиусы по углу), сшитых полосами, и закрываются тремя крышками. Шлиц при этом не «вырезан» в
@@ -11958,7 +12011,7 @@ function clamshellSpec(p){
      и футляр выходил повёрнутым задом наперёд относительно всех прочих форм. Знак здесь один на всю
      деталь: за ним идут и косынки, и перемычки крышки, а зацепы защёлки становятся на +Z. */
   const axZ    = -(dep/2 + rB + 0.2);
-  const mat    = SNAP_MATERIALS[p.pipLatchMat] || SNAP_MATERIALS.petg;
+  const mat    = snapMatOf(p, 'pipLatchMat', 'petg');
   /* ЯЗЫЧОК СУЖАЕТСЯ К КОНЧИКУ, и это не косметика. Прямая консоль копит всю деформацию у корня, и корень
      же был у неё СТУПЕНЬКОЙ — прямым внутренним углом там, где язычок отходит от плеча. Ступенька на
      растянутой стороне это концентратор: трещина начинается ровно в ней, и никакая расчётная деформация
@@ -12227,13 +12280,28 @@ const SNAP_MATERIALS = {                       // E (МПа), allowable strain (
   pla:  {E:2600, eps:2.5, t:'PLA'},   petg: {E:2100, eps:4.0, t:'PETG'},
   abs:  {E:2200, eps:5.0, t:'ABS'},   nylon:{E:1700, eps:8.0, t:'нейлон'},
 };
+/* ОДИН ВЫБОР МАТЕРИАЛА НА ДЕТАЛЬ. Расчётов, которым нужен материал, теперь два — усадка с посадкой
+   и прогиб защёлки, — и таблицы у них разные: одной нужна плотность, другой модуль упругости.
+   Разными могут быть таблицы, но не ВЫБОР: человек, поставивший нейлон в допусках и забывший
+   переставить его в защёлке, получил бы деталь, посчитанную наполовину в одном материале,
+   наполовину в другом, и ни одна проверка не сказала бы ему об этом.
+   Поэтому у обеих защёлок материал по умолчанию «как у печати», а собственный выбор оставлен:
+   бывает и так, что защёлку печатают отдельно и другим пластиком. Своё имя всегда сильнее общего.
+   Общий материал, которого таблица прогиба не знает (TPU, PC, наполненные), к ней и не попадает —
+   у неё остаётся её собственное умолчание, названное здесь, а не угаданное. */
+function snapMatOf(p, own, dflt){
+  const v = p && p[own];
+  if (v && v !== 'auto' && SNAP_MATERIALS[v]) return SNAP_MATERIALS[v];
+  const m = matKey(p);
+  return SNAP_MATERIALS[m] || SNAP_MATERIALS[dflt];
+}
 function snapSpec(p){
   const L = Math.max(4, p.snapLen>0 ? p.snapLen : 20);
   const t = Math.max(0.6, p.snapT>0 ? p.snapT : 2);
   const w = Math.max(2, p.snapW>0 ? p.snapW : 8);
   const y = Math.max(0.2, p.snapUndercut>0 ? p.snapUndercut : 1.2);
   const taper = !!p.snapTaper;
-  const m = SNAP_MATERIALS[p.snapMat] || SNAP_MATERIALS.pla;
+  const m = snapMatOf(p, 'snapMat', 'pla');
   const a1 = Math.max(10, Math.min(60, p.snapLeadAngle>0 ? p.snapLeadAngle : 30));
   const a2 = Math.max(30, Math.min(90, p.snapRetAngle>0 ? p.snapRetAngle : 45));
   const eps = 100 * 1.5*y*t/(L*L) / (taper ? 1.64 : 1);           // % strain at the root
@@ -22548,7 +22616,22 @@ function bevelledMesh(tris, p){
   }
   return merged;
 }
+/* УСАДКА ПРИМЕНЯЕТСЯ ОДИН РАЗ И СНАРУЖИ. У построителя ниже с десяток точек выхода — литофания,
+   плита Gridfinity, замороженная сетка, цветные пробки, — и множитель, расставленный по ним всем,
+   рано или поздно разошёлся бы: одна ветка осталась бы без него, и деталь в ABS выходила бы
+   правильного размера отовсюду, кроме одного случая. Здесь построитель обёрнут, и выход у обёртки
+   ровно один.
+
+   Замороженные сетки (образец трубы, ствол шнека) масштабируются ВМЕСТЕ с деталью намеренно: они
+   изображают то, ВО ЧТО деталь садится, и в предпросмотре пары обязаны остаться с ней в одном
+   масштабе, иначе картинка соврёт про посадку. Настоящая труба, разумеется, не усаживается — но
+   она и не печатается, а её номинал живёт в параметрах, а не в этой сетке. */
 function buildTrisForShape(shape, p) {
+  const k = matShrinkScale(p);
+  const t = buildTrisForShapeUnscaled(shape, p);
+  return k === 1 ? t : t.map(T => T.map(v => [v[0]*k, v[1]*k, v[2]*k]));
+}
+function buildTrisForShapeUnscaled(shape, p) {
   if (p && p.importId != null && importedMeshes.has(p.importId)) return bevelledMesh(snapWeldTris(scaleImportedMesh(importedMeshes.get(p.importId), p)), p);
   if (p && p.frozenId != null && frozenMeshes.has(p.frozenId)) return frozenMeshes.get(p.frozenId);
   if (shape === 'box') p = normalizeBoxParams(p);
@@ -25720,11 +25803,18 @@ function meshVolume(tris){
 // time from a typical 0.4mm-nozzle throughput ≈ 12 г/ч at 0.2mm layers. Order-of-magnitude only.
 function updatePrintStats(tris){
   const cc = meshVolume(tris)/1000; // см³
-  const gPLA = cc*FIL_G_CM3.pla, gPETG = cc*FIL_G_CM3.petg, hours = gPLA/12;
+  /* Вес считается по ВЫБРАННОМУ материалу. Жёсткая пара «PLA / PETG» была понятна ровно до тех пор,
+     пока материал ни на что не влиял: выбрав нейлон, человек всё равно читал вес в PLA. Второй
+     цифрой остаётся PLA как привычная точка отсчёта — но только когда выбран не он. */
+  const mk = matKey(paramState.box), gSel = cc*FIL_MAT[mk].g, gPLA = cc*FIL_G_CM3.pla, hours = gPLA/12;
   const volEl = document.getElementById('stat-volume');
   if (!volEl) return;
   volEl.textContent = cc >= 100 ? cc.toFixed(0)+' см³' : cc.toFixed(2)+' см³';
-  document.getElementById('stat-weight').textContent = '≈ '+gPLA.toFixed(gPLA<10?1:0)+' / '+gPETG.toFixed(gPETG<10?1:0)+' г';
+  const wRow = document.getElementById('stat-weight-k');
+  if (wRow) wRow.textContent = mk === 'pla' ? 'Вес (PLA)' : 'Вес ('+FIL_MAT[mk].t+' / PLA)';
+  document.getElementById('stat-weight').textContent = mk === 'pla'
+    ? '≈ '+gSel.toFixed(gSel<10?1:0)+' г'
+    : '≈ '+gSel.toFixed(gSel<10?1:0)+' / '+gPLA.toFixed(gPLA<10?1:0)+' г';
   const hh = Math.floor(hours), mm = Math.round((hours-hh)*60);
   document.getElementById('stat-time').textContent = hours < 1/60 ? '<1 мин' : '≈ '+(hh>0? hh+' ч ':'')+mm+' мин';
   // overhangs (of the CURRENT on-screen orientation) + thin-feature warnings

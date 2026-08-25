@@ -72,8 +72,8 @@ add test_sw.js test_sw.js
 # time: with a fixed pool, total wall time is bounded below by the single longest file, so starting it last
 # leaves three idle cores waiting on it. Re-sort this list if the timings in the summary line drift.
 # Последний замер (8 воркеров): paramrows 631s, wormwheel 544s, vase 429s, keycap 410s, slice 354s,
-# thread 311s, gear 254s — дальше меньше 175s.
-for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_slice.js test_thread.js test_gear.js \
+# thread 311s, gear 254s, drilljig 121s — дальше меньше 175s.
+for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_slice.js test_thread.js test_gear.js test_drilljig.js \
           test_frame.js test_tile.js test_ball.js test_clock.js test_spool.js test_lampshade.js test_ballneck.js test_ballsplit.js test_battery.js test_hook_styles.js test_funnel.js test_squircle.js test_poly.js test_funnel_cap.js test_winding.js \
           test_cycloidal.js test_leadscrew.js test_bevelpair.js test_neck_adapter.js test_auger.js test_corkscrew.js test_spring.js \
           test_barb.js test_snap.js test_balljoint.js test_chain.js test_livinghinge.js test_telescope.js test_energy.js \
@@ -88,7 +88,7 @@ for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_sl
           test_scoop.js test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js test_grip.js \
           test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js test_textures.js test_pbox.js \
           test_gridfinity.js test_hook.js test_hexshelf.js test_clips.js test_hole_patterns.js test_hinge.js test_print_check.js test_wallorg.js \
-          test_svg_hole.js test_baseplate.js test_import.js test_3mf.js test_palette.js test_arrange.js test_drilljig.js test_gclamp.js test_material.js test_seal.js; do
+          test_svg_hole.js test_baseplate.js test_import.js test_3mf.js test_palette.js test_arrange.js test_gclamp.js test_material.js test_seal.js; do
   add "$t" stub_preamble.js "$LIB" "$t"
 done
 

@@ -19,6 +19,21 @@
 //      грани, и проверка герметичности их не видит: она сшивает рёбра, а у совпадающей пары все рёбра
 //      парны.
 //
+//   5. НАКЛОННЫЙ КАНАЛ ДЕЙСТВИТЕЛЬНО НАКЛОНЁН, И ИМЕННО НА ЗАКАЗАННЫЙ УГОЛ. Здесь легко получить
+//      деталь, которая ГЕРМЕТИЧНА, ВЫГЛЯДИТ ПРАВДОПОДОБНО И НЕ РАБОТАЕТ: паз в плите есть, трубка в
+//      пазу есть, а сверло в них не проходит — или проходит, но не под тем углом и не оттуда, откуда
+//      отмерян отступ. Ровно на этом уже попалась рейка французской планки: наклон граней совпал,
+//      зацепления не было, а проверка сравнивала наклоны и купилась.
+//
+//      Поэтому наклон здесь проверяется НЕ СРАВНЕНИЕМ ЧИСЕЛ, А СВЕРЛОМ: в готовую сетку запускается
+//      цилиндр диаметром со сверло, и требуется, чтобы под заказанным углом из заказанной точки он
+//      прошёл насквозь, а сдвинутый на миллиметр или повёрнутый на шесть градусов — упёрся. Отверстие
+//      печатается с припуском в две десятых, так что «прошёл» и «упёрся» здесь различимы.
+//
+//   6. ДЛИНА НАПРАВЛЯЮЩЕЙ — ЭТО ЗАКАЗАННОЕ ЧИСЛО, А НЕ ТОЛЩИНА ПЛИТЫ. При наклоне ведёт сверло трубка,
+//      а не плита, и плита толще трубки на её наклонённые торцы. Меряется ПО СЕТКЕ: на каком протяжении
+//      вокруг канала есть материал.
+//
 // Run: ./run-all.sh
 
 let pass = 0, fail = 0;
@@ -51,6 +66,71 @@ const rayHits = (tris, x0, z0) => {
     if (v < 1e-9 || u + v > 1 - 1e-9) continue;
     if (f*(e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]) > 1e-9) n++;
   } return n; };
+/* ЧИСЛО ОБОРОТОВ, А НЕ ЧЁТНОСТЬ. Наклонный кондуктор — это ДВА пересекающихся замкнутых тела (плита с
+   пазом и трубка-направляющая), и счёт пересечений по чётности на них врёт: точка в стенке трубки лежит
+   внутри одного тела и снаружи другого, и парность даёт «снаружи». Складывается знак нормали: выход из
+   тела +1, вход −1; снаружи всего — ноль, внутри k наложенных тел — k. Луч взят косой, чтобы не ложиться
+   ни на одну грань сетки. */
+const WDIR = [0.113, 0.2317, 0.9661];
+/* Луч один и тот же для всех точек, поэтому всё, что зависит только от треугольника, считается ОДИН
+   РАЗ на сетку: h = d×e₂, 1/(e₁·h) и знак нормали. Дальше на точку остаётся полтора десятка умножений
+   без единого нового массива. Это не украшение: щупов здесь десятки тысяч на сетку в две с половиной
+   тысячи треугольников, и наивная запись через sub/cross/dot уводила один прогон файла за десять минут. */
+function prepMesh(tris){
+  const N = tris.length, A = new Float64Array(N*14);
+  let m = 0;
+  for (let i = 0; i < N; i++){
+    const T = tris[i], p = T[0];
+    const e1x = T[1][0]-p[0], e1y = T[1][1]-p[1], e1z = T[1][2]-p[2];
+    const e2x = T[2][0]-p[0], e2y = T[2][1]-p[1], e2z = T[2][2]-p[2];
+    const hx = WDIR[1]*e2z - WDIR[2]*e2y, hy = WDIR[2]*e2x - WDIR[0]*e2z, hz = WDIR[0]*e2y - WDIR[1]*e2x;
+    const a = e1x*hx + e1y*hy + e1z*hz;
+    if (Math.abs(a) < 1e-12) continue;                       // луч в плоскости треугольника — не пересечёт
+    const nx = e1y*e2z - e1z*e2y, ny = e1z*e2x - e1x*e2z, nz = e1x*e2y - e1y*e2x;
+    const o = m*14; m++;
+    A[o]=p[0]; A[o+1]=p[1]; A[o+2]=p[2];
+    A[o+3]=e1x; A[o+4]=e1y; A[o+5]=e1z;
+    A[o+6]=e2x; A[o+7]=e2y; A[o+8]=e2z;
+    A[o+9]=hx; A[o+10]=hy; A[o+11]=hz;
+    A[o+12]=1/a;
+    A[o+13]=(nx*WDIR[0] + ny*WDIR[1] + nz*WDIR[2]) > 0 ? 1 : -1;
+  }
+  return {A, m};
+}
+function windAt(M, px, py, pz){
+  const A = M.A; let n = 0;
+  for (let i = 0, o = 0; i < M.m; i++, o += 14){
+    const svx = px-A[o], svy = py-A[o+1], svz = pz-A[o+2], f = A[o+12];
+    const u = f*(svx*A[o+9] + svy*A[o+10] + svz*A[o+11]);
+    if (u < 1e-9 || u > 1 - 1e-9) continue;
+    const e1x = A[o+3], e1y = A[o+4], e1z = A[o+5];
+    const qx = svy*e1z - svz*e1y, qy = svz*e1x - svx*e1z, qz = svx*e1y - svy*e1x;
+    const v = f*(WDIR[0]*qx + WDIR[1]*qy + WDIR[2]*qz);
+    if (v < 1e-9 || u + v > 1 - 1e-9) continue;
+    if (f*(A[o+6]*qx + A[o+7]*qy + A[o+8]*qz) <= 1e-9) continue;
+    n += A[o+13];
+  }
+  return n;
+}
+// Сдвиг детали по Y: буфер пересчитывается по габариту перед выдачей, и «низ плиты» уже не −T/2.
+const yShiftOf = (tris, s) => bboxOf(tris).y[0] + s.T/2;
+/* СВЕРЛО. Цилиндр Ø drill с осью через (cx, РАБОЧАЯ грань, zw) под углом adeg к нормали плиты, идущий
+   от рабочей грани вглубь. Возвращает, прошёл ли он, не задев материала. Рабочая грань — та, что
+   ложится на заготовку (+Y): кондуктор в работе переворачивают, и отступ от упора отмерян именно там. */
+function drillFits(M, s, shiftY, cx, zw, adeg){
+  const ca = Math.cos(adeg*Math.PI/180), sa = Math.sin(adeg*Math.PI/180), R = s.drill/2;
+  const oy = s.T/2 + shiftY, yLo = -s.T/2 + shiftY + 0.02;
+  for (let i = 0; i <= 24; i++){
+    const L = i/24*(s.T/ca), by = oy - ca*L, bz = zw + sa*L;
+    for (const rr of [0, R*0.55, R]) for (let k = 0; k < 8; k++){
+      const ph = k*Math.PI/4, c = Math.cos(ph)*rr, d = Math.sin(ph)*rr;
+      const y = by + d*sa;
+      if (y < yLo) continue;
+      if (windAt(M, cx + c, y, bz + d*ca) !== 0) return false;
+    }
+  }
+  return true;
+}
 function coplanarPairs(tris){
   const key = T => { const n = cross(sub(T[1],T[0]), sub(T[2],T[0])), L = vlength(n);
     if (L < 1e-12) return null;
@@ -239,6 +319,176 @@ console.log('\n=== вся область значений ===');
   chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
 }
 
+console.log('\n=== наклонное сверление ===');
+{
+  /* УМОЛЧАНИЕ — НОЛЬ, и при нуле деталь обязана остаться прежней. Иначе новая возможность тихо
+     переделала бы кондуктор всем, кто её не просил. */
+  chk('умолчание — без наклона', sp({}).ang === 0 && sp({}).tilted === false, sp({}).ang);
+  chk('и при нуле толщина плиты — заказанная', Math.abs(sp({jigT:12}).T - 12) < 1e-9, sp({}).T);
+  chk('и утолщения нет', sp({}).tGrown === false);
+  /* Наклон меньше полуградуса — не наклон: он не даёт ничего, кроме зря утолщённой плиты. */
+  chk('наклон в треть градуса считается нулевым', sp({jigAngle:0.3}).ang === 0 && sp({jigAngle:0.3}).tilted === false);
+  chk('и толщина при нём не растёт', Math.abs(sp({jigAngle:0.3, jigT:12}).T - 12) < 1e-9);
+  chk('а полградуса — уже наклон', sp({jigAngle:0.5}).tilted === true);
+  chk('выше сорока пяти не пускают', sp({jigAngle:80}).ang === 45, sp({jigAngle:80}).ang);
+
+  /* СВЕРЛО ПРОХОДИТ ПОД ЗАКАЗАННЫМ УГЛОМ И НЕ ПРОХОДИТ НИ ПОД КАКИМ ДРУГИМ. Это и есть вся проверка
+     наклона: числа в спецификации могут быть любыми, а сверло либо лезет, либо нет. */
+  for (const a of [0, 5, 15, 30, 45]){
+    const s = sp({jigAngle:a}), t = raw({jigAngle:a}), M = prepMesh(t);
+    const sh = yShiftOf(t, s), zw = s.edge - s.D/2, cx = s.xs[0];
+    chk('под ' + a + '° сверло проходит насквозь', drillFits(M, s, sh, cx, zw, a));
+    chk('под ' + a + '° повёрнутое на шесть градусов — упирается',
+        !drillFits(M, s, sh, cx, zw, a + 6) && (a === 0 || !drillFits(M, s, sh, cx, zw, a - 6)),
+        [drillFits(M, s, sh, cx, zw, a + 6), drillFits(M, s, sh, cx, zw, a - 6)]);
+    /* ОТСТУП ОТМЕРЯН ПО РАБОЧЕЙ ГРАНИ — там, где сверло входит в заготовку. Сдвиг на миллиметр
+       упирается: припуск отверстия две десятых, и миллиметр он не прощает. */
+    chk('под ' + a + '° отступ отмерян по рабочей грани',
+        !drillFits(M, s, sh, cx, zw + 1, a) && !drillFits(M, s, sh, cx, zw - 1, a));
+    chk('под ' + a + '° и так у КАЖДОГО отверстия, а не у первого',
+        s.xs.every(cx2 => drillFits(M, s, sh, cx2, zw, a)));
+  }
+  /* Наклон УХОДИТ ОТ УПОРА: ось у входной грани дальше от него, чем у рабочей. В другую сторону сверло
+     било бы в сам упор, а до того — в кромку заготовки. */
+  {
+    const s = sp({jigAngle:30}), t = raw({jigAngle:30}), sh = yShiftOf(t, s), zw = s.edge - s.D/2;
+    const ca = Math.cos(30*Math.PI/180), sa = Math.sin(30*Math.PI/180);
+    // точка на оси у входной грани: от рабочей грани назад на всю толщину
+    const zEntry = zw + (s.T/ca)*sa;
+    chk('наклон уходит от упора, а не в него', zEntry > zw + 1, [zw, zEntry]);
+    chk('и снос посчитан в спецификации', Math.abs(s.shift - (zEntry - zw)) < 1e-6, [s.shift, zEntry - zw]);
+    chk('плиты за наклонённой осью хватает', s.D/2 - zEntry > 3.9, s.D/2 - zEntry);
+    chk('и до упора тоже', zw + s.D/2 > 3.9, zw + s.D/2);
+  }
+
+  /* ДЛИНА НАПРАВЛЯЮЩЕЙ МЕРЯЕТСЯ ПО СЕТКЕ. Заказанная толщина при наклоне становится длиной ТРУБКИ, и
+     если бы формула толщины плиты разошлась с длиной трубки, здесь вышло бы не то число. Щуп идёт по
+     нормали к оси в плоскости YZ: вдоль Z он у самых торцов выходит через наклонный торец трубки и
+     мерил бы паз, а не стенку. */
+  const guideLen = (t, s, a) => {
+    const M = prepMesh(t), sh = yShiftOf(t, s);
+    const ca = Math.cos(a*Math.PI/180), sa = Math.sin(a*Math.PI/180);
+    const zc = s.edge - s.D/2 + s.shift/2, cx = s.xs[0], rr = s.r + 0.2;
+    let lo = null, hi = null;
+    for (let k = -300; k <= 300; k++){
+      const L = k/300*(s.T/(2*ca));                       // параметр вдоль оси от середины плиты
+      const ay = L*ca + sh, az = zc - L*sa;
+      if (windAt(M, cx, ay + rr*sa, az + rr*ca) !== 0 &&
+          windAt(M, cx, ay - rr*sa, az - rr*ca) !== 0){ if (lo === null) lo = L; hi = L; }
+    }
+    return lo === null ? 0 : hi - lo;
+  };
+  for (const [a, g] of [[15, 12], [30, 12], [45, 12], [30, 20], [30, 6]]){
+    const s = sp({jigAngle:a, jigT:g}), t = raw({jigAngle:a, jigT:g});
+    chk('под ' + a + '° при заказе ' + g + ' мм направляющая ровно такой и вышла',
+        Math.abs(guideLen(t, s, a) - g) < 0.7, guideLen(t, s, a));
+    chk('и заказанное число названо длиной направляющей', Math.abs(s.guide - g) < 1e-9, s.guide);
+  }
+  /* ЗА ПРЕДЕЛАМИ ТРУБКИ СТЕНКИ НЕТ — и это не придирка: если бы паз оказался уже канала, «направляющей»
+     считался бы весь паз, длина сошлась бы сама собой и проверка выше ничего бы не значила. */
+  {
+    const a = 30, s = sp({jigAngle:a}), t = raw({jigAngle:a}), M = prepMesh(t), sh = yShiftOf(t, s);
+    const ca = Math.cos(a*Math.PI/180), sa = Math.sin(a*Math.PI/180);
+    const zc = s.edge - s.D/2 + s.shift/2, cx = s.xs[0], rr = s.r + 0.2;
+    const L = s.T/(2*ca) - 0.05;                          // у самой грани плиты, за торцом трубки
+    const ay = L*ca + sh, az = zc - L*sa;
+    chk('у грани плиты вокруг канала пусто — там паз, а не трубка',
+        windAt(M, cx, ay + rr*sa, az + rr*ca) === 0 && windAt(M, cx, ay - rr*sa, az - rr*ca) === 0);
+  }
+  /* ТРУБКА ДЕРЖИТСЯ ПЛИТОЙ, А НЕ ВОЗДУХОМ. Стенка обязана быть толще зазора паза, иначе трубка целиком
+     помещается в паз и висит в нём: деталь остаётся герметичной и печатается, а направляющая отваливается
+     первым же сверлом. Щуп идёт от стенки канала наружу по X — материал должен быть сплошным. */
+  {
+    const a = 30, s = sp({jigAngle:a}), t = raw({jigAngle:a}), M = prepMesh(t), sh = yShiftOf(t, s);
+    chk('стенка направляющей толще зазора паза', s.wallB > JIG_SLOT_GAP + 1, [s.wallB, JIG_SLOT_GAP]);
+    const cx = s.xs[0], zc = s.edge - s.D/2 + s.shift/2;
+    let gapAt = null;
+    // на середине толщины: от стенки канала наружу по X материал обязан быть сплошным
+    for (let x = s.r + 0.25; x <= s.sap + 2.5; x += 0.1)
+      if (windAt(M, cx + x, sh, zc) === 0) { gapAt = x; break; }
+    chk('и от канала до плиты материал сплошной', gapAt === null, gapAt);
+  }
+
+  /* ТРУБКА НЕ ВЫЛЕЗАЕТ ЗА ГРАНИ ПЛИТЫ — ради этого утолщение и сделано. Вылезшая наружу с рабочей
+     стороны не дала бы кондуктору лечь на заготовку, вылезшая с печатной — встать на стол. Меряется
+     габаритом: он обязан остаться ровно плитой плюс упором, как и без наклона. */
+  for (const a of [5, 30, 45]) for (const fence of [0, 12]){
+    const s = sp({jigAngle:a, jigFence:fence}), b = bboxOf(raw({jigAngle:a, jigFence:fence}));
+    chk('под ' + a + '° при упоре ' + fence + ' габарит — ровно плита с упором',
+        Math.abs((b.y[1] - b.y[0]) - (s.T + s.fence)) < 1e-6, [b.y[1] - b.y[0], s.T + s.fence]);
+  }
+
+  /* УТОЛЩЕНИЕ ПЛИТЫ НАЗВАНО. Человек задал толщину, а получил её как длину направляющей — молчать об
+     этом значило бы отдать деталь не тех габаритов. */
+  {
+    const s = sp({jigAngle:30, jigT:12});
+    chk('при наклоне плита толще направляющей', s.T > s.guide + 2, [s.T, s.guide]);
+    chk('и ровно на наклонённые торцы трубки',
+        Math.abs(s.T - (s.guide*Math.cos(30*Math.PI/180) + 2*s.rO*Math.sin(30*Math.PI/180) + 2*JIG_CAP)) < 1e-9, s.T);
+    chk('утолщение помечено', s.tGrown === true);
+    chk('и названо вслух', W({jigAngle:30}).some(x => /плита утолщена с/.test(x)), W({jigAngle:30}));
+    chk('без наклона про утолщение молчат', !W({}).some(x => /плита утолщена/.test(x)));
+    chk('круче наклон — толще плита', sp({jigAngle:45}).T > sp({jigAngle:15}).T + 2,
+        [sp({jigAngle:15}).T, sp({jigAngle:45}).T]);
+    chk('толще сверло — толще плита', sp({jigAngle:30, jigHoleD:16}).T > sp({jigAngle:30, jigHoleD:2}).T + 2);
+  }
+  /* ПОРОГ ПОЛУТОРА ДИАМЕТРОВ МЕРЯЕТСЯ ПО НАПРАВЛЯЮЩЕЙ, А НЕ ПО ПЛИТЕ. Иначе утолщение само собой
+     заткнуло бы предупреждение: плита при 30° толще заказанной, и «короткая направляющая» замолчала бы
+     ровно там, где направляющая как раз коротка. */
+  {
+    chk('короткую направляющую называют и под наклоном',
+        W({jigBush:10, jigAngle:30, jigT:6, jigHoleD:8}).some(x => /направляющая короче полутора/.test(x)),
+        W({jigBush:10, jigAngle:30, jigT:6, jigHoleD:8}));
+    chk('а плита при этом толще порога',
+        sp({jigAngle:30, jigT:6, jigHoleD:8}).T > 8*1.5, sp({jigAngle:30, jigT:6, jigHoleD:8}).T);
+    chk('длинную не называют', !W({jigBush:10, jigAngle:30, jigT:12, jigHoleD:8}).some(x => /направляющая короче/.test(x)));
+  }
+  /* ЭЛЛИПС НА ВХОДЕ И СНОС ОСИ НАЗВАНЫ. На экране этого не видно вовсе, а размечать по верхней грани
+     кондуктора значит промахнуться на весь снос. */
+  {
+    const ww = W({jigAngle:45, jigHoleD:8});
+    chk('эллипс входа назван', ww.some(x => /входит эллипсом 8×11.3/.test(x)), ww);
+    chk('и снос оси тоже', ww.some(x => /вместо/.test(x) && /у входной грани отстоит от упора/.test(x)), ww);
+    chk('без наклона про эллипс молчат', !W({}).some(x => /эллипсом/.test(x)));
+  }
+  /* ПАЗ РАСТЁТ ВГЛУБЬ, А НЕ ВШИРЬ: наклон уводит ось только по глубине. Одно число на обе стороны дало
+     бы плиту вдвое шире нужного. */
+  {
+    const s0 = sp({}), s3 = sp({jigAngle:30});
+    chk('вглубь плита растёт', s3.D > s0.D + 5, [s0.D, s3.D]);
+    chk('а вширь почти нет', s3.W - s0.W < 1.5, [s0.W, s3.W]);
+    chk('паз шире отверстия ровно на зазор', Math.abs(s3.sap - (s3.r + JIG_SLOT_GAP)) < 1e-9, s3.sap);
+    chk('и длиннее его на снос оси', Math.abs(s3.saq - (s3.shift/2 + s3.r/Math.cos(30*Math.PI/180) + JIG_SLOT_GAP)) < 1e-9, s3.saq);
+  }
+  /* ОБЛАСТЬ ЗНАЧЕНИЙ С НАКЛОНОМ. Тела здесь ПЕРЕСЕКАЮТСЯ, а не складываются гранями, и любое касание
+     торцом или стенкой всплыло бы либо дырой, либо совпадающей парой. */
+  {
+    let bad = 0, worst = null, cop = 0, copAt = null, n = 0;
+    for (const a of [0.5, 10, 25, 45])
+      for (const d of [2, 16])
+        for (const nn of [1, 4])
+          for (const T of [4, 40])
+            for (const fence of [0, 40])
+              for (const bush of [0, 20])
+                for (const edge of [1, 120]){
+                  const ov = {jigAngle:a, jigHoleD:d, jigHoleN:nn, jigT:T, jigFence:fence, jigBush:bush, jigEdge:edge};
+                  const tr = raw(ov), m = manifoldCheck(tr, 6); n++;
+                  if (!m.watertight || meshVolume(tr) <= 0){ bad++; if (!worst) worst = {ov, open:m.openEdges, bad:m.badEdges}; }
+                  const c = coplanarPairs(tr);
+                  if (c.hits){ cop++; if (!copAt) copAt = {ov, hits:c.hits, where:c.where}; }
+                }
+    chk('256 наклонённых наборов герметичны', bad === 0 && n === 256, worst || n);
+    chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
+  }
+  /* И СВЕРЛО ПРОХОДИТ НА КРАЯХ ОБЛАСТИ, а не только на умолчаниях. */
+  for (const ov of [{jigAngle:45, jigHoleD:2, jigT:4}, {jigAngle:45, jigHoleD:16, jigT:40},
+                    {jigAngle:10, jigBush:20, jigEdge:1}, {jigAngle:25, jigHoleN:12, jigPitch:5}]){
+    const s = sp(ov), t = raw(ov), M = prepMesh(t), sh = yShiftOf(t, s), zw = s.edge - s.D/2;
+    chk('на краю области сверло проходит ' + JSON.stringify(ov),
+        s.xs.every(cx => drillFits(M, s, sh, cx, zw, s.ang)));
+  }
+}
+
 console.log('\n=== через настоящий путь приложения ===');
 {
   logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
@@ -250,6 +500,16 @@ console.log('\n=== через настоящий путь приложения =
       /кондуктор 3×Ø8 шаг 32/.test(activeShapeLabel()), activeShapeLabel());
   Object.assign(paramState.box, J({jigBush:10}));
   chk('и втулку, когда она есть', /втулка Ø10/.test(activeShapeLabel()), activeShapeLabel());
+  Object.assign(paramState.box, J({jigAngle:30}));
+  chk('и наклон, когда он есть', /кондуктор 3×Ø8 под 30°/.test(activeShapeLabel()), activeShapeLabel());
+  Object.assign(paramState.box, J({}));
+  chk('а без наклона про угол молчат', !/под 0°/.test(activeShapeLabel()), activeShapeLabel());
+  Object.assign(paramState.box, J({jigAngle:30}));
+  const tilt = buildTrisForShape('box', paramState.box);
+  chk('наклонная деталь строится через тот же путь и герметична', manifoldCheck(tilt, 6).watertight);
+  chk('справка говорит про наклон',
+      /НАКЛОН СВЕРЛЕНИЯ/.test(MODEL_HELP['mount:drilljig'].how) &&
+      /ДЛИНОЙ НАПРАВЛЯЮЩЕЙ/.test(MODEL_HELP['mount:drilljig'].how));
   chk('справка есть и говорит про переворот',
       !!MODEL_HELP['mount:drilljig'] && /ПЕРЕВОРАЧИВАЮТ/.test(MODEL_HELP['mount:drilljig'].how));
   chk('и про недолговечность пластика',

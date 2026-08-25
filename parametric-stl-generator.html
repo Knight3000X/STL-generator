@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.4.0';
+const APP_VERSION = 'v24.5.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5253,7 +5253,11 @@ const SHAPE_PARAMS = {
     // two rows overwrote each other and picking a funnel cancelled the top thickness (and vice versa).
     // It has its own key now; a preset that still carries a STRING in threadTop is read below for compat.
     {group:'Резьба (крышка / штуцер)', key:'threadTopMode', w:['cap'], label:'Крышка: что сверху — воронка, носик или горловина', type:'select', default:'none',
-      options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'},{v:'neck',t:'переходник горловин (наружная резьба сверху)'}]},
+      options:[{v:'none',t:'глухая крышка'},{v:'funnel',t:'воронка (заливать через неё)'},{v:'spout',t:'носик-аппликатор (выдавливать струйкой)'},{v:'rose',t:'сито-лейка (полить из бутылки)'},{v:'neck',t:'переходник горловин (наружная резьба сверху)'}],
+      hint:'Сито-лейка навинчивается на обычную ПЭТ-бутылку. Стандартное горлышко напитков — PCO-1881: наружный Ø 27.4 мм, шаг 2.7 мм, ТРИ захода. Эти три числа и надо поставить в разделе резьбы; с одним заходом крышка сядет на треть оборота и слетит.'},
+    {group:'Резьба (крышка / штуцер)', key:'threadRoseD', w:['cap'], only:{threadTopMode:['rose']}, label:'Сито: Ø отверстия', min:0.6, max:6, step:0.1, default:2, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadRoseGap', w:['cap'], only:{threadTopMode:['rose']}, label:'Сито: просвет между отверстиями', min:0.6, max:8, step:0.1, default:1, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadRoseT', w:['cap'], only:{threadTopMode:['rose']}, label:'Сито: толщина', min:0.6, max:6, step:0.1, default:1.2, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelD', w:['cap'], only:{threadTopMode:['funnel']}, label:'Воронка: Ø устья', min:0, max:200, step:1, default:60, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadFunnelH', w:['cap'], only:{threadTopMode:['funnel']}, label:'Воронка: высота', min:5, max:200, step:1, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadSpoutD', w:['cap'], only:{threadTopMode:['spout']}, label:'Носик: Ø кончика (наружный)', min:1.5, max:40, step:0.5, default:6, unit:'мм'},
@@ -6393,6 +6397,58 @@ function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p))
 // whatever the preset says — reading it first would make every pre-split preset a blind cap. A STRING in
 // threadTop can only come from the old select (the current field there is a thickness in mm), so it is
 // the one unambiguous signal and it goes first.
+/* СИТО-ЛЕЙКА: сколько отверстий и где. Числа выводятся из просвета между ними, а не подбираются на
+   глаз, и причина не в аккуратности: соприкоснувшиеся дырки ушное отсечение сшивает невесть как, и
+   сетка выходит негерметичной — то же самое уже случалось с болтовыми отверстиями прокладки.
+
+   Кольцами, а не сеткой: у круглого сита кольца ложатся плотнее квадратной решётки и не оставляют
+   пустого серпа у края. В каждом кольце ровно столько дырок, сколько влезает по дуге с заданным
+   просветом, — отсюда floor, а не round: округление вверх дало бы на одну лишнюю и на просвет меньше
+   заказанного, то есть иногда касание.
+
+   Площадь просвета называется отдельно и не для красоты. Сито — это сужение: если суммарная площадь
+   дырок заметно меньше сечения горла, вода пойдёт не лейкой, а тонкой струёй, и виновата будет не
+   бутылка. */
+/* ВНУТРЕННИЙ РАДИУС РЕЗЬБЫ И РАДИУС ГОРЛА — названы здесь, потому что их спрашивают не только у
+   построителя. Оговорка нужна честная: этот вывод в файле НЕ ЕДИНСТВЕННЫЙ — те же три строки
+   повторяются у переходника горловин, у самого построителя резьбы и в двух местах проверки печати.
+   Разводить их все — отдельная работа с отдельным прогоном батареи, и она записана в дорожную карту;
+   здесь заведено имя, которым пользуется всё НОВОЕ, и проверка, что оно совпадает с построенной
+   деталью, а не только само с собой. */
+function threadMinorR(p){
+  const D = Math.max(4, p.threadD || 30), P = Math.max(0.5, p.threadPitch || 3), majorR = D/2;
+  const h = (p.threadDepth > 0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
+  return Math.max(0.5, majorR - h);
+}
+function capThroatR(p){ const m = threadMinorR(p); return Math.max(1.5, Math.min(m - 1.0, m*0.62)); }
+function roseRing(r, n){ const q=[]; for(let i=0;i<n;i++){ const a=2*Math.PI*i/n; q.push([r*Math.cos(a), r*Math.sin(a)]); } return q; }
+function roseSpec(p, rThroat){
+  const d = Math.max(0.6, Math.min(6, p.threadRoseD > 0 ? p.threadRoseD : 2));
+  const gap = Math.max(0.6, Math.min(8, p.threadRoseGap > 0 ? p.threadRoseGap : 1));
+  const t = Math.max(0.6, Math.min(6, p.threadRoseT > 0 ? p.threadRoseT : 1.2));
+  const rPlate = rThroat + 1.2;                       // диск перекрывает горло и садится на плиту
+  const rMax = rThroat - 0.8;                         // дырки не выходят за горло
+  const step = d + gap, holes = [];
+  if (rMax >= d/2) holes.push([0, 0]);
+  /* КОЛЬЦА РАСТЯГИВАЮТСЯ НА ВЕСЬ ДОСТУПНЫЙ РАДИУС, а не отсчитываются шагом от центра. Отсчёт шагом
+     оставляет у края неиспользованное поле, и последнее кольцо там либо влезает целиком, либо не
+     влезает вовсе: на горле 7.57 мм получалось 7 дырок, а на 8.28 — уже 19. Скачок втрое от
+     миллиметра резьбы. Растянутые кольца дают и плотнее, и ровнее, а просвет от этого только
+     растёт — расстояние между кольцами выходит не меньше заказанного, а больше. */
+  const usable = rMax - d/2, nR = Math.floor(usable/step);
+  for(let k = 1; k <= nR; k++){
+    const r = usable*k/nR;
+    /* ЧИСЛО ДЫРОК В КОЛЬЦЕ СЧИТАЕТСЯ ПО ХОРДЕ, А НЕ ПО ДУГЕ. Расходятся соседние дырки по прямой, а
+       дуга её длиннее — и тем заметнее, чем меньше дырок в кольце: при шести штуках хорда короче
+       дуги на четыре с половиной процента. Отсчёт по дуге давал просвет на восемь сотых меньше
+       заказанного, и заметить это можно было только перемерив ближайшую пару центров. Условие
+       2·r·sin(π/n) ≥ шаг разворачивается в n ≤ π / arcsin(шаг / 2r). */
+    const n = Math.floor(Math.PI/Math.asin(Math.min(1, step/(2*r))));
+    for(let i = 0; i < n; i++){ const a = 2*Math.PI*i/n; holes.push([r*Math.cos(a), r*Math.sin(a)]); }
+  }
+  const open = holes.length*Math.PI*d*d/4, throat = Math.PI*rThroat*rThroat;
+  return { d, gap, t, rPlate, rMax, holes, open, throat, ratio: throat > 0 ? open/throat : 0 };
+}
 function threadTopMode(p){
   if (typeof p.threadTop === 'string') return p.threadTop;        // pre-split preset: the old select
   if (typeof p.threadTopMode === 'string') return p.threadTopMode;
@@ -10487,7 +10543,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     //                there is no thin interpenetration band to trust.
     const topMode = threadTopMode(p);
     const rThroat0 = Math.max(1.5, Math.min(minorR-1.0, minorR*0.62));
-    let funnel=false, rMouth=0, funH=0, twTop=wall;
+    let funnel=false, rMouth=0, funH=0, twTop=wall, rose=false;
     let neck=false, majorR2=0, minorR2=0, h2=0, P2=P, rNB=0, neckH=0;
     if(topMode==='funnel'){
       const funD = Math.max(0, p.threadFunnelD>0 ? p.threadFunnelD : 60);
@@ -10500,6 +10556,11 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       rMouth=Math.max(0.5, rTipOut-twTop);
       funnel = rMouth < rThroat0-0.2;                         // a tip no narrower than the throat is not a spout
       funH=Math.max(6, Math.min(200, p.threadSpoutH>0 ? p.threadSpoutH : 35));
+    } else if(topMode==='rose'){
+      /* СИТО-ЛЕЙКА. Верх растачивается до горла ровно как под воронку, а поперёк горла встаёт
+         перфорированный диск — отдельная замкнутая оболочка, утопленная в плиту крышки на восемь
+         десятых: два тела пересекаются объёмом, а не встречаются гранями. */
+      rose = true; funnel = true;
     } else if(topMode==='neck'){
       P2 = Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
       majorR2 = Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
@@ -10595,6 +10656,18 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
         tris.push(orient([rlo[i],rhi[i2],rhi[i]],rin));
         tris.push(orient([rhi[i],rhi[i2],Vo(i2,capH)],[0,1,0]));   // top annulus: throat → outer
         tris.push(orient([rhi[i],Vo(i2,capH),Vo(i,capH)],[0,1,0])); }
+      if(rose){
+        /* РАСКЛАДКА ОТВЕРСТИЙ СЧИТАЕТСЯ, А НЕ РИСУЕТСЯ. Ушное отсечение с мостами требует, чтобы дырки
+           лежали внутри контура и не касались ни его, ни друг друга; нарушение даёт не отказ, а сшитую
+           невесть как сетку — ровно на этом уже попадались болтовые отверстия прокладки. Поэтому шаг
+           колец и число дырок в каждом выводятся из просвета, а не подбираются: по кольцу их ровно
+           столько, сколько влезает с заданным просветом, и ни одной больше. */
+        const g = roseSpec(p, rThroat);
+        for(const T of extrudePolyYTris(
+              [roseRing(g.rPlate, Math.max(48, Math.round(g.rPlate*4)))].concat(
+                g.holes.map(h => roseRing(g.d/2, 16).map(q => [q[0]+h[0], q[1]+h[1]]).reverse())),
+              capH-0.8, capH-0.8+g.t)) tris.push(T);
+      } else {
       // the cone, as its own closed shell: inner face, outer face, mouth rim, buried bottom rim.
       // The wall runs from `wall` where it meets the cap to `twTop` at the far end — equal for a funnel,
       // and thinning for a spout so a fine tip still has a passage through it.
@@ -10614,6 +10687,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;
         tris.push(orient([Im[i],Im[i2],Om[i2]],[0,1,0]));   tris.push(orient([Im[i],Om[i2],Om[i]],[0,1,0]));
         tris.push(orient([Ib0[i],Ob0[i2],Ob0[i]],[0,-1,0])); tris.push(orient([Ib0[i],Ib0[i2],Ob0[i2]],[0,-1,0])); }
+      }
     }
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth;          // bottom rim annulus (bore mouth → outer)
       tris.push(orient([Vb(i,0),Vo(i,0),Vo(i2,0)],[0,-1,0]));
@@ -14715,9 +14789,7 @@ function sealFlatLoops(s){
 function capGasketSpec(p){
   const cord = Math.max(0, p.threadGasket > 0 ? p.threadGasket : 0);
   if (cord <= 0) return null;
-  const D = Math.max(4, p.threadD || 30), P = Math.max(0.5, p.threadPitch || 3), majorR = D/2;
-  const h = (p.threadDepth > 0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
-  const minorR = Math.max(0.5, majorR - h);
+  const minorR = threadMinorR(p);
   const wall = Math.max(1.2, p.threadWall > 0 ? p.threadWall : 2.5);
   const top  = Math.max(1.0, (typeof p.threadTop === 'number' && p.threadTop > 0) ? p.threadTop : 2.5);
   const rG = minorR - wall/2;                                   // середина торца горла
@@ -25339,6 +25411,29 @@ function collectPrintWarnings(p){
   /* ДЕРЖАТЕЛЬ КАТУШКИ. Названо только то, чего человек не видит на экране: что деталей нужно две, что
      катушка поднялась выше заказанного, и что палец кронштейна не пролезет в ступицу. Остальное — его
      собственные числа, и повторять их значило бы заполнить предупреждения пересказом панели. */
+  if (p.threadMode === 'cap' && threadTopMode(p) === 'rose'){
+    const g = roseSpec(p, capThroatR(p));
+    w.push('сито: ' + g.holes.length + ' отверстий Ø' + g.d + ' с просветом ' + g.gap
+         + ' — суммарная площадь ' + g.open.toFixed(0) + ' мм², это '
+         + Math.round(g.ratio*100) + ' % сечения горла');
+    /* СИТО — ЭТО СУЖЕНИЕ, И ТАК И ЗАДУМАНО: у настоящей садовой лейки ситечко нарочно уже носика,
+       иначе выйдет не дождь, а ведро воды. Поэтому порог здесь низкий и означает не «мало», а
+       «дробится в струйки»: первым порогом я поставил треть сечения горла и получил жалобу на
+       УМОЛЧАНИЯХ — а она была ещё и неверной. У ПЕЧАТНОГО сита треть недостижима вовсе: чтобы её
+       набрать, перемычки между дырками должны стать тоньше двух периметров, то есть не печататься. */
+    if (g.ratio < 0.10)
+      w.push('просвет всего ' + Math.round(g.ratio*100) + ' % сечения горла — вода пойдёт струйками, '
+           + 'а не дождём. Отверстия крупнее или просвет между ними меньше');
+    /* ПЕРЕМЫЧКА ТОНЬШЕ ДВУХ ПЕРИМЕТРОВ не печатается сплошной: слайсер положит там одну нитку или
+       не положит ничего, и сито расползётся в одну большую дыру. */
+    if (g.gap < 0.8)
+      w.push('просвет ' + g.gap + ' мм между отверстиями тоньше двух периметров: перемычки не '
+           + 'напечатаются сплошными, и сито расползётся в одну дыру');
+    if (g.holes.length < 5)
+      w.push('отверстий всего ' + g.holes.length + ': на таком горле ситу негде разойтись. '
+           + 'Отверстия мельче, просвет меньше — или резьба крупнее');
+    w.push('навинчивается на ПЭТ-бутылку: стандартное горлышко напитков PCO-1881 — Ø27.4, шаг 2.7, ТРИ захода');
+  }
   if (p.threadMode === 'cap' && p.threadGasket > 0){
     const gk = capGasketSpec(p);
     if (!gk || gk.cord < SEAL_MIN_CORD)

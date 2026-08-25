@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.3.0';
+const APP_VERSION = 'v24.4.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5765,8 +5765,11 @@ const SHAPE_PARAMS = {
     {group:'Настенный органайзер', key:'woFront', label:'Органайзер: держатель спереди', type:'select', default:'hook',
       options:[{v:'hook',t:'крючок'},{v:'shelf',t:'полка (плоская)'},{v:'tools',t:'полка с гнёздами'},
                {v:'cleatrail',t:'переходник: рейка французской планки'},{v:'gfshelf',t:'переходник: полка Gridfinity'},
-               {v:'none',t:'без держателя (пластина)'}],
+               {v:'nut',t:'резьбовая вставка (гнездо под гайку)'},{v:'none',t:'без держателя (пластина)'}],
       hint:'Две последние строки — не держатели, а ПЕРЕХОДНИКИ между системами. Сзади любая из трёх (соты, перфопанель, планка), спереди другая: соты → Gridfinity, перфопанель → планка и так далее. Отдельной формы под каждую пару не нужно.'},
+    {group:'Настенный органайзер', key:'woNutD', w:['nut'], label:'Вставка: Ø резьбы (гайка покупная)', type:'select', default:'4',
+      options:[{v:'3',t:'M3'},{v:'4',t:'M4'},{v:'5',t:'M5'},{v:'6',t:'M6'},{v:'8',t:'M8'},{v:'10',t:'M10'},{v:'12',t:'M12'}],
+      hint:'Гнездо под ПОКУПНУЮ гайку, а не печатная резьба: печатная внутренняя резьба в детали, которую тянут с силой, срывается по слоям на третьем-четвёртом затягивании. Размер под ключ берётся из таблицы ISO 4032, той же, которой живёт струбцина.'},
     {group:'Настенный органайзер', key:'woW', label:'Органайзер: ширина', min:20, max:200, step:1, default:60, unit:'мм'},
     {group:'Настенный органайзер', key:'woH', label:'Органайзер: высота задника', min:20, max:200, step:1, default:60, unit:'мм'},
     {group:'Настенный органайзер', key:'woT', label:'Органайзер: толщина задника', min:3, max:15, step:0.5, default:5, unit:'мм'},
@@ -16767,6 +16770,22 @@ function buildLBracket(p){
 const GC_SINK = 0.8;    // на сколько скоба утоплена в губку
 const GC_OFF  = 0.6;    // на сколько губка шире скобы и скоба отодвинута от её края
 const GC_EDGE = 4;      // материал вокруг шестигранного гнезда
+/* НАСТОЯЩИЕ ГАЙКИ, А НЕ ФОРМУЛА. Размер под ключ у метрической гайки — таблица (ISO 4032), и она не
+   ложится ни на какую пропорцию: у M5 это 8 мм, у M6 — 10, то есть при росте резьбы на пятую часть
+   ключ прыгает на четверть. Приложение до сих пор считало его как 1.8·Ø, и ошибка росла с размером:
+   на M8 формула даёт 14.4 против настоящих 13. Полтора миллиметра в гнезде — это гайка, которая
+   болтается и проворачивается под нагрузкой, то есть струбцина, которая не держит.
+
+   Формула при этом не выброшена, и вот почему: Ø болта у струбцины — ЛЮБОЙ от 4 до 16, а таблица
+   знает только стандартный ряд. На девять с половиной миллиметров гайки не существует, и честный
+   ответ там — оценка, а не отказ. Поэтому таблица отвечает на стандартный ряд, формула — на всё
+   остальное, и место у этого ответа ровно одно на всё приложение. */
+const NUT_HEX = {   // Ø резьбы: [размер под ключ, высота гайки], ISO 4032
+  3:[5.5,2.4], 4:[7,3.2], 5:[8,4.7], 6:[10,5.2], 8:[13,6.8], 10:[17,8.4], 12:[19,10.8], 16:[24,14.8],
+};
+function nutStd(d){ for (const k in NUT_HEX) if (Math.abs(+k - d) < 0.1) return NUT_HEX[k]; return null; }
+function nutAF(d){ const n = nutStd(d); return n ? n[0] : d*1.8; }
+function nutThk(d){ const n = nutStd(d); return n ? n[1] : d*0.85; }
 const GC_FIT  = 0.25;   // зазор гнезда по размеру под ключ: печать сужает проёмы
 function gclampSpec(p){
   const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
@@ -16775,7 +16794,7 @@ function gclampSpec(p){
   const T     = cl(p.gcT, 6, 40, 12);
   const bolt  = cl(p.gcBolt, 4, 16, 8);
   const afWant = cl(p.gcAF, 0, 40, 0);
-  const af = (afWant > 0 ? afWant : bolt*1.8) + GC_FIT;
+  const af = (afWant > 0 ? afWant : nutAF(bolt)) + GC_FIT;
   const hexR = af/2/Math.cos(Math.PI/6);              // радиус по УГЛАМ шестигранника
   /* ШИРИНА СКОБЫ УПИРАЕТСЯ В ГНЕЗДО. Гайка сидит поперёк губки, и по бокам от неё нужен материал: узкая
      скоба лопнет по гнезду при первом же зажиме. Урезание вверх объявляется — ширину задавали не зря. */
@@ -17357,6 +17376,33 @@ function buildWallOrg(p){
   if((p.woBack||'cleat')==='hexshelf') return buildHexShelf(p);
   if((p.woBack||'cleat')==='hexpanel') return buildHexPanel(p);
   const W=Math.max(20,p.woW||60), t=Math.max(3,p.woT||5), H=Math.max(20,p.woH||60), tris=[];
+  const front=p.woFront||'hook';
+  /* ПРОТЯЖКА ВДОЛЬ Z ЧЕРЕЗ ПРОТЯЖКУ ВДОЛЬ Y. Дырявый контур приложение умеет тянуть только по оси Y
+     (`extrudePolyYTris` — ушное отсечение с мостами), а спинка органайзера лежит в плоскости XY и
+     тянется по Z. Поэтому контур выписывается в (x, −y), тянется как по Y, и результат поворачивается
+     на четверть оборота вокруг X: поворот переводит (x, η, ζ) в (x, −ζ, η), то есть ζ = −y
+     возвращается высотой, а η становится глубиной. Это дешевле, чем заводить второй ушной
+     триангулятор, и — главное — не заводит ВТОРОЙ, который потом разойдётся с первым. */
+  const zExtrude = (loops, z0, z1) =>
+    rotateTris(extrudePolyYTris(loops.map(L => L.map(q => [q[0], -q[1]])), z0, z1), 90, 0, 0);
+  const circ = (cx, cy, r, n) => { const q=[]; for(let i=0;i<n;i++){ const a=2*Math.PI*i/n; q.push([cx+r*Math.cos(a), cy+r*Math.sin(a)]); } return q; };
+  if(front==='nut'){
+    /* РЕЗЬБОВАЯ ВСТАВКА: гнездо под покупную гайку, а не печатная резьба. Печатная внутренняя резьба
+       в детали, которую тянут с силой, срывается по слоям на третьем-четвёртом затягивании — это уже
+       было сказано про струбцину, и здесь ровно то же. Гайка садится в шестигранное гнездо на лицевой
+       стороне, болт приходит спереди, а сзади её держит сама спинка: отверстие в спинке — под болт,
+       и гайка сквозь него не пролезет.
+
+       Размер под ключ и высота гайки берутся из общей таблицы, той же, которой живёт струбцина. */
+    const d = Math.max(3, p.woNutD>0 ? p.woNutD : 4);
+    const af = nutAF(d) + GC_FIT, thk = nutThk(d);
+    const hexR = af/2/Math.cos(Math.PI/6);
+    const bore = d + Math.max(0.3, fitTuned(p, 0.4));
+    const rOut = hexR + Math.max(2, d*0.6);
+    const cy = H*0.5;
+    for(const T of zExtrude([[[-W/2,0],[W/2,0],[W/2,H],[-W/2,H]], circ(0, cy, bore/2, 24)], 0, t)) tris.push(T);
+    for(const T of zExtrude([circ(0, cy, rOut, 48), hexPoly(af, 0, cy)], t-0.6, t+thk+0.4)) tris.push(T);
+  } else
   for(const T of boxSpanTris(-W/2,W/2, 0,H, 0,t)) tris.push(T);                          // back plate, wall at z=0
   if((p.woBack||'cleat')==='hex'){
     // Hex posts on the honeycomb's own pitch, sized cell − 2·clearance so they cannot rotate in the cell.
@@ -17394,7 +17440,7 @@ function buildWallOrg(p){
         for(const T of boxSpanTris(-lt,lt, cy+pr-0.4, cy+pr+lh, -pl-0.2, -pl+lt*1.6)) tris.push(T); }
     }
   }
-  const front=p.woFront||'hook';                                                         // FRONT holder (extends +Z)
+  // FRONT holder (extends +Z) — `front` объявлен выше: у вставки от него зависит и сама спинка.
   if(front==='hook'){
     const rBar=Math.max(2,(p.woHookBar||8)/2), reach=Math.max(6,p.woHookReach||24), drop=Math.max(rBar+2,p.woHookDrop||14);
     const sweep=(p.woHookSweep||230)*Math.PI/180, hy=Math.max(drop+rBar+2, H*0.5), nStem=5; let path=[];

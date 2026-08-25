@@ -100,6 +100,88 @@ console.log('=== переходник: полка Gridfinity — та же пл�
                (vol(base({woBack:'peg', woFront:'shelf', woH:60})) - plateV(60))) < 600);
   chk('и всё это остаётся одним герметичным телом', manifoldCheck(shelf({gfX:3,gfY:2}),4).watertight);
 }
+console.log('=== переходник: резьбовая вставка (гнездо под покупную гайку) ===');
+{
+  const ins = ov => base(Object.assign({woBack:'peg', woFront:'nut'}, ov));
+  // Сколько материала луч вдоль +Z встречает в точке (x, y) — суммарно по всем промежуткам.
+  const solidZ = (t, x, y) => {
+    const hs = [];
+    for(const T of t){ const [a,b,c]=T;
+      const d1=(b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0]);
+      const d2=(c[0]-b[0])*(y-b[1])-(c[1]-b[1])*(x-b[0]);
+      const d3=(a[0]-c[0])*(y-c[1])-(a[1]-c[1])*(x-c[0]);
+      if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+      const A=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+      const w1=((b[0]-x)*(c[1]-y)-(b[1]-y)*(c[0]-x))/A, w2=((c[0]-x)*(a[1]-y)-(c[1]-y)*(a[0]-x))/A;
+      const z=w1*a[2]+w2*b[2]+(1-w1-w2)*c[2];
+      const nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+      hs.push([z, nz>0?1:-1]); }
+    hs.sort((u,v)=>u[0]-v[0]);
+    let w=0, prev=0, sum=0;
+    for(const [z,sg] of hs){ if(w>0) sum += z-prev; w-=sg; prev=z; }
+    return sum;
+  };
+  for(const back of ['peg','hex','cleat']) for(const d of ['3','4','8','12']){
+    const t = base({woBack:back, woFront:'nut', woNutD:d});
+    chk(back+' + M'+d+' герметично (+объём)', manifoldCheck(t,4).watertight && vol(t) > 0);
+  }
+  /* Точка замера выводится из ГАБАРИТА, а не из умолчаний: у перфопанельной спинки высота модели
+     ровно woH, штыри в неё укладываются, поэтому центр вставки после центровки садится на ноль. */
+  const t4 = ins({woNutD:'4'});
+  const bb = computeBBox(t4);
+  chk('высота модели — это высота спинки (значит, центр вставки на нуле)',
+      Math.abs((bb.maxY-bb.minY) - 60) < 0.01, +(bb.maxY-bb.minY).toFixed(3));
+  /* ТРИ РАДИУСА, ТРИ РАЗНЫХ ОТВЕТА, и в этом весь смысл вставки:
+       по оси         — сквозная дыра под болт, материала нет вовсе;
+       внутри гнезда  — только спинка: гнездо шестигранное и пустое;
+       в стенке бобышки — спинка И бобышка. */
+  const af = nutAF(4) + 0.25, bore = 4 + 0.4;
+  const rMid = (bore/2 + af/2*Math.cos(Math.PI/6))/2;
+  const rWall = af/2/Math.cos(Math.PI/6) + 1.2;
+  chk('по оси материала нет вовсе — болт проходит насквозь', solidZ(t4, 0, 0) < 0.01, +solidZ(t4,0,0).toFixed(3));
+  chk('внутри гнезда — только спинка (гнездо пустое)',
+      Math.abs(solidZ(t4, rMid, 0) - 5) < 0.1, +solidZ(t4, rMid, 0).toFixed(2));
+  chk('в стенке бобышки — спинка и бобышка',
+      solidZ(t4, rWall, 0) > 5 + nutThk(4), +solidZ(t4, rWall, 0).toFixed(2));
+  chk('а в стороне от вставки — снова только спинка',
+      Math.abs(solidZ(t4, 22, 0) - 5) < 0.1, +solidZ(t4, 22, 0).toFixed(2));
+  /* ГАЙКА НЕ ПРОЛЕЗАЕТ СКВОЗЬ СПИННКУ — иначе гнездо бессмысленно: держать её сзади нечему.
+     Отверстие в спинке под БОЛТ, а не под гайку, и это проверяется числом. */
+  chk('отверстие в спинке уже гайки — ей есть на что опереться', bore < nutAF(4),
+      {отверстие:bore, гайка:nutAF(4)});
+  /* Размер гнезда — из ТАБЛИЦЫ, и разные резьбы обязаны давать разные гнёзда. Пропорция 1.8·Ø
+     ошибается тем сильнее, чем крупнее резьба, и на M8 это полтора миллиметра болтанки. */
+  const t8 = ins({woNutD:'8'});
+  chk('гнездо под M8 шире, чем под M4', solidZ(t8, rWall, 0) > 0 && vol(t8) > vol(t4), {M4:+vol(t4).toFixed(0), M8:+vol(t8).toFixed(0)});
+  const af8 = nutAF(8) + 0.25, rMid8 = (8.4/2 + af8/2*Math.cos(Math.PI/6))/2;
+  chk('и его гнездо тоже пустое ровно до спинки', Math.abs(solidZ(t8, rMid8, 0) - 5) < 0.1,
+      +solidZ(t8, rMid8, 0).toFixed(2));
+  /* ГНЕЗДО ШЕСТИГРАННОЕ, А НЕ КРУГЛОЕ, и по радиусам этого не увидеть: круг радиусом в половину
+     размера под ключ целиком помещается внутрь шестигранника, так что по всем прежним замерам они
+     неразличимы — мутация «сделать гнездо круглым» прошла все 64 проверки насквозь. Различает их
+     только УГОЛ: у шестигранника угол достаёт до af/√3, а плоскость — только до af/2. Замер по углу
+     обязан найти пустоту там, где замер по плоскости находит стенку.
+     Круглое гнездо — это гайка, которая проворачивается: болт не затянуть вовсе. */
+  const afC = af/Math.sqrt(3), afF = af/2;
+  const rProbe = (afC + afF)/2;                         // между плоскостью и углом
+  chk('по УГЛУ гнезда пусто — оно шестигранное',
+      Math.abs(solidZ(t4, rProbe*Math.cos(0), rProbe*Math.sin(0)) - 5) < 0.1,
+      +solidZ(t4, rProbe, 0).toFixed(2));
+  chk('а по ПЛОСКОСТИ на том же радиусе — стенка',
+      solidZ(t4, rProbe*Math.cos(Math.PI/6), rProbe*Math.sin(Math.PI/6)) > 5 + 1,
+      +solidZ(t4, rProbe*Math.cos(Math.PI/6), rProbe*Math.sin(Math.PI/6)).toFixed(2));
+  /* И РАЗМЕР ПОД КЛЮЧ — ИЗ ТАБЛИЦЫ, проверенный ГЕОМЕТРИЕЙ, а не пересказом самой таблицы. У M8 это
+     13 мм: чуть внутри — пусто, чуть снаружи — стенка. Пропорция 1.8·Ø дала бы 14.4, и обе точки
+     оказались бы внутри пустоты. */
+  const flat = a => [ (13/2)*Math.cos(Math.PI/6)*a, (13/2)*Math.sin(Math.PI/6)*a ];
+  chk('гнездо M8 пусто чуть внутри 13 мм под ключ',
+      Math.abs(solidZ(t8, ...flat(0.92)) - 5) < 0.1, +solidZ(t8, ...flat(0.92)).toFixed(2));
+  chk('и стенка чуть снаружи — то есть под ключ ровно 13, а не 14.4',
+      solidZ(t8, ...flat(1.12)) > 5 + 1, +solidZ(t8, ...flat(1.12)).toFixed(2));
+  chk('глубина гнезда не меньше высоты гайки',
+      solidZ(t8, af8/2/Math.cos(Math.PI/6) + 1.2, 0) >= 5 + nutThk(8) - 0.01,
+      {бобышка:+solidZ(t8, af8/2/Math.cos(Math.PI/6)+1.2, 0).toFixed(2), гайка:nutThk(8)});
+}
 console.log('=== cleat back ===');
 { const b=computeBBox(base({woBack:'cleat',woFront:'none',woW:70,woH:80,woCleatLip:10,woT:5}));
   chk('cleat width = woW (X)', Math.abs((b.maxX-b.minX)-70)<0.8, {x:+(b.maxX-b.minX).toFixed(1)});

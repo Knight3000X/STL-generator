@@ -18,6 +18,15 @@
 //      поворачивается на четверть оборота; без сдвига она встаёт РЯДОМ со скобой, а не под ней — и
 //      деталь при этом остаётся герметичной и выглядит целой.
 //
+//   5. КОСЫНКА ДОЛЖНА БЫТЬ В СЕТКЕ, А НЕ В СПЕЦИФИКАЦИИ. Число в расчёте жёсткости и треугольник в
+//      контуре — разные вещи, и разойтись они могут молча: приложение отчитается о жёсткости, которой
+//      у детали нет. Поэтому косынка щупается ЛУЧОМ — материал в углу есть, когда она заказана, и его
+//      там нет, когда не заказана.
+//
+//   6. КОСЫНКА НЕ ИМЕЕТ ПРАВА ДОЙТИ ДО ГНЕЗДА ПОД ГАЙКУ. Дойдя, она встанет ровно там, где гайка, и
+//      контур губки сомкнётся вокруг шестигранника — та самая «дырка», которую ушное отсечение сшивает
+//      во что попало.
+//
 // Run: ./run-all.sh
 
 let pass = 0, fail = 0;
@@ -104,7 +113,7 @@ console.log('=== имена не пересекаются с хомутом ==='
      осмысленно и строила правдоподобную деталь — поймать это можно было только заметив, что «авто» не
      работает. Проверка утверждает и то, и другое: свои имена читаются, чужое не читается. */
   const own = SHAPE_PARAMS.box.filter(r => r.w && r.w.indexOf('gclamp') >= 0);
-  chk('у струбцины шесть своих строк', own.length === 6, own.map(r => r.key));
+  chk('у струбцины восемь своих строк', own.length === 8, own.map(r => r.key));
   chk('и все они начинаются с gc', own.every(r => /^gc/.test(r.key)), own.map(r => r.key));
   chk('ни одна не зовётся clampW', own.every(r => r.key !== 'clampW'));
   chk('а clampW принадлежит хомуту',
@@ -230,7 +239,15 @@ console.log('\n=== гнездо под гайку ===');
   chk('а в стороне от неё губка цела', rayZ(t, s.xA, yc + s.hexR + 2) === 4,
       rayZ(t, s.xA, yc + s.hexR + 2));
   chk('и по ту сторону оси тоже', rayZ(t, s.xA, yc - s.hexR - 2) === 4);
-  chk('и ближе к спинке', rayZ(t, s.T + 1, yc) === 4, rayZ(t, s.T + 1, yc));
+  /* «Ближе к спинке» — ЗА НОСКОМ КОСЫНКИ: в самой косынке граней шесть, а не четыре, и это правильно
+     (косынка — материал в просвете, луч протыкает и её). Проверять надо целость губки, а не отсутствие
+     косынки, поэтому щуп отодвинут за неё; заодно ниже утверждается и то, что в косынке их шесть. */
+  chk('и ближе к спинке, за носком косынки', rayZ(t, s.T + s.gus + 1, yc) === 4,
+      rayZ(t, s.T + s.gus + 1, yc));
+  chk('а в самой косынке луч протыкает и её', s.gus > 0 && rayZ(t, s.T + s.gus*0.5, yc) === 6,
+      rayZ(t, s.T + s.gus*0.5, yc));
+  chk('без косынок у спинки губка цела сразу', rayZ(raw({gcGusset:0}), s.T + 1, yc) === 4,
+      rayZ(raw({gcGusset:0}), s.T + 1, yc));
   chk('гнездо не сквозит на всю губку',
       rayZ(t, s.xA - s.hexR - 2, yc) === 4, rayZ(t, s.xA - s.hexR - 2, yc));
   chk('шире гайка — шире гнездо', sp({gcAF:30}).hexR > sp({gcAF:13}).hexR);
@@ -265,6 +282,180 @@ console.log('\n=== вся область значений ===');
   chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
 }
 
+console.log('\n=== косынки жёсткости ===');
+{
+  /* КОСЫНКА ЕСТЬ В СЕТКЕ. Щуп бьёт вдоль Z в точку внутреннего угла — на полпути между спинкой и
+     носком косынки. С косынкой материал там есть, без неё в этой точке просвет. Точка берётся ВЫШЕ
+     губки и НИЖЕ верхнего плеча, то есть в самом просвете, где кроме косынки быть нечему. */
+  const cornerHit = (ov, frac) => {
+    const s = sp(ov), t = raw(ov), b = bbox(t);
+    const x = s.T + Math.max(0.4, sp({gcGusset:8}).gus*frac), y = (b.y[0] + b.y[1])/2;
+    return rayHitsZ(t, x, y);
+  };
+  {
+    const withG = cornerHit({gcGusset:8}, 0.5), noG = cornerHit({gcGusset:0}, 0.5);
+    chk('с косынкой в углу материал есть', withG.length > noG.length, [withG.length, noG.length]);
+  }
+  // ...и ровно там, где она кончается, его снова нет
+  {
+    const s = sp({gcGusset:8}), t = raw({gcGusset:8}), b = bbox(t), y = (b.y[0] + b.y[1])/2;
+    const zsIn  = rayHitsZ(t, s.T + s.gus*0.5, y);
+    const zsOut = rayHitsZ(t, s.T + s.gus + 1.5, y);
+    chk('за носком косынки материала уже нет', zsIn.length > zsOut.length, [zsIn.length, zsOut.length]);
+    chk('и без косынки в той же точке его нет', rayHitsZ(raw({gcGusset:0}), s.T + s.gus*0.5, y).length === zsOut.length,
+        [rayHitsZ(raw({gcGusset:0}), s.T + s.gus*0.5, y).length, zsOut.length]);
+  }
+  /* КОСЫНКИ ДВЕ, СВЕРХУ И СНИЗУ. Одна — половина работы: раскрывается скоба обоими углами. Меряется
+     по ВЫСОТЕ материала в углу: с двумя косынками просвет там сужен с обеих сторон. */
+  {
+    const s = sp({gcGusset:8}), t = raw({gcGusset:8}), b = bbox(t), y = (b.y[0] + b.y[1])/2;
+    const zs = rayHitsZ(t, s.T + s.gus*0.5, y);
+    const gap = [];                               // просветы между последовательными пересечениями
+    for (let i = 0; i + 1 < zs.length; i++) gap.push(zs[i+1] - zs[i]);
+    const clear = Math.max(...gap);
+    /* На половине косынки каждая из них съедает половину своей длины, а сама скоба утоплена в губку
+       на GC_SINK — просвет отсчитывается от её низа, а не от верха губки. */
+    const want = s.open + GC_SINK - 2*(s.gus*0.5);
+    chk('просвет у спинки сужен обеими косынками', Math.abs(clear - want) < 0.05, [clear, want]);
+  }
+  /* ОБЪЁМ РАСТЁТ ВМЕСТЕ С КОСЫНКОЙ, и растёт как ПЛОЩАДЬ треугольника — с квадратом. Проверка на
+     монотонность одна поймала бы и «косынка нарисована вдвое меньше заказанной». */
+  {
+    const v = g => meshVolume(raw({gcGusset:g}));
+    const s4 = sp({gcGusset:4}), s8 = sp({gcGusset:8});
+    const d4 = v(4) - v(0), d8 = v(8) - v(0);
+    chk('объём растёт с косынкой', d4 > 0 && d8 > d4, [d4, d8]);
+    chk('и ровно как два треугольника на ширину скобы',
+        Math.abs(d8 - 2*(s8.gus*s8.gus/2)*s8.W) < 1e-6 && Math.abs(d4 - 2*(s4.gus*s4.gus/2)*s4.W) < 1e-6,
+        [d8, 2*(s8.gus*s8.gus/2)*s8.W]);
+  }
+
+  /* УРЕЗАНИЕ. Три ограничителя, и каждый настоящий: гнездо под гайку, просвет и вылет губки. */
+  chk('умолчание — косынка восемь миллиметров', Math.abs(sp({}).gus - 8) < 1e-9, sp({}).gus);
+  chk('ноль — это «без косынок»', sp({gcGusset:0}).gus === 0 && sp({gcGusset:0}).gusCut === false);
+  /* КОСЫНКА НЕ ДОХОДИТ ДО ГНЕЗДА — инвариант по всей области, а не на одном наборе: там, где места нет
+     вовсе, косынка обязана стать нулём, а не отрицательной и не «сколько просили». */
+  {
+    let viol = null, zero = 0, n = 0;
+    for (const open of [10, 50, 200]) for (const depth of [15, 40, 150]) for (const T of [6, 12, 40])
+      for (const bolt of [4, 8, 16]) for (const g of [1, 8, 40]){
+        const q = sp({gcOpen:open, gcDepth:depth, gcT:T, gcBolt:bolt, gcGusset:g}); n++;
+        if (q.gus === 0) zero++;
+        if (!(q.gus >= 0 && (q.gus === 0 || q.T + q.gus <= q.xA - q.hexR + 1e-9)) && !viol)
+          viol = {open, depth, T, bolt, g, gus:q.gus, xA:q.xA, hexR:q.hexR};
+      }
+    chk('косынка нигде не доходит до гнезда под гайку', viol === null, viol);
+    chk('и там, где ей нет места, она ровно ноль', zero > 0 && zero < n, [zero, n]);
+  }
+  chk('и не дают съесть просвет', sp({gcOpen:10, gcGusset:40}).gus <= 10*0.35 + 1e-9,
+      sp({gcOpen:10, gcGusset:40}).gus);
+  chk('урезание помечено', sp({gcGusset:40}).gusCut === true);
+  chk('и названо вслух', W({gcGusset:40}).some(x => /косынка урезана с/.test(x)), W({gcGusset:40}));
+  chk('просторную косынку не трогают', sp({gcGusset:4}).gusCut === false);
+  chk('просвет у спинки назван', W({}).some(x => /у самой спинки просвет из-за косынок/.test(x)), W({}));
+  chk('без косынок про просвет молчат', !W({gcGusset:0}).some(x => /просвет из-за косынок/.test(x)));
+
+  /* ЖЁСТКОСТЬ РАСТЁТ, ПРОЧНОСТЬ НЕТ, и это не оговорка, а следствие: на губке момент растёт от нуля к
+     корню и косынка переносит опасное сечение на свой носок, а в СПИНКЕ момент постоянен по всей
+     длине — сила приложена параллельно ей. Опасное сечение спинки — её середина, куда косынка не
+     достаёт. Проверка требует ровно этого, а не «стало лучше». */
+  {
+    const s0 = sp({gcGusset:0}), s8 = sp({gcGusset:8}), s17 = sp({gcGusset:17});
+    /* Точную величину пришпиливает численный интеграл ниже; здесь — что связь монотонна и заметна. */
+    chk('косынка поднимает жёсткость', s8.k > s0.k*1.2 && s17.k > s8.k*1.5, [s0.k, s8.k, s17.k]);
+    chk('и не поднимает прочность', Math.abs(s8.Pmax - s0.Pmax) < 1e-9, [s0.Pmax, s8.Pmax]);
+    chk('и это сказано вслух',
+        W({}).some(x => /прочности она НЕ добавляет вовсе/.test(x) && /посередине спинки/.test(x)), W({}));
+    /* СПИНКА ОПАСНЕЕ ГУБКИ ВСЕГДА, и это утверждение, а не наблюдение на умолчаниях: момент у них один
+       и тот же, а сечение спинки тоньше на отступ скобы от кромки. Отношение обязано выйти ровно
+       (T/(T−GC_OFF))² — если бы кто-то сравнял сечения или перепутал их местами, здесь бы упало. */
+    {
+      let viol = null, n = 0;
+      for (const open of [10, 50, 200]) for (const depth of [15, 150]) for (const T of [6, 12, 40])
+        for (const bolt of [4, 16]) for (const g of [0, 40]){
+          const q = sp({gcOpen:open, gcDepth:depth, gcT:T, gcBolt:bolt, gcGusset:g}); n++;
+          if (!(q.sSpine > q.sArm) && !viol) viol = {open, depth, T, bolt, g, sSpine:q.sSpine, sArm:q.sArm};
+        }
+      chk('спинка опаснее губки во всех ' + n + ' наборах', viol === null, viol);
+      const q0 = sp({gcT:12, gcGusset:0});
+      chk('и ровно в (T/(T−отступ))² раз',
+          Math.abs(q0.sSpine/q0.sArm - Math.pow(12/(12 - GC_OFF), 2)) < 1e-9,
+          [q0.sSpine/q0.sArm, Math.pow(12/(12 - GC_OFF), 2)]);
+    }
+  }
+  /* РАСЧЁТ ИДЁТ ПО МАТЕРИАЛУ, а не по одному зашитому пластику. Модуль двигает жёсткость, допустимая
+     деформация — предельное усилие, и это РАЗНЫЕ числа: нейлон мягче PLA и прочнее его втрое. */
+  {
+    const pla = sp({gcMat:'pla'}), pet = sp({gcMat:'petg'}), nyl = sp({gcMat:'nylon'});
+    chk('модуль двигает жёсткость', pla.k > pet.k && pet.k > nyl.k, [pla.k, pet.k, nyl.k]);
+    chk('а допустимая деформация — предельное усилие', nyl.Pmax > pet.Pmax && pet.Pmax > pla.Pmax,
+        [pla.Pmax, pet.Pmax, nyl.Pmax]);
+    chk('жёсткость идёт ровно с модулем',
+        Math.abs(pla.k/pet.k - 2600/2100) < 1e-9, [pla.k/pet.k, 2600/2100]);
+    chk('материал назван в предупреждении', W({gcMat:'nylon'}).some(x => /скоба \(нейлон\)/.test(x)),
+        W({gcMat:'nylon'}));
+    chk('«как у печати» берёт материал печати',
+        Math.abs(sp({gcMat:'auto', printMat:'abs'}).k - sp({gcMat:'abs'}).k) < 1e-9);
+  }
+  /* ЖЁСТКОСТЬ ПРОВЕРЯЕТСЯ ОТНОШЕНИЕМ, А НЕ «БОЛЬШЕ-МЕНЬШЕ»: потерянный множитель «больше» не нарушает.
+     Ширина входит в оба момента инерции линейно и БОЛЬШЕ НИ ВО ЧТО — ни в вылет, ни в просвет, — так
+     что вдвое шире обязано дать ровно вдвое жёстче. Толщина такой чистой связи не даёт: от неё зависят
+     и просвет, и плечо, поэтому куб на ней не проверить, и притворяться нечего. */
+  {
+    const a = sp({gcW:30, gcGusset:0}), b2 = sp({gcW:60, gcGusset:0});
+    chk('вдвое шире скоба — ровно вдвое жёстче', Math.abs(b2.k/a.k - 2) < 1e-9, b2.k/a.k);
+    chk('и ровно вдвое прочнее', Math.abs(b2.Pmax/a.Pmax - 2) < 1e-9, b2.Pmax/a.Pmax);
+    const c = sp({gcDepth:40, gcGusset:0}), d = sp({gcDepth:80, gcGusset:0});
+    chk('длиннее вылет — мягче, и заметно', c.k/d.k > 2.5, [c.k, d.k, c.k/d.k]);
+  }
+  /* И САМА ФОРМУЛА РАСКРЫТИЯ — ЧИСЛЕННЫМ ИНТЕГРАЛОМ, написанным здесь заново. Закрытая форма
+     2L³/(3EI) + L²h/(EI) получена интегрированием M²/(2EI) по контуру рамы; здесь тот же интеграл
+     берётся по шагам, и совпасть они обязаны. Потерянная двойка на две губки или L² вместо L³ так
+     ловятся, а сверкой формулы с самой собой — нет. */
+  {
+    const num = ov => {
+      const s = sp(ov), E = s.mat.E, L = s.Lc - s.gus, h = s.hc - 2*s.gus, N = 4000;
+      let d = 0;
+      for (let i = 0; i < N; i++){ const x = L*(i + 0.5)/N; d += 2*(x*x)/(E*s.Ia)*(L/N); }  // две губки
+      for (let i = 0; i < N; i++) d += (s.Lc*s.Lc)/(E*s.Is)*(h/N);                          // спинка
+      return 1/d;
+    };
+    for (const ov of [{gcGusset:0}, {gcGusset:8}, {gcOpen:120, gcDepth:90, gcT:8, gcGusset:6}]){
+      const got = sp(ov).k, want = num(ov);
+      chk('раскрытие сходится с численным интегралом ' + JSON.stringify(ov),
+          Math.abs(got/want - 1) < 2e-6, [got, want]);
+    }
+  }
+
+  /* ОБЛАСТЬ ЗНАЧЕНИЙ С КОСЫНКАМИ. Косынка — лишние два угла в контуре, и контур обязан остаться
+     простым: ушное отсечение самопересечение не заметит, а сошьёт во что попало. */
+  {
+    let bad = 0, worst = null, cop = 0, copAt = null, n = 0;
+    for (const g of [0, 1, 8, 40])
+      for (const open of [10, 200])
+        for (const depth of [15, 150])
+          for (const T of [6, 40])
+            for (const bolt of [4, 16])
+              for (const w of [0, 60]){
+                const ov = {gcGusset:g, gcOpen:open, gcDepth:depth, gcT:T, gcBolt:bolt, gcW:w};
+                const tr = raw(ov), m = manifoldCheck(tr, 6); n++;
+                if (!m.watertight || meshVolume(tr) <= 0){ bad++; if (!worst) worst = {ov, open:m.openEdges, bad:m.badEdges}; }
+                const c = coplanarPairs(tr);
+                if (c.hits){ cop++; if (!copAt) copAt = {ov, hits:c.hits, where:c.where}; }
+              }
+    chk('128 наборов с косынками герметичны', bad === 0 && n === 128, worst || n);
+    chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
+  }
+  /* И ГНЕЗДО ПОД ГАЙКУ ОСТАЛОСЬ СКВОЗНЫМ во всех них: косынка, дошедшая до гнезда, замкнула бы контур
+     губки вокруг шестигранника. Щуп бьёт по оси винта — там обязана быть дырка. */
+  for (const ov of [{gcGusset:40, gcOpen:200, gcDepth:15, gcBolt:16}, {gcGusset:40, gcT:40},
+                    {gcGusset:8, gcDepth:150}, {gcGusset:40, gcOpen:10}]){
+    const s = sp(ov), t = raw(ov), b = bbox(t);
+    chk('гнездо сквозное при ' + JSON.stringify(ov), rayZ(t, s.xA, (b.y[0] + b.y[1])/2) === 2,
+        rayZ(t, s.xA, (b.y[0] + b.y[1])/2));
+  }
+}
+
 console.log('\n=== через настоящий путь приложения ===');
 {
   logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
@@ -274,6 +465,12 @@ console.log('\n=== через настоящий путь приложения =
   chk('и герметично', manifoldCheck(t, 6).watertight);
   chk('имя называет просвет, вылет и болт',
       /струбцина 50 мм, вылет \d+, болт M8/.test(activeShapeLabel()), activeShapeLabel());
+  chk('и косынку, когда она есть', /косынка 8/.test(activeShapeLabel()), activeShapeLabel());
+  Object.assign(paramState.box, G({gcGusset:0}));
+  chk('а без косынок молчит про неё', !/косынка/.test(activeShapeLabel()), activeShapeLabel());
+  chk('и строится, и герметична', manifoldCheck(buildTrisForShape('box', paramState.box), 6).watertight);
+  chk('справка говорит про косынки',
+      /КОСЫНК/.test(MODEL_HELP['mount:gclamp'].what) || /КОСЫНК/.test(MODEL_HELP['mount:gclamp'].how));
   chk('справка есть и говорит про печать плашмя',
       !!MODEL_HELP['mount:gclamp'] && /ПЛАШМЯ/.test(MODEL_HELP['mount:gclamp'].how));
 }

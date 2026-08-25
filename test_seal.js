@@ -200,6 +200,141 @@ console.log('=== прокладка: отверстия либо стоят, л�
       !warn({sealMode:'flat'}).some(x => /не хватает места/i.test(x)));
 }
 
+console.log('=== виброножка: строится и имеет заданную высоту ===');
+{
+  for (const ov of [{}, {sealFootBore:6}, {sealFootWaistD:8, sealFootH:6}, {sealFootTopD:50}, {sealFootFill:100}]){
+    const o = Object.assign({sealMode:'foot', printMat:'tpu'}, ov);
+    const t = B(o), mc = manifoldCheck(t, 4), g = footSpec(Object.assign(defaultBoxParams(), o));
+    chk('ножка '+JSON.stringify(ov)+' герметична (+объём)', mc.watertight && meshVolume(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges, vol:+meshVolume(t).toFixed(1)});
+    const b = computeBBox(t);
+    /* Спецификация считает деталь ДО усадки, габарит меряется ПОСЛЕ неё: у TPU это лишние четыре
+       десятых процента, и на двадцати шести миллиметрах ровно та десятая, на которой я и споткнулся.
+       Множитель поэтому назван, а не спрятан в допуск — заодно это проверяет, что усадка доходит и
+       до уплотнения, а не только до кубов. */
+    const k = matShrinkScale(Object.assign(defaultBoxParams(), o));
+    chk('  высота = два фланца, два перехода и талия (с поправкой на усадку)',
+        Math.abs((b.maxY-b.minY) - g.H*k) < 0.02,
+        {габарит:+(b.maxY-b.minY).toFixed(3), расчёт:+(g.H*k).toFixed(3), усадка:k});
+    chk('  и опора шириной в заданный Ø', Math.abs((b.maxX-b.minX) - Math.max(g.baseD, g.topD)*k) < 0.3,
+        {габарит:+(b.maxX-b.minX).toFixed(2), ждём:+(Math.max(g.baseD, g.topD)*k).toFixed(2)});
+  }
+  /* Сплошная ножка и ножка с отверстием строятся РАЗНЫМИ токарями: у latheYTris расточка — цилиндр
+     со своими стенками, и при нулевом радиусе он вырождается в полосу нулевой площади вдоль оси.
+
+     Смотреть на это надо у САМОГО ПОСТРОИТЕЛЯ, а не у готовой модели, и вот почему. Дальше по пути
+     стоит snapWeldTris, который схлопнувшиеся щепки выбрасывает; на выходе сетка одинаково
+     герметична и одинакового объёма, что с веткой, что без неё. Мутация «строить сплошную сверлящим
+     токарем» прошла все 187 проверок насквозь. Ветка даёт не другую деталь — она даёт отсутствие
+     мусора, который иначе пришлось бы подчищать, и проверять надо ровно это. */
+  const solid = buildSeal(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'}));
+  let degen = 0;
+  for (const T of solid){
+    const e1 = [T[1][0]-T[0][0], T[1][1]-T[0][1], T[1][2]-T[0][2]];
+    const e2 = [T[2][0]-T[0][0], T[2][1]-T[0][1], T[2][2]-T[0][2]];
+    const n = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+    if (Math.hypot(n[0],n[1],n[2])/2 < 1e-9) degen++;
+  }
+  chk('построитель сплошной ножки не создаёт вырожденных треугольников', degen === 0, degen);
+  chk('и их не пришлось подчищать: у построителя столько же треугольников, сколько у готовой модели',
+      solid.length === B({sealMode:'foot', printMat:'tpu'}).length,
+      {построитель:solid.length, модель:B({sealMode:'foot', printMat:'tpu'}).length});
+  chk('а отверстие в ней действительно есть', V({sealMode:'foot', printMat:'tpu', sealFootBore:8}) <
+      V({sealMode:'foot', printMat:'tpu'}) - 500,
+      {сглухим:+V({sealMode:'foot', printMat:'tpu'}).toFixed(0), сдыркой:+V({sealMode:'foot', printMat:'tpu', sealFootBore:8}).toFixed(0)});
+}
+
+console.log('=== виброножка: цепочка расчёта сходится сама с собой ===');
+{
+  const F = ov => footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'}, ov));
+  const g = F({});
+  chk('площадь талии — кольцо между талией и отверстием',
+      Math.abs(g.A - Math.PI/4*(g.waistD*g.waistD - g.bore*g.bore)) < 1e-9, g.A);
+  chk('жёсткость = приведённый модуль × площадь ÷ высоту', Math.abs(g.k - g.Eeff*g.A/g.hW) < 1e-9, g.k);
+  chk('осадка = вес ÷ жёсткость', Math.abs(g.set - g.load*FOOT_G/1000/g.k) < 1e-9, g.set);
+  chk('собственная частота из осадки, а не из массы',
+      Math.abs(g.fn - Math.sqrt(FOOT_G/g.set)/(2*Math.PI)) < 1e-9, g.fn);
+  /* Формула каталогов виброопор: f₀ ≈ 15.76/√δ, δ в миллиметрах. Если бы 2π потерялось, число
+     разошлось бы в шесть с лишним раз — а выглядело бы всё так же правдоподобно. */
+  chk('и это та самая 15.76/√δ из каталогов', Math.abs(g.fn - 15.76/Math.sqrt(g.set)) < 0.02, g.fn);
+  chk('изоляция начинается выше f₀·√2', Math.abs(g.isolFrom - g.fn*Math.SQRT2) < 1e-9, g.isolFrom);
+  /* СОБСТВЕННАЯ ЧАСТОТА НЕ ЗАВИСИТ ОТ МАССЫ при заданной осадке, но зависит от неё через осадку:
+     тяжелее груз — больше осадка — ниже частота. Проверяется именно этот ход, а не число. */
+  chk('тяжелее груз — ниже частота', F({sealFootLoad:20}).fn < F({sealFootLoad:5}).fn);
+  chk('и осадка ровно вчетверо больше', Math.abs(F({sealFootLoad:20}).set/F({sealFootLoad:5}).set - 4) < 1e-9);
+}
+
+console.log('=== виброножка: заполнение работает КВАДРАТОМ, а не долей ===');
+{
+  const F = ov => footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'}, ov));
+  chk('приведённый модуль = модуль × квадрат заполнения',
+      Math.abs(F({sealFootFill:25}).Eeff - FIL_MAT.tpu.Ec*0.0625) < 1e-9, F({sealFootFill:25}).Eeff);
+  /* ЛИНЕЙНАЯ ЗАВИСИМОСТЬ ВЫГЛЯДЕЛА БЫ ТАК ЖЕ ПРАВДОПОДОБНО и была бы вдвое неверна. Отношение
+     жёсткостей при вдвое большем заполнении обязано быть ЧЕТЫРЕ, а не два. */
+  chk('вдвое гуще — вчетверо жёстче', Math.abs(F({sealFootFill:50}).k/F({sealFootFill:25}).k - 4) < 1e-9,
+      +(F({sealFootFill:50}).k/F({sealFootFill:25}).k).toFixed(4));
+  chk('вчетверо гуще — в шестнадцать раз жёстче',
+      Math.abs(F({sealFootFill:100}).k/F({sealFootFill:25}).k - 16) < 1e-9);
+  chk('сплошная ножка изолирует ХУЖЕ редкой — в этом вся суть',
+      F({sealFootFill:100}).fn > F({sealFootFill:25}).fn*2,
+      {сплошная:+F({sealFootFill:100}).fn.toFixed(1), редкая:+F({sealFootFill:25}).fn.toFixed(1)});
+  chk('и умолчание — редкое заполнение, а не сплошное', F({}).fill < 0.5, F({}).fill);
+}
+
+console.log('=== виброножка: умолчание работает, а не жалуется ===');
+{
+  const w0 = warn({sealMode:'foot', printMat:'tpu'});
+  const g = footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'}));
+  /* УМОЛЧАНИЕ ОБЯЗАНО БЫТЬ РАБОТАЮЩЕЙ ДЕТАЛЬЮ. Первая версия давала на умолчаниях 57 Гц — изоляция
+     выше восьмидесяти, то есть ножка не делала того, ради чего её печатают, и никто бы не сказал. */
+  chk('на умолчаниях ножка изолирует в разумной полосе', g.isolFrom < 30, +g.isolFrom.toFixed(1));
+  chk('и осадка в пределах прямого участка', !g.overSet && g.set < g.hW*FOOT_SET_MAX,
+      {осадка:+g.set.toFixed(2), предел:+(g.hW*FOOT_SET_MAX).toFixed(2)});
+  chk('и столбик устойчив', !g.slender, {талия:g.hW, диаметр:g.waistD});
+  chk('и ни одной ЖАЛОБЫ на умолчаниях', !w0.some(x => /нелинейн|выпучится|не работает/i.test(x)), w0);
+  chk('а числа названы', w0.some(x => /собственная частота/i.test(x)) && w0.some(x => /заполнения/i.test(x)), w0);
+}
+
+console.log('=== виброножка: каждый предел назван, когда достигнут ===');
+{
+  chk('жёсткий материал назван непригодным',
+      warn({sealMode:'foot', printMat:'pla'}).some(x => /виброножкой не работает/i.test(x)),
+      warn({sealMode:'foot', printMat:'pla'}));
+  chk('и для него не печатается вилка изоляции — она бессмысленна',
+      !warn({sealMode:'foot', printMat:'pla'}).some(x => /изоляция начинается/i.test(x)));
+  chk('перегруз назван перегрузом',
+      warn({sealMode:'foot', printMat:'tpu', sealFootLoad:60}).some(x => /нелинейную/i.test(x)),
+      warn({sealMode:'foot', printMat:'tpu', sealFootLoad:60}));
+  chk('а нормальная нагрузка — нет',
+      !warn({sealMode:'foot', printMat:'tpu', sealFootLoad:5}).some(x => /нелинейную/i.test(x)));
+  chk('слишком высокая талия названа неустойчивой',
+      warn({sealMode:'foot', printMat:'tpu', sealFootWaistD:8, sealFootH:30}).some(x => /выпучится/i.test(x)));
+  chk('а приземистая — нет',
+      !warn({sealMode:'foot', printMat:'tpu', sealFootWaistD:20, sealFootH:8}).some(x => /выпучится/i.test(x)));
+  /* Устойчивость проверяется ОТДЕЛЬНО от расчёта жёсткости, и это не педантизм: k = E·A/h про
+     выпучивание не знает вовсе и продолжает выдавать бодрые числа для сколь угодно тонкого столбика. */
+  const tall = footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu', sealFootWaistD:8, sealFootH:30}));
+  chk('и расчёт при этом молча выдаёт число — потому проверка и отдельная', tall.k > 0 && tall.slender,
+      {k:+tall.k.toFixed(2), слишкомвысокая:tall.slender});
+}
+
+console.log('=== виброножка: отверстие и материал доходят до расчёта ===');
+{
+  const F = ov => footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'}, ov));
+  chk('отверстие убирает площадь и смягчает опору', F({sealFootBore:10}).k < F({sealFootBore:0}).k,
+      {сглухим:+F({sealFootBore:0}).k.toFixed(2), сдыркой:+F({sealFootBore:10}).k.toFixed(2)});
+  chk('и ровно на своё кольцо',
+      Math.abs(F({sealFootBore:10}).A - (F({sealFootBore:0}).A - Math.PI*25)) < 1e-9);
+  chk('TPE мягче TPU — частота ниже',
+      footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpe'})).fn <
+      footSpec(Object.assign(defaultBoxParams(), {sealMode:'foot', printMat:'tpu'})).fn);
+  chk('у каждого материала есть модуль на сжатие, и он положителен',
+      Object.keys(FIL_MAT).every(k => FIL_MAT[k].Ec > 0), Object.keys(FIL_MAT).filter(k => !(FIL_MAT[k].Ec > 0)));
+  chk('и мягкие заметно мягче жёстких', FIL_MAT.tpu.Ec < FIL_MAT.pla.Ec/10 && FIL_MAT.tpe.Ec < FIL_MAT.tpu.Ec);
+  chk('подпись называет частоту, а не только размер',
+      /Гц/.test((function(){ B({sealMode:'foot', printMat:'tpu'}); return activeShapeLabel(); })()));
+}
+
 console.log('=== форма зарегистрирована везде, где её будут искать ===');
 {
   const D = defaultBoxParams();
@@ -208,13 +343,15 @@ console.log('=== форма зарегистрирована везде, где 
   chk('и выбор прокладки тоже', dominantMode(Object.assign({}, D, {sealMode:'flat'})) === 'seal');
   chk('группа принадлежит семейству', FAMILY_MODE['Уплотнение'] === 'sealMode');
   chk('и семейство знает свою форму', GROUP_KIND['Уплотнение'] === 'seal');
-  chk('у обеих разновидностей есть подсказка «что / как / чем»',
-      ['oring','flat'].every(v => MODEL_HELP['seal:'+v] && MODEL_HELP['seal:'+v].what &&
+  chk('и выбор ножки тоже', dominantMode(Object.assign({}, D, {sealMode:'foot'})) === 'seal');
+  chk('у всех трёх разновидностей есть подсказка «что / как / чем»',
+      ['oring','flat','foot'].every(v => MODEL_HELP['seal:'+v] && MODEL_HELP['seal:'+v].what &&
                                   MODEL_HELP['seal:'+v].how && (MODEL_HELP['seal:'+v].mat||[]).length),
-      ['oring','flat'].filter(v => !MODEL_HELP['seal:'+v]));
-  /* Мягкий пластик рекомендуется НЕ для красоты: жёсткое кольцо не уплотняет вовсе. */
-  chk('и в обеих рекомендован мягкий пластик',
-      ['oring','flat'].every(v => MODEL_HELP['seal:'+v].mat.includes('tpu')));
+      ['oring','flat','foot'].filter(v => !MODEL_HELP['seal:'+v]));
+  /* Мягкий пластик рекомендуется НЕ для красоты: жёсткое кольцо не уплотняет вовсе, а жёсткая
+     ножка не гасит — движок это и говорит числом. */
+  chk('и во всех рекомендован мягкий пластик',
+      ['oring','flat','foot'].every(v => MODEL_HELP['seal:'+v].mat.includes('tpu')));
   /* `activeShapeLabel` читает ГЛОБАЛЬНОЕ состояние, а не переданное: подпись рисуется для того, что
      сейчас на экране. Передав ей объект, я получил бы подпись прошлой модели — и получил: кольцо
      назвалось прокладкой, потому что перед этим строилась она. */

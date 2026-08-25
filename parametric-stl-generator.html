@@ -1244,7 +1244,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v23.5.0';
+const APP_VERSION = 'v23.5.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10310,6 +10310,15 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     const bd = (p.threadBodyD>0?p.threadBodyD:D+16);
     const hw = Math.max(majorR+wall+2, (p.threadBodyW>0?p.threadBodyW:bd)/2), hd = Math.max(majorR+wall+2, bd/2);
     const neckLen = len, ySh = Math.max(floor+2, p.threadBodyH>0?p.threadBodyH:30), yTop = ySh+neckLen;
+    /* ПЛЕЧО БАНКИ — ЭТО МАТЕРИАЛ, А НЕ ЛИНИЯ. Потолок полости стоял ровно на той же высоте, что и
+       наружное плечо, и кольцо между горлом и стенкой корпуса выходило НУЛЕВОЙ ТОЛЩИНЫ: поверхность
+       есть, материала нет. Сетка при этом остаётся герметичной, и manifoldCheck молчит — он считает
+       рёбра, а рёбра там спарены; молчит и поиск совпадающих граней, пока не спросить, есть ли за
+       ними материал. В печати это значило, что горло начиналось В ВОЗДУХЕ над полостью и не опиралось
+       ни на что. Потолок опускается на толщину плеча, и горло встаёт на кольцо. Толщина — стенка, но
+       не больше половины того, что есть между дном и плечом: у низкой банки полость иначе схлопнется. */
+    const shT = Math.max(0.8, Math.min(wall, (ySh-floor)*0.5));
+    const ySi = ySh - shT;                                 // потолок полости — НИЖЕ наружного плеча
     const rBore = Math.max(1, minorR - wall);              // neck inner bore
     const iw = Math.max(rBore+0.8, hw-wall), id = Math.max(rBore+0.8, hd-wall);   // inner (cavity) footprint
     const Ny = Math.max(8, Math.round(neckLen/P*spp));
@@ -10330,12 +10339,12 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, mid=thMid(i), rin=[-Math.cos(mid),0,-Math.sin(mid)];
       tris.push(orient([neck(i,Ny),neck(i2,Ny),ring(rBore,yTop,i2)],[0,1,0]));                   // neck top rim (up)
       tris.push(orient([neck(i,Ny),ring(rBore,yTop,i2),ring(rBore,yTop,i)],[0,1,0]));
-      tris.push(orient([ring(rBore,ySh,i),ring(rBore,ySh,i2),ring(rBore,yTop,i2)],rin));          // bore wall (inward)
-      tris.push(orient([ring(rBore,ySh,i),ring(rBore,yTop,i2),ring(rBore,yTop,i)],rin));
-      tris.push(orient([FI(ySh,i),ring(rBore,ySh,i2),FI(ySh,i2)],[0,-1,0]));                      // inner shoulder (down)
-      tris.push(orient([FI(ySh,i),ring(rBore,ySh,i),ring(rBore,ySh,i2)],[0,-1,0]));
-      tris.push(orient([FI(floor,i),FI(floor,i2),FI(ySh,i2)],rin));                               // inner body wall
-      tris.push(orient([FI(floor,i),FI(ySh,i2),FI(ySh,i)],rin));
+      tris.push(orient([ring(rBore,ySi,i),ring(rBore,ySi,i2),ring(rBore,yTop,i2)],rin));          // bore wall (inward)
+      tris.push(orient([ring(rBore,ySi,i),ring(rBore,yTop,i2),ring(rBore,yTop,i)],rin));
+      tris.push(orient([FI(ySi,i),ring(rBore,ySi,i2),FI(ySi,i2)],[0,-1,0]));                      // inner shoulder (down)
+      tris.push(orient([FI(ySi,i),ring(rBore,ySi,i),ring(rBore,ySi,i2)],[0,-1,0]));
+      tris.push(orient([FI(floor,i),FI(floor,i2),FI(ySi,i2)],rin));                               // inner body wall
+      tris.push(orient([FI(floor,i),FI(ySi,i2),FI(ySi,i)],rin));
       tris.push(orient([[0,floor,0],FI(floor,i),FI(floor,i2)],[0,1,0])); }                        // floor top (fan)
   } else {  // 'cap' — internal thread inside a knurled cup
     const wall = Math.max(1.2, p.threadWall>0?p.threadWall:2.5);

@@ -37,6 +37,140 @@ console.log('=== jar: hollow vessel ===');
   chk('jar is hollow (thin walls enclose far less material)', hollow<solidLike, {hollow:+hollow.toFixed(0),solidLike:+solidLike.toFixed(0)}); }
 { const auto=computeBBox(base({threadMode:'jar',threadD:30,threadBodyD:0}));   // auto body Ø = D+16 = 46
   chk('jar auto body Ø = D+16', Math.abs((auto.maxX-auto.minX)-46)<0.5, {x:+(auto.maxX-auto.minX).toFixed(1)}); }
+/* ПЛЕЧО БАНКИ ДОЛЖНО БЫТЬ ИЗ МАТЕРИАЛА. Потолок полости стоял на одной высоте с наружным плечом, и
+   кольцо между горлом и стенкой корпуса выходило нулевой толщины: поверхность есть, материала нет.
+   Горло начиналось в воздухе над полостью. Ни одна проверка этого не видела и не могла увидеть:
+   manifoldCheck считает рёбра, а рёбра там спарены — сетка герметична, объём положителен, габарит
+   верен, банка «полая». Поймать это может только вопрос «а есть ли за поверхностью материал».
+
+   Луч вдоль оси, дважды пересёкший сетку на ОДНОЙ глубине, сам по себе ещё ничего не значит: так же
+   выглядят стенки заподлицо (входим сразу в два тела) и стык впритык (из одного вышли, в другой
+   вошли) — и там, и там материал есть. Различает их число оборотов ПО ОБЕ СТОРОНЫ совпадения:
+   пустота с обеих сторон — и только она — значит, что деталь в этом месте бумажная. */
+function zeroThickHits(tris, N){
+  const b=[1e9,1e9,1e9,-1e9,-1e9,-1e9];
+  for(const T of tris) for(const v of T) for(let k=0;k<3;k++){ if(v[k]<b[k])b[k]=v[k]; if(v[k]>b[3+k])b[3+k]=v[k]; }
+  let hits=0, flush=0, where=null;
+  for (const [ax,u,v] of [[0,1,2],[1,0,2],[2,0,1]]){
+    for (let i=1;i<N;i++) for (let j=1;j<N;j++){
+      const O=[0,0,0], D=[0,0,0]; D[ax]=1; O[ax]=b[ax]-1000;
+      O[u]=b[u]+(b[3+u]-b[u])*(i+0.1371)/N; O[v]=b[v]+(b[3+v]-b[v])*(j+0.2113)/N;
+      const ts=[];
+      for (const T of tris){
+        const e1=[T[1][0]-T[0][0],T[1][1]-T[0][1],T[1][2]-T[0][2]];
+        const e2=[T[2][0]-T[0][0],T[2][1]-T[0][1],T[2][2]-T[0][2]];
+        const h=[D[1]*e2[2]-D[2]*e2[1], D[2]*e2[0]-D[0]*e2[2], D[0]*e2[1]-D[1]*e2[0]];
+        const a=e1[0]*h[0]+e1[1]*h[1]+e1[2]*h[2];
+        if (Math.abs(a)<1e-12) continue;
+        const sv=[O[0]-T[0][0],O[1]-T[0][1],O[2]-T[0][2]], f=1/a;
+        const uu=f*(sv[0]*h[0]+sv[1]*h[1]+sv[2]*h[2]); if (uu<1e-9||uu>1-1e-9) continue;
+        const q=[sv[1]*e1[2]-sv[2]*e1[1], sv[2]*e1[0]-sv[0]*e1[2], sv[0]*e1[1]-sv[1]*e1[0]];
+        const vv=f*(D[0]*q[0]+D[1]*q[1]+D[2]*q[2]); if (vv<1e-9||uu+vv>1-1e-9) continue;
+        const tt=f*(e2[0]*q[0]+e2[1]*q[1]+e2[2]*q[2]); if (tt<=1e-9) continue;
+        const n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+        ts.push([tt, (n[0]*D[0]+n[1]*D[1]+n[2]*D[2])>0 ? 1 : -1]);
+      }
+      ts.sort((x,y)=>x[0]-y[0]);
+      let w=0, k=0;
+      while (k<ts.length){
+        let e=k; while (e+1<ts.length && ts[e+1][0]-ts[e][0]<1e-6) e++;
+        if (e>k){ const before=w; let after=w; for(let q=k;q<=e;q++) after-=ts[q][1];
+          if (before<=0 && after<=0){ hits++;
+            if(!where) where={ось:'xyz'[ax], u:+O[u].toFixed(2), v:+O[v].toFixed(2), при:+(O[ax]+ts[k][0]).toFixed(3)}; }
+          else flush++; }
+        for(let q=k;q<=e;q++) w-=ts[q][1];
+        k=e+1;
+      }
+    }
+  }
+  return {hits, flush, where};
+}
+// Сколько материала луч вверх встречает на радиусе r — суммарно по всем промежуткам, а с окном
+// [y0,y1] — только внутри него. Окно нужно, чтобы спрашивать про ПЛЕЧО, а не про всю банку: дно есть
+// и у сломанной, и без окна вопрос «есть ли материал под горлом» отвечает сам себе.
+function solidAtRadius(tris, r, y0, y1){
+  const x=r*Math.cos(0.37), z=r*Math.sin(0.37), hs=[];
+  for(const T of tris){ const [a,b,c]=T;
+    const d1=(b[0]-a[0])*(z-a[2])-(b[2]-a[2])*(x-a[0]);
+    const d2=(c[0]-b[0])*(z-b[2])-(c[2]-b[2])*(x-b[0]);
+    const d3=(a[0]-c[0])*(z-c[2])-(a[2]-c[2])*(x-c[0]);
+    if(!((d1>=0&&d2>=0&&d3>=0)||(d1<=0&&d2<=0&&d3<=0))) continue;
+    const A=(b[0]-a[0])*(c[2]-a[2])-(b[2]-a[2])*(c[0]-a[0]); if(Math.abs(A)<1e-12) continue;
+    const w1=((b[0]-x)*(c[2]-z)-(b[2]-z)*(c[0]-x))/A, w2=((c[0]-x)*(a[2]-z)-(c[2]-z)*(a[0]-x))/A;
+    const y=w1*a[1]+w2*b[1]+(1-w1-w2)*c[1];
+    const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
+    hs.push([y, ny>0?1:-1]); }
+  hs.sort((u,v)=>u[0]-v[0]);
+  const lo = y0===undefined ? -Infinity : y0, hi = y1===undefined ? Infinity : y1;
+  let w=0, prev=-Infinity, sum=0;
+  for(const [y,sg] of hs){
+    if(w>0){ const p=Math.max(prev,lo), q=Math.min(y,hi); if(q>p) sum += q-p; }
+    w-=sg; prev=y; }
+  return sum;
+}
+console.log('=== jar: плечо из материала, а не из воздуха ===');
+{
+  // Между наружным Ø горла и стенкой корпуса горло обязано на что-то опираться. Радиус берётся
+  // ровно посередине этого кольца, чтобы не зацепить ни резьбу, ни стенку.
+  const t=base({threadMode:'jar',threadD:30,threadBodyD:46,threadBodyH:30,threadWall:2.5,threadFloor:2.5});
+  /* Окно обязательно. Без него луч складывает ВЕСЬ материал на радиусе — и дно тоже, а дно есть и у
+     сломанной банки: проверка «материал под горлом» прошла бы, ничего не проверив. Окно берётся под
+     наружным плечом (оно на maxY − длина резьбы) и не достаёт до дна. */
+  const yPl=computeBBox(t).maxY-16;
+  const at=solidAtRadius(t, (15+20.5)/2, yPl-5, yPl+0.1);
+  chk('под горлом банки есть материал (плечо не нулевой толщины)', at > 1.0, {материала:+at.toFixed(2)});
+  chk('толщина плеча ≈ стенке', Math.abs(at-2.5)<0.3, {материала:+at.toFixed(2), стенка:2.5});
+  chk('а дно в это окно не попало', solidAtRadius(t, (15+20.5)/2) - at > 2.0,
+      {всего:+solidAtRadius(t,(15+20.5)/2).toFixed(2), вокне:+at.toFixed(2)});
+  const z=zeroThickHits(t, 13);
+  chk('в банке нет оболочек нулевой толщины', z.hits===0, z.where);
+  /* Отсутствие находки и слепой детектор выглядят одинаково, поэтому детектор проверяется на заведомо
+     бумажной сетке: квадрат, закрытый с обеих сторон и не имеющий толщины. */
+  const paper=(()=>{ const a=[-5,0,-5],b=[5,0,-5],c=[5,0,5],d=[-5,0,5];
+    return [[a,b,c],[a,c,d],[a,c,b],[a,d,c]]; })();
+  chk('и он не слеп: на бумажном квадрате срабатывает', zeroThickHits(paper, 7).hits > 0,
+      {сработало:zeroThickHits(paper,7).hits});
+}
+{
+  /* ПЕРЕБОР, А НЕ ОДНА ТОЧКА. Толщина плеча зажата половиной того, что есть между дном и плечом:
+     у низкой банки полость иначе схлопнулась бы. Значит, мерить надо и низкую, и толстостенную, и
+     некруглую — там, где зажим срабатывает, и там, где нет. Полный луч-детектор для перебора
+     непозволительно дорог (полсотни тысяч треугольников на банку, и так уже три минуты на файл),
+     поэтому здесь спрашивается то же самое, но в лоб: НА ВСЁМ КОЛЬЦЕ между горлом и наружной
+     стенкой, чуть ниже наружного плеча, обязан быть материал. У сломанной банки его там нет. */
+  let bad=0, badAt=null, n=0;
+  for(const H of [5, 12, 30, 90])
+    for(const wall of [1.2, 2.5, 8])
+      for(const D of [12, 30, 60])
+        for(const shape of ['round','rect']){
+          const t=base({threadMode:'jar',threadD:D,threadBodyH:H,threadWall:wall,threadBodyShape:shape,threadBodyD:0});
+          const bb=computeBBox(t), yPl=bb.maxY-16;            // threadLen = 16 → плечо на maxY − 16
+          const rOut=Math.min(bb.maxX, bb.maxZ)-0.6;
+          n++;
+          for(let k=0;k<=6;k++){
+            const r=D/2 + (rOut-D/2)*k/6;
+            if (r>=rOut) break;
+            // Окно — ПОД плоскостью плеча и уже самого тонкого плеча (0.8 мм): что бы ни зажалось,
+            // материал в этой полоске обязан быть на каждом радиусе кольца.
+            if (solidAtRadius(t, r, yPl-0.7, yPl-0.1) < 0.5){
+              bad++; if(!badAt) badAt={H,wall,D,shape,r:+r.toFixed(2),высота:+yPl.toFixed(2)}; break; }
+          }
+        }
+  chk('кольцо под горлом сплошное во всех '+n+' банках', bad===0, badAt);
+}
+/* ЗАЖИМ ТОЛЩИНЫ ПЛЕЧА ТОЖЕ НАДО СТЕРЕЧЬ. Плечо толщиной в стенку — разумное умолчание, но у низкой
+   толстостенной банки стенка больше всего, что есть между дном и плечом, и потолок полости уезжает
+   НИЖЕ дна. Банка при этом остаётся герметичной, объём положителен, кольцо под горлом сплошное —
+   и все проверки выше молчат: они спрашивают про плечо, а схлопывается полость. Мутация «убрать
+   зажим» прошла сквозь них насквозь, поэтому здесь спрашивается прямо: полость есть? */
+console.log('=== jar: полость не схлопывается на низкой толстостенной банке ===');
+for (const [H, wall] of [[5,8],[5,2.5],[12,8],[30,8]]){
+  const t=base({threadMode:'jar',threadD:30,threadBodyH:H,threadWall:wall});
+  const bb=computeBBox(t), yPl=bb.maxY-16;
+  const r=11;                                     // между каналом горла и стенкой полости при любой стенке
+  const empty=(yPl-bb.minY) - solidAtRadius(t, r, bb.minY, yPl);
+  chk('банка H'+H+' стенка '+wall+': полость на месте', empty > 0.5, {пусто:+empty.toFixed(2)});
+}
 console.log('=== jar: arbitrary body footprint (container of any shape) ===');
 for(const shape of ['round','squircle','roundrect','rect'])
   chk('jar '+shape+' footprint watertight (+vol)', (()=>{const t=base({threadMode:'jar',threadBodyShape:shape,threadBodyD:50,threadBodyW:40,threadD:26});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {shape});

@@ -27,6 +27,13 @@
 //      контур губки сомкнётся вокруг шестигранника — та самая «дырка», которую ушное отсечение сшивает
 //      во что попало.
 //
+//   7. В ПЕЧАТНУЮ РЕЗЬБУ ОБЯЗАН ВКРУЧИВАТЬСЯ БОЛТ ЭТОГО ЖЕ ГЕНЕРАТОРА. Это единственное, ради чего она
+//      существует, и проверить это сверкой формул нельзя: обе стороны считаются по одному профилю, и
+//      сверка сошлась бы, даже если бы профиль был неверен целиком. Поэтому строятся ОБЕ детали, и у
+//      обеих меряется радиус поверхности в одинаковых (θ, y). Резьба свинчивается при любом ОСЕВОМ
+//      смещении — на то она и резьба, — поэтому смещение подбирается, а требуется РАВНОМЕРНОСТЬ зазора:
+//      она и означает, что совпали шаг, профиль, глубина и направление витка.
+//
 // Run: ./run-all.sh
 
 let pass = 0, fail = 0;
@@ -113,7 +120,7 @@ console.log('=== имена не пересекаются с хомутом ==='
      осмысленно и строила правдоподобную деталь — поймать это можно было только заметив, что «авто» не
      работает. Проверка утверждает и то, и другое: свои имена читаются, чужое не читается. */
   const own = SHAPE_PARAMS.box.filter(r => r.w && r.w.indexOf('gclamp') >= 0);
-  chk('у струбцины восемь своих строк', own.length === 8, own.map(r => r.key));
+  chk('у струбцины десять своих строк', own.length === 10, own.map(r => r.key));
   chk('и все они начинаются с gc', own.every(r => /^gc/.test(r.key)), own.map(r => r.key));
   chk('ни одна не зовётся clampW', own.every(r => r.key !== 'clampW'));
   chk('а clampW принадлежит хомуту',
@@ -456,6 +463,168 @@ console.log('\n=== косынки жёсткости ===');
   }
 }
 
+console.log('\n=== печатная резьба вместо гнезда под гайку ===');
+{
+  /* УМОЛЧАНИЕ НЕ ТРОНУТО. Оговорка про срыв витков по слоям осталась верной, и резьба добавлена рядом,
+     а не вместо: гайка прочнее, а гайки под рукой может не быть. */
+  chk('умолчание — гнездо под гайку', sp({}).nutMode === 'hex', sp({}).nutMode);
+  chk('и деталь при умолчании прежняя',
+      Math.abs(meshVolume(raw({})) - meshVolume(raw({gcNut:'hex'}))) < 1e-9);
+  chk('резьба включается выбором', sp({gcNut:'thread'}).nutMode === 'thread');
+
+  /* ШАГ — ИЗ ТАБЛИЦЫ ISO 261, а не из формулы: формулы для шага не существует. */
+  for (const [d, P] of [[3, 0.5], [4, 0.7], [5, 0.8], [6, 1], [8, 1.25], [10, 1.5], [12, 1.75], [16, 2]]){
+    if (d < 4) continue;                                   // Ø болта у струбцины начинается с четырёх
+    chk('M' + d + ' — крупный шаг ' + P, Math.abs(sp({gcNut:'thread', gcBolt:d}).pitch - P) < 1e-9,
+        sp({gcNut:'thread', gcBolt:d}).pitch);
+    chk('и он не «угадан»', sp({gcNut:'thread', gcBolt:d}).pitchGuessed === false);
+  }
+  {
+    const q = sp({gcNut:'thread', gcBolt:9.5});
+    chk('у нестандартного Ø шаг берётся у ближайшего стандартного', Math.abs(q.pitch - 1.5) < 1e-9, q.pitch);
+    chk('и это помечено как оценка', q.pitchGuessed === true);
+    chk('и сказано вслух', W({gcNut:'thread', gcBolt:9.5}).some(x => /шаг ближайшего стандартного/.test(x)),
+        W({gcNut:'thread', gcBolt:9.5}));
+    chk('у стандартного про оценку молчат', !W({gcNut:'thread', gcBolt:8}).some(x => /ближайшего стандартного/.test(x)));
+    chk('заданный вручную шаг сильнее таблицы', Math.abs(sp({gcNut:'thread', gcBolt:8, gcPitch:2.5}).pitch - 2.5) < 1e-9);
+    chk('и «угаданным» уже не считается', sp({gcNut:'thread', gcBolt:9.5, gcPitch:1.25}).pitchGuessed === false);
+  }
+
+  /* ГЛАВНОЕ: БОЛТ ГЕНЕРАТОРА В НЕЁ ВКРУЧИВАЕТСЯ. Меряются ОБЕ поверхности, а не сверяются формулы. */
+  {
+    // радиус поверхности в (θ, y): луч из оси наружу, первое пересечение
+    const radiusAt = (tris, th, y) => {
+      const d = [Math.cos(th), 0, Math.sin(th)]; let best = Infinity;
+      for (const T of tris){
+        const e1 = sub(T[1], T[0]), e2 = sub(T[2], T[0]);
+        const h = cross(d, e2), a = dot(e1, h); if (Math.abs(a) < 1e-12) continue;
+        const sv = [-T[0][0], y - T[0][1], -T[0][2]], f = 1/a;
+        const u = f*(sv[0]*h[0] + sv[1]*h[1] + sv[2]*h[2]); if (u < 0 || u > 1) continue;
+        const q = cross(sv, e1), v = f*(d[0]*q[0] + d[1]*q[1] + d[2]*q[2]); if (v < 0 || u + v > 1) continue;
+        const t = f*(e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]); if (t > 1e-9 && t < best) best = t;
+      } return best; };
+    /* Углы щупа СДВИНУТЫ на треть грани. Ровно кратные числу граней ложатся точно в рёбра сетки, оба
+       смежных треугольника строгий тест отвергает, и «поверхности здесь нет» выходит на сплошной
+       резьбе — первая версия щупа так и докладывала наружный Ø вместо канала. */
+    const ANG = k => 2*Math.PI*(k + 0.37)/13;
+    const boltOf = (D, P) => {
+      const bp = Object.assign({}, defaultBoxParams(), {shape:'box', threadMode:'bolt', threadD:D, threadPitch:P,
+        threadLen:20, threadClear:0.4, threadLead:0, printShrink:false});
+      const all = buildTrisForShape('box', bp);
+      // стержень: отбрасываем головку — она шире резьбы и щуп упирался бы в неё
+      const keep = all.filter(T => T.every(v => Math.hypot(v[0], v[2]) < D/2 + 0.35));
+      let lo = 1e9, hi = -1e9;
+      for (const T of keep) for (const v of T){ if (v[1] < lo) lo = v[1]; if (v[1] > hi) hi = v[1]; }
+      return {tris: keep, y0: lo + 2, y1: hi - 2};
+    };
+    /* Зазор МЕЖДУ ПОВЕРХНОСТЯМИ при лучшем осевом смещении. Смещение подбирается потому, что резьба
+       свинчивается при любом: важен не сдвиг, а РАВНОМЕРНОСТЬ. Неравномерный зазор означает разошедшийся
+       шаг, профиль, глубину или направление витка — то есть пару, которая не свинтится. */
+    const worstGap = (D, P, clr) => {
+      const sleeve = threadSleeveTris(0, 12, D, P, D/2 + 1.6, clr, 0.14);
+      const B = boltOf(D, P), pts = [];
+      for (let k = 0; k < 13; k++){ const th = ANG(k);
+        for (let j = 0; j <= 6; j++){ const ys = 3 + 6*j/6;
+          const rf = radiusAt(sleeve, th, ys); if (isFinite(rf)) pts.push([th, ys, rf]); } }
+      let best = Infinity;
+      for (let m = 0; m < 60; m++){ const dlt = P*m/60;
+        let mx = 0, ok = true;
+        for (const [th, ys, rf] of pts){
+          let yb = null;
+          for (let q = -40; q <= 40; q++){ const c = ys + dlt + q*P; if (c > B.y0 && c < B.y1){ yb = c; break; } }
+          if (yb === null){ ok = false; break; }
+          const rm = radiusAt(B.tris, th, yb); if (!isFinite(rm)){ ok = false; break; }
+          mx = Math.max(mx, Math.abs(rf - rm - clr)); }
+        if (ok && mx < best) best = mx; }
+      return {worst: best, pts: pts.length};
+    };
+    const fit = worstGap(8, 1.25, 0.4);
+    chk('болт генератора M8×1.25 вкручивается: зазор ровно 0.4 по всей резьбе',
+        fit.pts > 60 && fit.worst < 0.09, fit);
+    /* ОТРИЦАТЕЛЬНЫЙ КОНТРОЛЬ: болт ДРУГОГО шага не влезает ни при каком смещении. Без него проверка
+       выше не значит ничего — «нашлось смещение» само по себе не новость. */
+    const bad = (() => {
+      const sleeve = threadSleeveTris(0, 12, 8, 1.25, 8/2 + 1.6, 0.4, 0.14);
+      const B = boltOf(8, 1.75), pts = [];
+      for (let k = 0; k < 13; k++){ const th = ANG(k);
+        for (let j = 0; j <= 6; j++){ const ys = 3 + 6*j/6;
+          const rf = radiusAt(sleeve, th, ys); if (isFinite(rf)) pts.push([th, ys, rf]); } }
+      let best = Infinity;
+      for (let m = 0; m < 60; m++){ const dlt = 1.75*m/60;
+        let mx = 0, ok = true;
+        for (const [th, ys, rf] of pts){
+          let yb = null;
+          for (let q = -40; q <= 40; q++){ const c = ys + dlt + q*1.75; if (c > B.y0 && c < B.y1){ yb = c; break; } }
+          if (yb === null){ ok = false; break; }
+          const rm = radiusAt(B.tris, th, yb); if (!isFinite(rm)){ ok = false; break; }
+          mx = Math.max(mx, Math.abs(rf - rm - 0.4)); }
+        if (ok && mx < best) best = mx; }
+      return best; })();
+    chk('а болт с другим шагом не влезает ни при каком смещении', bad > 0.3, bad);
+  }
+
+  /* ВТУЛКА СИДИТ В ГУБКЕ, А НЕ ВИСИТ В ОТВЕРСТИИ. Сидит она тем, что снаружи ШИРЕ отверстия; будь она
+     уже, деталь осталась бы герметичной, а резьба вывалилась бы вместе с болтом. */
+  {
+    const s = sp({gcNut:'thread'});
+    chk('втулка шире отверстия в губке', s.sleeveR > s.bolt/2 + GC_FIT/2 + 1, [s.sleeveR, s.bolt/2]);
+    chk('и место под неё считается от НЕЁ, а не от шестигранника',
+        Math.abs(s.socketR - s.sleeveR) < 1e-9 && Math.abs(sp({}).socketR - sp({}).hexR) < 1e-9,
+        [s.socketR, s.sleeveR, sp({}).socketR, sp({}).hexR]);
+    // ...и это доходит до габаритов: под резьбу гнездо у́же, значит и скоба у́же
+    chk('под резьбу скоба у́же, чем под гайку', s.W < sp({}).W - 1, [s.W, sp({}).W]);
+    /* И ось винта уезжает ДАЛЬШЕ от спинки: гнездо у́же, а губка той же глубины — освободившееся место
+       достаётся вылету. Прежняя запись этой проверки была «или reach меньше, или depth не больше» и
+       проходила через второе всегда: она не утверждала ничего. */
+    chk('и ось винта дальше от спинки, чем при гнезде под гайку', s.reach > sp({}).reach + 1,
+        [s.reach, sp({}).reach]);
+  }
+  /* ОТВЕРСТИЕ В ГУБКЕ ПОД РЕЗЬБУ — КРУГЛОЕ, А ПОД ГАЙКУ — ШЕСТИГРАННОЕ. Радиальным щупом их не
+     различить, поэтому щуп УГЛОВОЙ: у шестигранника угол дотягивается до af/√3, а грань — только до
+     af/2, у круга же во все стороны одно и то же. */
+  {
+    const s = sp({}), t = raw({}), yc = (bbox(t).y[0] + bbox(t).y[1])/2;
+    const reach = (tris, ov, ang) => { const q = sp(ov);
+      let r = 0; for (let x = 0.1; x < q.hexR + q.sleeveR + 4; x += 0.02){
+        if (rayZ(tris, q.xA + x*Math.cos(ang), yc + x*Math.sin(ang)) === 2) r = x; else if (r > 0) break; }
+      return r; };
+    const hexCorner = reach(t, {}, Math.PI/6), hexFlat = reach(t, {}, 0);
+    chk('у гнезда под гайку угол дальше грани', hexCorner > hexFlat + 0.5, [hexCorner, hexFlat]);
+    const tt = raw({gcNut:'thread'});
+    const rc = reach(tt, {gcNut:'thread'}, Math.PI/6), rf = reach(tt, {gcNut:'thread'}, 0);
+    chk('а у отверстия под резьбу во все стороны одинаково', Math.abs(rc - rf) < 0.12, [rc, rf]);
+  }
+
+  /* ОБЕ ОГОВОРКИ СКАЗАНЫ: и почему гнездо остаётся умолчанием, и что печатается эта резьба лёжа. */
+  chk('про срыв витков по слоям сказано',
+      W({gcNut:'thread'}).some(x => /СРЫВАЕТ ПО СЛОЯМ/.test(x)), W({gcNut:'thread'}));
+  chk('и про печать лёжа тоже',
+      W({gcNut:'thread'}).some(x => /печатается эта резьба ЛЁЖА/.test(x)));
+  chk('а при гнезде про гайку говорят по-прежнему',
+      W({}).some(x => /болт и гайку печатайте тем же генератором/.test(x)));
+  chk('и не поминают печатную резьбу как сделанную',
+      !W({}).some(x => /печатная резьба вместо гнезда/.test(x)));
+
+  /* ОБЛАСТЬ ЗНАЧЕНИЙ. Втулка ПЕРЕСЕКАЕТ губку объёмом, и любое касание гранью всплыло бы совпадающей
+     парой, а промах мимо материала — дырой. */
+  {
+    let bad = 0, worst = null, cop = 0, copAt = null, n = 0;
+    for (const bolt of [4, 8, 16])
+      for (const T of [6, 40])
+        for (const open of [10, 200])
+          for (const g of [0, 40])
+            for (const pit of [0, 0.5, 3]){
+              const ov = {gcNut:'thread', gcBolt:bolt, gcT:T, gcOpen:open, gcGusset:g, gcPitch:pit};
+              const tr = raw(ov), m = manifoldCheck(tr, 6); n++;
+              if (!m.watertight || meshVolume(tr) <= 0){ bad++; if (!worst) worst = {ov, open:m.openEdges, bad:m.badEdges}; }
+              const c = coplanarPairs(tr);
+              if (c.hits){ cop++; if (!copAt) copAt = {ov, hits:c.hits, where:c.where}; }
+            }
+    chk('72 набора с печатной резьбой герметичны', bad === 0 && n === 72, worst || n);
+    chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
+  }
+}
+
 console.log('\n=== через настоящий путь приложения ===');
 {
   logos.length = 0; boxHoles.length = 0; dieFaces.length = 0;
@@ -466,9 +635,17 @@ console.log('\n=== через настоящий путь приложения =
   chk('имя называет просвет, вылет и болт',
       /струбцина 50 мм, вылет \d+, болт M8/.test(activeShapeLabel()), activeShapeLabel());
   chk('и косынку, когда она есть', /косынка 8/.test(activeShapeLabel()), activeShapeLabel());
+  Object.assign(paramState.box, G({gcNut:'thread'}));
+  chk('и печатную резьбу с её шагом', /резьба ×1.25/.test(activeShapeLabel()), activeShapeLabel());
+  chk('и такая деталь строится и герметична',
+      manifoldCheck(buildTrisForShape('box', paramState.box), 6).watertight);
+  Object.assign(paramState.box, G({}));
+  chk('а при гнезде про резьбу молчит', !/резьба ×/.test(activeShapeLabel()), activeShapeLabel());
   Object.assign(paramState.box, G({gcGusset:0}));
   chk('а без косынок молчит про неё', !/косынка/.test(activeShapeLabel()), activeShapeLabel());
   chk('и строится, и герметична', manifoldCheck(buildTrisForShape('box', paramState.box), 6).watertight);
+  chk('справка говорит про печатную резьбу как про выбор',
+      /ПЕЧАТНАЯ РЕЗЬБА есть выбором рядом с гнездом/.test(MODEL_HELP['mount:gclamp'].what));
   chk('справка говорит про косынки',
       /КОСЫНК/.test(MODEL_HELP['mount:gclamp'].what) || /КОСЫНК/.test(MODEL_HELP['mount:gclamp'].how));
   chk('справка есть и говорит про печать плашмя',

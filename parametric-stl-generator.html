@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.4.0';
+const APP_VERSION = 'v25.5.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6170,7 +6170,14 @@ const SHAPE_PARAMS = {
       hint:'Карта задаётся стандартом ISO/IEC 7810 ID-1: 85.60 × 53.98 × 0.76 мм. «Веером» карты не разъезжаются — это трение карты о карту, а не геометрия.'},
     {group:'Картодержатель', key:'chCards', only:{chMode:['wallet']}, label:'Сколько карт', min:1, max:20, step:1, default:6, unit:'', int:true},
     {group:'Картодержатель', key:'chTravel', only:{chMode:['wallet']}, label:'Ход толкателя', min:5, max:60, step:1, default:20, unit:'мм'},
-    {group:'Картодержатель', key:'chLip', only:{chMode:['wallet']}, label:'Вылет губы над пачкой', min:0.3, max:6, step:0.1, default:1.2, unit:'мм'},
+    /* Здесь стояла «Вылет губы над пачкой» (`chLip`) — ручка, которую НИКТО НЕ ЧИТАЛ. Осталась она от
+       открытого лотка: при переделке в закрытый футляр (v25.1.0) губа стала двумя губами у устья со
+       своими четырьмя строками, а эта так и висела, крутилась и не делала ничего. Рядом жил обратный
+       случай: `chPad` — толщина пятки толкателя — читался построителем, но строки не имел вовсе, то
+       есть задать его было нельзя. Одна замена чинит обе беды. */
+    {group:'Картодержатель', key:'chPad', only:{chMode:['wallet']}, label:'Пятка толкателя: толщина (0 = авто)', min:0, max:8, step:0.1, default:0, unit:'мм'},
+    {group:'Картодержатель', key:'chBridge', only:{chMode:['wallet']}, label:'Перемычки в пазу (0 = без; первая — упор в конце хода)', min:0, max:6, step:1, default:1, unit:'', int:true},
+    {group:'Картодержатель', key:'chBladeW', only:{chMode:['wallet']}, label:'Ширина лопасти толкателя (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Картодержатель', key:'chSlot', only:{chMode:['wallet']}, label:'Ширина паза под толкатель (0 = авто)', min:0, max:30, step:0.5, default:0, unit:'мм'},
     {group:'Картодержатель', key:'chBlade', only:{chMode:['wallet']}, label:'Толщина лопасти толкателя (0 = авто)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Картодержатель', key:'chLipLen', only:{chMode:['wallet']}, label:'Губа у устья: вылет', min:3, max:40, step:0.5, default:8, unit:'мм'},
@@ -13255,6 +13262,8 @@ function articHeadTris(e, seg){
 
    ЧЕГО НЕ ОБЕЩАЕМ: «карты веером». Лесенка — трение карты о карту, а не геометрия. */
 const CARD_ISO = { w: 53.98, l: 85.60, t: 0.76 };   // ISO/IEC 7810 ID-1
+const CARD_BRIDGE_LAP  = 1.2;   // насколько перемычка заходит в каждую половину оболочки — телом
+const CARD_BRIDGE_SINK = 0.4;   // и насколько утоплена от обеих граней паза: общих плоскостей быть не должно
 const CARD_WALL  = 2.4;    // боковая стенка футляра
 const CARD_SHELL = 1.6;    // лицевая и тыльная оболочки
 const CARD_END   = 2.4;    // задняя стенка
@@ -13272,11 +13281,44 @@ function cardSpec(p){
   const H = tF + stack + tT;                         // высота футляра без пятки толкателя
   const sw = cl_(p.chSlot, 0, 30, 0) > 0 ? cl_(p.chSlot, 0, 30, 0) : Math.max(6, cw*0.22);
   const blade = cl_(p.chBlade, 0, 12, 0) > 0 ? Math.max(1.6, cl_(p.chBlade, 0, 12, 0)) : 2.4;
-  const over = Math.max(1.2, sw*0.35);               // насколько лопасть и пятка шире паза
+  const over = Math.max(1.2, sw*0.35);               // насколько лопасть и пятка шире паза по умолчанию
   const padT = Math.max(1.2, cl_(p.chPad, 0, 8, 0) > 0 ? cl_(p.chPad, 0, 8, 0) : 1.6);
   const inner = clen + travel + blade;               // карта, ход и сама лопасть
   const yTop = H + gap + padT;                       // пятка толкателя лежит НА лицевой оболочке
   const outer = { x: 2*xo, y: yTop, z: inner + tE, yTop };
+  /* ШИРИНА ЛОПАСТИ — ЗАКАЗЫВАЕТСЯ (v25.5.0). Своё число тут нужно: узкая лопасть толкает пачку в одну
+     точку и перекашивает её в кармане, широкая упирается в боковые стенки. Границы, однако, не вкусовые,
+     и потому зажимаются: ЛОПАСТЬ ОБЯЗАНА БЫТЬ ШИРЕ ПАЗА (иначе провалится в него и выйдет наружу вместе
+     с толкателем) и обязана влезать в карман. Заказанное за границей — урезается, и об этом говорится. */
+  const bladeHalfMin = sw/2 + Math.max(0.8, 2*gap);
+  const bladeHalfMax = xi - gap;
+  const bladeWwant = cl_(p.chBladeW, 0, 60, 0);
+  const bladeHalf = Math.max(bladeHalfMin, Math.min(bladeHalfMax,
+                      bladeWwant > 0 ? bladeWwant/2 : sw/2 + over));
+  const bladeWCut = bladeWwant > 0 && Math.abs(bladeHalf*2 - bladeWwant) > 1e-9;
+  /* ПЕРЕМЫЧКИ В ПАЗУ (v25.5.0). Паз идёт во всю длину лицевой оболочки — иначе и быть не может, футляр
+     это ОДНА протяжка постоянного сечения, — и без перемычек оболочка распадается на две полосы,
+     связанные только задней стенкой и устьем. Перемычка их сшивает.
+
+     ГДЕ ЕЙ МЕСТО — не вопрос вкуса: стойка толкателя ходит по пазу от своего дома вперёд на весь ход,
+     и всё, что дальше, паз не посещает вовсе. Первая перемычка ставится ровно на конце хода и потому
+     работает ВТОРЫМ делом — упором: дальше полного хода толкатель не уйдёт и из устья не выпадет. До
+     неё этого не держало ничто.
+
+     Лопасть проходит ПОД перемычкой (она в кармане), пятка — НАД ней (она над оболочкой), и мешает
+     перемычка только стойке, которой там и не место. Утоплена она на 0.4 мм от обеих граней паза: не
+     из красоты, а чтобы ни одна её грань не совпала с гранью футляра. */
+  const bridgeT = Math.max(2.4, tT*1.5);
+  const bStop = tE + 0.6 + gap + blade + travel;     // от задней грани футляра до конца хода
+  const bLast = outer.z - 0.6 - bridgeT;             // последняя перемычка не доходит до устья
+  const bWant = Math.round(cl_(p.chBridge, 0, 6, 1));
+  const bRoom = bStop + bridgeT <= outer.z - 0.6
+              ? Math.max(1, 1 + Math.floor(Math.max(0, bLast - bStop)/(bridgeT*2))) : 0;
+  const bridgeN = Math.min(bWant, bRoom);
+  const bridgeCut = bWant > bridgeN;
+  const bridgeZ = [];
+  if (bridgeN === 1) bridgeZ.push(bStop);
+  else for (let i = 0; i < bridgeN; i++) bridgeZ.push(bStop + (bLast - bStop)*i/(bridgeN - 1));
   /* ГУБЫ У УСТЬЯ — единственный упругий элемент. Сидят они в боковых стенках, по краям кармана, и
      держат карту за уголки; толкатель между ними проходит свободно. Это и есть исправление главного
      дефекта лотка: там язычок висел над пазом и не касался ничего. */
@@ -13304,6 +13346,8 @@ function cardSpec(p){
            travel, inner, outer, mat, F, sigma, allow, yTop,
            lipL, lipT, lipLift, lipX0, lipX1, lipW, stickOut, held, heldOk,
            lipCut, lipWwant,
+           bladeHalf, bladeW: bladeHalf*2, bladeWwant, bladeWCut, bladeHalfMin, bladeHalfMax,
+           bridgeN, bridgeT, bridgeZ, bridgeCut, bWant, bStop,
            weak: F < 1, tooStiff: sigma > allow, slotWide: sw > cw*0.5, lipThin: lipW < 1.5 };
 }
 /* НАКЛЕЙКА НА ФУТЛЯРЕ (v25.2.0) — на ТЫЛЬНОЙ ОБОЛОЧКЕ, и оболочка МНЁТСЯ.
@@ -13414,12 +13458,20 @@ function buildCardHolder(p){
                                 zF - s.lipL, zF - 0.4)) out.push(T);
   /* ТОЛКАТЕЛЬ — ОДНО тело: лопасть в кармане, стойка сквозь паз, пятка НА лицевой оболочке. */
   const g = s.gap, zP0 = zB + s.tE + 0.6 + g, zP1 = zP0 + s.blade;
-  const wStem = sw - g, wWide = sw + s.over;
+  const wStem = sw - g, wWide = s.bladeHalf;
   const I2 = [[-wWide, s.tF + g], [wWide, s.tF + g], [wWide, yc1 - g], [wStem, yc1 - g],
               [wStem, s.H + g], [wWide, s.H + g], [wWide, s.yTop], [-wWide, s.yTop],
               [-wWide, s.H + g], [-wStem, s.H + g], [-wStem, yc1 - g], [-wWide, yc1 - g]];
   for (const T of prismXPolyTris(I2.map(q => [q[1], q[0]]), zP0, zP1))
     out.push([T[0], T[2], T[1]].map(v => [v[2], v[1], v[0]]));
+  /* ПЕРЕМЫЧКИ: каждая заходит в обе половины оболочки телом (на CARD_BRIDGE_LAP по x) и утоплена от
+     наружной грани и от потолка кармана — ни одной общей плоскости с футляром. */
+  for (const off of s.bridgeZ){
+    const z0 = zB + off;
+    for (const T of boxSpanTris(-(sw + CARD_BRIDGE_LAP), sw + CARD_BRIDGE_LAP,
+                                yc1 + CARD_BRIDGE_SINK, h - CARD_BRIDGE_SINK,
+                                z0, z0 + s.bridgeT)) out.push(T);
+  }
   return out;
 }
 /* ОСНОВАНИЕ ТРЕТЬЕЙ РУКИ (v24.18.0) — плита с гнёздами под хвостовики.
@@ -28433,6 +28485,28 @@ function collectPrintWarnings(p){
              'шире или выше подъём');
     if (g.slotWide)
       w.push('паз под толкатель шире половины кармана — лицевая оболочка почти вся вырезана');
+    /* ПЕРЕМЫЧКИ. Первым делом сказано, что они ДЕРЖАТ, вторым — что они же УПОР: второе не менее важно,
+       потому что до них толкатель не удерживало от выхода из устья ничто. */
+    if (g.bridgeN > 0)
+      w.push('в пазу ' + g.bridgeN + (g.bridgeN === 1 ? ' перемычка' : g.bridgeN < 5 ? ' перемычки' : ' перемычек') +
+             ' по ' + g.bridgeT.toFixed(1) + ' мм: ' + (g.bridgeN === 1 ? 'она сшивает' : 'они сшивают') +
+             ' половинки лицевой оболочки, которая иначе две полосы. Первая стоит ровно на конце хода и ' +
+             'служит УПОРОМ — дальше ' + g.travel.toFixed(0) + ' мм толкатель не уйдёт и из устья не выпадет');
+    else
+      w.push('перемычек в пазу нет: лицевая оболочка остаётся двумя полосами, связанными только задней ' +
+             'стенкой, а толкатель ничем не удержан от выхода из устья');
+    if (g.bridgeCut)
+      w.push('перемычек влезло ' + g.bridgeN + ' вместо заказанных ' + g.bWant + ': ставить их можно ' +
+             'только впереди конца хода, а ход ' + g.travel.toFixed(0) + ' мм занимает паз до ' +
+             g.bStop.toFixed(0) + ' мм из ' + g.outer.z.toFixed(0));
+    /* ЛОПАСТЬ. Число называется всегда, а не только когда урезано: ширина лопасти — это то, чем пачку
+       толкают, и перекос в кармане начинается именно с неё. */
+    w.push('лопасть толкателя ' + g.bladeW.toFixed(1) + ' мм при пазе ' + g.sw.toFixed(1) +
+           ' и кармане ' + g.cw.toFixed(1) + ' — ею пачка и толкается');
+    if (g.bladeWCut)
+      w.push('ширина лопасти урезана до ' + g.bladeW.toFixed(1) + ' вместо заказанных ' +
+             g.bladeWwant.toFixed(1) + ': она обязана быть шире паза (' + (2*g.bladeHalfMin).toFixed(1) +
+             ' мм и больше, иначе провалится в него) и влезать в карман (' + (2*g.bladeHalfMax).toFixed(1) + ')');
     w.push('«веером» карты НЕ разъезжаются, и обещать этого нельзя: лесенка зависит от трения карты о ' +
            'карту, а не от геометрии. Толкатель выдвигает пачку целиком');
     /* НАКЛЕЙКА — про неё сказано ровно то, чего не видно на картинке: на какой она грани и почему под

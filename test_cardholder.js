@@ -155,12 +155,15 @@ console.log('=== НИЧЕГО НЕ ВИСИТ В ВОЗДУХЕ ===');
    ничего; «тел ровно шесть» это пропустило, потому что летающее тело — тоже тело. */
 for (const ov of [{}, {chCards:20}, {chSlot:20}, {chLipLen:20}, {chTravel:50}]){
   const t = B(ov), cs = shells(t), tag = ' ' + JSON.stringify(ov);
-  chk('тел ровно пять'+tag, cs.length === 5, {тел:cs.length});
+  /* Тел ЧЕТЫРЕ У ФУТЛЯРА плюс по одному на перемычку в пазу (v25.5.0) и одно у толкателя. Число не
+     вписано, а выведено из спецификации: вписанное разошлось бы с ней при первом же изменении. */
+  const nb = S(ov).bridgeN;
+  chk('тел ровно пять и по одному на перемычку'+tag, cs.length === 5 + nb, {тел:cs.length, перемычек:nb});
   const gr = glued(cs);
   chk('  и они срастаются РОВНО В ДВЕ группы: футляр и толкатель'+tag, gr.length === 2,
       {групп:gr.length, размеры:gr.map(g => g.length)});
-  chk('  причём в футляре четыре тела, в толкателе одно'+tag,
-      gr.length === 2 && gr.map(g => g.length).sort((a,b)=>a-b).join(',') === '1,4',
+  chk('  причём в толкателе одно тело, остальное — футляр'+tag,
+      gr.length === 2 && gr.map(g => g.length).sort((a,b)=>a-b).join(',') === '1,' + (4 + nb),
       {размеры:gr.map(g => g.length).sort((a,b)=>a-b)});
   chk('  и каждое тело замкнуто само по себе'+tag,
       cs.every(g => manifoldCheck(g, 4).watertight), {});
@@ -297,6 +300,104 @@ console.log('=== чего модель НЕ обещает — сказано в
         0.6 от неё, значит пятно обязано лечь на 30 вдоль X и на 4.8 вдоль Z. И сдвиг «вниз по карточке»
         обязан двигать его вдоль Z, а не вдоль X.
      4. ПОД ВМЯТИНОЙ ОСТАЁТСЯ ОБОЛОЧКА. За ней сразу карман с картами. */
+/* ПЕРЕМЫЧКИ В ПАЗУ И ШИРИНА ЛОПАСТИ (v25.5.0) — заказано человеком по картинке: паз шёл во всю длину
+   лицевой оболочки, и она была двумя полосами.
+
+   Перемычка не украшение и стоит не «где-нибудь»: стойка толкателя ходит по пазу от дома вперёд на весь
+   ход, и всё, что дальше, паз не посещает вовсе. Первая перемычка ставится ровно на конце хода и потому
+   работает вторым делом — УПОРОМ: до неё толкатель не удерживало от выхода из устья ничто.
+
+   Проверяется поэтому не «есть ли тело в пазу», а четыре вещи: перемычка ЛЕЖИТ НА КОНЦЕ ХОДА (иначе она либо
+   крадёт ход, либо не упор); она СВЯЗЫВАЕТ обе половины (иначе это просто ещё одно тело); лопасть и
+   пятка проходят ПОД и НАД ней (иначе толкатель встанет сразу); и лопасть ШИРЕ ПАЗА при любом заказе —
+   иначе она провалится в паз и толкатель выйдет наружу. */
+console.log('=== перемычки в пазу и ширина лопасти ===');
+{
+  const zOf = (body) => { let lo = 1e9, hi = -1e9;
+    for (const T of body) for (const v of T){ lo = Math.min(lo, v[2]); hi = Math.max(hi, v[2]); }
+    return {lo, hi}; };
+  const yOf = (body) => { let lo = 1e9, hi = -1e9;
+    for (const T of body) for (const v of T){ lo = Math.min(lo, v[1]); hi = Math.max(hi, v[1]); }
+    return {lo, hi}; };
+  const xOf = (body) => { let lo = 1e9, hi = -1e9;
+    for (const T of body) for (const v of T){ lo = Math.min(lo, v[0]); hi = Math.max(hi, v[0]); }
+    return {lo, hi}; };
+  /* Толкатель — то тело, которое ни с чем не срастается; перемычки — тела, лежащие ЦЕЛИКОМ в пазу по
+     высоте. И то и другое находится по мешу, а не по порядку, в котором построитель их клал. */
+  const parts = (ov) => { const t = B(ov), cs = shells(t), s = S(ov), gr = glued(cs);
+    const solo = gr.find(g => g.length === 1);
+    const pusher = solo ? cs[solo[0]] : null;
+    const yc1 = s.tF + s.stack;
+    const bridges = cs.filter(b => b !== pusher && yOf(b).lo > yc1 && yOf(b).hi < s.H);
+    return {t, cs, s, pusher, bridges}; };
+
+  for (const ov of [{}, {chBridge:3}, {chTravel:45}]){
+    const {s, pusher, bridges} = parts(ov), tag = ' ' + JSON.stringify(ov);
+    chk('перемычек в сетке столько, сколько названо'+tag, bridges.length === s.bridgeN,
+        {всетке:bridges.length, названо:s.bridgeN});
+    if (!bridges.length || !pusher) continue;
+    // 1. ПЕРВАЯ ПЕРЕМЫЧКА — РОВНО НА КОНЦЕ ХОДА
+    const back = bridges.map(b => zOf(b).lo).sort((a, b) => a - b)[0];
+    const stemFront = zOf(pusher).hi;
+    chk('  первая перемычка стоит ровно на конце хода'+tag,
+        Math.abs((back - stemFront) - s.travel) < 1e-6,
+        {досюда:+(back - stemFront).toFixed(3), ход:s.travel});
+    // 2. СВЯЗЫВАЕТ ОБЕ ПОЛОВИНЫ — заходит в тело шире паза, и группа осталась одна
+    const bx = xOf(bridges[0]);
+    chk('  и заходит в обе половины оболочки, а не висит в пазу'+tag,
+        bx.lo < -s.sw/2 - 0.5 && bx.hi > s.sw/2 + 0.5, {перемычка:[+bx.lo.toFixed(2), +bx.hi.toFixed(2)], паз:s.sw});
+    // 3. ЛОПАСТЬ ПОД НЕЙ, ПЯТКА НАД НЕЙ
+    const by = yOf(bridges[0]), py = yOf(pusher);
+    chk('  лопасть проходит под перемычкой, пятка — над ней'+tag,
+        by.lo > s.tF + s.stack && by.hi < s.H && py.lo < by.lo && py.hi > by.hi,
+        {перемычка:[+by.lo.toFixed(2), +by.hi.toFixed(2)], толкатель:[+py.lo.toFixed(2), +py.hi.toFixed(2)]});
+  }
+  /* НА УМОЛЧАНИЯХ ПЕРЕМЫЧКА ЕСТЬ. Это решение, а не мелочь: без неё лицевая оболочка — две полосы, и
+     толкатель ничем не удержан от выхода из устья. Ноль остаётся возможным, но по заказу. */
+  chk('на умолчаниях перемычка стоит', S({}).bridgeN >= 1, S({}).bridgeN);
+
+  // 4. НОЛЬ — ЭТО НОЛЬ, и об этом сказано
+  chk('без перемычек их в сетке и нет', parts({chBridge:0}).bridges.length === 0, {});
+  chk('  и сказано, чем это кончится',
+      W({chBridge:0}).some(x => /перемычек в пазу нет/.test(x) && /из устья/.test(x)), W({chBridge:0}));
+  chk('а с перемычкой сказано, что она же упор',
+      W({}).some(x => /УПОРОМ/.test(x)), W({}));
+  chk('слишком длинный ход не оставляет им места, и это объявлено',
+      S({chTravel:60}).bridgeN < 1 || S({chTravel:60}).bridgeCut ||
+      W({chTravel:60}).some(x => /перемычк/.test(x)), {перемычек:S({chTravel:60}).bridgeN});
+
+  // ШИРИНА ЛОПАСТИ
+  chk('заказанная ширина лопасти берётся как есть', Math.abs(S({chBladeW:20}).bladeW - 20) < 1e-9,
+      S({chBladeW:20}).bladeW);
+  chk('  и в сетке она именно такая', (() => { const {pusher, s} = parts({chBladeW:20});
+      const x = xOf(pusher); return Math.abs((x.hi - x.lo) - 20) < 1e-6; })(), {});
+  /* ГРАНИЦЫ НЕ ВКУСОВЫЕ: уже паза — провалится, шире кармана — не влезет. Проверяются обе, и обе
+     объявляются. */
+  chk('слишком широкая урезается по карману',
+      S({chBladeW:60}).bladeWCut && S({chBladeW:60}).bladeW < 2*S({}).xi, S({chBladeW:60}).bladeW);
+  chk('слишком узкая поднимается выше паза',
+      S({chBladeW:8}).bladeWCut && S({chBladeW:8}).bladeW > S({}).sw, S({chBladeW:8}).bladeW);
+  chk('  и при ЛЮБОМ заказе лопасть шире паза — иначе провалится',
+      [0, 4, 8, 12, 20, 40, 60].every(v => S({chBladeW:v}).bladeW > S({chBladeW:v}).sw + 1e-9),
+      [0, 4, 8, 12, 20, 40, 60].map(v => +S({chBladeW:v}).bladeW.toFixed(1)));
+  chk('  об урезании сказано вслух',
+      W({chBladeW:60}).some(x => /ширина лопасти урезана/.test(x)), W({chBladeW:60}));
+  chk('  а ширина называется всегда, даже когда её не трогали',
+      W({}).some(x => /лопасть толкателя/.test(x)), W({}));
+
+  /* МЁРТВАЯ РУЧКА. В панели жила строка «Вылет губы над пачкой» (`chLip`), которую не читал никто:
+     осталась от открытого лотка. Рядом был обратный случай — `chPad` читался, а строки не имел. */
+  const rows = SHAPE_PARAMS.box.filter(r => r.group === 'Картодержатель').map(r => r.key);
+  chk('мёртвой ручки «chLip» в панели больше нет', rows.indexOf('chLip') < 0, rows);
+  chk('  а «chPad», который читается, теперь можно задать', rows.indexOf('chPad') >= 0, rows);
+  chk('  и он действительно меняет деталь',
+      Math.abs(S({chPad:5}).outer.y - S({chPad:1.2}).outer.y - 3.8) < 1e-9,
+      {толстая:S({chPad:5}).outer.y, тонкая:S({chPad:1.2}).outer.y});
+  chk('  и каждую ручку картодержателя кто-то читает',
+      rows.every(k => k === 'chMode' || new RegExp('p\\.' + k + '\\b').test(String(cardSpec))),
+      rows.filter(k => k !== 'chMode' && !new RegExp('p\\.' + k + '\\b').test(String(cardSpec))));
+}
+
 console.log('=== наклейка: на тыльной оболочке, БЕЗ ПЛОЩАДКИ ===');
 {
   const HM = (fn) => { const N = LOGO_HM_SIZE, hm = new Float32Array(N*N);
@@ -390,7 +491,7 @@ console.log('=== наклейка: на тыльной оболочке, БЕЗ 
 
   // СВЯЗНОСТЬ не сломана: наклейка — это сама оболочка, а не ещё одно тело
   const cs = shells(t);
-  chk('с надписью тел по-прежнему пять', cs.length === 5, {тел:cs.length});
+  chk('с надписью тел по-прежнему столько же', cs.length === 5 + S({}).bridgeN, {тел:cs.length});
   chk('  и групп по-прежнему две', glued(cs).length === 2, {групп:glued(cs).length});
 
   // ВЫПУКЛАЯ надпись: строится, но про стол сказано

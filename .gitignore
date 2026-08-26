@@ -1,2 +1,9 @@
-.claude/
+# Личные настройки Claude Code в репозиторий не идут — кроме ОБЩЕГО SessionStart-хука:
+# он обязан ехать вместе с репозиторием, иначе в облачной сессии его просто нет.
+# settings.local.json, agents/ и прочее личное остаётся под первым правилом.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/session-start.sh
 *.stl

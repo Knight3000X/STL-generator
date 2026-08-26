@@ -737,6 +737,146 @@ function coplanarPairs(tris){
   }
   /* УМОЛЧАНИЕ ОСНОВАНИЯ НЕ ТРОГАЕТ РУКУ: `artPart` — выбор детали, и цепочка при нём та же. */
   chk('основание не трогает саму цепочку', A({artPart:'stand'}).len === A({}).len);
+
+  /* ================================================================================================
+     СТРУБЦИННЫЙ ЗАЖИМ К СТОЛУ (v24.19.0) — третье основание и единственное, снимающее опрокидывание
+     целиком.
+
+     Проверять здесь надо три разные вещи, и путать их нельзя:
+
+       1. СКОБА ОСТАЛАСЬ ТОЙ ЖЕ. Она посчитана и проверена своим тестом; зажим её ПЕРЕИСПОЛЬЗУЕТ, а не
+          переписывает. Значит, её сетка обязана войти в деталь вершина в вершину — иначе «та же скоба»
+          пустые слова, и все её проверки к этой детали отношения не имеют.
+       2. БОБЫШКА — НАСТОЯЩЕЕ ГНЕЗДО. Пусто внутри, материал в стенке, дно там, где заявлено. Гнездо,
+          заросшее материалом соседнего тела, останется герметичным и на вид целым.
+       3. МЕХАНИКА ОДНОСТОРОННЯЯ, и это тоже утверждение: запас у прихвата стократный, и проверка
+          обязана показать не «больше единицы», а именно порядок — иначе завтра кто-нибудь «оптимизирует»
+          скобу вдвое и никто не заметит.
+     ================================================================================================ */
+  console.log('=== третья рука: струбцинный зажим к столу ===');
+  const C  = ov => artClampSpec(P(Object.assign({artPart:'clamp', artEndA:'post'}, ov)));
+  const BC = ov => B(Object.assign({artPart:'clamp', artEndA:'post'}, ov));
+  const WC = ov => W(Object.assign({artPart:'clamp', artEndA:'post'}, ov));
+  for (const ov of [{}, {gcBolt:4}, {gcBolt:16}, {artPostD:14}, {artClampH:40},
+                    {gcNut:'thread'}, {artN:4, ballD:10}, {gcGusset:0}]){
+    const t = BC(ov), mc = manifoldCheck(t, 4);
+    chk('зажим '+JSON.stringify(ov)+' герметичен', mc.watertight && vol(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges});
+    chk('  и без совпадающих граней', coplanarPairs(t).hits === 0, coplanarPairs(t).where);
+  }
+  /* 1. СКОБА — ТА ЖЕ. Сравнение вершина в вершину: зажим строится из неё и бобышки, и ни одна её
+     вершина не имеет права сдвинуться. Сдвинься она — все проверки струбцины к этой детали неприменимы,
+     а выглядела бы деталь ровно так же. */
+  for (const ov of [{}, {gcBolt:16}, {gcNut:'thread'}]){
+    const pp = P(Object.assign({artPart:'clamp', artEndA:'post'}, ov));
+    const base = buildGClamp(pp), whole = buildArtClamp(pp);
+    const same = whole.length > base.length &&
+      base.every((T, i) => T.every((v, j) => v.every((x, k) => Math.abs(x - whole[i][j][k]) < 1e-12)));
+    chk('скоба вошла в зажим вершина в вершину '+JSON.stringify(ov), same,
+        {скоба:base.length, зажим:whole.length});
+  }
+  /* 2. БОБЫШКА — НАСТОЯЩЕЕ ГНЕЗДО. Ось её вертикальна (Z), дно — верхняя грань губки. */
+  for (const ov of [{}, {artPostD:14}, {artClampH:40}]){
+    const c = C(ov), t = BC(ov), tag = ' ' + JSON.stringify(ov);
+    const zTop = c.g.Ztot + c.H, zFloor = c.g.Ztot;
+    chk('гнездо пусто внутри'+tag, !insideBoth(t, [c.xB, 0, zTop - 1.0]), {z:+(zTop-1).toFixed(2)});
+    chk('  а стенка бобышки на месте'+tag,
+        insideBoth(t, [c.xB + (c.rS + c.rB)/2, 0, zTop - 1.0]) &&
+        insideBoth(t, [c.xB, (c.rS + c.rB)/2, zTop - 1.0]), {r:+((c.rS + c.rB)/2).toFixed(2)});
+    /* ДНО ГНЕЗДА — ВЕРХНЯЯ ГРАНЬ ГУБКИ, а не сквозная дыра: сквозная прошла бы через контур, который
+       протянут поперёк неё, и задать её петлёй нельзя вовсе. Проверяется тем, что чуть выше дна пусто,
+       а чуть ниже — материал. */
+    chk('  дно гнезда — там, где губка'+tag,
+        !insideBoth(t, [c.xB, 0, zFloor + 0.4]) && insideBoth(t, [c.xB, 0, zFloor - 0.4]),
+        {дно:+zFloor.toFixed(2)});
+    /* И ГЛУБИНА ЕГО — ЗАКАЗАННАЯ: от дна до верха бобышки. */
+    let lo = zFloor, hi = zTop + 5;
+    for (let i = 0; i < 40; i++){ const m = (lo + hi)/2;
+      if (insideBoth(t, [c.xB + (c.rS + c.rB)/2, 0, m])) lo = m; else hi = m; }
+    chk('  и глубина гнезда — заказанная'+tag, Math.abs(((lo + hi)/2 - zFloor) - c.H) < 0.08,
+        {измерена:+((lo + hi)/2 - zFloor).toFixed(3), заказана:+c.H.toFixed(3)});
+  }
+  /* 3. Ø ГНЕЗДА СВЕРЯЕТСЯ С ХВОСТОВИКОМ ДРУГОЙ ДЕТАЛИ — единственное, ради чего гнездо есть. */
+  for (const ov of [{}, {artPostD:14}]){
+    const c = C(ov), t = BC(ov), tag = ' ' + JSON.stringify(ov);
+    const zP = c.g.Ztot + c.H - 1.0;
+    const rSock = (() => { let hit = -1;
+      for (let m = 0.05; m <= 40; m += 0.05) if (insideBoth(t, [c.xB + m, 0, zP])){ hit = m; break; }
+      if (hit < 0) return 1e9;
+      let lo = hit - 0.05, hi = hit;
+      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (insideBoth(t, [c.xB + m, 0, zP])) hi = m; else lo = m; }
+      return (lo + hi)/2; })();
+    const ta = B(Object.assign({artEndA:'post'}, ov)), ba = computeBBox(ta);
+    const yMid = ba.minY + c.e.postLen*0.5;
+    const rPost = (() => { let hit = -1;
+      for (let m = 0.05; m <= 40; m += 0.05) if (insideBoth(ta, [m, yMid, 0])){ hit = m; break; }
+      if (hit < 0) return -1e9;
+      let hi = hit;
+      for (let i = 0; i < 400 && insideBoth(ta, [hi, yMid, 0]); i++) hi += 0.05;
+      let a2 = hi - 0.05, b2 = hi;
+      for (let i = 0; i < 30; i++){ const m = (a2 + b2)/2; if (insideBoth(ta, [m, yMid, 0])) a2 = m; else b2 = m; }
+      return (a2 + b2)/2; })();
+    chk('гнездо зажима шире хвостовика ровно на печатный зазор'+tag,
+        Math.abs(2*(rSock - rPost) - A(ov).j.gap) < 0.08,
+        {гнездо:+(2*rSock).toFixed(3), хвостовик:+(2*rPost).toFixed(3), зазор:+A(ov).j.gap.toFixed(3)});
+  }
+  /* 4. МЕХАНИКА. Держащий момент пишется в проверке заново — из усилия затяжки и длины пятна. */
+  {
+    for (const ov of [{}, {gcBolt:16}, {gcDepth:70}, {artStandLoad:500}]){
+      const c = C(ov), tag = ' ' + JSON.stringify(ov);
+      const want = c.g.Pmax*c.patch/2;
+      chk('держащий момент — затяжка на полпятна'+tag, Math.abs(c.Mhold - want) < 1e-6,
+          {названо:+c.Mhold.toFixed(1), заново:+want.toFixed(1)});
+      chk('  и запас — их отношение'+tag, Math.abs(c.margin - c.Mhold/c.M) < 1e-9);
+    }
+    /* ЗАПАС НЕ ПРОСТО «БОЛЬШЕ ЕДИНИЦЫ», А СТОКРАТНЫЙ — и это надо утверждать числом. Прихват держит
+       килограммами силы на плече в сантиметры, рука просит сотню ньютон-миллиметров: у плиты борьба
+       шла на равных только потому, что её удерживает вес. */
+    chk('на умолчаниях запас у прихвата — не разы, а сотни', C({}).margin > 100, {запас:+C({}).margin.toFixed(0)});
+    /* ...И СРЫВ ВСЁ-ТАКИ ДОСТИЖИМ — иначе проверка выше говорила бы лишь о том, что число большое. */
+    /* Рука в шестьдесят звеньев на шаре Ø24 с двумя килограммами на кончике: вылет под два метра —
+       это уже не третья рука, но именно поэтому и годится в отрицательный контроль. Груз выше двух
+       килограммов взять нельзя, он урезается панелью, и на одном грузе срыва не добиться вовсе. */
+    const HEAVY = {artN:60, ballD:24, artStandLoad:2000};
+    const long = C(HEAVY);
+    chk('но длинной тяжёлой рукой зажим срывается', long.slips && long.margin < 1,
+        {запас:+long.margin.toFixed(2), вылет:+long.reach.toFixed(0)});
+    chk('  и об этом сказано вместе с предельным вылетом',
+        WC(HEAVY).some(x => /сорвёт зажим со стола/.test(x) &&
+          x.indexOf(long.reachMax.toFixed(0) + ' мм') >= 0), WC(HEAVY));
+    /* И ПРЕДЕЛЬНЫЙ ВЫЛЕТ — НАСТОЯЩИЙ: на нём момент ровно сравнивается с держащим. Обратный счёт
+       обязан сходиться с прямым, иначе число в предупреждении — украшение. */
+    chk('  предельный вылет сходится с прямым счётом',
+        Math.abs((long.armG/2 + long.load)*long.reachMax*9.81/1000 - long.Mhold) < 1e-6,
+        {пред:+long.reachMax.toFixed(1)});
+    /* И СКАЗАНО, ЧТО ОГРАНИЧИВАЕТ ВМЕСТО ПРИХВАТА. Промолчать о стократном запасе значило бы оставить
+       человека думать, будто здесь есть о чём беспокоиться. */
+    chk('на умолчаниях названо, что ограничивает не прихват',
+        WC({}).some(x => /опрокидывания у зажима нет как задачи/.test(x)), WC({}));
+  }
+  /* 5. РУКА У ЗАЖИМА ОДНА — бобышка одна, гнездо одно, и ручка «сколько рук вытянуто» сюда не идёт. */
+  chk('у зажима рука одна, сколько бы ни заказали плите',
+      C({}).nOut === 1 && C({artStandOut:8}).nOut === 1 && C({artStandOut:8}).M === C({}).M,
+      {без:C({}).nOut, с8:C({artStandOut:8}).nOut});
+  /* 6. НАГРУЖЕННОСТЬ КОНЦА — ОДНА ФОРМУЛА НА ОБА ОСНОВАНИЯ. Плита и зажим держат руку по-разному, но
+     ниже гнезда обе одинаковы: при равной заделке и равном моменте числа обязаны совпасть. */
+  {
+    const c = C({artClampH:10}), st = S({artStandT:10});
+    chk('плита и зажим считают конец одним расчётом',
+        Math.abs(c.L.sPost - st.L.sPost) < 1e-9 && Math.abs(c.L.pSock - st.L.pSock) < 1e-9,
+        {зажим:[+c.L.sPost.toFixed(4), +c.L.pSock.toFixed(4)], плита:[+st.L.sPost.toFixed(4), +st.L.pSock.toFixed(4)]});
+    /* ...и глубина заделки входит в давление В КВАДРАТЕ — утверждение из предупреждения, а не присказка. */
+    const c2 = C({artClampH:20});
+    chk('  вдвое глубже гнездо — вчетверо меньше давление на стенку',
+        Math.abs(c.L.pSock/c2.L.pSock - 4) < 1e-6, {отношение:+(c.L.pSock/c2.L.pSock).toFixed(4)});
+  }
+  /* 7. ЖАЛОБЫ. Мелкое гнездо, широкая бобышка, шар вместо хвостовика — и молчание на разумном. */
+  chk('мелкое гнездо объявлено', WC({artClampH:6}).some(x => /мельче хвостовика/.test(x)), WC({artClampH:6}));
+  chk('широкая бобышка объявлена', WC({artPostD:40}).some(x => /шире скобы/.test(x)), WC({artPostD:40}));
+  chk('шар вместо хвостовика объявлен',
+      W({artPart:'clamp'}).some(x => /садиться нечему/.test(x)), W({artPart:'clamp'}));
+  chk('а на умолчаниях зажим не жалуется',
+      !WC({}).some(x => /мельче хвостовика|шире скобы|садиться нечему|НЕ ХВАТАЕТ|выше допустимого/.test(x)), WC({}));
 }
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail) process.exitCode = 1;

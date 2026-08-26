@@ -127,15 +127,12 @@ console.log('=== мажорный разряд — это счётчик баз�
   chk('у каждой формы есть человеческое имя',
       shapes.every(k => KIND_LABEL[k] && KIND_LABEL[k].length > 2), shapes);
   // ...and each of those shapes is reachable — a name for a shape nobody can pick would inflate the digit
-  const reach = {box:{}, die:{platonic:'d6'}, keycap:{keycapMode:'single'}, sheet:{sheetShape:'rect'},
-                 thread:{threadMode:'cap'}, hinge:{pipMode:'flat'}, gear:{gearMode:'spur'},
-                 mount:{mntMode:'lbracket'}, hook:{hookMount:'wall'}, wallorg:{woBack:'cleat'},
-                 pbox:{pbPart:'tray'}, stand:{psOn:true}, funnel:{fnOn:true}, coaster:{csMode:'round'},
-                 baseplate:{gfBaseplate:true}, logo3d:{logo3d:true}, litho:{ltMode:'flat'},
-                 frame:{frMode:'frame'}, tile:{tlMode:'tile'}, ball:{lnMode:'ball'}, clock:{clMode:'dial'},
-                 spool:{spMode:'roller'}, seal:{sealMode:'oring'},
-                 cardholder:{chMode:'wallet'},
-                 test:{tstMode:'temptower'}};
+  /* Чем включается форма — из РЕЕСТРА (v25.3.0), а не из копии рядом. Копий было две — здесь и в
+     `test_param_search.js`, — и обе несли `tstMode:'temptower'`, значение, которого у переключателя
+     тестов нет: проверка спрашивала лишь «тот ли режим», а на это годится любая непустая строка.
+     Проверка «форму можно выбрать» от этого не ослабла — наоборот: теперь она спрашивает у того же
+     списка, по которому приложение и решает, что за форма перед ним. */
+  const reach = FAMILIES.reduce((m, f) => { m[f.key] = f.act; return m; }, {});
   const D = defaultBoxParams();
   for (const k of shapes){
     chk('«'+KIND_LABEL[k]+'» можно выбрать', !!reach[k], k);

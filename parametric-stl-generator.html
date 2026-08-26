@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.2.0';
+const APP_VERSION = 'v25.3.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -7628,33 +7628,94 @@ function refreshActiveModelUI(){
   updateSectionVisibility();   // show only the groups relevant to the active model kind, filtered by the tab
 }
 
-// The single dominant "mode" of the active box model — later entries override earlier (a flat sheet or a
-// keycap replaces the whole prism, so only its own groups are relevant).
+/* РЕЕСТР СЕМЕЙСТВ (v25.3.0) — одна таблица про то, из чего состоит набор.
+
+   ЗАЧЕМ ОН ЗАВЁДЕН. Я взялся мерить набор — сколько разновидностей ничего не говорят человеку — и три
+   замера подряд вышли неверными. Ошибался не расчёт: набор нельзя было ПЕРЕЧИСЛИТЬ. Диспетчер ветвится
+   по двум десяткам семейств, у каждого свой контракт включения — где ручка-строка, где флажок, где
+   связка из двух, — и снаружи этого не видно нигде. Про то же самое споткнулась и новая форма: чтобы
+   картодержатель заработал целиком, его пришлось завести в СЕМИ таблицах, две из которых живут в самих
+   тестах, и узнал я об этом от проверок, а не из места, где это написано.
+
+   ЧТО ЗДЕСЬ ЛЕЖИТ. На каждое семейство: ключ, человеческое имя, УСЛОВИЕ ВКЛЮЧЕНИЯ (`on`), МИНИМАЛЬНАЯ
+   НАСТРОЙКА, которая его включает (`act`), и файлы проверок, которые за него отвечают. Условие теперь
+   ровно одно на семейство: `dominantMode` не перечисляет их сам, а идёт по этой таблице.
+
+   ПОРЯДОК ЗДЕСЬ ЗНАЧИМ. Семейства не исключают друг друга: включить можно и лист, и резьбу разом, и
+   тогда решает первое сверху. Порядок ПЕРЕНЕСЁН из прежнего `dominantMode` строка в строку, и что он не
+   сдвинулся — проверено снимком: все одиночные включения и все 300 пар дали то же самое до и после.
+
+   ЧЕГО РЕЕСТР НЕ ДЕЛАЕТ. Он не строит: построитель по-прежнему выбирает `buildTrisForShapeCore` своим
+   ветвлением, у которого есть и подслучаи (у рамки три построителя, у часов два). Реестр отвечает за
+   ОПИСЬ — кто есть в наборе, чем включается и кто его проверяет, — и `test_registry.js` требует от
+   каждой строки, чтобы форма из `act` строилась, была герметична и что-нибудь человеку говорила. */
+const FAMILIES = [
+  /* Две первые строки включаются НЕ строкой панели, а кнопкой, и `via` про это и говорит. Разница не
+     косметическая: у такого ключа нет строки в `SHAPE_PARAMS`, а значит и умолчания — «сбросить всё»
+     его не выключит, потому что выключать нечего. Каждая такая форма живёт отдельной моделью сборки,
+     созданной со своими параметрами. Проверка обязана знать об этом различии, иначе она либо ругается
+     на законное, либо молча пропускает опечатку в значении. */
+  { key:'baseplate',  label:'Gridfinity',          on:p => !!p.gfBaseplate,
+    act:{gfBaseplate:true},        via:'кнопка «Базплейт Gridfinity»', tests:['test_baseplate.js'] },
+  { key:'logo3d',     label:'Объёмный логотип',    on:p => !!p.logo3d,
+    act:{logo3d:true},             via:'кнопка «3D» на карточке логотипа', tests:['test_logo3d.js'] },
+  { key:'wallorg',    label:'Органайзер',          on:p => !!(p.woBack && p.woBack !== 'none'),
+    act:{woBack:'cleat'},          tests:['test_wallorg.js', 'test_hexshelf.js', 'test_honeycomb.js'] },
+  { key:'pbox',       label:'Корпус',              on:p => !!(p.pbPart && p.pbPart !== 'none'),
+    act:{pbPart:'tray'},           tests:['test_pbox.js'] },
+  { key:'litho',      label:'Литофания',           on:p => lithoOn(p),
+    act:{ltMode:'flat'},           tests:['test_litho.js'] },
+  { key:'cardholder', label:'Картодержатель',      on:p => !!(p.chMode && p.chMode !== 'none'),
+    act:{chMode:'wallet'},         tests:['test_cardholder.js'] },
+  { key:'coaster',    label:'Подстаканник',        on:p => !!(p.csMode && p.csMode !== 'none'),
+    act:{csMode:'round'},          tests:['test_coaster.js'] },
+  { key:'frame',      label:'Рамка для фото',      on:p => !!(p.frMode && p.frMode !== 'none'),
+    act:{frMode:'frame'},          tests:['test_frame.js'] },
+  { key:'tile',       label:'Настенная плитка',    on:p => !!(p.tlMode && p.tlMode !== 'none'),
+    act:{tlMode:'tile'},           tests:['test_tile.js', 'test_tilepanel.js'] },
+  { key:'ball',       label:'Ажурный шар',         on:p => !!(p.lnMode && p.lnMode !== 'none'),
+    act:{lnMode:'ball'},           tests:['test_ball.js'] },
+  { key:'seal',       label:'Уплотнение',          on:p => !!(p.sealMode && p.sealMode !== 'none'),
+    act:{sealMode:'oring'},        tests:['test_seal.js'] },
+  { key:'spool',      label:'Держатель катушки',   on:p => !!(p.spMode && p.spMode !== 'none'),
+    act:{spMode:'roller'},         tests:['test_spool.js'] },
+  { key:'clock',      label:'Настенные часы',      on:p => !!(p.clMode && p.clMode !== 'none'),
+    act:{clMode:'dial'},           tests:['test_clock.js'] },
+  { key:'stand',      label:'Подставка',           on:p => !!p.psOn,
+    act:{psOn:true},               tests:['test_stand.js', 'test_stand_logo.js'] },
+  { key:'funnel',     label:'Воронка',             on:p => !!p.fnOn,
+    act:{fnOn:true},               tests:['test_funnel.js', 'test_funnel_cap.js', 'test_doser.js'] },
+  { key:'hook',       label:'Крючок',              on:p => !!(p.hookMount && p.hookMount !== 'none'),
+    act:{hookMount:'wall'},        tests:['test_hook.js', 'test_hook_styles.js'] },
+  /* `tower`, а НЕ `temptower`: такого значения у переключателя тестов нет вовсе. Стояло оно в таблице
+     включений внутри `test_version.js`, и проверка его пропускала — она спрашивала лишь «режим ли это
+     "тесты"», а на это годится любая непустая строка. Реестр это и вскрыл: форма «строилась» в НОЛЬ
+     треугольников, а строка формы читалась «тест печати: undefined». */
+  { key:'test',       label:'Тесты',               on:p => !!(p.tstMode && p.tstMode !== 'none'),
+    act:{tstMode:'tower'},         tests:['test_calibration.js', 'test_tstjoin.js'] },
+  { key:'mount',      label:'Крепёж',              on:p => !!(p.mntMode && p.mntMode !== 'none'),
+    act:{mntMode:'lbracket'},      tests:['test_mount_fastener.js', 'test_keycover.js'] },
+  { key:'gear',       label:'Шестерня',            on:p => !!(p.gearMode && p.gearMode !== 'none'),
+    act:{gearMode:'spur'},         tests:['test_gear.js', 'test_cycloidal.js', 'test_bevelpair.js'] },
+  { key:'hinge',      label:'Петля',               on:p => !!(p.pipMode && p.pipMode !== 'none'),
+    act:{pipMode:'flat'},          tests:['test_pip_hinge.js', 'test_balljoint.js', 'test_snap.js'] },
+  { key:'thread',     label:'Резьба',              on:p => !!(p.threadMode && p.threadMode !== 'none'),
+    act:{threadMode:'cap'},        tests:['test_thread.js', 'test_neck_adapter.js'] },
+  { key:'sheet',      label:'Лист / панель',       on:p => !!(p.sheetShape && p.sheetShape !== 'none'),
+    act:{sheetShape:'rect'},       tests:['test_sheet.js'] },
+  { key:'keycap',     label:'Кейкап',              on:p => !!(p.keycapMode && p.keycapMode !== 'none'),
+    act:{keycapMode:'single'},     tests:['test_keycap.js'] },
+  { key:'die',        label:'Кость',               on:p => !!(p.platonic && p.platonic !== 'none'),
+    act:{platonic:'d6'},           tests:['test_dice.js', 'test_poly.js'] },
+  /* Куб последним и БЕЗ условия: это не «ещё одно семейство», а то, чем модель остаётся, когда не
+     включено ничего. Условие `() => true` записано явно, чтобы обход таблицы не имел особого случая. */
+  { key:'box',        label:'Куб / призма',        on:() => true,
+    act:{},                        tests:['test_e2e_full.js', 'test_holes.js', 'test_rounded_fillet.js'] },
+];
+// The single dominant "mode" of the active box model — the FIRST family in the registry whose condition
+// holds (a flat sheet or a keycap replaces the whole prism, so only its own groups are relevant).
 function dominantMode(p){
-  if (p.gfBaseplate) return 'baseplate';
-  if (p.logo3d) return 'logo3d';
-  if (p.woBack && p.woBack !== 'none') return 'wallorg';
-  if (p.pbPart && p.pbPart !== 'none') return 'pbox';
-  if (lithoOn(p)) return 'litho';
-  if (p.chMode && p.chMode !== 'none') return 'cardholder';
-  if (p.csMode && p.csMode !== 'none') return 'coaster';
-  if (p.frMode && p.frMode !== 'none') return 'frame';
-  if (p.tlMode && p.tlMode !== 'none') return 'tile';
-  if (p.lnMode && p.lnMode !== 'none') return 'ball';
-  if (p.sealMode && p.sealMode !== 'none') return 'seal';
-  if (p.spMode && p.spMode !== 'none') return 'spool';
-  if (p.clMode && p.clMode !== 'none') return 'clock';
-  if (p.psOn) return 'stand';
-  if (p.fnOn) return 'funnel';
-  if (p.hookMount && p.hookMount !== 'none') return 'hook';
-  if (p.tstMode && p.tstMode !== 'none') return 'test';
-  if (p.mntMode && p.mntMode !== 'none') return 'mount';
-  if (p.gearMode && p.gearMode !== 'none') return 'gear';
-  if (p.pipMode && p.pipMode !== 'none') return 'hinge';
-  if (p.threadMode && p.threadMode !== 'none') return 'thread';
-  if (p.sheetShape && p.sheetShape !== 'none') return 'sheet';
-  if (p.keycapMode && p.keycapMode !== 'none') return 'keycap';
-  if (p.platonic && p.platonic !== 'none') return 'die';
+  for (const f of FAMILIES) if (f.on(p)) return f.key;
   return 'box';
 }
 // The print-in-place family: one base shape, six parameter groups. Named ONCE, because the alternative is
@@ -7808,15 +7869,10 @@ const GROUP_KIND = {
   'Литофания':'litho', 'Тесты печати':'test',
 };
 for (const g of PIP_GROUPS) GROUP_KIND[g] = 'hinge';   // the whole family, from the one list
-const KIND_LABEL = {
-  keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
-  mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
-  funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
-  cardholder:'Картодержатель',
-  frame:'Рамка для фото', tile:'Настенная плитка', ball:'Ажурный шар', clock:'Настенные часы',
-  spool:'Держатель катушки', seal:'Уплотнение', litho:'Литофания', test:'Тесты',
-  logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
-};
+/* Имена семейств — ВЫВЕДЕНЫ из реестра, а не переписаны рядом с ним. Отдельной таблицей это было
+   ровно тем местом, где новая форма забывается молча: `dominantMode` возвращал бы ключ, а имени у него
+   не было бы. Мажорный разряд версии считает строки ЗДЕСЬ, и через реестр это те же строки. */
+const KIND_LABEL = FAMILIES.reduce((m, f) => { m[f.key] = f.label; return m; }, {});
 // Every parameter whose label matches, with the group it lives in and whether that group is reachable
 // from the CURRENT base shape. Pure — no DOM — so the tests drive it directly.
 function paramSearchHits(q, p){
@@ -26476,6 +26532,8 @@ function activeShapeLabel() {
   if (currentShape !== 'box') return SHAPE_LABELS[currentShape] || currentShape;
   const p = paramState.box || {};
   if (p.importId != null && importedMeshes.has(p.importId)) return 'импорт (STL/OBJ/3MF)';
+  // Плита Gridfinity — это её СЕТКА: столько-то на столько-то. Без числа строка была бы просто именем.
+  if (p.gfBaseplate) return 'плита Gridfinity ' + Math.max(1, p.gfX|0) + '×' + Math.max(1, p.gfY|0);
   if (p.woBack === 'hexshelf') return 'сота-полка (' + Math.round(hexShelfSpec(p).AFi) + ' под ключ)';
   if (p.woBack === 'hexpanel') return 'сотовая панель (' + (p.hcNX|0) + '×' + (p.hcNY|0) + ')';
   if (p.woBack && p.woBack !== 'none') return ({peg:'перфопанель',hex:'соты',cleat:'фр. планка'})[p.woBack] + ' + ' + ({hook:'крючок',shelf:'полка',tools:'полка с гнёздами',none:'пластина'})[p.woFront||'hook'];
@@ -26595,7 +26653,13 @@ function activeShapeLabel() {
   if (p.platonic && p.platonic !== 'none') return ({d4:'D4 (тетраэдр)',d6:'D6 (куб)',d8:'D8 (октаэдр)',d10:'D10 (трапецоэдр)',d12:'D12 (додекаэдр)',d20:'D20 (икосаэдр)',d100:'D100 (сфера)'})[p.platonic] || 'кость';
   if ((p.polyN|0) >= 3) return (p.polyN|0) + '-гранная призма';
   if ((p.binRound||0) > 0) return 'бин (скруглённые углы)';
-  return 'куб';
+  /* ПОСЛЕДНЕЕ СЛОВО — ЗА РЕЕСТРОМ, а не за «кубом». Строка формы набрана здесь вручную, семейство за
+     семейством, и потому знала не про все: базплейт Gridfinity и объёмный логотип она называла КУБОМ —
+     две отдельные модели сборки, каждая со своим построителем, обе безымянные. Теперь неназванного не
+     остаётся: форма, у которой нет своей строки, зовётся так, как её зовёт реестр. Куб — единственный,
+     кто доходит сюда законно. */
+  const kind = dominantMode(p);
+  return kind === 'box' ? 'куб' : (KIND_LABEL[kind] || 'куб');
 }
 function updateShapeName() { const el = document.getElementById('active-shape-name'); if (el) el.textContent = activeShapeLabel(); if (typeof updateDieSection === 'function') updateDieSection(); }
 function switchShape(shapeKey) {

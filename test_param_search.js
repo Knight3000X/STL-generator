@@ -62,13 +62,11 @@ console.log('=== every foreign group names a kind the picker actually has ===');
 { const kinds = new Set(Object.values(GROUP_KIND));
   chk('у каждого вида есть подпись', [...kinds].every(k => !!KIND_LABEL[k]), [...kinds]);
   // and each named kind really does make its group live
-  const ACT = { keycap:{keycapMode:'single'}, sheet:{sheetShape:'rect'}, thread:{threadMode:'cap'},
-                hinge:{pipMode:'flat'}, gear:{gearMode:'spur'}, mount:{mntMode:'lbracket'},
-                hook:{hookMount:'wall'}, wallorg:{woBack:'cleat'}, pbox:{pbPart:'tray'},
-                stand:{psOn:true}, funnel:{fnOn:true}, coaster:{csMode:'round'},
-                litho:{ltMode:'flat'}, test:{tstMode:'temptower'}, frame:{frMode:'frame'}, tile:{tlMode:'tile'}, ball:{lnMode:'ball'},
-                clock:{clMode:'dial'}, spool:{spMode:'roller'}, seal:{sealMode:'oring'},
-                cardholder:{chMode:'wallet'} };
+  /* Чем включается семейство — берётся из РЕЕСТРА (v25.3.0), а не переписывается здесь. Копия этой
+     таблицы жила тут и ещё в `test_version.js`, и в обеих стояло `tstMode:'temptower'` — значение,
+     которого у переключателя тестов нет вовсе. Обе проверки его пропускали: они спрашивали лишь, тот
+     ли это режим, а на это годится любая непустая строка. */
+  const ACT = FAMILIES.reduce((m, f) => { m[f.key] = f.act; return m; }, {});
   for(const [group, kind] of Object.entries(GROUP_KIND)){
     const p = setp(ACT[kind] || {});
     chk('«'+group+'» оживает на «'+kind+'»', sectionRelevant(group, dominantMode(p), !!p.hollow), {});

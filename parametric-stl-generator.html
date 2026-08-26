@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.20.0';
+const APP_VERSION = 'v24.21.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5340,9 +5340,14 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'artEndA', w:['artic'], label:'Цепочка: нижний конец', type:'select', default:'ball',
       options:[{v:'ball',t:'шар (свободный)'},{v:'post',t:'хвостовик под гнездо основания'}]},
     {group:'Петля (печать в сборе)', key:'artEndB', w:['artic'], label:'Цепочка: верхний конец', type:'select', default:'cup',
-      options:[{v:'cup',t:'чашка (свободная)'},{v:'clip',t:'держатель «крокодила»'},{v:'board',t:'держатель платы (губки натягом)'}]},
+      options:[{v:'cup',t:'чашка (свободная)'},{v:'clip',t:'держатель «крокодила»'},{v:'board',t:'держатель платы (губки натягом)'},{v:'lens',t:'кольцо под лупу (покупная линза)'}]},
     {group:'Петля (печать в сборе)', key:'artPostD', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: Ø (0 = авто, чуть тоньше тела)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artPostLen', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: длина посадки', min:5, max:120, step:1, default:18, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artLensD', w:['artic'], only:{artEndB:['lens']}, label:'Линза: Ø (покупная)', min:6, max:120, step:0.5, default:30, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artLensT', w:['artic'], only:{artEndB:['lens']}, label:'Линза: толщина', min:0.5, max:30, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artLensLip', w:['artic'], only:{artEndB:['lens']}, label:'Линза: ширина губы (она же урезает просвет)', min:0.4, max:10, step:0.1, default:1.5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artLensBead', w:['artic'], only:{artEndB:['lens']}, label:'Линза: заскок сзади (продавливается при сборке)', min:0.1, max:3, step:0.1, default:0.3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artLensWall', w:['artic'], only:{artEndB:['lens']}, label:'Линза: стенка кольца', min:1.2, max:12, step:0.1, default:2.5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artBoardT', w:['artic'], only:{artEndB:['board']}, label:'Плата: толщина', min:0.4, max:6, step:0.1, default:1.6, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artBoardW', w:['artic'], only:{artEndB:['board']}, label:'Плата: ширина захвата вдоль кромки', min:5, max:120, step:1, default:30, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artBoardDepth', w:['artic'], only:{artEndB:['board']}, label:'Плата: на сколько входит в губки', min:3, max:60, step:1, default:12, unit:'мм'},
@@ -12875,7 +12880,7 @@ function articEndSpec(p, j, bodyR){
      одним «крокодилом», и эта несимметрия ничем не оправдана: голова садится на одно и то же место
      (торец тела последнего звена) и заменяет одну и ту же пустую чашку. Значит, тип головы — ручка,
      а построители у неё разные. */
-  const endB = ({clip:'clip', board:'board'})[p.artEndB] || 'cup';
+  const endB = ({clip:'clip', board:'board', lens:'lens'})[p.artEndB] || 'cup';
   /* ХВОСТОВИК. Тоньше тела звена — иначе он не хвостовик, а продолжение цепочки, и уступ, которым
      рука садится на плиту, исчезает вовсе. Уступ здесь несущий: он, а не трение, держит глубину
      посадки, и без него рука проваливалась бы в гнездо до упора в дно. */
@@ -12940,9 +12945,40 @@ function articEndSpec(p, j, bodyR){
   /* Напряжение в корне губки — то, что решает, разожмётся она или треснет: σ = M·c/I, M = F·L. */
   const bSigma = bF*bL*(bArm/2)/bI;
   const bOver = bSigma > bMat.E*(bMat.eps/100);
-  const headH = endB === 'clip' ? hZ : endB === 'board' ? bH : 0;
+  /* КОЛЬЦО ПОД ЛУПУ. Линза ПОКУПНАЯ, и её размеры заказываются. Держится она между двумя вещами:
+     спереди — губа, на которую садится (она же и ограничивает просвет), сзади — заскок, через который
+     линзу продавливают при сборке.
+     И вот заскок — единственное здесь, что надо считать. Продавить жёсткую линзу через кольцо значит
+     РАСТЯНУТЬ кольцо: его внутренний радиус обязан вырасти на высоту заскока, а это деформация обода
+     ε = заскок / радиус. Сравнивается она прямо с допустимой деформацией материала — той же таблицей,
+     что у защёлки. Число получается неожиданно строгим на мелких линзах: на Ø20 заскок в полмиллиметра
+     это уже пять процентов, вдвое выше допустимого для PETG. Поэтому оно и называется вслух. */
+  const lensD = cl(p.artLensD, 6, 120, 30);
+  const lensT = cl(p.artLensT, 0.5, 30, 3);
+  const lensLip = cl(p.artLensLip, 0.4, 10, 1.5);
+  /* УМОЛЧАНИЕ ЗАСКОКА — 0.3, А НЕ 0.4, и это не вкус: на Ø30 четыре десятых дают 2.7 % деформации
+     обода при 2.5 % допустимых у PLA, то есть приложение ругалось бы на собственное умолчание.
+     Такое в этом проекте считается дефектом с тех пор, как на нём попалось сито-лейка. */
+  const lensBead = cl(p.artLensBead, 0.1, 3, 0.3);
+  const lensWall = cl(p.artLensWall, 1.2, 12, 2.5);
+  const lMat = snapMatOf(p, null, 'petg');
+  const lSeatR = lensD/2 + j.gap/2;                 // посадка с печатным зазором
+  const lLipR  = Math.max(0.5, lensD/2 - lensLip);  // губа спереди — она же просвет
+  const lBeadR = Math.max(0.5, lensD/2 - lensBead); // заскок сзади
+  const lOutR  = lensD/2 + lensWall;
+  const lBeadH = Math.max(0.4, Math.min(1.2, lensBead*2));
+  const lSeat0 = 2*lBeadH, lSeat1 = lSeat0 + lensT + j.gap;
+  const lH = lSeat1 + Math.max(0.8, lensLip*0.8);   // толщина кольца по оси
+  const lStrain = lensBead/(lensD/2)*100;           // % деформации обода при сборке
+  const lOver = lStrain > lMat.eps;
+  const lAperture = 2*lLipR;
+  const lNeck = Math.max(3, lOutR*0.35);            // шейка от тела звена до обода
+  const lRatio = lAperture/lensD;
+  const headH = endB === 'clip' ? hZ : endB === 'board' ? bH : endB === 'lens' ? lNeck + 2*lOutR : 0;
   return { endA, endB, postD, postLen, shoulder, clipT, clipW, clipHole, clipDepth,
            slotT, slotW, hX, hZ, cx, cz0, cz1, holeR, holeZ, holeFits, headH,
+           lensD, lensT, lensLip, lensBead, lensWall, lSeatR, lLipR, lBeadR, lOutR, lBeadH,
+           lSeat0, lSeat1, lH, lStrain, lOver, lAperture, lNeck, lRatio, lAllow: lMat.eps,
            boardT, boardW, boardGrip, boardDepth, bSlot, bClear, bGripX, bBead, bArm, bhX, bFloor, bH, bL,
            bF, bHold, bSigma, bOver, bAllow: bMat.E*(bMat.eps/100),
            postCh, cheek: ART_CLIP_WALL, floor: ART_CLIP_FLOOR,
@@ -13075,9 +13111,32 @@ function articBoardHolderTris(e, seg){
   for (const T of extrudePolyYTris([U], -e.boardW/2, e.boardW/2)) out.push(T);
   return rotateTris(out, -90, 0, 0);   // z→вверх, плоскость платы — поперёк
 }
+/* КОЛЬЦО ПОД ЛУПУ (v24.21.0) — оболочка вращения со СТУПЕНЧАТОЙ расточкой, ровно как чашка шарового
+   замка: `latheShellYTris` берёт наружный и внутренний силуэты одной длины и закрывает их кольцами по
+   торцам. Одним телом — значит и ступеньке не с чем совпасть гранями.
+   Шейка отдельным телом: обод кольца — поверхность вращения вокруг ГОРИЗОНТАЛЬНОЙ оси, шейка —
+   вертикальный цилиндр, и пересекаются они по кривой, а не по плоскости. */
+function articLensRingTris(e, seg){
+  /* ЧИСЛО ГРАНЕЙ КРАТНО ЧЕТЫРЁМ, и это не украшение. Обод — многогранник, вписанный в окружность, и
+     его макушка совпадает с окружностью только если туда попадает ВЕРШИНА. Не попадёт — габарит
+     детали окажется меньше названной длины на `R(1−cos(π/n))`, и первая запись расходилась на
+     десятую миллиметра при Ø60. Кратность четырём ставит вершины ровно на четыре крайние точки. */
+  const out = [], n = Math.max(24, 4*Math.round(seg/4));
+  const inner = [[e.lSeatR, 0], [e.lBeadR, e.lBeadH], [e.lSeatR, 2*e.lBeadH],
+                 [e.lSeatR, e.lSeat1], [e.lLipR, e.lSeat1], [e.lLipR, e.lH]];
+  const outer = inner.map(q => [e.lOutR, q[1]]);
+  const ring = latheShellYTris(outer, inner, n).map(T => T.map(v => [v[0], v[1] - e.lH/2, v[2]]));
+  // ось кольца — поперёк руки: смотреть сквозь него надо вбок, а не вдоль рукава
+  for (const T of rotateTris(ring, 90, 0, 0)) out.push([T[0], T[1], T[2]].map(v => [v[0], v[1] + e.lNeck + e.lOutR, v[2]]));
+  // шейка: от торца тела звена до обода, с заходом внутрь обода на миллиметр
+  for (const T of solidLatheYTris([[Math.max(1, e.lOutR*0.28), -ART_CLIP_SINK],
+                                   [Math.max(1, e.lOutR*0.28), e.lNeck + 1.0]], Math.max(24, Math.round(e.lOutR*3)))) out.push(T);
+  return out;
+}
 function articHeadTris(e, seg){
   return e.endB === 'clip'  ? articClipHolderTris(e, seg)
        : e.endB === 'board' ? articBoardHolderTris(e, seg)
+       : e.endB === 'lens'  ? articLensRingTris(e, seg)
        : [];
 }
 /* ОСНОВАНИЕ ТРЕТЬЕЙ РУКИ (v24.18.0) — плита с гнёздами под хвостовики.
@@ -26174,7 +26233,8 @@ function activeShapeLabel() {
   if (p.pipMode === 'artic'){ const a = articSpec(p);
     const arm = a.e.endA === 'post' || a.e.endB !== 'cup';
     return (arm ? 'рука ' : 'цепочка ') + a.N + ' звеньев (' + a.j.swing.toFixed(0) + '°)'
-         + (a.e.endB === 'clip' ? ', «крокодил»' : a.e.endB === 'board' ? ', держатель платы' : '')
+         + (a.e.endB === 'clip' ? ', «крокодил»' : a.e.endB === 'board' ? ', держатель платы'
+            : a.e.endB === 'lens' ? ', лупа Ø' + a.e.lensD.toFixed(0) : '')
          + (a.e.endA === 'post' ? ', хвостовик Ø' + a.e.postD.toFixed(0) : ''); }
   if (p.pipMode === 'bagclip'){ const g = bagClipSpec(p);
     return 'зажим для пакета ' + Math.round(g.L) + '×' + Math.round(g.W) + ' (' + g.Fbag.toFixed(1) + ' Н)'; }
@@ -26741,6 +26801,25 @@ function collectPrintWarnings(p){
       if (e.postThin)
         w.push('хвостовик Ø' + e.postD.toFixed(1) + ' мм — тоньше трёх миллиметров он сломается в гнезде ' +
                'первым же поворотом руки');
+    }
+    if (e.endB === 'lens'){
+      w.push('верхний конец — КОЛЬЦО ПОД ЛУПУ ВМЕСТО чашки: линза Ø' + e.lensD.toFixed(1) + '×' +
+             e.lensT.toFixed(1) + ' мм ПОКУПНАЯ, кольцо только держит. Просвет Ø' +
+             e.lAperture.toFixed(1) + ' мм — это ' + (100*e.lRatio).toFixed(0) +
+             ' % линзы, остальное закрывает губа');
+      /* ЕДИНСТВЕННОЕ ЧИСЛО, КОТОРОГО НЕ ВИДНО НА ЭКРАНЕ, — деформация обода при сборке. Линза жёсткая,
+         значит растягивается кольцо, и растягивается оно ровно на высоту заскока. */
+      w.push('сборка: линзу продавливают через заскок ' + e.lensBead.toFixed(2) +
+             ' мм сзади, и растягивается при этом ОБОД — на ' + e.lStrain.toFixed(1) +
+             ' % при ' + e.lAllow.toFixed(1) + ' % допустимых для этого материала. Заскок держит линзу ' +
+             'от выпадения, губа спереди — от продавливания насквозь');
+      if (e.lOver)
+        w.push('это БОЛЬШЕ допустимого: кольцо лопнет при сборке, а не растянется. Меньше заскок или ' +
+               'больше линза — деформация идёт как ОТНОШЕНИЕ заскока к радиусу, и на мелких линзах ' +
+               'даже полмиллиметра уже много');
+      if (e.lRatio < 0.75)
+        w.push('губа съедает больше четверти линзы (просвет ' + (100*e.lRatio).toFixed(0) +
+               ' %) — смотреть будет неудобно. Уже губа');
     }
     if (e.endB === 'board'){
       w.push('верхний конец — ДЕРЖАТЕЛЬ ПЛАТЫ ВМЕСТО чашки: губки берут кромку на ' +

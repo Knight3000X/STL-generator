@@ -990,6 +990,114 @@ function coplanarPairs(tris){
       WB({artBoardGrip:0.05, artBoardDepth:50}));
   chk('а на умолчаниях держатель платы не жалуется',
       !WB({}).some(x => /треснет|вывалится|тоньше трёх проходов/.test(x)), WB({}));
+  /* ================================================================================================
+     КОЛЬЦО ПОД ЛУПУ (v24.21.0) — третья голова. Линза ПОКУПНАЯ, кольцо только держит её между губой
+     спереди и заскоком сзади.
+
+     Считать здесь надо ровно одно: линза жёсткая, значит при сборке растягивается КОЛЬЦО, и растянуть
+     его нужно на высоту заскока — ε = заскок / радиус. Число выходит неожиданно строгим на мелких
+     линзах, и проверка требует не «оно есть», а именно этой зависимости: вдвое больше линза при том же
+     заскоке — вдвое меньше деформация.
+     ================================================================================================ */
+  console.log('=== третья рука: кольцо под лупу ===');
+  const LNS = {artEndA:'post', artEndB:'lens'};
+  const LB = ov => B(Object.assign({}, LNS, ov));
+  const LE = ov => E(Object.assign({}, LNS, ov));
+  const WL = ov => W(Object.assign({}, LNS, ov));
+  for (const ov of [{}, {artLensD:20}, {artLensD:60, artLensT:6}, {artLensWall:6}, {ballD:24, artN:4}]){
+    const t = LB(ov), mc = manifoldCheck(t, 4);
+    chk('кольцо под лупу '+JSON.stringify(ov)+' герметично', mc.watertight && vol(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges});
+    chk('  и без совпадающих граней', coplanarPairs(t).hits === 0, coplanarPairs(t).where);
+  }
+  /* ДЛИНА — ГАБАРИТ, и здесь это не формальность: обод — многогранник, вписанный в окружность, и его
+     макушка совпадает с окружностью только когда туда попадает ВЕРШИНА. Первая запись расходилась на
+     десятую при Ø60 ровно поэтому; число граней теперь кратно четырём. */
+  /* ДОПУСК ЗДЕСЬ СТРОГИЙ НЕ ИЗ ПЕДАНТИЗМА. При кратности четырём просадки НЕТ ВОВСЕ — вершина стоит
+     ровно на макушке, — а без кратности она есть, но мала: на умолчаниях две сотых, потому что при
+     33 гранях ближайшая вершина легла к макушке случайно близко. Мутация «не кратно четырём» с
+     допуском в пять сотых проходила насквозь. Требуется поэтому не «мало», а НОЛЬ. */
+  for (const ov of [{}, {artLensD:20}, {artLensD:60, artLensT:6}, {artLensD:47.5}, {artLensWall:6}]){
+    const t = LB(ov), b = computeBBox(t), a = A(Object.assign({}, LNS, ov));
+    chk('длина руки с лупой '+JSON.stringify(ov)+' — это габарит',
+        Math.abs((b.maxY - b.minY) - a.len) < 0.01,
+        {названо:+a.len.toFixed(4), габарит:+(b.maxY-b.minY).toFixed(4)});
+    /* И причина названа отдельно: вершина обода обязана лежать ровно на верхней точке окружности. */
+    const e = a.e, yTopWant = b.maxY;
+    let onTop = 0; for (const T of t) for (const v of T) if (Math.abs(v[1] - yTopWant) < 1e-9) onTop++;
+    chk('  и вершина обода стоит ровно на макушке'+JSON.stringify(ov), onTop > 0, {вершин:onTop});
+  }
+  /* РАСТОЧКА СТУПЕНЧАТАЯ, и ступеньки меряются в сетке: посадка шире линзы на печатный зазор, губа
+     спереди у́же линзы, заскок сзади — тоже. Сверяется всё с ЗАКАЗОМ, а не со спецификацией. */
+  for (const ov of [{}, {artLensD:20, artLensLip:2}, {artLensD:60, artLensBead:0.8}]){
+    const t = LB(ov), b = computeBBox(t), e = LE(ov), tag = ' ' + JSON.stringify(ov);
+    const yC = b.maxY - e.lOutR;                       // центр кольца по высоте
+    /* Ось кольца горизонтальна (Z). Идём вдоль неё и меряем просвет ПОПЕРЁК — по X. */
+    const halfAtZ = z => { let hit = -1;
+      for (let m = 0.02; m <= 80; m += 0.02) if (insideBoth(t, [m, yC, z])){ hit = m; break; }
+      if (hit < 0) return 1e9;
+      let lo = hit - 0.02, hi = hit;
+      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (insideBoth(t, [m, yC, z])) hi = m; else lo = m; }
+      return (lo + hi)/2; };
+    const D = (ov.artLensD != null ? ov.artLensD : 30);
+    const lip = (ov.artLensLip != null ? ov.artLensLip : 1.5);
+    const bead = (ov.artLensBead != null ? ov.artLensBead : 0.3);
+    const gapJ = A(Object.assign({}, LNS, ov)).j.gap;
+    // локальная ось шла 0…lH и была сдвинута на −lH/2, потом стала осью Z
+    const zOf = y => y - e.lH/2;                        // локальная координата → мировая Z
+    chk('посадка шире линзы ровно на печатный зазор'+tag,
+        Math.abs(2*halfAtZ(zOf((e.lSeat0 + e.lSeat1)/2)) - (D + gapJ)) < 0.08,
+        {измерено:+(2*halfAtZ(zOf((e.lSeat0 + e.lSeat1)/2))).toFixed(3), 'линза+зазор':+(D + gapJ).toFixed(3)});
+    chk('  губа спереди у́же линзы на свою ширину'+tag,
+        Math.abs(2*halfAtZ(zOf((e.lSeat1 + e.lH)/2)) - (D - 2*lip)) < 0.08,
+        {измерено:+(2*halfAtZ(zOf((e.lSeat1 + e.lH)/2))).toFixed(3), 'линза−2губы':+(D - 2*lip).toFixed(3)});
+    chk('  и заскок сзади у́же линзы на свою высоту'+tag,
+        Math.abs(2*halfAtZ(zOf(e.lBeadH)) - (D - 2*bead)) < 0.08,
+        {измерено:+(2*halfAtZ(zOf(e.lBeadH))).toFixed(3), 'линза−2заскока':+(D - 2*bead).toFixed(3)});
+    /* И ГЛАВНОЕ: линза ДОЛЖНА пролезать между ними, а не застревать — посадка шире обеих ступенек. */
+    chk('  посадка шире и губы, и заскока — линзе есть где лечь'+tag,
+        e.lSeatR > e.lLipR + 0.05 && e.lSeatR > e.lBeadR + 0.05,
+        {посадка:+e.lSeatR.toFixed(2), губа:+e.lLipR.toFixed(2), заскок:+e.lBeadR.toFixed(2)});
+  }
+  /* СКВОЗЬ КОЛЬЦО ВИДНО: по оси материала нет вовсе — иначе это не лупа, а шайба. */
+  for (const ov of [{}, {artLensD:60}]){
+    const t = LB(ov), b = computeBBox(t), e = LE(ov), tag = ' ' + JSON.stringify(ov);
+    const yC = b.maxY - e.lOutR;
+    let solid = null;
+    for (let z = -e.lH/2 + 0.3; z < e.lH/2 - 0.3 && solid === null; z += 0.25)
+      if (insideBoth(t, [0, yC, z])) solid = +z.toFixed(2);
+    chk('сквозь кольцо видно — по оси пусто на всей толщине'+tag, solid === null, {материалНа:solid});
+  }
+  /* ДЕФОРМАЦИЯ ОБОДА — ЗАВИСИМОСТЬ, А НЕ ЧИСЛО. Вдвое больше линза при том же заскоке — вдвое меньше
+     растяжение; вдвое выше заскок — вдвое больше. Проверяется отношениями, которые формула обязана
+     давать, и которые «подогнанный коэффициент» не даст. */
+  {
+    const a1 = LE({artLensD:30, artLensBead:0.4}), a2 = LE({artLensD:60, artLensBead:0.4});
+    chk('деформация обода падает обратно радиусу', Math.abs(a1.lStrain/a2.lStrain - 2) < 1e-9,
+        {'Ø30':+a1.lStrain.toFixed(3), 'Ø60':+a2.lStrain.toFixed(3)});
+    const a3 = LE({artLensD:30, artLensBead:0.8});
+    chk('  и растёт прямо с заскоком', Math.abs(a3.lStrain/a1.lStrain - 2) < 1e-9,
+        {'0.4':+a1.lStrain.toFixed(3), '0.8':+a3.lStrain.toFixed(3)});
+    /* И СРАВНИВАЕТСЯ ОНА С ТАБЛИЦЕЙ МАТЕРИАЛА, а не с константой: у нейлона запас втрое против PLA. */
+    /* Материал выбирается ОДНОЙ ручкой на деталь — `printMat`, — и допуск обязан идти за ней.
+       Сперва я щупал несуществующий ключ и получил два одинаковых числа: проверка «больше» прошла бы
+       и на константе, если бы не сравнение с PLA. */
+    chk('  и меряется таблицей материала, а не константой',
+        LE({printMat:'nylon'}).lAllow > LE({printMat:'pla'}).lAllow &&
+        Math.abs(LE({printMat:'pla'}).lAllow - SNAP_MATERIALS.pla.eps) < 1e-9,
+        {нейлон:LE({printMat:'nylon'}).lAllow, pla:LE({printMat:'pla'}).lAllow});
+  }
+  /* ЖАЛОБЫ: деформация названа, перебор объявлен, узкий просвет объявлен, умолчания молчат. */
+  chk('деформация обода названа человеку',
+      WL({}).some(x => /растягивается при этом ОБОД/.test(x)), WL({}));
+  chk('перебор по деформации объявлен',
+      WL({artLensD:20, artLensBead:0.5}).some(x => /кольцо лопнет при сборке/.test(x)),
+      WL({artLensD:20, artLensBead:0.5}));
+  chk('узкий просвет объявлен',
+      WL({artLensLip:6}).some(x => /смотреть будет неудобно/.test(x)), WL({artLensLip:6}));
+  chk('а на умолчаниях кольцо не жалуется',
+      !WL({}).some(x => /лопнет|неудобно/.test(x)), WL({}));
+
   /* И УМОЛЧАНИЕ ЦЕПОЧКИ ПО-ПРЕЖНЕМУ ЦЕПОЧКА: голова — выбор, а не подмена. */
   chk('умолчание не стало держателем платы', E({}).endB === 'cup', {верх:E({}).endB});
 }

@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.1.0';
+const APP_VERSION = 'v25.2.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4887,7 +4887,7 @@ const LOGO_PLATE_MODES = new Set(['sheet','thread','hinge','gear','mount','hook'
    never in it, could not be made bigger than 37 mm on a 90 mm disc however much room it had. One set
    answers «who builds the relief», the other «who decides how big it may be», and they are not the same
    question. */
-const LOGO_OWN_BOUNDS = new Set([...LOGO_PLATE_MODES, 'stand', 'coaster']);
+const LOGO_OWN_BOUNDS = new Set([...LOGO_PLATE_MODES, 'stand', 'coaster', 'cardholder']);
 
 // Axis-aligned bounding-box half-extents of a w×h rectangle rotated by `rotation` degrees
 // (standard rotated-rect AABB formula) — used so a rotated logo's clamping accounts for
@@ -4952,6 +4952,20 @@ function faceFilletInsets(face, p) {
     default: return {u:0, v:0};
   }
 }
+/* ГРАНЬ, НА КОТОРОЙ ЭТОТ ЛОГОТИП ЖИВЁТ НА ТЕКУЩЕЙ ФОРМЕ. Карточка логотипа хранит ИМЯ грани, а наборы
+   у форм разные: у куба это оси габарита, у подставки три названные поверхности, у футляра одна.
+   Переключил человек базовую форму — имя осталось от прежней, и оси у него больше нет.
+
+   Кончалось это ИСКЛЮЧЕНИЕМ, а не пустым местом: `FACE_AXES['floor']` не функция, и куб с логотипом,
+   оставшимся от подставки, не строился вовсе — в приложении это чёрный экран, а не потерянная надпись.
+   Теперь имя, которого у формы нет, сводится к тому, что форма предлагает, — и ровно к тому же, что
+   показывает выпадающий список на карточке: одно решение, а не два похожих. */
+function logoFaceOn(lg, p){
+  const list = facesForShape(p);
+  const f = lg && lg.face;
+  if (list.indexOf(f) >= 0) return f;
+  return dominantMode(p) === 'stand' ? standLogoSurface(lg, p) : list[0];
+}
 function clampLogoToFace(logo) {
   // On a shape that is NOT the cube family, the cube's width/height/depth say nothing about the face
   // the label will land on — clamping against them would shrink a perfectly good label on a gear to
@@ -4962,9 +4976,10 @@ function clampLogoToFace(logo) {
     logo.h = Math.max(1, Math.min(400, logo.h));
     return;
   }
-  const dims = BOX_FACE_DIMS[logo.face](paramState.box);
+  const face = logoFaceOn(logo, paramState.box);
+  const dims = BOX_FACE_DIMS[face](paramState.box);
   const margin = 1.5;
-  const ins = faceFilletInsets(logo.face, paramState.box);
+  const ins = faceFilletInsets(face, paramState.box);
   // Honest bound: when fillets/margins eat the whole flat zone there is NO room — the logo shrinks
   // to zero (renders nothing) instead of being floored to 1 mm and overflowing into the edge
   // cylinders (which displaced clipped cells and broke the seam — found by fuzzing: fillets 11+12
@@ -4977,7 +4992,7 @@ function clampLogoToFace(logo) {
   // the same live values so bounds always match what's actually drawn.
   const taperFn = makeTaperPointFn(p.taperXPlus||0, p.taperXMinus||0, p.taperZPlus||0, p.taperZMinus||0,
     p.taperYPlusX||0, p.taperYPlusZ||0, p.taperYMinusX||0, p.taperYMinusZ||0, p.width/2, p.height/2, p.depth/2);
-  const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+  const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[face](p);
 
   // First, a coarse unrotated-size clamp in REAL mm (cheap upper bound regardless of angle
   // or local compression — never larger than the face's own nominal flat extent).
@@ -8587,12 +8602,13 @@ function buildCombinedLogoDispFns(taperFn) {
   // every shape goes through the one patch builder, cube included, and the colours fit by construction.
   if (logoAmsOn(p)) return {};
   for (const logo of logos) {
-    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const face = logoFaceOn(logo, p);
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[face](p);
     const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
     const frame = makeLogoFrame(fullLogo, taperFn);
     const fn = makeLogoDispFn(fullLogo, frame);
-    if (!fnsByFace[logo.face]) fnsByFace[logo.face] = [];
-    fnsByFace[logo.face].push(fn);
+    if (!fnsByFace[face]) fnsByFace[face] = [];
+    fnsByFace[face].push(fn);
   }
   const dispFns = {};
   for (const face in fnsByFace) {
@@ -8607,9 +8623,10 @@ function buildCombinedLogoDispFns(taperFn) {
 function buildCombinedLogoMaskFns(taperFn) {
   const p = paramState.box, byFace = {};
   for (const logo of logos) {
-    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const face = logoFaceOn(logo, p);
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[face](p);
     const frame = makeLogoFrame({...logo, uAxis, vAxis, nAxis, nOffset}, taperFn);
-    (byFace[logo.face] || (byFace[logo.face] = [])).push(makeLogoMaskFn({...logo, uAxis, vAxis, nAxis, nOffset}, frame));
+    (byFace[face] || (byFace[face] = [])).push(makeLogoMaskFn({...logo, uAxis, vAxis, nAxis, nOffset}, frame));
   }
   const out = {};
   for (const face in byFace) { const fns = byFace[face];
@@ -8630,7 +8647,7 @@ function computeLogoZonesByAxis(taperFn) {
   const margin = 2; // extra flat-space mm around each logo's exact footprint, so the
                      // fine-to-coarse transition isn't an abrupt jump right at the edge
   for (const logo of logos) {
-    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logo.face](p);
+    const [uAxis,vAxis,nAxis,nOffset] = FACE_AXES[logoFaceOn(logo, p)](p);
     const fullLogo = {...logo, uAxis, vAxis, nAxis, nOffset};
     const frame = makeLogoFrame(fullLogo, taperFn);
     const ext = logoFaceExtent(logo, logo.w, logo.h, logo.rotation);
@@ -13233,6 +13250,80 @@ function cardSpec(p){
            lipCut, lipWwant,
            weak: F < 1, tooStiff: sigma > allow, slotWide: sw > cw*0.5, lipThin: lipW < 1.5 };
 }
+/* НАКЛЕЙКА НА ФУТЛЯРЕ (v25.2.0) — на ТЫЛЬНОЙ ОБОЛОЧКЕ, и оболочка МНЁТСЯ.
+
+   ЧТО БЫЛО. Футляра нет в списке форм, которым наклейку кладёт общая машинка (`LOGO_PLATE_MODES`), и с
+   обычным логотипом он не давал НИЧЕГО — молча. Стоило включить цветную печать, и общий путь всё же
+   перехватывал управление: он ищет плоскость поиском по мешу, а у полой коробки внешней плоскости под
+   пятном может не оказаться вовсе — на «+Y» поиск находил ДНО КАРМАНА (y = 1.6) и клал наклейку внутрь
+   футляра. А поскольку логотип по умолчанию УТОПЛЕН, а вырезать в чужом теле нечем, наклейка поднималась
+   бляшкой: та самая площадка 13.3 × 13.4 × 1.0, из-за которой всё это и переписано.
+
+   ЧТО СТАЛО. Футляр НАЗЫВАЕТ свою грань сам — ровно как подставка (`standLogoFrame`), и по той же
+   причине: искать плоскость на полом теле бесполезно. Грань одна — тыльная оболочка: она сплошная, без
+   паза, и по ней не ходит толкатель. И она же ложится на стол при печати, поэтому утопленная надпись
+   здесь не компромисс, а лучший случай: печатается первыми слоями начисто.
+
+   Мнётся оболочка своими же вершинами (`surfaceLogoDisp` + `prismXReliefTris`), то есть НИКАКОЙ
+   ПЛОЩАДКИ нет ни в каком виде: контур футляра остаётся одним телом, а вмятина — его собственный
+   рельеф. Выпуклая надпись тоже строится, но о ней сказано вслух: бугор на грани, которой деталь стоит
+   на столе, — это качание при печати. */
+const CARD_LOGO_SURFACES = ['chback'];   // поверхность у футляра одна, и на карточке логотипа тоже одна
+const CARD_LOGO_EDGE = 3;      // поле от края тыльной оболочки до края наклейки
+const CARD_LOGO_KEEP = 0.8;    // сколько оболочки обязано остаться под самой глубокой вмятиной
+function cardLogoFrame(p){
+  const s = cardSpec(p);
+  const zB = -s.outer.z/2, zF = s.outer.z/2, z0 = zB + s.tE;   // тыльная оболочка идёт от задней стенки
+  /* Рамка ПРАВАЯ относительно своей нормали: u × v = n. Нормаль смотрит по −Y (наружу от футляра),
+     значит при u = +X ось v может быть только +Z. Ошибись здесь — и надпись читалась бы зеркально;
+     у подставки это уже случалось на переднем борте. */
+  return { o: [0, 0, (z0 + zF)/2], u: [1,0,0], v: [0,0,1], n: [0,-1,0],
+           halfU: s.xo - CARD_LOGO_EDGE, halfV: (zF - z0)/2 - CARD_LOGO_EDGE,
+           spanU: 2*s.xo, spanV: zF - z0, name: 'тыльная оболочка' };
+}
+/* ГЛУБИНА ВМЯТИНЫ ОГРАНИЧЕНА ТОЛЩИНОЙ ОБОЛОЧКИ, и зажимается она ЗДЕСЬ, в одном месте на обе половины:
+   и панель, и пробка цвета читают уже зажатое число. Зажми только панель — пробка окажется глубже
+   кармана и проткнёт карман с картами. */
+function cardLogoDepth(s, d){ return d < 0 ? -Math.min(-d, Math.max(0.1, s.tF - CARD_LOGO_KEEP)) : d; }
+function cardLogoCut(p){
+  const s = cardSpec(p);
+  return (typeof logos !== 'undefined' ? logos : []).some(lg => lg.heightmap && (lg.depth||0) < 0
+    && cardLogoDepth(s, lg.depth) > lg.depth + 1e-9);
+}
+/* Логотипы ЭТОЙ грани, с уже зажатой глубиной. `forDent` — для самой панели: при цветной печати
+   выпуклый рисунок панель не выдавливает, его печатает пробка, и два одинаковых бугра в одном объёме
+   были бы не рельефом, а двумя телами. Правило то же, что у подставки. */
+function cardLogoList(p, forDent){
+  if (typeof logos === 'undefined' || !logos.length) return [];
+  const s = cardSpec(p), colour = logoAmsOn(p);
+  return logos.filter(lg => lg.heightmap && (lg.depth||0) && !(forDent && colour && lg.depth > 0))
+              .map(lg => Object.assign({}, lg, {depth: cardLogoDepth(s, lg.depth)}));
+}
+/* ПОДЛОЖКА — ЭТО ВЫБОР ЧЕЛОВЕКА, а не то, что случается само. Умолчание — ноль, и тогда никакой
+   площадки нет: оболочка мнётся. Заказал подложку («Этикетка: подложка под надпись») — получает
+   именно её, накладкой, и оболочка тогда не мнётся: вмятина под бляшкой была бы работой впустую.
+
+   Ручка, которая на этой форме не делает НИЧЕГО, здесь считается дефектом не меньшим, чем площадка,
+   которой не просили: у подставки такой молчаливый холостой ход уже ловили. */
+function cardLogoPlate(p){ return Math.max(0, (p && p.logoPlate) || 0); }
+function cardSurfaceDisp(p, res){
+  if (cardLogoPlate(p) > 0) return null;
+  const fr = cardLogoFrame(p);
+  if (!(fr.halfU > 2) || !(fr.halfV > 2)) return null;
+  return surfaceLogoDisp(cardLogoList(p, true), fr, res, fr.spanU, fr.spanV);
+}
+/* Что кладётся ПОВЕРХ футляра: пробки цвета (и ТОЛЬКО они — тело под ними печатает другой филамент)
+   либо заказанная накладка. Промятая оболочка не получает ничего: класть поверх вмятины нечего. */
+function cardLogoTris(p, res, amsK){
+  const inkWant = Math.max(0, amsK|0);
+  const plate = cardLogoPlate(p);
+  if (!inkWant && !(plate > 0)) return [];
+  const fr = cardLogoFrame(p), out = [];
+  if (!(fr.halfU > 2) || !(fr.halfV > 2)) return out;
+  for (const lg of cardLogoList(p, false))
+    for (const T of surfaceLogoPatchTris(lg, fr, !(plate > 0), plate, res, inkWant)) out.push(T);
+  return out;
+}
 function buildCardHolder(p){
   const s = cardSpec(p), out = [];
   const zB = -s.outer.z/2, zF = s.outer.z/2;
@@ -13242,7 +13333,19 @@ function buildCardHolder(p){
   const yc0 = s.tF, yc1 = s.tF + s.stack, h = s.H, sw = s.sw/2;
   const P = [[-s.xo, 0], [s.xo, 0], [s.xo, h], [sw, h], [sw, yc1], [s.xi, yc1], [s.xi, yc0],
              [-s.xi, yc0], [-s.xi, yc1], [-sw, yc1], [-sw, h], [-s.xo, h]];
-  for (const T of prismXPolyTris(P.map(q => [q[1], q[0]]), zB + s.tE, zF))
+  /* ТЫЛЬНАЯ ОБОЛОЧКА МНЁТСЯ — это ребро P[0]→P[1] (y = 0), и наклейка живёт на нём. Без логотипа
+     контур остаётся ровно тем же телом, что и был: та же призма, тот же счёт треугольников.
+
+     Оси у призмы и у рамки РАЗНЫЕ, и это не мелочь: призма тянется вдоль мирового Z (её шаг `i`), а
+     рельефное ребро идёт вдоль X (шаг `j`); у рамки же U = X, V = Z. Поэтому сетка переставляется —
+     `d.M` шагов вдоль Z, `d.N` вдоль X, и `disp(i, j) = d.disp(j, i)`. У подставки перестановки нет,
+     там призма и рамка совпали осями сами собой, и списать оттуда было бы ошибкой. */
+  const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
+  const d = cardSurfaceDisp(p, lres);
+  const poly = P.map(q => [q[1], q[0]]);
+  const prism = d ? prismXReliefTris(poly, zB + s.tE, zF, 0, d.M, d.N, (i, j) => d.disp(j, i))
+                  : prismXPolyTris(poly, zB + s.tE, zF);
+  for (const T of prism)
     out.push([T[0], T[2], T[1]].map(v => [v[2], v[1], v[0]]));
   /* ЗАДНЯЯ СТЕНКА — строго у́же футляра и утоплена в него: общих плоскостей нет. */
   const xn = s.xo - 0.5;
@@ -14231,11 +14334,16 @@ function convexPrismXTris(poly, x0, x1){ const out=[], n=poly.length;
    (i = 0 или N, j = 0 или M) оно обязано быть нулём: там вершины общие с торцами и соседями. */
 function prismXReliefTris(poly, x0, x1, edgeIdx, N, M, disp){
   const n = poly.length, out = [];
-  const cy = poly.reduce((s,q)=>s+q[0],0)/n, cz = poly.reduce((s,q)=>s+q[1],0)/n;
+  /* КУДА СМОТРИТ ГРАНЬ — из ОБХОДА КОНТУРА, а не «прочь от середины». Разница видна только на вогнутом
+     контуре, и она полная: у стенки кармана «прочь от середины» показывает ВНУТРЬ материала, и стенка
+     выходит вывернутой. Меш при этом закрыт и парен ребро в ребро — ловится это не проверкой на
+     герметичность, а объёмом: у футляра с промятой оболочкой карман и паз оказывались ЗАЛИТЫМИ, 55 281
+     мм³ вместо 20 983. Пока сюда ходила одна подставка с тремя выпуклыми сечениями, обе записи
+     совпадали. Знак обхода тот же, что у `prismXPolyTris`, — у них и контуры одни и те же. */
+  const sgn = loopArea2(poly) >= 0 ? 1 : -1;
   const e = ((edgeIdx % n) + n) % n, e0 = poly[e], e1 = poly[(e+1)%n];
-  let ny = e1[1]-e0[1], nz = -(e1[0]-e0[0]);
+  let ny = sgn*(e1[1]-e0[1]), nz = -sgn*(e1[0]-e0[0]);
   const L = Math.hypot(ny, nz) || 1; ny /= L; nz /= L;
-  if (ny*((e0[0]+e1[0])/2 - cy) + nz*((e0[1]+e1[1])/2 - cz) < 0){ ny = -ny; nz = -nz; }   // наружу
   const X = i => x0 + (x1-x0)*i/N;
   const EY = t => e0[0] + (e1[0]-e0[0])*t, EZ = t => e0[1] + (e1[1]-e0[1])*t;
   const G = (i,j) => { const t = j/M, d = disp ? (disp(i,j) || 0) : 0;
@@ -14245,17 +14353,26 @@ function prismXReliefTris(poly, x0, x1, edgeIdx, N, M, disp){
     out.push(orient([G(i,j),G(i+1,j),G(i+1,j+1)], nOut));
     out.push(orient([G(i,j),G(i+1,j+1),G(i,j+1)], nOut));
   }
-  // Торцы: контур многоугольника с подразбитым ребром рельефа, веером из первой вершины ЗА этим ребром.
+  /* Торцы: контур многоугольника с подразбитым ребром рельефа. Режется он УХОРЕЗОМ, а не веером из
+     вершины за рельефным ребром, как было сначала. Веер верен только для выпуклого контура, и пока
+     через эту машинку ходила одна подставка — а у неё все три сечения выпуклые четырёхугольники, — этого
+     хватало. У футляра сечение вогнутое: в нём и карман, и паз, и веер разложил бы его треугольниками
+     НАРУЖУ контура. Ухорез общий для всего приложения (`earClipXZ`), вогнутость для него — обычное дело,
+     а на выпуклом контуре он даёт ровно столько же треугольников, сколько давал веер.
+
+     Обход торцов задаётся ОДИН РАЗ, а не выводится из нормали каждого треугольника: ухорез отдаёт
+     согласованную раскладку контура против часовой стрелки, а у плоского угла собственного поворота
+     нет — только шум округления. В плоскости (poly0, poly1), вытянутой вдоль x, ŷ × ẑ = +x̂, значит
+     «против часовой» смотрит в +x: дальний торец идёт порядком ухореза, ближний — обратным. */
   const ring = [];
   for(let k=0;k<n;k++){
     ring.push(poly[(e+k)%n]);
     if(k===0) for(let j=1;j<M;j++) ring.push([EY(j/M), EZ(j/M)]);
   }
-  const fan = M + 1;                       // индекс poly[e+1] это M, значит первая «свободная» — M+1
-  for(let k=1;k+1<ring.length;k++){
-    const a=ring[fan], b=ring[(fan+k)%ring.length], c=ring[(fan+k+1)%ring.length];
-    out.push(orient([[x0,a[0],a[1]],[x0,b[0],b[1]],[x0,c[0],c[1]]], [-1,0,0]));
-    out.push(orient([[x1,a[0],a[1]],[x1,b[0],b[1]],[x1,c[0],c[1]]], [ 1,0,0]));
+  for(const t of earClipXZ(ring)){
+    const a = ring[t[0]], b = ring[t[1]], c = ring[t[2]];
+    out.push([[x1,a[0],a[1]],[x1,b[0],b[1]],[x1,c[0],c[1]]]);
+    out.push([[x0,a[0],a[1]],[x0,c[0],c[1]],[x0,b[0],b[1]]]);
   }
   /* Боковые грани. У двух соседних с рельефом ОДНА сторона общая с его кромкой и потому подразбита на
      N, а противоположная граничит с гранью, которая не подразбита вовсе. Резать такую грань на N
@@ -14266,7 +14383,7 @@ function prismXReliefTris(poly, x0, x1, edgeIdx, N, M, disp){
   for(let k=0;k<n;k++){
     if(k === e) continue;
     const u = poly[k], v = poly[(k+1)%n];
-    const ref = [0, (u[0]+v[0])/2 - cy, (u[1]+v[1])/2 - cz];
+    const ref = [0, sgn*(v[1]-u[1]), -sgn*(v[0]-u[0])];
     const nearAtV = (k === (e+n-1)%n);           // подразбита сторона при poly[k+1]
     const nearAtU = (k === (e+1)%n);             // …или при poly[k]
     if(!nearAtU && !nearAtV){
@@ -19611,24 +19728,6 @@ function standLogoSurface(lg, p){
   if (lg && STAND_LOGO_SURFACES.indexOf(lg.face) >= 0) return lg.face;
   return STAND_LOGO_SURFACES.indexOf(p && p.psLogoOn) >= 0 ? p.psLogoOn : 'floor';
 }
-/* Логотип на подставке, с разбором на ЦВЕТА. Устроено ровно так же, как у наклейки на любой другой форме
-   (`logoPatchPlan` + `buildLogoAmsInkTris`) и у подстаканника: тело получает карман одной глубины, а
-   каждый тон рисунка становится отдельной деталью — пробками ровно по этому карману. Разница только в
-   том, откуда берётся плоскость: подставка её не ищет, а НАЗЫВАЕТ, потому что у спинки нет оси, которой
-   она перпендикулярна.
-
-   `amsK` = 0 — само тело; 1…6 — только пробки цвета k, и ничего кроме них: иначе этот филамент напечатал
-   бы вторую подставку под собственным логотипом. */
-/* Поле смещения для ПОВЕРХНОСТИ подставки: сколько материала снять (или добавить) в каждом узле её
-   сетки. Это и есть настоящая выемка: панель строится промятой, а не получает бляшку сверху.
-
-   Стенка мнётся ровно так же, как у куба, — смещением собственных вершин, — и с тем же следствием:
-   стенка выемки идёт скатом в одну ячейку, а не отвесно. Отвесную стенку даёт только отдельная плита с
-   раздвоенными вершинами на кромке, а у неё, в свою очередь, есть площадка. Одно из двух; выбрана
-   выемка, потому что просили её.
-
-   Сетка кладётся на ВСЮ грань, а не на пятно логотипа: у грани общие с торцами и соседями края, и
-   подразбивать её кусками нельзя. По краю смещение принудительно ноль — там вершины общие. */
 /* Можно ли промять ЭТУ поверхность. Дно с вырезом под кабель строится другой машинкой (коробкой с
    отверстием), и сетки под выемку там нет. Раньше в этом случае логотип на дне не появлялся вообще —
    ни вмятиной, ни накладкой, — то есть возможность просто пропадала; поймано `test_logo_mirror.js`,
@@ -19649,8 +19748,28 @@ function standSurfaceDisp(p, which, res, spanU, spanV){
   if (!mine.length) return null;
   const fr = standLogoFrame(p, which);
   if (!(fr.halfU > 2) || !(fr.halfV > 2)) return null;
-  // Каждый логотип со своими зажатыми размерами и положением — теми же, что считает standLogoTris.
-  const items = mine.map(lg => {
+  return surfaceLogoDisp(mine, fr, res, spanU, spanV);
+}
+/* ПОЛЕ СМЕЩЕНИЯ поверхности, названной РАМКОЙ: сколько материала снять (или добавить) в каждом узле её
+   сетки. Это и есть настоящая выемка — панель строится промятой, а не получает бляшку сверху.
+
+   Стенка мнётся ровно так же, как у куба, — смещением собственных вершин, — и с тем же следствием:
+   стенка выемки идёт скатом в одну ячейку, а не отвесно. Отвесную стенку даёт только отдельная плита с
+   раздвоенными вершинами на кромке, а у неё, в свою очередь, есть площадка. Одно из двух; выбрана
+   выемка, потому что просили её.
+
+   Машинка ОБЩАЯ для всех форм, которые называют свои грани сами. Подставка была первой и долго
+   единственной, оттого счёт и жил внутри неё; футляр стал вторым, и написать тот же счёт второй раз
+   значило бы завести два места, где он однажды разойдётся. Про подставку здесь поэтому нет ничего:
+   список логотипов уже отобран вызывающим, рамка — уже его, вернуть надо сетку и смещение в её узлах.
+
+   `list` — логотипы ЭТОЙ поверхности (и уже с зажатой глубиной, если форме есть что зажимать),
+   `spanU`/`spanV` — полные размеры ГРАНИ, а не пятна: у грани общие с торцами и соседями края, и
+   подразбивать её кусками нельзя. По краю смещение принудительно ноль — там вершины общие. */
+function surfaceLogoDisp(list, fr, res, spanU, spanV){
+  if (!list || !list.length) return null;
+  // Каждый логотип со своими зажатыми размерами и положением — теми же, что считает surfaceLogoPatchTris.
+  const items = list.map(lg => {
     const ext = rotatedHalfExtents(lg.w, lg.h, lg.rotation);
     const halfU = Math.min(ext.halfX, fr.halfU), halfV = Math.min(ext.halfY, fr.halfV);
     const u0 = Math.max(-(fr.halfU - halfU), Math.min(fr.halfU - halfU, lg.u0 || 0));
@@ -19694,10 +19813,18 @@ function standSurfaceDisp(p, which, res, spanU, spanV){
 /* Плита-накладка с рисунком. Нужна теперь только ЦВЕТНОЙ печати: там карман и пробки обязаны резаться
    одной сеткой, а промятая панель и отдельные пробки — это две разные сетки, которые не совпадут.
    Обычный логотип панель мнёт сама (см. standSurfaceDisp), и накладка ему больше не нужна. */
+/* Логотип на подставке, с разбором на ЦВЕТА. Устроено ровно так же, как у наклейки на любой другой форме
+   (`logoPatchPlan` + `buildLogoAmsInkTris`) и у подстаканника: тело получает карман одной глубины, а
+   каждый тон рисунка становится отдельной деталью — пробками ровно по этому карману. Разница только в
+   том, откуда берётся плоскость: подставка её не ищет, а НАЗЫВАЕТ, потому что у спинки нет оси, которой
+   она перпендикулярна.
+
+   `amsK` = 0 — само тело; 1…6 — только пробки цвета k, и ничего кроме них: иначе этот филамент напечатал
+   бы вторую подставку под собственным логотипом. */
 function standLogoTris(p, res, amsK){
   if (typeof logos === 'undefined' || !logos.length) return [];
-  /* Имя тут НЕ `want`: строчкой ниже в цикле уже живёт свой `want` — густота сетки, — и он бы это
-     затенил. Первая версия так и сделала: тело уходило в ветку пробок (густота всегда истинна), а там
+  /* Имя тут НЕ `want`: у сетки внутри общей машинки живёт свой `want` — густота, — и одно бы затенило
+     другое. Первая версия так и сделала: тело уходило в ветку пробок (густота всегда истинна), а там
      отсеивалось как «цвета столько нет», и патч выходил пустым при любых настройках. */
   const inkWant = Math.max(0, amsK|0);
   const out = [];
@@ -19709,10 +19836,26 @@ function standLogoTris(p, res, amsK){
     if (!amsK && standSurfaceDented(p, which)) continue;
     const fr = standLogoFrame(p, which);
     if (!(fr.halfU > 2) || !(fr.halfV > 2)) continue;
+    for (const T of surfaceLogoPatchTris(lg, fr, standSurfaceDented(p, which), p.logoPlate || 0, res, inkWant))
+      out.push(T);
+  }
+  return out;
+}
+/* ОДИН ЛОГОТИП на поверхности, названной РАМКОЙ: либо накладка-плита (тело), либо пробка цвета k. Вторая
+   половина общей машинки именованных граней — первая (`surfaceLogoDisp`) мнёт саму панель, эта кладёт то,
+   что мять нечем или незачем.
+
+   Про форму здесь опять нет ничего: рамка, «мнётся ли поверхность», бляшка и густота приходят снаружи.
+   Подставка зовёт это для каждой своей поверхности, футляр — для своей тыльной оболочки, и правило
+   бляшки, порогов, тонов и зазора у них поэтому ОДНО, а не два похожих.
+
+   `inkWant` = 0 — само тело; 1…6 — только пробки цвета k, и ничего кроме них: иначе этот филамент
+   напечатал бы вторую деталь под собственным логотипом. */
+function surfaceLogoPatchTris(lg, fr, dented, plateParam, res, inkWant){
+    const out = [];
     const depth = lg.depth || 0;
-    if (!depth) continue;
-    const dented = standSurfaceDented(p, which);
-    let plate = Math.max(0, p.logoPlate || 0);
+    if (!depth) return out;
+    let plate = Math.max(0, plateParam || 0);
     /* `plate` описывает НАКЛАДКУ, и только её: где панель мнётся, ни одна ветка ниже к нему не
        обращается — ни пробка (она отсчитывается от самой поверхности), ни тело (оно там вообще ничего не
        кладёт). Поэтому условия «а если мнётся» здесь нет: оно ничего не меняло бы, а читалось бы как
@@ -19731,7 +19874,7 @@ function standLogoTris(p, res, amsK){
     const inks = logoInks(lg);
     const ext = rotatedHalfExtents(lg.w, lg.h, lg.rotation);
     const halfU = Math.min(ext.halfX, fr.halfU), halfV = Math.min(ext.halfY, fr.halfV);
-    if (!(halfU > 0.5) || !(halfV > 0.5)) continue;
+    if (!(halfU > 0.5) || !(halfV > 0.5)) return out;
     const u0 = Math.max(-(fr.halfU - halfU), Math.min(fr.halfU - halfU, lg.u0 || 0));
     const v0 = Math.max(-(fr.halfV - halfV), Math.min(fr.halfV - halfV, lg.v0 || 0));
     const want = Math.max(8, Math.min(220, res || 120));
@@ -19772,7 +19915,7 @@ function standLogoTris(p, res, amsK){
       for(let k=1;k<NK;k++) if(cov[base2+k] > bestC){ bestC = cov[base2+k]; best = k; }
       if (best > 0){ mask[j*N+i] = best; any = true; }
     }
-    if (!any && plate <= 0) continue;
+    if (!any && plate <= 0) return out;
     // Cells meeting only at a corner would put four wall quads on one vertical edge — non-manifold.
     // Ячейки одного ЦВЕТА, сходящиеся углом, — та же беда у пробки, поэтому углы разводятся по цветам.
     if (NK > 2) resolveInkCorners(mask, N, M, NK-1);
@@ -19786,13 +19929,13 @@ function standLogoTris(p, res, amsK){
     const warp = mosaicWarp(mask, cov, NK-1, N, M);
     if (inkWant){
       // Пробка цвета k: от лица кармана внутрь, с заходом за его дно — проникновение объёмом, не касание.
-      if (inkWant > inks.levels.length) continue;
+      if (inkWant > inks.levels.length) return out;
       /* Промятая панель: пробка идёт от самой поверхности (0) до дна вмятины и ещё на LAP глубже —
          проникновение объёмом, а не касание. Непромятая: от лица накладки до дна её кармана. */
       const outer = dented ? Math.max(0, depth) : Math.max(base, plate + depth);
       const inner = (dented ? Math.min(0, depth) : Math.min(base, plate + depth)) - LOGO_AMS_LAP;
       for (const T of maskedSlabTris(mask, inkWant, N, M, U, V, outer, inner, fr, warp)) out.push(T);
-      continue;
+      return out;
     }
     // Not `push(...arr)`: a patch across the full width of a stand is tens of thousands of triangles and
     // the spread passes every one as an argument, which overflows the stack rather than being slow.
@@ -19803,8 +19946,7 @@ function standLogoTris(p, res, amsK){
     const bin = new Uint8Array(N*M);
     for (let q = 0; q < bin.length; q++) bin[q] = mask[q] ? 1 : 0;
     for (const T of reliefSlabTris(bin, N, M, U, V, plate + depth, base, -LOGO_PLATE_EMBED, fr, warp)) out.push(T);
-  }
-  return out;
+    return out;
 }
 function buildPhoneStand(p){
   const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
@@ -24583,7 +24725,11 @@ function buildTrisForShapeUnscaled(shape, p) {
   /* Футляр разбирает свои логотипы САМ — и телом, и цветом (buildClamshell). Общий путь ему не годится
      ни в одном из двух: габаритный ящик здесь — это ящик всей РАСКЛАДКИ из двух деталей, где крышка
      лежит лицом вниз, так что «верх» у него не крышка, а кромка корпуса. */
+  /* Футляр тоже разбирает свои логотипы САМ (`cardLogoFrame`), и по той же причине, что подставка:
+     плоскость под наклейку он не ищет, а называет. Общий путь на полой коробке находил ДНО КАРМАНА и
+     клал наклейку внутрь футляра — бляшкой, потому что резать в чужом теле нечем. */
   if (shape === 'box' && logos.length > 0 && !dieShape(p) && !p.psOn && !coasterShape(p) &&
+      !(p.chMode && p.chMode !== 'none') &&
       p.pipMode !== 'box' && (LOGO_PLATE_MODES.has(dominantMode(p)) || logoAmsOn(p))) {
     const bb = bboxOfTris(tris);
     const res = (typeof logoResolution !== 'undefined') ? logoResolution * 2 : 120;
@@ -24640,7 +24786,11 @@ function buildTrisForShapeCore(shape, p) {
       return snapWeldTris(buildProjectBox(p));
     }
     if (p.chMode && p.chMode !== 'none') {
-      return snapWeldTris(buildCardHolder(p));
+      const lres = (typeof logoResolution !== 'undefined') ? logoResolution : 120;
+      // Цветная деталь — это ТОЛЬКО её пробки: футляр под ними печатает тело, а не этот филамент.
+      const amsK = logoAmsIndex(p.logoAms);
+      if (amsK) return snapWeldTris(cardLogoTris(p, lres, amsK));
+      return snapWeldTris(buildCardHolder(p).concat(cardLogoTris(p, lres, 0)));
     }
     if (p.csMode && p.csMode !== 'none') {
       return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
@@ -25423,16 +25573,23 @@ function attachSplitHandle() {
 }
 
 const FACE_LABELS = {'+X':'+X (справа)','-X':'−X (слева)','+Y':'+Y (сверху)','-Y':'−Y (снизу)','+Z':'+Z (спереди)','-Z':'−Z (сзади)','-Y-inner':'−Y изнутри (дно полости)',
-  'floor':'дно (снизу)','back':'спинка (снаружи)','lip':'передний борт'};
+  'floor':'дно (снизу)','back':'спинка (снаружи)','lip':'передний борт','chback':'тыльная оболочка (снаружи)'};
 const FACE_AXIS_LABELS = { '+X':['Y','Z'], '-X':['Y','Z'], '+Y':['X','Z'], '-Y':['X','Z'], '+Z':['X','Y'], '-Z':['X','Y'], '-Y-inner':['X','Z'],
-  'floor':['X','Z'], 'back':['X','вдоль'], 'lip':['X','Y'] };
+  'floor':['X','Z'], 'back':['X','вдоль'], 'lip':['X','Y'], 'chback':['X','Z'] };
 const ALL_FACES = ['+Z','+X','-X','+Y','-Y','-Y-inner','-Z'];
 /* Куда вообще можно положить логотип на ТЕКУЩЕЙ форме. У подставки нет граней габарита — у неё три
    названные поверхности (дно, спинка, борт), и спинка вдобавок наклонена, так что ни одна ось ей не
    перпендикулярна. Предлагать там «+X (справа)» значит предлагать то, на что построитель не отзовётся:
-   до v17.1.3 список осей на карточке подставки честно менялся и не делал ничего. */
+   до v17.1.3 список осей на карточке подставки честно менялся и не делал ничего.
+
+   У футляра то же самое, только поверхность одна: тыльная оболочка. Остальные его грани заняты — в
+   лицевой паз, по которому ходит толкатель, торцы узкие, а внутрь кармана надпись не кладут. Список из
+   одной строки честнее семи осей, ни одна из которых ничего не меняет. */
 function facesForShape(p){
-  return dominantMode(p || paramState.box) === 'stand' ? STAND_LOGO_SURFACES.slice() : ALL_FACES;
+  const m = dominantMode(p || paramState.box);
+  if (m === 'stand') return STAND_LOGO_SURFACES.slice();
+  if (m === 'cardholder') return CARD_LOGO_SURFACES.slice();
+  return ALL_FACES;
 }
 
 function escapeHtml(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
@@ -25617,8 +25774,7 @@ function renderLogoCards() {
      оси, а показываемый на подставке, отображается тем, куда построитель его и положит, — иначе список
      говорил бы одно, а деталь показывала другое. */
   const cardFaces = facesForShape(paramState.box);
-  const cardFace = lg => cardFaces.indexOf(lg.face) >= 0 ? lg.face
-                       : (dominantMode(paramState.box) === 'stand' ? standLogoSurface(lg, paramState.box) : lg.face);
+  const cardFace = lg => logoFaceOn(lg, paramState.box);
   for (const logo of logos) {
     const axisLabels = FACE_AXIS_LABELS[cardFace(logo)] || ['U','V'];
     const card = document.createElement('div');
@@ -28117,6 +28273,26 @@ function collectPrintWarnings(p){
       w.push('паз под толкатель шире половины кармана — лицевая оболочка почти вся вырезана');
     w.push('«веером» карты НЕ разъезжаются, и обещать этого нельзя: лесенка зависит от трения карты о ' +
            'карту, а не от геометрии. Толкатель выдвигает пачку целиком');
+    /* НАКЛЕЙКА — про неё сказано ровно то, чего не видно на картинке: на какой она грани и почему под
+       ней нет площадки. Форма называет свою грань сама, и человеку об этом знать надо: поле грани на
+       карточке логотипа у футляра ни на что не влияет, как и у подставки. */
+    if (typeof logos !== 'undefined' && logos.some(lg => lg.heightmap && (lg.depth||0))){
+      w.push('надпись ложится на ТЫЛЬНУЮ ОБОЛОЧКУ — она сплошная, без паза, и по ней не ходит ' +
+             'толкатель. Поверхность у футляра одна, и в списке на карточке логотипа она одна и стоит');
+      if (cardLogoPlate(p) > 0)
+        w.push('под надписью стоит ПОДЛОЖКА ' + cardLogoPlate(p).toFixed(1) + ' мм — так заказано ' +
+               'параметром «Этикетка: подложка под надпись». Оболочка при ней не мнётся: поставьте 0, ' +
+               'и надпись уйдёт в саму оболочку, без площадки');
+      else
+        w.push('ПЛОЩАДКИ ПОД НАДПИСЬЮ НЕТ: мнётся сама оболочка. Нужна накладка — её ставят ' +
+               'параметром «Этикетка: подложка под надпись»');
+      if (cardLogoCut(p))
+        w.push('глубина надписи ограничена ' + (g.tF - CARD_LOGO_KEEP).toFixed(1) + ' мм: под ней сразу ' +
+               'карман с картами, и ' + CARD_LOGO_KEEP.toFixed(1) + ' мм оболочки обязаны остаться');
+      if (logos.some(lg => lg.heightmap && (lg.depth||0) > 0))
+        w.push('надпись ВЫПУКЛАЯ, а этой гранью футляр ложится на стол: бугор поднимет деталь с ' +
+               'первого слоя. Утопленная (глубина со знаком минус) печатается здесь начисто');
+    }
   }
   if (p.csMode && p.csMode !== 'none'){
     const g = coasterSpec(p);

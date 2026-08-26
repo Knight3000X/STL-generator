@@ -279,5 +279,227 @@ console.log('=== чего модель НЕ обещает — сказано в
       W({}).some(x => /единственн/.test(x)), W({}));
 }
 
+
+/* НАКЛЕЙКА НА ФУТЛЯРЕ (v25.2.0). Пришла она с картинки от человека: наклейка сидела на ПЛОЩАДКЕ
+   13.3 × 13.4 × 1.0 мм. Площадка бралась не из прихоти — логотип по умолчанию УТОПЛЕН, а вырезать
+   общая машинка не умеет: она ищет плоскость поиском по мешу и кладёт на неё плиту. На полой коробке
+   поиск и вовсе находил ДНО КАРМАНА (y = 1.6) и клал наклейку внутрь футляра.
+
+   Теперь грань называет сам футляр, и мнётся она своими же вершинами. Проверяется поэтому не «есть ли
+   рельеф», а четыре вещи, каждая из которых ломается молча:
+
+     1. ПЛОЩАДКИ НЕТ. Габарит с утопленной надписью в точности тот же, что без неё, и ни одна вершина не
+        выступает за тыльную грань. Габарит один этого не докажет — плита могла бы влезть внутрь, —
+        поэтому объём сверяется с площадью рисунка, посчитанной ОТДЕЛЬНО по карте высот.
+     2. НАДПИСЬ СНАРУЖИ, А НЕ В КАРМАНЕ. Ровно то, что делал общий путь.
+     3. ОСИ НЕ ПЕРЕПУТАНЫ. У призмы и у рамки они разные, и перестановку сетки видно только по форме
+        ПЯТНА КРАСКИ: у карточки 30 × 8 перекладина «Т» идёт во всю ширину, а по высоте краска занимает
+        0.6 от неё, значит пятно обязано лечь на 30 вдоль X и на 4.8 вдоль Z. И сдвиг «вниз по карточке»
+        обязан двигать его вдоль Z, а не вдоль X.
+     4. ПОД ВМЯТИНОЙ ОСТАЁТСЯ ОБОЛОЧКА. За ней сразу карман с картами. */
+console.log('=== наклейка: на тыльной оболочке, БЕЗ ПЛОЩАДКИ ===');
+{
+  const HM = (fn) => { const N = LOGO_HM_SIZE, hm = new Float32Array(N*N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) hm[j*N+i] = fn((i+0.5)/N, (j+0.5)/N) ? 1 : 0;
+    return hm; };
+  const TEE = (u, v) => (v > 0.2 && v < 0.35) || (u > 0.42 && u < 0.58 && v > 0.2 && v < 0.8);
+  const frac = (fn) => { const N = LOGO_HM_SIZE; let k = 0;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (fn((i+0.5)/N, (j+0.5)/N)) k++;
+    return k/(N*N); };
+  const LG = (ov) => Object.assign({heightmap: HM(TEE), w: 26, h: 14, depth: -0.4, rotation: 0,
+    u0: 0, v0: 0, threshold: 0.5, invert: false, face: '+Y'}, ov || {});
+  /* Густота сетки задаётся ЯВНО, и низкая здесь не небрежность: на умолчании грань 59 × 108 мм режется
+     ячейкой в четверть миллиметра, и это 160 тысяч треугольников — на них проверка связности объёмом
+     считалась бы часами. Всё, что меряется числом (объём, габарит), берётся на рабочей густоте. */
+  const BL = (ov, lg, res) => { logos.length = 0; boxHoles.length = 0; logos.push(LG(lg));
+    const save = logoResolution; logoResolution = res || 8;
+    Object.assign(paramState.box, defaultBoxParams(), {chMode:'wallet'}, ov || {});
+    const t = buildTrisForShape('box', paramState.box);
+    logoResolution = save; logos.length = 0; return t; };
+  const WL = (ov, lg) => { logos.length = 0; logos.push(LG(lg));
+    const w = collectPrintWarnings(P(ov)) || []; logos.length = 0; return w; };
+
+  const plain = B({}), s = S({});
+  const t = BL({}, {});
+  const mc = manifoldCheck(t, 4);
+  chk('футляр с надписью герметичен и не вывернут', mc.watertight && vol(t) > 0,
+      {open:mc.openEdges, bad:mc.badEdges, объём:+vol(t).toFixed(0)});
+  chk('  и без совпадающих граней', coplanarPairs(t).hits === 0, coplanarPairs(t).where);
+  chk('  рельеф действительно построен', t.length > plain.length*4, {было:plain.length, стало:t.length});
+
+  // 1. ПЛОЩАДКИ НЕТ
+  const fine = BL({}, {}, 50);
+  const b0 = computeBBox(plain), b1 = computeBBox(fine);
+  chk('габарит с утопленной надписью тот же, что без неё',
+      Math.abs(b1.minY - b0.minY) < 1e-9 && Math.abs(b1.maxY - b0.maxY) < 1e-9 &&
+      Math.abs(b1.minX - b0.minX) < 1e-9 && Math.abs(b1.maxZ - b0.maxZ) < 1e-9,
+      {без:[+b0.minY.toFixed(3), +b0.maxY.toFixed(3)], с:[+b1.minY.toFixed(3), +b1.maxY.toFixed(3)]});
+  chk('  ни одна вершина не выступает за тыльную грань',
+      fine.every(T => T.every(v => v[1] > -1e-9)), fine.filter(T => T.some(v => v[1] < -1e-9)).length);
+  /* Объём — против площади рисунка, посчитанной по карте высот ОТДЕЛЬНО от построителя. Габарит один
+     ничего не доказал бы: плита толщиной в глубину влезла бы внутрь габарита и осталась площадкой. */
+  const area = frac(TEE)*26*14, dV = vol(plain) - vol(fine);
+  chk('  и снято ровно столько, сколько занимает рисунок', Math.abs(dV - area*0.4) < area*0.4*0.06,
+      {снято:+dV.toFixed(2), рисунок:+(area*0.4).toFixed(2)});
+
+  // 2. НАДПИСЬ СНАРУЖИ, А НЕ В КАРМАНЕ
+  const zc = (-s.outer.z/2 + s.tE + s.outer.z/2)/2;
+  chk('в самой вмятине воздух', !IN(t, [0, 0.2, zc]), {});
+  chk('  а под нею — оболочка', IN(t, [0, 0.6, zc]) && IN(t, [0, s.tF - 0.1, zc]), {});
+  chk('  карман с картами не тронут: над оболочкой по-прежнему воздух',
+      !IN(t, [0, s.tF + 0.2, zc]), {});
+  /* Дно кармана осталось плоским: в полосе над ним, ТАМ ГДЕ ЛЕЖИТ НАДПИСЬ, нет ни одной вершины.
+     Толкатель тоже начинает свою пятку чуть выше дна, но стоит он у задней стенки, а надпись — посреди
+     футляра, поэтому полоса берётся вокруг неё. */
+  chk('  и дно кармана осталось плоским — рельефа внутри футляра нет',
+      t.every(T => T.every(v => !(v[1] > s.tF + 1e-6 && v[1] < s.tF + 0.39 &&
+                                  Math.abs(v[0]) < 15 && Math.abs(v[2] - zc) < 12))), {});
+
+  // 3. ОСИ НЕ ПЕРЕПУТАНЫ
+  /* Пятно вмятины — это вершины, отодвинутые от тыльной грани, но не дошедшие до кармана. Задняя
+     стенка тоже начинается с 0.4, поэтому её торец отсекается по z. */
+  const patch = (tt) => { const lo = [1e9,1e9], hi = [-1e9,-1e9];
+    for (const T of tt) for (const v of T)
+      if (v[1] > 1e-6 && v[1] < s.tF - 1e-6 && v[2] > -s.outer.z/2 + s.tE + 1){
+        lo[0] = Math.min(lo[0], v[0]); hi[0] = Math.max(hi[0], v[0]);
+        lo[1] = Math.min(lo[1], v[2]); hi[1] = Math.max(hi[1], v[2]); }
+    return {w:hi[0]-lo[0], d:hi[1]-lo[1], cx:(lo[0]+hi[0])/2, cz:(lo[1]+hi[1])/2}; };
+  /* Рисунок 30 × 8: перекладина «Т» идёт во всю ширину карточки, а по высоте краска занимает 0.6 от
+     неё (v от 0.2 до 0.8) — то есть 30 мм вдоль U и 4.8 вдоль V. Меряется ПЯТНО КРАСКИ, а не карточка,
+     поэтому число второе, а не восемь. */
+  const wide = patch(BL({}, {w:30, h:8}, 24));
+  chk('рисунок 30 × 8 ложится на 30 вдоль X и на 4.8 вдоль Z',
+      Math.abs(wide.w - 30) < 1.5 && Math.abs(wide.d - 4.8) < 1.5, {X:+wide.w.toFixed(2), Z:+wide.d.toFixed(2)});
+  const moved = patch(BL({}, {v0: 12}, 24)), home = patch(BL({}, {}, 24));
+  chk('  а сдвиг по V двигает пятно вдоль Z, и только вдоль него',
+      Math.abs(moved.cz - home.cz - 12) < 1.0 && Math.abs(moved.cx - home.cx) < 0.5,
+      {dz:+(moved.cz - home.cz).toFixed(2), dx:+(moved.cx - home.cx).toFixed(2)});
+
+  // 4. ПОД ВМЯТИНОЙ ОСТАЁТСЯ ОБОЛОЧКА
+  const deep = BL({}, {depth: -3});
+  let maxDent = 0;
+  for (const T of deep) for (const v of T)
+    if (v[1] < s.tF - 1e-6 && v[2] > -s.outer.z/2 + s.tE + 1) maxDent = Math.max(maxDent, v[1]);
+  chk('глубокая надпись зажата толщиной оболочки', maxDent <= s.tF - CARD_LOGO_KEEP + 1e-6,
+      {вмятина:+maxDent.toFixed(3), можно:+(s.tF - CARD_LOGO_KEEP).toFixed(3)});
+  chk('  и глубина эта — та самая, что заказана правилом, а не меньшая',
+      Math.abs(maxDent - (s.tF - CARD_LOGO_KEEP)) < 1e-6, +maxDent.toFixed(3));
+  chk('  оболочка под нею цела', IN(deep, [0, s.tF - 0.1, zc]), {});
+  chk('  а о зажиме сказано вслух', WL({}, {depth:-3}).some(x => /глубина надписи ограничена/.test(x)),
+      WL({}, {depth:-3}));
+
+  // СВЯЗНОСТЬ не сломана: наклейка — это сама оболочка, а не ещё одно тело
+  const cs = shells(t);
+  chk('с надписью тел по-прежнему пять', cs.length === 5, {тел:cs.length});
+  chk('  и групп по-прежнему две', glued(cs).length === 2, {групп:glued(cs).length});
+
+  // ВЫПУКЛАЯ надпись: строится, но про стол сказано
+  const up = BL({}, {depth: 0.6});
+  chk('выпуклая надпись выходит за тыльную грань ровно на свою высоту',
+      Math.abs(computeBBox(up).minY - (b0.minY - 0.6)) < 1e-6, {y:+computeBBox(up).minY.toFixed(3)});
+  chk('  и про первый слой сказано вслух', WL({}, {depth:0.6}).some(x => /ВЫПУКЛАЯ/.test(x)),
+      WL({}, {depth:0.6}));
+  chk('  а на утопленной этого не говорится', !WL({}, {}).some(x => /ВЫПУКЛАЯ/.test(x)), WL({}, {}));
+
+  // ГРАНЬ НАЗВАНА, и сказано, что оси карточки футляр не читает
+  chk('грань названа человеку', WL({}, {}).some(x => /ТЫЛЬНУЮ ОБОЛОЧКУ/.test(x)), WL({}, {}));
+  chk('  и сказано, что площадки нет', WL({}, {}).some(x => /ПЛОЩАДКИ ПОД НАДПИСЬЮ НЕТ/.test(x)), WL({}, {}));
+  /* ПОДЛОЖКА — ВЫБОР, а не случайность. Ручка, которая на этой форме не делает ничего, тут считается
+     дефектом не меньшим, чем площадка, которой не просили. Поэтому проверяется обе стороны: с нулём
+     накладки нет вовсе, с заказанной — она есть, ровно заказанной толщины, и оболочка при ней не
+     мнётся (вмятина под бляшкой была бы работой впустую). */
+  /* Толщина взята 2.0, а не 1.0, и это не всё равно: у утопленного логотипа накладка сама по себе
+     выходит не тоньше `-глубина + 0.6`, то есть при глубине 0.4 ровно в миллиметр. Проверка на
+     миллиметре прошла бы и с НЕПЕРЕДАННЫМ параметром — мутация это и показала. */
+  const withPlate = BL({logoPlate: 2.0}, {});
+  chk('заказанная подложка выходит за тыльную грань на свою толщину',
+      Math.abs(computeBBox(withPlate).minY - (b0.minY - 2.0)) < 1e-6,
+      {y:+computeBBox(withPlate).minY.toFixed(3)});
+  chk('  и она герметична, без совпадающих граней',
+      manifoldCheck(withPlate, 4).watertight && coplanarPairs(withPlate).hits === 0,
+      {open:manifoldCheck(withPlate, 4).openEdges, coplanar:coplanarPairs(withPlate).where});
+  const bodyOf = (ov, lg) => { logos.length = 0; if (lg) logos.push(LG(lg));
+    const save = logoResolution; logoResolution = 8;
+    const t = buildCardHolder(P(ov)); logoResolution = save; logos.length = 0; return t; };
+  chk('  а оболочка под нею НЕ промята — работа впустую',
+      bodyOf({logoPlate:2.0}, {}).length === bodyOf({}, null).length &&
+      bodyOf({}, {}).length > bodyOf({}, null).length,
+      {сподложкой:bodyOf({logoPlate:1.0}, {}).length, безлого:bodyOf({}, null).length,
+       свмятиной:bodyOf({}, {}).length});
+  chk('  и про подложку сказано вслух',
+      WL({logoPlate:2.0}, {}).some(x => /ПОДЛОЖКА 2.0 мм/.test(x)), WL({logoPlate:2.0}, {}));
+  chk('  а без логотипа про надпись не говорится ничего', !W({}).some(x => /ТЫЛЬНУЮ ОБОЛОЧКУ/.test(x)), W({}));
+
+  /* ПОВЕРХНОСТЬ ОДНА — и в списке на карточке логотипа она тоже одна. Семь осей, ни одна из которых
+     ничего не меняет, — это молчаливый холостой ход в самом заметном месте; у подставки такое уже
+     ловили. И наоборот: логотип, сохранённый на оси (в старом файле или перенесённый с куба), обязан
+     строиться так же — грань у футляра всё равно одна. */
+  chk('на карточке логотипа у футляра ровно одна поверхность',
+      facesForShape(P({})).length === 1 && facesForShape(P({}))[0] === 'chback', facesForShape(P({})));
+  chk('  у неё есть и подпись, и оси смещения',
+      !!FACE_LABELS['chback'] && (FACE_AXIS_LABELS['chback']||[]).length === 2,
+      [FACE_LABELS['chback'], FACE_AXIS_LABELS['chback']]);
+  chk('  а на обычной коробке список осей прежний',
+      facesForShape(defaultBoxParams()).length === ALL_FACES.length, facesForShape(defaultBoxParams()).length);
+  const byAxis = BL({}, {face:'+Y'}), byName = BL({}, {face:'chback'});
+  chk('  логотип со старой осью строится ровно так же, как с названной поверхностью',
+      byAxis.length === byName.length && Math.abs(vol(byAxis) - vol(byName)) < 1e-9,
+      {ось:byAxis.length, поверхность:byName.length});
+
+  /* ПЕРЕКЛЮЧИЛИ ФОРМУ — приложение обязано устоять. Имя грани хранится на карточке логотипа, а наборы
+     граней у форм разные; ушёл человек с футляра на обычную коробку — имя осталось от футляра, и оси у
+     него там нет. Кончалось это ИСКЛЮЧЕНИЕМ, а не потерянной надписью: `FACE_AXES['chback']` не
+     функция, и коробка не строилась вовсе. То же самое было и с поверхностями подставки — то есть
+     дефект этот старше футляра. */
+  const other = (face) => { logos.length = 0; logos.push(LG({face}));
+    Object.assign(paramState.box, defaultBoxParams());
+    let t = null, err = null;
+    try { t = buildTrisForShape('box', paramState.box); } catch(e){ err = e.message; }
+    logos.length = 0; return {t, err}; };
+  /* И обратная сторона того же: РАЗМЕР наклейки на футляре меряется его собственной гранью, а не
+     гранями куба, который здесь не строится. Куб дал бы потолок в 37 мм при тыльной оболочке 59 × 108. */
+  const sized = (w) => { logos.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {chMode:'wallet'});
+    const lg = LG({w, h: 20}); logos.push(lg); clampLogoToFace(lg);
+    const got = lg.w; logos.length = 0; return got; };
+  chk('размер наклейки меряется гранью футляра, а не кубом', sized(80) === 80, sized(80));
+
+  const fromCase = other('chback'), fromStand = other('floor');
+  chk('логотип с гранью футляра не роняет обычную коробку',
+      !fromCase.err && fromCase.t && fromCase.t.length > 0, fromCase.err);
+  chk('  и с поверхностью подставки тоже — дефект был общий',
+      !fromStand.err && fromStand.t && fromStand.t.length > 0, fromStand.err);
+
+  // ЦВЕТНАЯ ПЕЧАТЬ: пробка — это ТОЛЬКО пробка, и сидит она в кармане
+  const ink = (k) => { logos.length = 0;
+    logos.push(Object.assign(LG({depth:-0.6}), {levels: 3}));
+    const save = logoResolution; logoResolution = 12;
+    Object.assign(paramState.box, defaultBoxParams(), {chMode:'wallet', logoAms:'ink'+k});
+    const tt = buildTrisForShape('box', paramState.box);
+    logoResolution = save; logos.length = 0; return tt; };
+  const plug = ink(1);
+  chk('цветная деталь строится и герметична', plug.length > 0 && manifoldCheck(plug, 4).watertight,
+      {tris:plug.length});
+  const pb = plug.length ? computeBBox(plug) : null;
+  chk('  и она ТОЛЬКО пробка, а не второй футляр', plug.length > 0 && vol(plug) < vol(plain)*0.05,
+      {объём:plug.length ? +vol(plug).toFixed(2) : 0});
+  /* Пробка ЗАПОДЛИЦО с гранью — не «не выше» её. Разница в полтора десятка сотых, и молчаливая: пробка,
+     отсчитанная как для накладки, а не для вмятины, села бы на 0.15 мм ниже лица, и цвет ушёл бы в
+     ямку. Проверка «не выступает» такое пропускает, проверка «ровно на грани» — нет. */
+  chk('  пробка выходит ровно на тыльную грань, заподлицо', !!pb && Math.abs(pb.minY) < 1e-9,
+      pb && +pb.minY.toFixed(3));
+  chk('  и уходит глубже дна вмятины — проникновением, а не касанием',
+      !!pb && pb.maxY > 0.6 + 1e-6, pb && +pb.maxY.toFixed(3));
+  /* Пробка и вмятина режутся РАЗНЫМИ сетками — панель своей, пробка своей, — и сходиться они обязаны в
+     одном месте. Сетки считают по-разному, а вот РАМКА у них одна, и если она соскользнёт, пробка ляжет
+     мимо кармана: тело герметично, пробка герметична, а на печати цвет рядом с надписью. */
+  const dpat = patch(BL({}, {depth:-0.6}, 12));
+  chk('  и лежит там же, где вмятина, а не рядом',
+      !!pb && Math.abs((pb.minX + pb.maxX)/2 - dpat.cx) < 1.0 &&
+              Math.abs((pb.minZ + pb.maxZ)/2 - dpat.cz) < 1.0,
+      pb && {пробка:[+((pb.minX+pb.maxX)/2).toFixed(2), +((pb.minZ+pb.maxZ)/2).toFixed(2)],
+             вмятина:[+dpat.cx.toFixed(2), +dpat.cz.toFixed(2)]});
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if (fail) process.exitCode = 1;

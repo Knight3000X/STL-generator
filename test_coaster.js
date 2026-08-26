@@ -591,12 +591,20 @@ console.log('=== логотип ограничен своей формой, а �
   chk('куб по-прежнему меряет себя', grown({}) === 37, grown({}));
   chk('и растёт вместе со своей гранью', grown({width:200, depth:200}) === 80, grown({width:200, depth:200}));
 
-  chk('множество «сам решает границы» шире, чем «строит плитой»',
-      LOGO_OWN_BOUNDS.size === LOGO_PLATE_MODES.size + 2, [LOGO_OWN_BOUNDS.size, LOGO_PLATE_MODES.size]);
-  chk('и включает обе формы со своей машинерией',
-      LOGO_OWN_BOUNDS.has('coaster') && LOGO_OWN_BOUNDS.has('stand'));
+  /* Два множества, и они НЕ одно и то же: одно отвечает «кто строит рельеф», другое «кто решает, каким
+     он может быть». Проверяется поэтому не размер (число там менялось от каждой новой формы со своей
+     машинерией и ничего не значило), а состав: «сам решает границы» — это все плитовые ПЛЮС ровно те
+     формы, которые называют свои поверхности сами. */
+  const OWN_EXTRA = ['stand', 'coaster', 'cardholder'];
+  chk('«сам решает границы» включает всех, кто строит плитой',
+      [...LOGO_PLATE_MODES].every(m => LOGO_OWN_BOUNDS.has(m)),
+      [...LOGO_PLATE_MODES].filter(m => !LOGO_OWN_BOUNDS.has(m)));
+  chk('и сверх них — ровно формы со своей машинерией',
+      OWN_EXTRA.every(m => LOGO_OWN_BOUNDS.has(m)) &&
+      LOGO_OWN_BOUNDS.size === LOGO_PLATE_MODES.size + OWN_EXTRA.length,
+      [...LOGO_OWN_BOUNDS].filter(m => !LOGO_PLATE_MODES.has(m)));
   chk('а строит плитой их по-прежнему не он',
-      !LOGO_PLATE_MODES.has('coaster') && !LOGO_PLATE_MODES.has('stand'));
+      OWN_EXTRA.every(m => !LOGO_PLATE_MODES.has(m)));
   logos.length = 0;
 }
 

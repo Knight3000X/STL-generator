@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.19.0';
+const APP_VERSION = 'v24.20.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5340,9 +5340,14 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'artEndA', w:['artic'], label:'Цепочка: нижний конец', type:'select', default:'ball',
       options:[{v:'ball',t:'шар (свободный)'},{v:'post',t:'хвостовик под гнездо основания'}]},
     {group:'Петля (печать в сборе)', key:'artEndB', w:['artic'], label:'Цепочка: верхний конец', type:'select', default:'cup',
-      options:[{v:'cup',t:'чашка (свободная)'},{v:'clip',t:'держатель «крокодила»'}]},
+      options:[{v:'cup',t:'чашка (свободная)'},{v:'clip',t:'держатель «крокодила»'},{v:'board',t:'держатель платы (губки натягом)'}]},
     {group:'Петля (печать в сборе)', key:'artPostD', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: Ø (0 = авто, чуть тоньше тела)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artPostLen', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: длина посадки', min:5, max:120, step:1, default:18, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artBoardT', w:['artic'], only:{artEndB:['board']}, label:'Плата: толщина', min:0.4, max:6, step:0.1, default:1.6, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artBoardW', w:['artic'], only:{artEndB:['board']}, label:'Плата: ширина захвата вдоль кромки', min:5, max:120, step:1, default:30, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artBoardDepth', w:['artic'], only:{artEndB:['board']}, label:'Плата: на сколько входит в губки', min:3, max:60, step:1, default:12, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artBoardGrip', w:['artic'], only:{artEndB:['board']}, label:'Плата: натяг (на сколько паз у́же платы)', min:0.05, max:1.5, step:0.05, default:0.3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artBoardArm', w:['artic'], only:{artEndB:['board']}, label:'Плата: толщина губки (0 = авто)', min:0, max:12, step:0.1, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artClipT', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: толщина хвоста', min:0.4, max:6, step:0.1, default:1, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artClipW', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: ширина хвоста', min:2, max:30, step:0.5, default:5, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artClipHole', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: Ø отверстия под винт (0 = без винта)', min:0, max:10, step:0.5, default:3, unit:'мм'},
@@ -12861,11 +12866,16 @@ function ballJointSpec(p){
 const ART_CLIP_WALL  = 2.2;   // щека держателя: две ширины сопла с запасом, винт её не рвёт
 const ART_CLIP_FLOOR = 2.5;   // дно паза — в него упирается хвост «крокодила» при затяжке
 const ART_POST_CH    = 0.8;   // заходная фаска хвостовика: без неё он не попадает в гнездо
+const ART_BOARD_MU   = 0.3;   // трение пластика о стеклотекстолит — величина справочная, не выведенная
 const ART_CLIP_SINK  = 0.6;   // насколько подошва держателя утоплена в тело звена — телами, а не гранями
 function articEndSpec(p, j, bodyR){
   const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
   const endA = (p.artEndA === 'post') ? 'post' : 'ball';
-  const endB = (p.artEndB === 'clip') ? 'clip' : 'cup';
+  /* РАБОЧИЙ КОНЕЦ — ВЫБОР (v24.20.0). Основание руки было выбором из трёх с v24.19.0, а конец —
+     одним «крокодилом», и эта несимметрия ничем не оправдана: голова садится на одно и то же место
+     (торец тела последнего звена) и заменяет одну и ту же пустую чашку. Значит, тип головы — ручка,
+     а построители у неё разные. */
+  const endB = ({clip:'clip', board:'board'})[p.artEndB] || 'cup';
   /* ХВОСТОВИК. Тоньше тела звена — иначе он не хвостовик, а продолжение цепочки, и уступ, которым
      рука садится на плиту, исчезает вовсе. Уступ здесь несущий: он, а не трение, держит глубину
      посадки, и без него рука проваливалась бы в гнездо до упора в дно. */
@@ -12895,8 +12905,46 @@ function articEndSpec(p, j, bodyR){
      проточка, в которой винт не держится. */
   const holeZ = Math.max(cz0 + holeR + 0.8, Math.min(cz1 - holeR - 0.8, ART_CLIP_FLOOR + clipDepth*0.5));
   const holeFits = clipHole <= 0 || (holeR + 0.8 <= cx && holeZ - holeR - 0.8 >= cz0 && holeZ + holeR + 0.8 <= cz1);
+  /* ДЕРЖАТЕЛЬ ПЛАТЫ. Паз здесь НЕ шире вставляемого, а У́ЖЕ: губки обязаны разойтись на плате и
+     держать её натягом. В этом всё отличие от гнезда под «крокодила», где натяг был бы вреден —
+     покупной хвост в него просто не влез бы.
+     Губка — консоль, и считается она той же механикой, что защёлка и зажим для пакета: прогиб
+     задан (половина натяга на сторону), отсюда сила, отсюда трение, которым плата и держится. */
+  const boardT = cl(p.artBoardT, 0.4, 6, 1.6);        // 1.6 мм — самая обычная печатная плата
+  const boardW = cl(p.artBoardW, 5, 120, 30);         // сколько кромки берём в захват
+  const boardGrip = cl(p.artBoardGrip, 0.05, 1.5, 0.3);
+  const boardDepth = cl(p.artBoardDepth, 3, 60, 12);  // на сколько плата входит
+  /* ГЕОМЕТРИЯ ЗДЕСЬ ИДЁТ ЗА РАСЧЁТОМ, а не наоборот, и это исправление первой записи. Сперва паз был
+     РОВНЫМ и у́же платы по всей длине. Считал я его формулой консоли, нагруженной на кончике, — а
+     ровный паз раздвигает губки по ВСЕЙ длине сразу, то есть держит их почти параллельно, и жёсткость
+     там вчетверо выше. Формула врала бы в свою пользу, и проверить это было бы нечем: сила на экране
+     не видна.
+     Поэтому губки разведены до зазора, а натяг собран в БОРТИК у самого устья. Тогда нагрузка и правда
+     приложена к кончику, формула становится верной, а заодно и деталь выходит лучше: плата входит
+     свободно, щёлкает через бортик и им же держится от вытаскивания. */
+  const bClear = (boardT + j.gap)/2;                   // ровная часть паза — с зазором, свободно
+  const bGripX = Math.max(0.1, (boardT - boardGrip)/2); // просвет НА БОРТИКЕ — вот он у́же платы
+  const bArm = Math.max(1.0, cl(p.artBoardArm, 0, 12, 0) > 0 ? cl(p.artBoardArm, 0, 12, 0) : Math.max(1.6, boardT*1.2));
+  const bSlot = 2*bGripX;                              // то, что меряется в сетке как самое узкое место
+  const bhX = bClear + bArm;                           // полуширина головы
+  const bFloor = ART_CLIP_FLOOR;
+  const bH = bFloor + boardDepth;                      // высота головы от подошвы
+  const bBead = Math.max(0.4, Math.min(1.2, boardDepth*0.15));
+  const bMat = snapMatOf(p, null, 'petg');
+  /* Консоль: длина — от корня губки до БОРТИКА, толщина — сама губка, ширина — захват вдоль кромки
+     платы. Прогиб на сторону — половина натяга. */
+  const bL = Math.max(0.5, boardDepth - bBead);
+  const bI = boardW*Math.pow(bArm, 3)/12;
+  const bF = 3*bMat.E*bI*(boardGrip/2)/Math.pow(bL, 3);      // Н на губку
+  const bHold = 2*bF*ART_BOARD_MU;                            // Н трения на плате, обе губки
+  /* Напряжение в корне губки — то, что решает, разожмётся она или треснет: σ = M·c/I, M = F·L. */
+  const bSigma = bF*bL*(bArm/2)/bI;
+  const bOver = bSigma > bMat.E*(bMat.eps/100);
+  const headH = endB === 'clip' ? hZ : endB === 'board' ? bH : 0;
   return { endA, endB, postD, postLen, shoulder, clipT, clipW, clipHole, clipDepth,
-           slotT, slotW, hX, hZ, cx, cz0, cz1, holeR, holeZ, holeFits,
+           slotT, slotW, hX, hZ, cx, cz0, cz1, holeR, holeZ, holeFits, headH,
+           boardT, boardW, boardGrip, boardDepth, bSlot, bClear, bGripX, bBead, bArm, bhX, bFloor, bH, bL,
+           bF, bHold, bSigma, bOver, bAllow: bMat.E*(bMat.eps/100),
            postCh, cheek: ART_CLIP_WALL, floor: ART_CLIP_FLOOR,
            postThin: postD < 3, shoulderThin: shoulder < 0.8 };
 }
@@ -12958,7 +13006,7 @@ function articSpec(p){
               поэтому и вычитается старое, и прибавляется новое. */
            len: N*pitch - j.Ri*Math.cos(j.phiM) + j.R
                 + (e.endA === 'post' ? e.postLen - j.R : 0)
-                + (e.endB === 'clip' ? e.hZ : 0),
+                + (e.endB !== 'cup' ? e.headH : 0),
            seg: Math.max(32, Math.min(96, Math.round(j.Ri*4))) };
 }
 /* Одно звено: шар со стержнем внизу, чашка наверху, тело между ними. Три пересекающихся тела
@@ -12971,7 +13019,7 @@ function articSegTris(s, k){
      У верхнего звена чашка наверху пуста: следующего шара нет, и держатель встаёт вместо неё. Приставь
      я концы к целым звеньям, рука выросла бы на диаметр шара и на всю чашку впустую. */
   const first = (k === 0) && e.endA === 'post';
-  const last  = (k === s.N - 1) && e.endB === 'clip';
+  const last  = (k === s.N - 1) && e.endB !== 'cup';
   const rB = Math.max(j.ds/2 + 0.4, s.bodyR*scale);
   const yB0 = rB < j.Ri + j.wall
     ? Math.sqrt((j.Ri + j.wall)*(j.Ri + j.wall) - rB*rB) + 0.3
@@ -13006,8 +13054,31 @@ function articSegTris(s, k){
   if (yB1 > yB0 + 0.5)
     for(const T of solidLatheYTris([[rB, yB0], [rB, yB1]], seg)) out.push(T);
   if (last)
-    for(const T of articClipHolderTris(e, seg)) out.push(T.map(v => [v[0], v[1] + yB1, v[2]]));
+    for(const T of articHeadTris(e, seg)) out.push(T.map(v => [v[0], v[1] + yB1, v[2]]));
   return out;
+}
+/* ДЕРЖАТЕЛЬ ПЛАТЫ (v24.20.0) — «П» из одного куска: две губки и дно между ними. Одно тело, одна
+   протяжка, и потому здесь нечему разъехаться и не с чем совпасть гранями — в отличие от гнезда под
+   «крокодила», которое собрано из трёх полос ради поперечного винта.
+
+   ГУБКИ ЗДЕСЬ РАБОТАЮТ, а не просто стоят: паз у́же платы, губки на ней расходятся, и держит плату
+   трение от этого натяга. Значит, губка обязана быть КОНСОЛЬЮ — длинной и тонкой, — а не коротким
+   толстым выступом, который вместо изгиба треснет у корня. Оба числа выводятся и называются. */
+function articBoardHolderTris(e, seg){
+  const out = [], c = e.bClear, g = e.bGripX, b = e.bBead;
+  /* Контур одной буквой «П» с БОРТИКОМ на каждой губке: сверху вниз по внутренней кромке — устье со
+     свободным зазором, вершина бортика, снова зазор, дно. Вершина бортика — единственное место, где
+     просвет у́же платы, и именно к ней приложена сила, которую считает спецификация. */
+  const U = [[-e.bhX, -ART_CLIP_SINK], [e.bhX, -ART_CLIP_SINK], [e.bhX, e.bH],
+             [c, e.bH], [g, e.bH - b], [c, e.bH - 2*b], [c, e.bFloor],
+             [-c, e.bFloor], [-c, e.bH - 2*b], [-g, e.bH - b], [-c, e.bH], [-e.bhX, e.bH]];
+  for (const T of extrudePolyYTris([U], -e.boardW/2, e.boardW/2)) out.push(T);
+  return rotateTris(out, -90, 0, 0);   // z→вверх, плоскость платы — поперёк
+}
+function articHeadTris(e, seg){
+  return e.endB === 'clip'  ? articClipHolderTris(e, seg)
+       : e.endB === 'board' ? articBoardHolderTris(e, seg)
+       : [];
 }
 /* ОСНОВАНИЕ ТРЕТЬЕЙ РУКИ (v24.18.0) — плита с гнёздами под хвостовики.
 
@@ -26101,9 +26172,10 @@ function activeShapeLabel() {
     return 'основание третьей руки ' + Math.round(st.W) + '×' + Math.round(st.D) +
            ', ' + st.n + ' гнезд' + (st.n === 1 ? 'о' : st.n < 5 ? 'а' : ''); }
   if (p.pipMode === 'artic'){ const a = articSpec(p);
-    const arm = a.e.endA === 'post' || a.e.endB === 'clip';
+    const arm = a.e.endA === 'post' || a.e.endB !== 'cup';
     return (arm ? 'рука ' : 'цепочка ') + a.N + ' звеньев (' + a.j.swing.toFixed(0) + '°)'
-         + (a.e.endB === 'clip' ? ', «крокодил»' : '') + (a.e.endA === 'post' ? ', хвостовик Ø' + a.e.postD.toFixed(0) : ''); }
+         + (a.e.endB === 'clip' ? ', «крокодил»' : a.e.endB === 'board' ? ', держатель платы' : '')
+         + (a.e.endA === 'post' ? ', хвостовик Ø' + a.e.postD.toFixed(0) : ''); }
   if (p.pipMode === 'bagclip'){ const g = bagClipSpec(p);
     return 'зажим для пакета ' + Math.round(g.L) + '×' + Math.round(g.W) + ' (' + g.Fbag.toFixed(1) + ' Н)'; }
   if (p.sealMode && p.sealMode !== 'none'){ const ss = sealSpec(p);
@@ -26669,6 +26741,27 @@ function collectPrintWarnings(p){
       if (e.postThin)
         w.push('хвостовик Ø' + e.postD.toFixed(1) + ' мм — тоньше трёх миллиметров он сломается в гнезде ' +
                'первым же поворотом руки');
+    }
+    if (e.endB === 'board'){
+      w.push('верхний конец — ДЕРЖАТЕЛЬ ПЛАТЫ ВМЕСТО чашки: губки берут кромку на ' +
+             e.boardDepth.toFixed(0) + ' мм при ширине захвата ' + e.boardW.toFixed(0) +
+             ' мм, плата ' + e.boardT.toFixed(1) + ' мм входит СВОБОДНО и щёлкает через бортик у устья');
+      /* ГЛАВНОЕ ЧИСЛО — УСИЛИЕ, и названо оно вместе с тем, откуда взялось: натяг задан, губка —
+         консоль, сила из прогиба, держит плату трение. Всё это на экране не видно ни одним числом. */
+      w.push('держит: натяг ' + e.boardGrip.toFixed(2) + ' мм разводит губки на ' +
+             (e.boardGrip/2).toFixed(2) + ' на сторону, это ' + e.bF.toFixed(1) +
+             ' Н на губку и около ' + e.bHold.toFixed(1) + ' Н трения на плате. В корне губки ' +
+             e.bSigma.toFixed(1) + ' МПа при ' + e.bAllow.toFixed(0) + ' допустимых');
+      if (e.bOver)
+        w.push('губка в корне нагружена выше допустимого (' + e.bSigma.toFixed(1) + ' против ' +
+               e.bAllow.toFixed(0) + ' МПа) — она треснет, а не разожмётся. Меньше натяг, тоньше губка ' +
+               'или длиннее захват: напряжение падает как КВАДРАТ длины');
+      if (e.bHold < 1)
+        w.push('трения выходит всего ' + e.bHold.toFixed(1) + ' Н — плата вывалится от толчка. ' +
+               'Больше натяг, толще губка или короче захват');
+      if (e.bArm < 1.2)
+        w.push('губка ' + e.bArm.toFixed(1) + ' мм — тоньше трёх проходов сопла 0,4, слои разойдутся ' +
+               'по ней раньше, чем она согнётся');
     }
     if (e.endB === 'clip'){
       w.push('верхний конец — ДЕРЖАТЕЛЬ «крокодила» ВМЕСТО чашки: паз ' + e.slotT.toFixed(1) + '×' +

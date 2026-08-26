@@ -877,6 +877,121 @@ function coplanarPairs(tris){
       W({artPart:'clamp'}).some(x => /садиться нечему/.test(x)), W({artPart:'clamp'}));
   chk('а на умолчаниях зажим не жалуется',
       !WC({}).some(x => /мельче хвостовика|шире скобы|садиться нечему|НЕ ХВАТАЕТ|выше допустимого/.test(x)), WC({}));
+
+  /* ================================================================================================
+     РАБОЧИЙ КОНЕЦ — ВЫБОР (v24.20.0). Основание руки было выбором из трёх, а конец один; теперь и
+     конец выбор, и первая новая голова — ДЕРЖАТЕЛЬ ПЛАТЫ.
+
+     Здесь одна вещь стоит всех остальных: ГЕОМЕТРИЯ ОБЯЗАНА СООТВЕТСТВОВАТЬ РАСЧЁТУ. Первая запись
+     делала паз ровным и у́же платы по всей длине, а силу считала формулой консоли, нагруженной на
+     кончике — тогда как ровный паз разводит губки по всей длине и держит их почти параллельно, где
+     жёсткость вчетверо выше. Формула врала бы в свою пользу, и увидеть это было бы нечем: силы на
+     экране нет. Поэтому натяг собран в бортик у устья, и проверка ниже пересчитывает силу ИЗ
+     ИЗМЕРЕННОЙ СЕТКИ — толщины губки, её свободной длины и ширины захвата, — а не сверяет
+     спецификацию с самой собой.
+     ================================================================================================ */
+  console.log('=== третья рука: держатель платы ===');
+  const BRD = {artEndA:'post', artEndB:'board'};
+  const BB = ov => B(Object.assign({}, BRD, ov));
+  const BE = ov => E(Object.assign({}, BRD, ov));
+  const WB = ov => W(Object.assign({}, BRD, ov));
+  for (const ov of [{}, {artBoardT:0.8, artBoardGrip:0.15}, {artBoardW:60, artBoardDepth:25},
+                    {artBoardArm:4}, {ballD:24, artN:4}]){
+    const t = BB(ov), mc = manifoldCheck(t, 4);
+    chk('держатель платы '+JSON.stringify(ov)+' герметичен', mc.watertight && vol(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges});
+    chk('  и без совпадающих граней', coplanarPairs(t).hits === 0, coplanarPairs(t).where);
+  }
+  /* ГОЛОВА — ОДНО ТЕЛО, и это отличает её от гнезда под «крокодила», которое собрано из трёх полос
+     ради поперечного винта. Числом тел головы и различаются: 3N против 3N+2. */
+  chk('держатель платы — одно тело: тел ровно 3N',
+      shells(BB({})) === 3*A(BRD).N, {тел:shells(BB({})), ждём:3*A(BRD).N});
+  chk('  а у «крокодила» их на два больше — он из трёх полос',
+      shells(B({artEndA:'post', artEndB:'clip'})) === 3*A(BRD).N + 2,
+      {тел:shells(B({artEndA:'post', artEndB:'clip'}))});
+  /* ДЛИНА С ЭТОЙ ГОЛОВОЙ — тоже габарит. */
+  for (const ov of [{}, {artBoardDepth:25}, {artBoardDepth:50}]){
+    const b = computeBBox(BB(ov)), a = A(Object.assign({}, BRD, ov));
+    chk('длина руки с платой '+JSON.stringify(ov)+' — это габарит',
+        Math.abs((b.maxY - b.minY) - a.len) < 0.05,
+        {названо:+a.len.toFixed(2), габарит:+(b.maxY-b.minY).toFixed(2)});
+  }
+  /* ПАЗ МЕРЯЕТСЯ В СЕТКЕ НА ДВУХ ВЫСОТАХ, и сверяется с ЗАКАЗОМ, а не со спецификацией: убери натяг
+     из формулы — обе стороны съедут вместе и промолчат. */
+  for (const ov of [{}, {artBoardT:0.8, artBoardGrip:0.15}, {artBoardT:3, artBoardGrip:0.6}]){
+    const t = BB(ov), b = computeBBox(t), e = BE(ov), tag = ' ' + JSON.stringify(ov);
+    const yTop = b.maxY;
+    const halfAt = y => { let hit = -1;
+      for (let m = 0.02; m <= 30; m += 0.02) if (insideBoth(t, [m, y, 0])){ hit = m; break; }
+      if (hit < 0) return 1e9;
+      let lo = hit - 0.02, hi = hit;
+      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (insideBoth(t, [m, y, 0])) hi = m; else lo = m; }
+      return (lo + hi)/2; };
+    const boardT = (ov.artBoardT != null ? ov.artBoardT : 1.6);
+    const grip   = (ov.artBoardGrip != null ? ov.artBoardGrip : 0.3);
+    const gapJ   = A(Object.assign({}, BRD, ov)).j.gap;
+    chk('бортик у устья у́же платы ровно на натяг'+tag,
+        Math.abs(2*halfAt(yTop - e.bBead) - (boardT - grip)) < 0.06,
+        {измерен:+(2*halfAt(yTop - e.bBead)).toFixed(3), 'плата−натяг':+(boardT - grip).toFixed(3)});
+    const yClear = yTop - (e.bH - (e.bFloor + (e.bH - 2*e.bBead - e.bFloor)/2));
+    chk('  а ниже бортика паз СВОБОДНЫЙ — плата входит с зазором'+tag,
+        Math.abs(2*halfAt(yClear) - (boardT + gapJ)) < 0.06,
+        {измерен:+(2*halfAt(yClear)).toFixed(3), 'плата+зазор':+(boardT + gapJ).toFixed(3)});
+    /* И БОРТИК ИМЕННО У УСТЬЯ, а не у дна: иначе плата упиралась бы в него, не войдя. */
+    chk('  и бортик стоит у устья, а не у дна'+tag,
+        halfAt(yTop - e.bBead) < halfAt(yClear) - 0.02 && e.bBead < e.boardDepth/2,
+        {устье:+halfAt(yTop - e.bBead).toFixed(3), ниже:+halfAt(yClear).toFixed(3)});
+  }
+  /* СИЛА ПЕРЕСЧИТЫВАЕТСЯ ИЗ ИЗМЕРЕННОЙ СЕТКИ. Это единственный способ поймать расхождение между тем,
+     что построено, и тем, что посчитано: спецификация о таком расхождении не знает по определению. */
+  for (const ov of [{}, {artBoardW:60}, {artBoardDepth:25}, {artBoardArm:4}]){
+    const t = BB(ov), b = computeBBox(t), e = BE(ov), tag = ' ' + JSON.stringify(ov);
+    const yTop = b.maxY;
+    const edgeAt = (y, from) => { let hit = -1;
+      for (let m = from; m <= 30; m += 0.02) if (insideBoth(t, [m, y, 0])){ hit = m; break; }
+      return hit; };
+    const yClear = yTop - (e.bH - (e.bFloor + (e.bH - 2*e.bBead - e.bFloor)/2));
+    const inner = edgeAt(yClear, 0.02);
+    let outer = inner; while (outer < 30 && insideBoth(t, [outer + 0.02, yClear, 0])) outer += 0.02;
+    const armT = outer - inner;                       // толщина губки ИЗ СЕТКИ
+    // ширина захвата — размах головы вдоль Z
+    let z0 = 1e9, z1 = -1e9;
+    for (const T of t) for (const v of T) if (v[1] > yTop - e.boardDepth + 1) { z0 = Math.min(z0, v[2]); z1 = Math.max(z1, v[2]); }
+    const armW = z1 - z0;
+    // свободная длина — от дна паза до бортика
+    let yFloor = yTop - e.bH, yHi = yTop;
+    for (let i = 0; i < 40; i++){ const m = (yFloor + yHi)/2; if (insideBoth(t, [0, m, 0])) yFloor = m; else yHi = m; }
+    const armL = (yTop - e.bBead) - (yFloor + yHi)/2;
+    const Emat = snapMatOf(P({}), null, 'petg').E;
+    const Fmeas = 3*Emat*(armW*Math.pow(armT, 3)/12)*(e.boardGrip/2)/Math.pow(armL, 3);
+    chk('усилие губки сходится с пересчётом ИЗ СЕТКИ'+tag,
+        Math.abs(Fmeas - e.bF)/Math.max(1e-9, e.bF) < 0.10,
+        {названо:+e.bF.toFixed(2), 'из сетки':+Fmeas.toFixed(2),
+         замеры:{губка:+armT.toFixed(2), ширина:+armW.toFixed(2), длина:+armL.toFixed(2)}});
+  }
+  /* ГОЛОВА ТРОГАЕТ ТОЛЬКО КОНЕЦ — то же требование, что и к «крокодилу». */
+  {
+    const norm = t => { const b = computeBBox(t); return t.map(T => T.map(v => [v[0], v[1] - b.minY, v[2]])); };
+    const key = t => t.map(T => T.map(v => v.map(x => Math.round(x*1e4)).join(',')).join('|')).sort().join(';');
+    const a0 = A({}), lim = (a0.N - 1)*a0.pitch - 2;
+    const cut = t => t.filter(T => T.every(v => v[1] < lim));
+    const c1 = cut(norm(B({artEndA:'post'}))), c2 = cut(norm(BB({})));
+    chk('держатель платы не тронул низ руки', c1.length > 1000 && key(c1) === key(c2),
+        {без:c1.length, с:c2.length});
+  }
+  /* ЖАЛОБЫ: усилие названо, перегруз и слабый захват объявлены, умолчания молчат. */
+  chk('усилие губки названо человеку',
+      WB({}).some(x => /Н на губку/.test(x) && /Н трения на плате/.test(x)), WB({}));
+  chk('перегруженная губка объявлена',
+      WB({artBoardGrip:1.5, artBoardArm:6, artBoardDepth:4}).some(x => /треснет, а не разожмётся/.test(x)),
+      WB({artBoardGrip:1.5, artBoardArm:6, artBoardDepth:4}));
+  chk('слабый захват объявлен',
+      WB({artBoardGrip:0.05, artBoardDepth:50}).some(x => /вывалится от толчка/.test(x)),
+      WB({artBoardGrip:0.05, artBoardDepth:50}));
+  chk('а на умолчаниях держатель платы не жалуется',
+      !WB({}).some(x => /треснет|вывалится|тоньше трёх проходов/.test(x)), WB({}));
+  /* И УМОЛЧАНИЕ ЦЕПОЧКИ ПО-ПРЕЖНЕМУ ЦЕПОЧКА: голова — выбор, а не подмена. */
+  chk('умолчание не стало держателем платы', E({}).endB === 'cup', {верх:E({}).endB});
 }
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail) process.exitCode = 1;

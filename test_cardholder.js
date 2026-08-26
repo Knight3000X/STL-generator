@@ -1,23 +1,29 @@
-// Картодержатель с выдвижением карт — лоток с толкателем, печать в сборе.
+// Картодержатель с выдвижением карт — ЗАКРЫТЫЙ ФУТЛЯР с толкателем, печать в сборе.
 //
 // Проверяется не «похоже ли на кошелёк», а то, что ломается молча:
 //
 //   1. КАРТА — СТАНДАРТ. ISO/IEC 7810 ID-1: 85.60 × 53.98 × 0.76. Размер приходит из кармана, а не из
-//      панели, и «прикинуть» его нельзя. Таблица сверяется числом, и карман — с таблицей.
+//      панели, и «прикинуть» его нельзя.
 //
-//   2. ПЕЧАТЬ В СБОРЕ. Толкатель отделён от лотка зазором СО ВСЕХ СТОРОН. Связностью это не задать:
-//      тела здесь не делят вершин вовсе. Спрашивать надо объёмом и мерить расстояние.
+//   2. ТЕЛА СВЯЗАНЫ. Это главная проверка этого файла, и появилась она по горькому поводу: у первой
+//      версии (открытый лоток) язычок удержания ВИСЕЛ В ВОЗДУХЕ — навешивался над пазом, где материала
+//      нет вовсе. Проверка тогда считала ТЕЛА («ровно шесть») и была довольна: летающее тело — тоже
+//      тело. Число тел не говорит о том, СВЯЗАНЫ ли они. Связность спрашивается ОБЪЁМОМ: тела
+//      объединяются в группы по взаимному проникновению, и групп обязано быть ровно две — футляр и
+//      толкатель.
 //
-//   3. ТОЛКАТЕЛЬ НЕ ВЫПАДАЕТ. Держат его не концы паза — паз сквозной во всю длину, — а лопасть над
-//      полом и пятка под ним: обе шире паза. Сузь любую, и деталь останется герметичной и правдоподобной.
+//   3. ПЕЧАТЬ В СБОРЕ. Толкатель отделён от футляра зазором СО ВСЕХ СТОРОН, и зазор ИЗМЕРЯЕТСЯ. Точки
+//      берутся не только в вершинах: между двумя параллельными гранями, разнесёнными по третьей оси,
+//      ни одна вершина не проецируется на соседнюю грань.
 //
-//   4. ГЕОМЕТРИЧЕСКИЕ ГАРАНТИИ ВПЕРЕДИ УПРУГИХ. Сколько карты остаётся под губами при полном ходе — это
-//      не зависит ни от материала, ни от печати, и потому надёжнее всякой пружины.
+//   4. ТОЛКАТЕЛЬ НЕ ВЫПАДАЕТ. Держат его не концы паза — паз сквозной во всю длину, — а лопасть в
+//      кармане и пятка на лицевой оболочке: обе шире паза.
 //
-//   5. УПРУГИЙ ЭЛЕМЕНТ ЗДЕСЬ ОДИН — язычок у устья, и это надо было ЗАВЕСТИ, а не выдумать. Первая
-//      запись считала усилие закладки как отгиб боковой стенки и получила 1677 Н на карту при 214 МПа:
-//      абсурд был не в формуле, а в замысле — стенка высотой шесть миллиметров и шириной во всю карту
-//      не пружина, она балка. Усилие язычка пересчитывается ИЗ ИЗМЕРЕННОЙ СЕТКИ.
+//   5. ГЕОМЕТРИЧЕСКИЕ ГАРАНТИИ ВПЕРЕДИ УПРУГИХ. Сколько карты остаётся в футляре при полном ходе — не
+//      зависит ни от материала, ни от печати.
+//
+//   6. УПРУГИЙ ЭЛЕМЕНТ ОДИН — губы у устья, и они СИДЯТ В БОКОВЫХ СТЕНКАХ. Усилие пересчитывается из
+//      измеренной сетки: спецификация о расхождении между построенным и посчитанным не знает.
 //
 // Run: ./run-all.sh
 
@@ -38,9 +44,7 @@ const shells = t => { const key = q => q.map(c => Math.round(c*1e6)).join(',');
   t.forEach((T,i) => T.forEach(v => { const k = key(v);
     if (vm.has(k)){ const a = find(vm.get(k)), b = find(i); if (a!==b) par[a] = b; } else vm.set(k, i); }));
   const g = new Map(); t.forEach((_,i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
-  return [...g.values()]; };
-/* Число оборотов вдоль оси: 0 — пустота, иначе материал. Два разных луча обязаны согласиться —
-   один, прошедший по касательной к стыку тел, даёт лишнее пересечение. */
+  return [...g.values()].map(idx => idx.map(i => t[i])); };
 const windAx = (t, P0, ax) => { const u=(ax+1)%3, v=(ax+2)%3; let w=0;
   for (const T of t){ const a=T[0], b=T[1], c=T[2];
     const d1=(b[u]-a[u])*(P0[v]-a[v])-(b[v]-a[v])*(P0[u]-a[u]);
@@ -56,8 +60,13 @@ const windAx = (t, P0, ax) => { const u=(ax+1)%3, v=(ax+2)%3; let w=0;
     w += n>0 ? 1 : -1; }
   return w; };
 const IN = (t, q) => windAx(t, q, 1) !== 0 && windAx(t, q, 0) !== 0;
-/* Квадрат расстояния от точки до треугольника — тот же замер, что у зажима для пакета: сперва
-   проекция на плоскость, и если она внутри — высота, иначе ближайшее из трёх рёбер. */
+/* Точки на треугольнике, а не только его вершины. */
+const samples = (T, k) => { const out = []; k = k || 4;
+  for (let i = 0; i <= k; i++) for (let j = 0; i + j <= k; j++){
+    const a = i/k, b = j/k, c = 1 - a - b;
+    out.push([a*T[0][0] + b*T[1][0] + c*T[2][0], a*T[0][1] + b*T[1][1] + c*T[2][1],
+              a*T[0][2] + b*T[1][2] + c*T[2][2]]); }
+  return out; };
 const d2seg = (p, a, b) => { const d = sub(b, a), L2 = dot(d, d);
   let u = L2 > 0 ? dot(sub(p, a), d)/L2 : 0; u = Math.max(0, Math.min(1, u));
   const q = [a[0]+u*d[0]-p[0], a[1]+u*d[1]-p[1], a[2]+u*d[2]-p[2]]; return dot(q, q); };
@@ -69,6 +78,18 @@ const dTri = (p, T) => { const [A, Bb, C] = T;
           s3 = dot(cross(sub(A,C), sub(q,C)), u);
     if ((s1>=0&&s2>=0&&s3>=0)||(s1<=0&&s2<=0&&s3<=0)) return h*h; }
   return Math.min(d2seg(p,A,Bb), d2seg(p,Bb,C), d2seg(p,C,A)); };
+/* ГРУППЫ ПО ВЗАИМНОМУ ПРОНИКНОВЕНИЮ: тела сливаются в одну группу, если хоть одна точка одного лежит
+   внутри другого. Это и есть связность детали — та, которой числом тел не задать. */
+const glued = bodies => {
+  const par = bodies.map((_, i) => i), find = i => par[i]===i ? i : (par[i] = find(par[i]));
+  for (let a = 0; a < bodies.length; a++) for (let b = a+1; b < bodies.length; b++){
+    if (find(a) === find(b)) continue;
+    let hit = false;
+    for (const T of bodies[a]){ for (const v of samples(T, 2)) if (IN(bodies[b], v)){ hit = true; break; } if (hit) break; }
+    if (!hit) for (const T of bodies[b]){ for (const v of samples(T, 2)) if (IN(bodies[a], v)){ hit = true; break; } if (hit) break; }
+    if (hit) par[find(a)] = find(b); }
+  const g = new Map(); bodies.forEach((_, i) => { const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); });
+  return [...g.values()]; };
 
 function coplanarPairs(tris){
   const key = T => { const n = cross(sub(T[1],T[0]), sub(T[2],T[0])), L = vlength(n);
@@ -115,11 +136,11 @@ function coplanarPairs(tris){
 }
 
 
-console.log('=== картодержатель: строится и герметичен ===');
-for (const ov of [{}, {chCards:1}, {chCards:20}, {chTravel:50}, {chLip:3}, {chSlot:20}, {chTabLen:20}, {chCardT:1.2}]){
+console.log('=== картодержатель: строится, герметичен и не вывернут ===');
+for (const ov of [{}, {chCards:1}, {chCards:20}, {chTravel:50}, {chSlot:20}, {chLipLen:20}, {chCardT:1.2}]){
   const t = B(ov), mc = manifoldCheck(t, 4);
-  chk('картодержатель '+JSON.stringify(ov)+' герметичен', mc.watertight && vol(t) > 0,
-      {open:mc.openEdges, bad:mc.badEdges});
+  chk('футляр '+JSON.stringify(ov)+' герметичен и объём положителен', mc.watertight && vol(t) > 0,
+      {open:mc.openEdges, bad:mc.badEdges, объём:+vol(t).toFixed(0)});
   chk('  и без совпадающих граней', coplanarPairs(t).hits === 0, coplanarPairs(t).where);
   const b = computeBBox(t), s = S(ov);
   chk('  габарит — тот, что назван',
@@ -129,167 +150,133 @@ for (const ov of [{}, {chCards:1}, {chCards:20}, {chTravel:50}, {chLip:3}, {chSl
        габарит:[+(b.maxX-b.minX).toFixed(2), +(b.maxZ-b.minZ).toFixed(2), +(b.maxY-b.minY).toFixed(2)]});
 }
 
+console.log('=== НИЧЕГО НЕ ВИСИТ В ВОЗДУХЕ ===');
+/* Та самая проверка, которой не было. У первой версии язычок навешивался над пазом и не касался
+   ничего; «тел ровно шесть» это пропустило, потому что летающее тело — тоже тело. */
+for (const ov of [{}, {chCards:20}, {chSlot:20}, {chLipLen:20}, {chTravel:50}]){
+  const t = B(ov), cs = shells(t), tag = ' ' + JSON.stringify(ov);
+  chk('тел ровно пять'+tag, cs.length === 5, {тел:cs.length});
+  const gr = glued(cs);
+  chk('  и они срастаются РОВНО В ДВЕ группы: футляр и толкатель'+tag, gr.length === 2,
+      {групп:gr.length, размеры:gr.map(g => g.length)});
+  chk('  причём в футляре четыре тела, в толкателе одно'+tag,
+      gr.length === 2 && gr.map(g => g.length).sort((a,b)=>a-b).join(',') === '1,4',
+      {размеры:gr.map(g => g.length).sort((a,b)=>a-b)});
+  chk('  и каждое тело замкнуто само по себе'+tag,
+      cs.every(g => manifoldCheck(g, 4).watertight), {});
+}
+
 console.log('=== карта — стандарт, а не выдуманное число ===');
 {
-  /* ISO/IEC 7810 ID-1. Числа сверяются прямо: «примерно 86 на 54» — это уже не стандарт, а прикидка,
-     и карман, построенный по прикидке, карту либо зажмёт, либо отпустит болтаться. */
   chk('таблица карты — ровно ISO/IEC 7810 ID-1',
       CARD_ISO.l === 85.60 && CARD_ISO.w === 53.98 && CARD_ISO.t === 0.76, CARD_ISO);
   const s = S({});
   chk('карман шире карты ровно на печатный зазор',
-      Math.abs(s.cw - (CARD_ISO.w + s.gap)) < 1e-9, {карман:+s.cw.toFixed(3), 'карта+зазор':+(CARD_ISO.w + s.gap).toFixed(3)});
-  chk('и длина кармана — карта, ход и лопасть',
-      Math.abs(s.inner - (CARD_ISO.l + s.gap + s.travel + s.blade)) < 1e-9,
-      {карман:+s.inner.toFixed(3)});
-  /* И ТОЛЩИНА ПАЧКИ ИДЁТ ЗА ЧИСЛОМ КАРТ, а не за ручкой высоты: высоты у лотка нет вовсе. */
+      Math.abs(s.cw - (CARD_ISO.w + s.gap)) < 1e-9, {карман:+s.cw.toFixed(3)});
+  chk('и длина футляра — карта, ход, лопасть и задняя стенка',
+      Math.abs(s.outer.z - (CARD_ISO.l + s.gap + s.travel + s.blade + s.tE)) < 1e-9,
+      {длина:+s.outer.z.toFixed(3)});
   const h1 = S({chCards:4}).outer.y, h2 = S({chCards:8}).outer.y;
   chk('пачка растёт ровно на карту за карту',
       Math.abs((h2 - h1) - 4*CARD_ISO.t) < 1e-9, {'4':+h1.toFixed(2), '8':+h2.toFixed(2)});
 }
 
-console.log('=== карман: карта влезает, и влезает с зазором ===');
+console.log('=== футляр ЗАКРЫТ: над пачкой оболочка, а не воздух ===');
 for (const ov of [{}, {chCards:12}, {chCardT:1.2}]){
   const t = B(ov), s = S(ov), tag = ' ' + JSON.stringify(ov);
-  const yMid = s.tF + s.stack/2;                       // середина пачки по высоте
-  const zMid = -s.outer.z/2 + s.tE + s.blade + s.travel + CARD_ISO.l/2;   // середина карты в кармане
-  /* Внутри кармана пусто на всю ширину карты... */
+  const yMid = s.tF + s.stack/2;
+  const zMid = -s.outer.z/2 + s.tE + s.blade + s.travel + CARD_ISO.l/2;
   chk('в кармане пусто по ширине карты'+tag,
       !IN(t, [0, yMid, zMid]) && !IN(t, [CARD_ISO.w/2 - 0.3, yMid, zMid]) &&
-      !IN(t, [-(CARD_ISO.w/2 - 0.3), yMid, zMid]),
-      {y:+yMid.toFixed(2), z:+zMid.toFixed(2)});
-  /* ...а сразу за стенкой — материал, иначе «пусто» ничего не значит. */
-  chk('  а за стенкой материал'+tag,
+      !IN(t, [-(CARD_ISO.w/2 - 0.3), yMid, zMid]), {y:+yMid.toFixed(2), z:+zMid.toFixed(2)});
+  chk('  а за боковой стенкой материал'+tag,
       IN(t, [s.xi + s.tW/2, yMid, zMid]) && IN(t, [-(s.xi + s.tW/2), yMid, zMid]));
-  /* И ГУБЫ НАВИСАЮТ НАД ПАЧКОЙ: выше пачки у краёв материал есть, а посередине нет. */
-  const yLip = s.tF + s.stack + s.tLip/2;
-  chk('  губы нависают над пачкой'+tag,
-      IN(t, [s.xi - s.lipOver/2, yLip, zMid]) && !IN(t, [0, yLip, zMid]),
-      {y:+yLip.toFixed(2)});
+  /* ЛИЦЕВАЯ ОБОЛОЧКА НАД ПАЧКОЙ — то, чего не было у лотка. Материал есть везде, кроме паза. */
+  const yShell = s.tF + s.stack + s.tT/2;
+  chk('  над пачкой оболочка'+tag,
+      IN(t, [s.xi - 2, yShell, zMid]) && IN(t, [-(s.xi - 2), yShell, zMid]), {y:+yShell.toFixed(2)});
+  chk('  и только паз в ней открыт'+tag, !IN(t, [0, yShell, zMid]));
+  /* И ТЫЛЬНАЯ ОБОЛОЧКА ПОД ПАЧКОЙ. */
+  chk('  под пачкой тоже оболочка'+tag, IN(t, [0, s.tF/2, zMid]), {y:+(s.tF/2).toFixed(2)});
 }
 
 console.log('=== печать в сборе: толкатель отделён и не выпадает ===');
 for (const ov of [{}, {chSlot:20}, {chCards:20}]){
   const t = B(ov), s = S(ov), tag = ' ' + JSON.stringify(ov);
   const cs = shells(t);
-  /* ШЕСТЬ: две половины лотка, задняя стенка, передняя перемычка, язычок и толкатель. Число это
-     стоит утверждать: сварись любое с любым, сетка осталась бы герметичной и на вид целой. */
-  chk('деталь распадается ровно на шесть тел'+tag, cs.length === 6, {тел:cs.length});
-  /* КАЖДОЕ ТЕЛО ЗАМКНУТО САМО ПО СЕБЕ: открытая оболочка одного на общей сетке не видна — её рёбра
-     спарены соседом. */
-  chk('  и каждое замкнуто само по себе'+tag,
-      cs.every(g => manifoldCheck(g.map(i => t[i]), 4).watertight), {});
-  /* ТОЛКАТЕЛЬ — САМОЕ МАЛЕНЬКОЕ ТЕЛО, и ни одна его вершина не лежит внутри лотка. */
-  /* ТОЛКАТЕЛЬ ОПОЗНАЁТСЯ ТОЧКОЙ ВНУТРИ НЕГО, а не «самое маленькое тело»: самым маленьким оказался
-     язычок, и первая запись мерила зазор до него. */
-  const inPush = [0, s.tF/2, -s.outer.z/2 + s.tE + s.gap + s.blade/2];
-  const bodies = cs.map(g => g.map(i => t[i]));
-  const push = bodies.find(g => IN(g, inPush));
-  const tray = [].concat(...bodies.filter(g => g !== push));
-  chk('  толкатель опознан точкой внутри него'+tag, !!push, {точка:inPush.map(v => +v.toFixed(2))});
+  const inPush = [0, s.H + s.gap + s.padT/2, -s.outer.z/2 + s.tE + 0.6 + s.gap + s.blade/2];
+  const push = cs.find(g => IN(g, inPush));
+  chk('толкатель опознан точкой внутри него'+tag, !!push, {точка:inPush.map(v => +v.toFixed(2))});
   if (!push) continue;
+  const tray = [].concat(...cs.filter(g => g !== push));
   let inside = 0;
   for (const T of push) for (const v of T) if (IN(tray, v)) inside++;
-  chk('  ни одна вершина толкателя не внутри лотка'+tag, inside === 0, {внутри:inside});
-  /* И ЗАЗОР МЕЖДУ НИМИ — ЗАКАЗАННЫЙ, а не «какой-нибудь»: положительным он остался бы и вдвое меньше,
-     а печать в сборе живёт ровно этим числом. */
-  /* ЗАЗОР МЕРЯЕТСЯ ОТ ВЕРШИН ОДНОГО ТЕЛА ДО ТРЕУГОЛЬНИКОВ ДРУГОГО — так же, как у зажима для пакета.
-     Вершина-к-вершине здесь не годится и дала 1.07 при заказанных 0.35: плоскости стоят в зазоре
-     параллельно, а их ближайшие ВЕРШИНЫ разнесены по другой оси, и такой замер меряет диагональ, а не
-     просвет. */
-  const bb = computeBBox(push);
-  /* ОТБОР БЛИЗКИХ ГРАНЕЙ — ПО ПЕРЕСЕЧЕНИЮ ГАБАРИТОВ, а не по «все вершины рядом»: грани лотка длинные,
-     во всю деталь, и условие «каждая вершина близко» не проходило ни одна — отбор возвращал ноль. */
-  const R = 4, ov3 = (lo, hi, a, b) => hi >= a - R && lo <= b + R;
-  const near = tray.filter(T => {
-    const xs = T.map(v => v[0]), ys = T.map(v => v[1]), zs = T.map(v => v[2]);
-    return ov3(Math.min(...xs), Math.max(...xs), bb.minX, bb.maxX) &&
-           ov3(Math.min(...ys), Math.max(...ys), bb.minY, bb.maxY) &&
-           ov3(Math.min(...zs), Math.max(...zs), bb.minZ, bb.maxZ); });
-  /* И ТОЧКИ БЕРУТСЯ НЕ ТОЛЬКО В ВЕРШИНАХ. Между двумя ПАРАЛЛЕЛЬНЫМИ гранями, разнесёнными по другой
-     оси, ни одна вершина не проецируется на соседнюю грань: расстояние вершина-к-грани обходит такой
-     зазор стороной и меряет диагональ через ребро. Мутация «зазор стойки вдвое меньше» прошла эту
-     проверку насквозь именно так — 0.175 мм просвета между боком стойки и стенкой паза не нашлось ни
-     одной парой вершин. Поэтому каждый треугольник засевается барицентрической сеткой. */
-  const samples = T => { const out = [], k = 4;
-    for (let i = 0; i <= k; i++) for (let j = 0; i + j <= k; j++){
-      const a = i/k, b = j/k, c = 1 - a - b;
-      out.push([a*T[0][0] + b*T[1][0] + c*T[2][0],
-                a*T[0][1] + b*T[1][1] + c*T[2][1],
-                a*T[0][2] + b*T[1][2] + c*T[2][2]]); }
-    return out; };
+  chk('  ни одна вершина толкателя не внутри футляра'+tag, inside === 0, {внутри:inside});
+  const bb = computeBBox(push), R = 4;
+  const ovl = (lo, hi, a, b) => hi >= a - R && lo <= b + R;
+  const near = tray.filter(T => { const xs = T.map(v=>v[0]), ys = T.map(v=>v[1]), zs = T.map(v=>v[2]);
+    return ovl(Math.min(...xs), Math.max(...xs), bb.minX, bb.maxX) &&
+           ovl(Math.min(...ys), Math.max(...ys), bb.minY, bb.maxY) &&
+           ovl(Math.min(...zs), Math.max(...zs), bb.minZ, bb.maxZ); });
   let best = 1e9;
   for (const T of push) for (const v of samples(T)) for (const U of near){ const d = dTri(v, U); if (d < best) best = d; }
   for (const T of near) for (const v of samples(T)) for (const U of push){ const d = dTri(v, U); if (d < best) best = d; }
-  const dmin = Math.sqrt(best);
-  chk('  и зазор между ними — заказанный'+tag, Math.abs(dmin - s.gap) < 0.03,
-      {измерен:+dmin.toFixed(4), заказан:+s.gap.toFixed(4), граней:near.length});
-  /* ТОЛКАТЕЛЬ НЕ ПРОЛЕЗАЕТ В ПАЗ: лопасть и пятка шире его. Меряется по сетке, а не по спецификации. */
-  const wPush = bb.maxX - bb.minX;
-  chk('  лопасть и пятка шире паза'+tag, wPush > s.sw + 1.0,
-      {толкатель:+wPush.toFixed(2), паз:+s.sw.toFixed(2)});
+  chk('  и зазор между ними — заказанный'+tag, Math.abs(Math.sqrt(best) - s.gap) < 0.03,
+      {измерен:+Math.sqrt(best).toFixed(4), заказан:+s.gap.toFixed(4)});
+  chk('  лопасть и пятка шире паза'+tag, (bb.maxX - bb.minX) > s.sw + 1.0,
+      {толкатель:+(bb.maxX-bb.minX).toFixed(2), паз:+s.sw.toFixed(2)});
 }
 
 console.log('=== гарантии геометрические — впереди упругих ===');
 {
   for (const ov of [{}, {chTravel:5}, {chTravel:40}]){
     const s = S(ov);
-    chk('сколько выходит и сколько держится — сумма даёт длину карты '+JSON.stringify(ov),
+    chk('выходит + держится = длина карты '+JSON.stringify(ov),
         Math.abs(s.stickOut + s.held - (CARD_ISO.l + s.gap)) < 1e-9,
         {выходит:+s.stickOut.toFixed(1), держится:+s.held.toFixed(1)});
   }
-  chk('слишком длинный ход объявлен',
-      W({chTravel:60}).some(x => /пачка вылетит целиком/.test(x)), W({chTravel:60}));
+  chk('слишком длинный ход объявлен', W({chTravel:60}).some(x => /вылетит целиком/.test(x)), W({chTravel:60}));
   chk('а на умолчаниях об этом молчат', !W({}).some(x => /вылетит целиком/.test(x)), W({}));
 }
 
-console.log('=== упругий элемент здесь ОДИН, и он считается из сетки ===');
+console.log('=== упругий элемент один, и он СИДИТ В СТЕНКЕ, а не висит ===');
 {
-  /* Язычок меряется в сетке: вылет, толщина и ширина, — и сила считается заново. Спецификация о
-     расхождении между построенным и посчитанным не знает по определению. */
-  for (const ov of [{}, {chTabLen:14}, {chTabT:1.6}, {chTabW:16}]){
+  for (const ov of [{}, {chLipLen:14}, {chLipT:1.6}]){
     const t = B(ov), s = S(ov), tag = ' ' + JSON.stringify(ov);
-    const yTab = s.tF + s.stack + s.tabLift + s.tabT/2;
-    // ширина язычка по X на его высоте
-    const zTab = s.outer.z/2 - s.tE - 1.0;
-    const edge = (dir) => { let hi = -1;
-      for (let m = 0.05; m <= 40; m += 0.05){ if (!IN(t, [dir*m, yTab, zTab])){ hi = m; break; } }
-      if (hi < 0) return 1e9;
-      let lo = hi - 0.05;
-      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (IN(t, [dir*m, yTab, zTab])) lo = m; else hi = m; }
-      return (lo + hi)/2; };
-    const wTab = edge(1) + edge(-1);
-    /* ТОЛЩИНУ ЯЗЫЧКА ПО ВЕРШИНАМ НЕ ВЗЯТЬ: у коробки вершины только по углам, и щуп «все вершины с
-       |x| < 0.4» не находил ни одной — тот же урок, что с цилиндром у хвостовика. Меряем оборотами. */
+    const yLip = s.tF + s.stack - s.lipLift - s.lipT/2, zLip = s.outer.z/2 - 1.0;
+    const xLip = (s.lipX0 + s.lipX1)/2;
+    chk('губа на месте'+tag, IN(t, [xLip, yLip, zLip]) && IN(t, [-xLip, yLip, zLip]),
+        {x:+xLip.toFixed(2), y:+yLip.toFixed(2)});
+    /* И МИМО ЛОПАСТИ: посередине, где ходит толкатель, губы нет. */
+    chk('  и толкателю она не мешает'+tag, !IN(t, [0, yLip, zLip]));
+    /* Толщина губы — оборотами, а не по вершинам: у коробки вершины только по углам. */
     const yEdge = dir => { let hi = -1;
-      for (let m = 0.02; m <= 12; m += 0.02){ if (!IN(t, [0, yTab + dir*m, zTab])){ hi = m; break; } }
+      for (let m = 0.02; m <= 12; m += 0.02){ if (!IN(t, [xLip, yLip + dir*m, zLip])){ hi = m; break; } }
       if (hi < 0) return 1e9;
       let lo = hi - 0.02;
-      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (IN(t, [0, yTab + dir*m, zTab])) lo = m; else hi = m; }
+      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (IN(t, [xLip, yLip + dir*m, zLip])) lo = m; else hi = m; }
       return (lo + hi)/2; };
-    const tTab = yEdge(1) + yEdge(-1);
-    const Fmeas = 3*s.mat.E*(wTab*Math.pow(tTab,3)/12)*s.tabLift/Math.pow(s.tabL, 3);
-    chk('усилие язычка сходится с пересчётом из сетки'+tag,
+    const tMeas = yEdge(1) + yEdge(-1);
+    const Fmeas = 3*s.mat.E*(2*s.lipW*Math.pow(tMeas, 3)/12)*s.lipLift/Math.pow(s.lipL, 3);
+    chk('  усилие губ сходится с пересчётом из сетки'+tag,
         Math.abs(Fmeas - s.F)/Math.max(1e-9, s.F) < 0.12,
-        {названо:+s.F.toFixed(3), 'из сетки':+Fmeas.toFixed(3), замеры:{ширина:+wTab.toFixed(2), толщина:+tTab.toFixed(2)}});
+        {названо:+s.F.toFixed(2), 'из сетки':+Fmeas.toFixed(2), толщина:+tMeas.toFixed(3)});
   }
-  chk('перегруженный язычок объявлен',
-      W({chTabT:3, chTabLen:3}).some(x => /отломится, а не согнётся/.test(x)), W({chTabT:3, chTabLen:3}));
-  chk('слабый язычок объявлен',
-      W({chTabLen:30}).some(x => /пачка выпадет сама/.test(x)), W({chTabLen:30}));
-  chk('а на умолчаниях язычок не жалуется',
+  chk('перегруженная губа объявлена',
+      W({chLipT:3, chLipLen:3}).some(x => /отломится, а не согнётся/.test(x)), W({chLipT:3, chLipLen:3}));
+  chk('слабая губа объявлена', W({chLipLen:30}).some(x => /выпадет сама/.test(x)), W({chLipLen:30}));
+  chk('а на умолчаниях губы не жалуются',
       !W({}).some(x => /отломится|выпадет сама/.test(x)), W({}));
 }
 
 console.log('=== чего модель НЕ обещает — сказано вслух ===');
 {
-  /* Это требование дорожной карты, записанное ДО работы: «карты веером» — поведение трения карты о
-     карту, а не геометрии. Молчание тут было бы обещанием. */
   chk('про «веер» сказано, что его не будет',
       W({}).some(x => /веером/.test(x) && /трения карты о карту/.test(x)), W({}));
   chk('и про то, что печатается В СБОРЕ, тоже',
       W({}).some(x => /В СБОРЕ/.test(x) && /зазор/.test(x)), W({}));
-  chk('и про то, что упругий здесь только язычок',
-      W({}).some(x => /единственный упругий/.test(x)), W({}));
+  chk('и про то, что упругие здесь только губы',
+      W({}).some(x => /единственн/.test(x)), W({}));
 }
 
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');

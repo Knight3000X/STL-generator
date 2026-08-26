@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.16.1';
+const APP_VERSION = 'v24.17.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5323,6 +5323,18 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'artBodyR', w:['artic'], label:'Цепочка: радиус тела звена (0 = авто)', min:0, max:60, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'artTaper', w:['artic'], label:'Цепочка: сужение тела к хвосту', min:0, max:90, step:5, default:0, unit:'%', int:true,
       hint:'Сужается ТОЛЬКО тело звена. Замок не сужается: сузь его вместе с телом — и соседние звенья перестанут подходить друг к другу, шар одного размера, чашка другого.'},
+    /* КОНЦЫ ЦЕПОЧКИ (v24.17.0). Умолчания НЕ ТРОНУТЫ: цепочка как была змейкой, так и осталась —
+       рукой она становится выбором, а не молча. */
+    {group:'Петля (печать в сборе)', key:'artEndA', w:['artic'], label:'Цепочка: нижний конец', type:'select', default:'ball',
+      options:[{v:'ball',t:'шар (свободный)'},{v:'post',t:'хвостовик под гнездо основания'}]},
+    {group:'Петля (печать в сборе)', key:'artEndB', w:['artic'], label:'Цепочка: верхний конец', type:'select', default:'cup',
+      options:[{v:'cup',t:'чашка (свободная)'},{v:'clip',t:'держатель «крокодила»'}]},
+    {group:'Петля (печать в сборе)', key:'artPostD', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: Ø (0 = авто, чуть тоньше тела)', min:0, max:60, step:0.5, default:0, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artPostLen', w:['artic'], only:{artEndA:['post']}, label:'Хвостовик: длина посадки', min:5, max:120, step:1, default:18, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artClipT', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: толщина хвоста', min:0.4, max:6, step:0.1, default:1, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artClipW', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: ширина хвоста', min:2, max:30, step:0.5, default:5, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artClipHole', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: Ø отверстия под винт (0 = без винта)', min:0, max:10, step:0.5, default:3, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'artClipDepth', w:['artic'], only:{artEndB:['clip']}, label:'«Крокодил»: глубина посадки хвоста', min:3, max:40, step:0.5, default:8, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'bagW', w:['bagclip'], label:'Зажим: ширина', min:6, max:60, step:1, default:13, unit:'мм',
       hint:'Зажим для пакета — деталь ДЛИННАЯ И УЗКАЯ: держит он по всей длине, а не пятном. Ширина входит в жёсткость линейно, длина — кубом, поэтому широкой губкой усилие не добирают, ею только тратят пластик.'},
     {group:'Петля (печать в сборе)', key:'bagL', w:['bagclip'], label:'Зажим: длина губки (шарнир → застёжка)', min:20, max:200, step:1, default:115, unit:'мм'},
@@ -12819,6 +12831,85 @@ function ballJointSpec(p){
 
    Сужение к хвосту тянет ТОЛЬКО тело, а не замок: сузь замок вместе с телом, и соседние звенья
    перестанут подходить друг к другу — шар одного размера, чашка другого. */
+/* ТРЕТЬЯ РУКА ИЗ ЦЕПОЧКИ (v24.17.0). Прислан снимок покупной «третьей руки»: плита с прорезями, из
+   неё гибкие рукава, у каждого на конце «крокодил». Рукав у нас уже есть — это и есть цепочка на
+   шаровых замках. Нет двух её КОНЦОВ: снизу голый шар, сверху пустая чашка, и ни то ни другое ни к
+   чему не крепится.
+
+   ЧЕГО ДЕЛАТЬ НЕЛЬЗЯ, и соблазн был именно такой: напечатать основание с чашкой и защёлкнуть в неё
+   шар цепочки. Это против собственной доктрины формы — шар здесь НИКОГДА не защёлкивают, его печатают
+   уже в гнезде, и устье нарочно у́же шара, чтобы он не вышел. Стыковка отдельных деталей идёт поэтому
+   не через шаровой замок, а посадкой ХВОСТОВИКА в гнездо, как втулку в кондукторе.
+
+   «Крокодил» — деталь ПОКУПНАЯ, и её размеры заказываются, а не выдумываются: у хвоста своя толщина,
+   своя ширина и своё отверстие под винт. Держатель — паз под этот хвост и поперечное отверстие; паз
+   строится не вырезанием (резать в этом приложении нечем), а тремя полосами вдоль оси винта: щека,
+   «П»-профиль, щека. Средняя полоса ВЫСТУПАЕТ в обе щеки — так тела пересекаются объёмом, а не
+   встречаются гранями, — и ровно её вырез и есть паз. */
+const ART_CLIP_WALL  = 2.2;   // щека держателя: две ширины сопла с запасом, винт её не рвёт
+const ART_CLIP_FLOOR = 2.5;   // дно паза — в него упирается хвост «крокодила» при затяжке
+const ART_POST_CH    = 0.8;   // заходная фаска хвостовика: без неё он не попадает в гнездо
+const ART_CLIP_SINK  = 0.6;   // насколько подошва держателя утоплена в тело звена — телами, а не гранями
+function articEndSpec(p, j, bodyR){
+  const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
+  const endA = (p.artEndA === 'post') ? 'post' : 'ball';
+  const endB = (p.artEndB === 'clip') ? 'clip' : 'cup';
+  /* ХВОСТОВИК. Тоньше тела звена — иначе он не хвостовик, а продолжение цепочки, и уступ, которым
+     рука садится на плиту, исчезает вовсе. Уступ здесь несущий: он, а не трение, держит глубину
+     посадки, и без него рука проваливалась бы в гнездо до упора в дно. */
+  const postD = cl(p.artPostD, 0, 60, 0) > 0 ? cl(p.artPostD, 0, 60, 0) : Math.max(4, bodyR*1.1);
+  const postLen = cl(p.artPostLen, 5, 120, 18);
+  const shoulder = bodyR - postD/2;
+  const postCh = Math.min(ART_POST_CH, postD/4);   // заходная фаска: с ней хвостовик находит гнездо сам
+  /* ДЕРЖАТЕЛЬ. Паз шире хвоста на печатный зазор — тот же, которым живёт весь замок. */
+  const clipT = cl(p.artClipT, 0.4, 6, 1);
+  const clipW = cl(p.artClipW, 2, 30, 5);
+  const clipHole = cl(p.artClipHole, 0, 10, 3);
+  const clipDepth = cl(p.artClipDepth, 3, 40, 8);
+  const slotT = clipT + j.gap;                       // толщина паза
+  const slotW = clipW + j.gap;                       // ширина паза
+  const hX = slotW/2 + ART_CLIP_WALL;                // полуширина держателя
+  const hZ = ART_CLIP_FLOOR + clipDepth;             // высота держателя от подошвы
+  /* ЩЕКА СТРОГО ВНУТРИ СИЛУЭТА «П» — и по ширине, и по высоте. Это не украшение: полосы держателя
+     делят наружный контур, и стоило дать им общий торец или общий бок, как у двух тел появлялась
+     СОВПАДАЮЩАЯ ГРАНЬ. Герметичность её не видит вовсе (ни рёбер, ни вершин общих), а печатается
+     такое двумя телами, встретившимися гранями, вместо одного сросшегося. Нашёл это не глаз, а
+     детектор совпадающих граней — первая сборка держателя дала их на подошве и на обоих торцах. */
+  const cx  = slotW/2 + ART_CLIP_WALL*0.55;
+  const cz0 = Math.max(0.4, ART_CLIP_FLOOR - 0.8), cz1 = hZ - 0.6;
+  const holeR = clipHole > 0 ? clipHole/2 + j.gap/2 : 0;
+  /* ОТВЕРСТИЕ ПОД ВИНТ стоит в середине посадки и обязано остаться в теле щеки: и по высоте, и по
+     ширине. Заказ глубже или у́же держателя урезал бы его наполовину, а половина отверстия — это
+     проточка, в которой винт не держится. */
+  const holeZ = Math.max(cz0 + holeR + 0.8, Math.min(cz1 - holeR - 0.8, ART_CLIP_FLOOR + clipDepth*0.5));
+  const holeFits = clipHole <= 0 || (holeR + 0.8 <= cx && holeZ - holeR - 0.8 >= cz0 && holeZ + holeR + 0.8 <= cz1);
+  return { endA, endB, postD, postLen, shoulder, clipT, clipW, clipHole, clipDepth,
+           slotT, slotW, hX, hZ, cx, cz0, cz1, holeR, holeZ, holeFits,
+           postCh, cheek: ART_CLIP_WALL, floor: ART_CLIP_FLOOR,
+           postThin: postD < 3, shoulderThin: shoulder < 0.8 };
+}
+/* Держатель «крокодила» в СВОИХ координатах: ось винта — Y, подошва на z = 0, паз открыт вверх по +Z.
+   Поворачивается на четверть оборота уже на месте — ровно как нижняя губка струбцины, и по той же
+   причине: отверстия у `extrudePolyYTris` идут вдоль оси протяжки, а винт обязан идти поперёк паза. */
+function articClipHolderTris(e, seg){
+  const out = [], pw = e.slotW/2, ht = e.slotT/2, over = 0.6;
+  const rect = [[-e.cx, e.cz0], [e.cx, e.cz0], [e.cx, e.cz1], [-e.cx, e.cz1]];
+  const hole = [];
+  if (e.holeR > 0){ const n = Math.max(16, Math.round(e.holeR*8));
+    for (let i = 0; i < n; i++){ const a = 2*Math.PI*i/n; hole.push([e.holeR*Math.cos(a), e.holeZ + e.holeR*Math.sin(a)]); } }
+  const cheekLoops = e.holeR > 0 ? [rect, hole] : [rect];
+  for (const T of extrudePolyYTris(cheekLoops, -ht - e.cheek, -ht)) out.push(T);
+  for (const T of extrudePolyYTris(cheekLoops,  ht, ht + e.cheek)) out.push(T);
+  /* «П»: наружный контур держателя с вырезом сверху. Он один тянется на всю высоту и на всю ширину,
+     а щёки сидят СТРОГО ВНУТРИ него — так у полос нет ни одной общей плоскости. Тянется он и ЗА щёки
+     по оси винта, на `over`: в самом пазу (|y| < ht) он остаётся один, и вырез его и есть паз, а по
+     краям пересекается со щеками объёмом. Подошва уходит НИЖЕ нуля — этим держатель и утоплен в тело
+     звена, опять же телом, а не гранью. */
+  const U = [[-e.hX, -ART_CLIP_SINK], [e.hX, -ART_CLIP_SINK], [e.hX, e.hZ],
+             [pw, e.hZ], [pw, e.floor], [-pw, e.floor], [-pw, e.hZ], [-e.hX, e.hZ]];
+  for (const T of extrudePolyYTris([U], -ht - over, ht + over)) out.push(T);
+  return rotateTris(out, -90, 0, 0);   // z→вверх, ось винта — поперёк
+}
 function articSpec(p){
   const j = ballJointSpec(p);
   const N = Math.max(2, Math.min(60, Math.round(p.artN > 0 ? p.artN : 8)));
@@ -12843,42 +12934,67 @@ function articSpec(p){
   const pitchMin = yBody0 + yCupOut + 1.0;
   const pitchWant = p.artPitch > 0 ? p.artPitch : Math.max(pitchMin, j.R*2.6);
   const pitch = Math.max(pitchMin, pitchWant);
-  return { j, N, pitch, pitchMin, bodyR, taper, yBody0, yCupOut, tight: pitchWant < pitchMin - 1e-9,
+  const e = articEndSpec(p, j, bodyR);
+  return { j, N, pitch, pitchMin, bodyR, taper, yBody0, yCupOut, e, tight: pitchWant < pitchMin - 1e-9,
            /* ДЛИНА СЧИТАЕТСЯ ОТ КРАЙНИХ ТОЧЕК, а не «на глаз из слагаемых». Первая версия складывала
               шаги, радиус шара и наружный радиус чашки и давала 164 мм там, где габарит был 179:
               чашка кончается не на своём наружном радиусе, а на устье, которое выше центра на
               −Ri·cos φm. Число это выводится человеку в предупреждении, так что оно обязано быть
               не «примерно», а тем самым. */
-           len: N*pitch - j.Ri*Math.cos(j.phiM) + j.R,
+           /* ДЛИНА С КОНЦАМИ. Хвостовик уходит вниз от нижнего полюса шара, держатель — вверх от места,
+              где кончалась чашка: оба конца ЗАМЕНЯЮТ то, что там было, а не приставляются к нему,
+              поэтому и вычитается старое, и прибавляется новое. */
+           len: N*pitch - j.Ri*Math.cos(j.phiM) + j.R
+                + (e.endA === 'post' ? e.postLen - j.R : 0)
+                + (e.endB === 'clip' ? e.hZ : 0),
            seg: Math.max(32, Math.min(96, Math.round(j.Ri*4))) };
 }
 /* Одно звено: шар со стержнем внизу, чашка наверху, тело между ними. Три пересекающихся тела
    вращения, ни одно из которых не касается соседнего звена, — ровно та же схема, что у шарнира. */
 function articSegTris(s, k){
-  const j = s.j, out = [], NS = 40, seg = s.seg;
+  const j = s.j, e = s.e, out = [], NS = 40, seg = s.seg;
   const scale = 1 - s.taper*(s.N > 1 ? k/(s.N-1) : 0);
-  // чашка наверху, устье вверх — как у одиночного шарнира
-  const inner = [], outer = [];
-  for(let i=0;i<=NS;i++){ const f = j.phi0 + (j.phiM - j.phi0)*i/NS;
-    inner.push([Math.max(0.05, j.Ri*Math.sin(f)), s.pitch - j.Ri*Math.cos(f)]);
-    outer.push([j.Ri*Math.sin(f) + j.wall, s.pitch - j.Ri*Math.cos(f) - (f < Math.PI/2 ? j.wall*Math.cos(f) : 0)]); }
-  for(const T of latheShellYTris(outer, inner, seg)) out.push(T);
-  // шар внизу со стержнем вверх: стержень — единственное, что проходит устьем, и он же задаёт угол
+  /* КРАЙНИЕ ЗВЕНЬЯ ОТЛИЧАЮТСЯ, и отличаются они ЗАМЕНОЙ, а не добавкой. У нижнего звена шар внизу не
+     лежит ни в какой чашке — держать его нечему и незачем, — поэтому хвостовик встаёт ВМЕСТО него.
+     У верхнего звена чашка наверху пуста: следующего шара нет, и держатель встаёт вместо неё. Приставь
+     я концы к целым звеньям, рука выросла бы на диаметр шара и на всю чашку впустую. */
+  const first = (k === 0) && e.endA === 'post';
+  const last  = (k === s.N - 1) && e.endB === 'clip';
   const rB = Math.max(j.ds/2 + 0.4, s.bodyR*scale);
   const yB0 = rB < j.Ri + j.wall
     ? Math.sqrt((j.Ri + j.wall)*(j.Ri + j.wall) - rB*rB) + 0.3
     : j.R*0.75;
-  const fStem = Math.asin(Math.min(0.98, j.ds/2/j.R));
-  const prof = [];
-  for(let i=0;i<=NS;i++){ const f = (Math.PI - fStem)*i/NS;
-    prof.push([Math.max(0.05, j.R*Math.sin(f)), -j.R*Math.cos(f)]); }
-  const yJoin = -j.R*Math.cos(Math.PI - fStem);
-  prof.push([j.ds/2, yJoin], [j.ds/2, Math.max(yJoin + 0.6, yB0 + 0.8)]);
-  for(const T of solidLatheYTris(prof, seg)) out.push(T);
+  if (!last){
+    // чашка наверху, устье вверх — как у одиночного шарнира
+    const inner = [], outer = [];
+    for(let i=0;i<=NS;i++){ const f = j.phi0 + (j.phiM - j.phi0)*i/NS;
+      inner.push([Math.max(0.05, j.Ri*Math.sin(f)), s.pitch - j.Ri*Math.cos(f)]);
+      outer.push([j.Ri*Math.sin(f) + j.wall, s.pitch - j.Ri*Math.cos(f) - (f < Math.PI/2 ? j.wall*Math.cos(f) : 0)]); }
+    for(const T of latheShellYTris(outer, inner, seg)) out.push(T);
+  }
+  if (first){
+    /* ХВОСТОВИК со снятой заходной фаской, вверх — в тело звена. Уступ между ним и телом и есть
+       глубина посадки: рука садится на плиту им, а не дном гнезда. */
+    const rP = e.postD/2, ch = e.postCh;
+    for(const T of solidLatheYTris([[Math.max(0.3, rP - ch), -e.postLen],
+                                    [rP, -e.postLen + ch],
+                                    [rP, yB0 + 0.8]], seg)) out.push(T);
+  } else {
+    // шар внизу со стержнем вверх: стержень — единственное, что проходит устьем, и он же задаёт угол
+    const fStem = Math.asin(Math.min(0.98, j.ds/2/j.R));
+    const prof = [];
+    for(let i=0;i<=NS;i++){ const f = (Math.PI - fStem)*i/NS;
+      prof.push([Math.max(0.05, j.R*Math.sin(f)), -j.R*Math.cos(f)]); }
+    const yJoin = -j.R*Math.cos(Math.PI - fStem);
+    prof.push([j.ds/2, yJoin], [j.ds/2, Math.max(yJoin + 0.6, yB0 + 0.8)]);
+    for(const T of solidLatheYTris(prof, seg)) out.push(T);
+  }
   // тело: бочонок вокруг стержня, снаружи полосы чашки снизу и утопленный в чашку сверху
-  const yB1 = s.pitch - s.yCupOut + 0.4;
+  const yB1 = last ? s.pitch - j.Ri*Math.cos(j.phiM) : s.pitch - s.yCupOut + 0.4;
   if (yB1 > yB0 + 0.5)
     for(const T of solidLatheYTris([[rB, yB0], [rB, yB1]], seg)) out.push(T);
+  if (last)
+    for(const T of articClipHolderTris(e, seg)) out.push(T.map(v => [v[0], v[1] + yB1, v[2]]));
   return out;
 }
 function buildArtic(p){
@@ -25767,7 +25883,9 @@ function activeShapeLabel() {
   if (p.clMode && p.clMode !== 'none'){ const cs = clockSpec(p);
     return 'часы ' + (cs.shape === 'ring' ? 'кольцо' : 'диск') + ' (Ø' + Math.round(cs.D) + ')'; }
   if (p.pipMode === 'artic'){ const a = articSpec(p);
-    return 'цепочка ' + a.N + ' звеньев (' + a.j.swing.toFixed(0) + '°)'; }
+    const arm = a.e.endA === 'post' || a.e.endB === 'clip';
+    return (arm ? 'рука ' : 'цепочка ') + a.N + ' звеньев (' + a.j.swing.toFixed(0) + '°)'
+         + (a.e.endB === 'clip' ? ', «крокодил»' : '') + (a.e.endA === 'post' ? ', хвостовик Ø' + a.e.postD.toFixed(0) : ''); }
   if (p.pipMode === 'bagclip'){ const g = bagClipSpec(p);
     return 'зажим для пакета ' + Math.round(g.L) + '×' + Math.round(g.W) + ' (' + g.Fbag.toFixed(1) + ' Н)'; }
   if (p.sealMode && p.sealMode !== 'none'){ const ss = sealSpec(p);
@@ -26232,6 +26350,39 @@ function collectPrintWarnings(p){
     if (a.j.swing < 15)
       w.push('складывается всего на ' + a.j.swing.toFixed(0) + '° — цепочка выйдет почти прямой. '
            + 'Ножка шара тоньше или угол устья меньше');
+    /* КОНЦЫ. Названо то, чего на экране нет: что хвостовик заменяет шар, а держатель — чашку (иначе
+       человек ждёт, что рука вырастет на них, а она не вырастет), под какое гнездо точить основание и
+       что «крокодил» с винтом — покупные. */
+    const e = a.e;
+    if (e.endA === 'post'){
+      w.push('нижний конец — ХВОСТОВИК Ø' + e.postD.toFixed(1) + '×' + e.postLen.toFixed(0) +
+             ' мм ВМЕСТО шара: гнездо основания точить под него, ' +
+             (e.shoulder > 0 ? 'уступ ' + e.shoulder.toFixed(1) + ' мм и есть упор глубины'
+                             : 'уступа нет — хвостовик толще тела звена') +
+             '. Шар внизу держать было нечему и незачем');
+      if (e.shoulderThin)
+        w.push(e.shoulder > 0
+          ? 'уступ у хвостовика всего ' + e.shoulder.toFixed(1) + ' мм — рука провалится в гнездо до дна. ' +
+            'Хвостовик тоньше или тело звена толще'
+          : 'хвостовик ТОЛЩЕ тела звена: упереться в плиту ему нечем, глубину посадки задаст дно гнезда. ' +
+            'Хвостовик тоньше Ø' + (2*a.bodyR).toFixed(1) + ' мм');
+      if (e.postThin)
+        w.push('хвостовик Ø' + e.postD.toFixed(1) + ' мм — тоньше трёх миллиметров он сломается в гнезде ' +
+               'первым же поворотом руки');
+    }
+    if (e.endB === 'clip'){
+      w.push('верхний конец — ДЕРЖАТЕЛЬ «крокодила» ВМЕСТО чашки: паз ' + e.slotT.toFixed(1) + '×' +
+             e.slotW.toFixed(1) + ' мм на глубину ' + e.clipDepth.toFixed(0) +
+             (e.clipHole > 0 ? ', поперёк отверстие Ø' + (2*e.holeR).toFixed(1) + ' под винт M' +
+                               e.clipHole.toFixed(0) + ' с гайкой' : ', без винта — только трением') +
+             '. Сам «крокодил» и винт ПОКУПНЫЕ, размеры хвоста берутся с них');
+      if (!e.holeFits)
+        w.push('отверстие под винт не помещается в щёку целиком: половина отверстия — это проточка, ' +
+               'винт в ней не держится. Глубже посадка, шире хвост или тоньше винт');
+      if (e.clipDepth < e.clipW*0.8)
+        w.push('посадка хвоста ' + e.clipDepth.toFixed(0) + ' мм короче его ширины — «крокодил» будет ' +
+               'качаться в пазу поперёк, и держать его будет один винт');
+    }
   }
   if (p.pipMode === 'bagclip'){
     const g = bagClipSpec(p);

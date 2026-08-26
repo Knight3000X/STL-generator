@@ -1245,7 +1245,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.16.0';
+const APP_VERSION = 'v24.16.1';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6463,18 +6463,25 @@ function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p))
    Площадь просвета называется отдельно и не для красоты. Сито — это сужение: если суммарная площадь
    дырок заметно меньше сечения горла, вода пойдёт не лейкой, а тонкой струёй, и виновата будет не
    бутылка. */
-/* ВНУТРЕННИЙ РАДИУС РЕЗЬБЫ И РАДИУС ГОРЛА — названы здесь, потому что их спрашивают не только у
-   построителя. Оговорка нужна честная: этот вывод в файле НЕ ЕДИНСТВЕННЫЙ — те же три строки
-   повторяются у переходника горловин, у самого построителя резьбы и в двух местах проверки печати.
-   Разводить их все — отдельная работа с отдельным прогоном батареи, и она записана в дорожную карту;
-   здесь заведено имя, которым пользуется всё НОВОЕ, и проверка, что оно совпадает с построенной
-   деталью, а не только само с собой. */
-function threadMinorR(p){
-  const D = Math.max(4, p.threadD || 30), P = Math.max(0.5, p.threadPitch || 3), majorR = D/2;
-  const h = (p.threadDepth > 0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
-  return Math.max(0.5, majorR - h);
+/* ВНУТРЕННИЙ РАДИУС РЕЗЬБЫ И РАДИУС ГОРЛА — ОДНО МЕСТО НА ВЕСЬ ФАЙЛ.
+   До v24.16.1 те же три строки — номинал, глубина профиля, minorR — стояли СЕМЬЮ копиями: здесь, у
+   переходника горловин, у самого построителя резьбы, у носика переходника внутри него, дважды в
+   проверке печати (цанга и накидная гайка) и во втулке струбцины. Копии сходились, но сходились СЛУЧАЙНО: правка глубины
+   профиля в одной из них разошлась бы с остальными молча — деталь строится, число осмысленное, и
+   расходится только посадка, которую на экране не видно.
+   Правило здесь ЧИСЛОВОЕ, а не по `p`, потому что резьб в детали бывает две: у переходника горловин
+   свой Ø и свой шаг, и `p` для второй не годится вовсе. */
+function threadDepthOf(majorR, P, want){
+  return (want > 0) ? Math.min(want, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
 }
-function capThroatR(p){ const m = threadMinorR(p); return Math.max(1.5, Math.min(m - 1.0, m*0.62)); }
+function threadMinorROf(majorR, P, want){ return Math.max(0.5, majorR - threadDepthOf(majorR, P, want)); }
+/* ГОРЛО КРЫШКИ — тоже одно правило: расточка под воронку, носик или сито не может подойти к самой
+   резьбе ближе миллиметра, иначе потолка под ней не остаётся. */
+function throatROf(minorR){ return Math.max(1.5, Math.min(minorR - 1.0, minorR*0.62)); }
+function threadMinorR(p){
+  return threadMinorROf(Math.max(4, p.threadD || 30)/2, Math.max(0.5, p.threadPitch || 3), p.threadDepth);
+}
+function capThroatR(p){ return throatROf(threadMinorR(p)); }
 function roseRing(r, n){ const q=[]; for(let i=0;i<n;i++){ const a=2*Math.PI*i/n; q.push([r*Math.cos(a), r*Math.sin(a)]); } return q; }
 function roseSpec(p, rThroat){
   const d = Math.max(0.6, Math.min(6, p.threadRoseD > 0 ? p.threadRoseD : 2));
@@ -6728,12 +6735,14 @@ function anchorDriveR(g, t){
 function threadNeckSpec(p){
   if ((p.threadMode||'none') !== 'cap' || threadTopMode(p) !== 'neck') return null;
   const D=Math.max(4, p.threadD||30), P=Math.max(0.5, p.threadPitch||3), majorR=D/2;
-  const h=(p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
-  const minorR=Math.max(0.5, majorR-h);
+  const minorR=threadMinorROf(majorR, P, p.threadDepth);
   if (minorR-0.8 < 1.0) return null;                    // no ceiling left to open a throat in
   const P2=Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
   const majorR2=Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
-  const minorR2=Math.max(0.5, majorR2 - Math.min(majorR2*0.6, P2*0.55));
+  /* Заказанная глубина профиля СЮДА НЕ ИДЁТ, и это не забывчивость: ручка одна на деталь, а резьба
+     на носике другая — своего Ø и своего шага. Абсолютная глубина, годная для Ø30, на носике Ø8
+     съела бы его до оси. Носик считает глубину сам, от собственного шага. */
+  const minorR2=threadMinorROf(majorR2, P2, 0);
   const wall=Math.max(1.2, p.threadWall>0 ? p.threadWall : 2.5);
   const rNB=Math.max(0.8, Math.min(minorR-0.8, minorR2 - Math.max(0.8, Math.min(wall, majorR2*0.35))));
   if (!(rNB < minorR2-0.4)) return null;                // the spigot would have no wall
@@ -10123,8 +10132,8 @@ function buildThread(p){
   const flat  = (p.threadFlat!=null) ? p.threadFlat : 0.14;
   const clr   = Math.max(0, fitTuned(p, p.threadClear!=null ? p.threadClear : 0.4));
   const majorR= D/2;
-  const h     = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P*0.55);
-  const minorR= Math.max(0.5, majorR - h);               // male root
+  const h     = threadDepthOf(majorR, P, p.threadDepth);
+  const minorR= Math.max(0.5, majorR - h);               // male root — то же, что threadMinorR(p)
   const len   = Math.max(P, p.threadLen||16);            // threaded length
   const Nth   = Math.max(96, Math.min(360, Math.round(2*Math.PI*majorR/0.55)));  // resolves flanks around
   const spp   = 26;                                      // samples per pitch vertically (resolves the flank)
@@ -10598,7 +10607,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     //                simply keeps going as the spigot's bore, so the whole adapter is one surface and
     //                there is no thin interpenetration band to trust.
     const topMode = threadTopMode(p);
-    const rThroat0 = Math.max(1.5, Math.min(minorR-1.0, minorR*0.62));
+    const rThroat0 = throatROf(minorR);                  // то же, что capThroatR(p)
     let funnel=false, rMouth=0, funH=0, twTop=wall, rose=false;
     let neck=false, majorR2=0, minorR2=0, h2=0, P2=P, rNB=0, neckH=0;
     if(topMode==='funnel'){
@@ -10620,7 +10629,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
     } else if(topMode==='neck'){
       P2 = Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
       majorR2 = Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
-      h2 = Math.min(majorR2*0.6, P2*0.55);
+      h2 = threadDepthOf(majorR2, P2, 0);               // своего шага, не ручки — см. threadNeckSpec
       minorR2 = Math.max(0.5, majorR2 - h2);
       const twN = Math.max(0.8, Math.min(wall, majorR2*0.35));
       // The spigot's bore is also the cap's throat, so it must leave a ceiling to stand on: never wider
@@ -17281,10 +17290,12 @@ function nutPitch(d){
    Строится вдоль Y и поворачивается на четверть оборота вместе со всем остальным — ось винта здесь
    поперёк оси протяжки, и это единственная причина, по которой губка вообще отдельное тело. */
 function threadSleeveTris(y0, y1, D, P, rOut, clr, flat){
-  /* Профиль ВЫВОДИТСЯ ТОЧНО ТАК ЖЕ, как у резьбы генератора, включая порог minorR: разойдись они хоть
-     на десятую, болт того же Ø и шага перестал бы вкручиваться, а увидеть это можно было бы только на
-     напечатанной паре. Резьба правая, однозаходная — как умолчание у «болта». */
-  const majorR = D/2, h = Math.min(majorR*0.6, P*0.55), minorR = Math.max(0.5, majorR - h);
+  /* Профиль выводится ТЕМ ЖЕ ПРАВИЛОМ, что и резьба генератора, — с v24.16.1 буквально той же
+     функцией, а не её копией: разойдись они хоть на десятую, болт того же Ø и шага перестал бы
+     вкручиваться, а увидеть это можно было бы только на напечатанной паре. Заказанная глубина профиля
+     сюда не идёт — у втулки нет `p`, она резьба под БОЛТ ГЕНЕРАТОРА и живёт его Ø и шагом.
+     Резьба правая, однозаходная — как умолчание у «болта». */
+  const majorR = D/2, h = threadDepthOf(majorR, P, 0), minorR = Math.max(0.5, majorR - h);
   const Nth = Math.max(48, Math.min(240, Math.round(2*Math.PI*majorR/0.55)));
   const Ny  = Math.max(8, Math.min(320, Math.round((y1 - y0)/P*26)));
   const th = i => 2*Math.PI*(i%Nth)/Nth, thMid = i => 2*Math.PI*(i + 0.5)/Nth;
@@ -26718,8 +26729,7 @@ function collectPrintWarnings(p){
      E взят по PETG (≈1700 МПа): у PLA он вдвое выше, и там же, где PETG гнётся, PLA колется. */
   if (p.threadMode === 'gland'){
     const D = Math.max(4, p.threadD||30), P2 = Math.max(0.5, p.threadPitch||3), majorR = D/2;
-    const hh = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P2*0.55);
-    const minorR = Math.max(0.5, majorR - hh);
+    const minorR = threadMinorROf(majorR, P2, p.threadDepth);
     const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
     const cn = Math.round(p.threadColletN != null ? p.threadColletN : 4);
     const cl = p.threadColletLen != null ? p.threadColletLen : Math.max(5, (p.threadLen||16)*0.5);
@@ -26748,8 +26758,7 @@ function collectPrintWarnings(p){
      осталось у выхода под кабель. */
   if (p.threadMode === 'glandcap'){
     const D = Math.max(6, p.threadD||30), P2 = Math.max(0.5, p.threadPitch||3), majorR = D/2;
-    const hh = (p.threadDepth>0) ? Math.min(p.threadDepth, majorR*0.7) : Math.min(majorR*0.6, P2*0.55);
-    const minorR = Math.max(0.5, majorR - hh);
+    const minorR = threadMinorROf(majorR, P2, p.threadDepth);
     const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
     const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
     const thH = Math.max(1.5, Math.min(nutH - 2.4, p.threadCapThread>0 ? p.threadCapThread : Math.max(5, 2.5*P2)));

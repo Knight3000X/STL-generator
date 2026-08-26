@@ -817,5 +817,148 @@ console.log('=== цанга: число лепестков ===');
       collectPrintWarnings(big).filter(x => /цанга/.test(x)));
 }
 
+/* ======================================================================================
+   ОДНО ПРАВИЛО НА ВЕСЬ ФАЙЛ: внутренний радиус резьбы и радиус горла (v24.16.1).
+
+   До свода те же три строки — номинал, глубина профиля, minorR — стояли СЕМЬЮ копиями: у
+   переходника горловин, у самого построителя, у носика внутри него, дважды в проверке печати
+   (цанга и накидная гайка), во втулке струбцины и в самой функции. Копии сходились, но сходились
+   СЛУЧАЙНО, и это худший вид согласия: правка глубины профиля в одной из них разошлась бы с
+   остальными МОЛЧА — деталь строится, число осмысленное, расходится только посадка, а посадку на
+   экране не видно вовсе. Увидели бы её на напечатанной паре, которая не свинчивается.
+
+   Поэтому проверок здесь две породы, и нужны обе:
+     * ИСХОДНИК — правило записано ровно один раз. Это единственное, что мешает копии отрасти
+       заново: поведенческая сверка новую копию не заметит, пока она согласна со старой.
+     * ПОВЕДЕНИЕ — каждый потребитель отвечает ТЕМ ЖЕ числом. Сверка формулы с формулой доказала бы
+       только, что я дважды написал одно и то же, поэтому спрашивается ПОСТРОЕННАЯ деталь и
+       НАПЕЧАТАННЫЙ текст предупреждений, а не соседняя строка кода.
+   ====================================================================================== */
+console.log('=== резьба: правило корня и горла живёт в одном месте ===');
+{
+  const fs = require('fs'), src = fs.readFileSync('parametric-stl-generator.html', 'utf8');
+  const app = src.split('<script>').slice(2).join('<script>');   // 1-й блок — библиотека Three.js
+  const depthCopies  = (app.match(/\*\s*0\.6\s*,\s*\w+\s*\*\s*0\.55/g) || []);
+  const throatCopies = (app.match(/Math\.min\(\s*\w+\s*-\s*1\.0\s*,\s*\w+\s*\*\s*0\.62\s*\)/g) || []);
+  const wantCopies   = (app.match(/threadDepth\s*>\s*0/g) || []);
+  const askCopies    = (app.match(/\(want\s*>\s*0\)\s*\?\s*Math\.min\(want,/g) || []);
+  chk('глубина профиля выведена РОВНО ОДИН раз', depthCopies.length === 1, depthCopies);
+  chk('радиус горла выведен РОВНО ОДИН раз', throatCopies.length === 1, throatCopies);
+  /* Заказанную глубину не читают больше нигде: `p.threadDepth` доходит до правила ПАРАМЕТРОМ, и
+     развилка «заказано или авто» существует в файле ровно одна. */
+  chk('«заказано или авто» решается ровно в одном месте',
+      wantCopies.length === 0 && askCopies.length === 1, {threadDepth:wantCopies.length, want:askCopies.length});
+}
+
+console.log('=== резьба: числовое правило, а не по `p` — резьб в детали бывает две ===');
+{
+  const R = ov => Object.assign({}, defaultBoxParams(), {threadMode:'cap', threadD:30, threadPitch:3,
+                    threadLen:16, threadWall:2.5, threadDepth:0}, ov || {});
+  chk('auto: глубина от меньшего из полурадиуса и шага',
+      Math.abs(threadDepthOf(15, 3, 0) - Math.min(15*0.6, 3*0.55)) < 1e-12);
+  chk('и на крупном шаге решает уже радиус',
+      Math.abs(threadDepthOf(3, 20, 0) - 3*0.6) < 1e-12, threadDepthOf(3, 20, 0));
+  chk('заказанная глубина принимается как есть', Math.abs(threadDepthOf(15, 3, 1.2) - 1.2) < 1e-12);
+  chk('но упирается в семь десятых радиуса', Math.abs(threadDepthOf(15, 3, 99) - 15*0.7) < 1e-12);
+  chk('корень никогда не уходит за ноль', threadMinorROf(0.4, 20, 99) >= 0.5, threadMinorROf(0.4, 20, 99));
+  chk('и по `p` считается тем же правилом',
+      Math.abs(threadMinorR(R({threadD:27.4, threadPitch:2.7, threadDepth:0.9})) -
+               threadMinorROf(13.7, 2.7, 0.9)) < 1e-12);
+  /* Горло — то же самое: одно правило, и `capThroatR` лишь подставляет в него корень. */
+  chk('горло — это правило от корня', Math.abs(capThroatR(R({})) - throatROf(threadMinorR(R({})))) < 1e-12);
+  /* И СРАЗУ ОГОВОРКА, КОТОРУЮ ЧЕСТНЕЕ СКАЗАТЬ, ЧЕМ ЗАМОЛЧАТЬ: в правиле горла три слагаемых, но
+     работают из них два. Зажим «не ближе миллиметра к резьбе» решает исход только при корне от 2.42
+     до 2.63 мм — полоса в две десятых, — и двигает горло не более чем на пять сотых: ниже всё
+     съедает пол в 1.5 мм, выше — доля 0.62. Мутация, снимающая этот зажим, поведением не ловится
+     вовсе, и признать это правильнее, чем изобразить проверку. Пусть он останется (снять его значило
+     бы поменять поведение под видом свода), но числа зафиксированы: разъедутся — увидим. */
+  chk('доля решает на больших: горло Ø30 — это 0.62 корня',
+      Math.abs(throatROf(13.35) - 0.62*13.35) < 1e-12, throatROf(13.35));
+  chk('пол решает на мелких', Math.abs(throatROf(2.0) - 1.5) < 1e-12, throatROf(2.0));
+  chk('а зажим — только в полосе, и полоса эта уже трёх десятых миллиметра', (function(){
+      let lo = null, hi = null, d = 0;
+      for (let m = 0.5; m < 60; m += 0.001){
+        const withC = Math.max(1.5, Math.min(m - 1.0, m*0.62)), noC = Math.max(1.5, m*0.62);
+        if (Math.abs(withC - noC) > 1e-9){ if (lo === null) lo = m; hi = m; d = Math.max(d, noC - withC); }
+      }
+      return lo !== null && hi - lo < 0.3 && d < 0.06 && Math.abs(throatROf(2.6) - 1.6) < 1e-9;
+    })(), {полоса:'2.42…2.63', сдвиг:'≤0.05'});
+}
+
+console.log('=== резьба: потребители отвечают ТЕМ ЖЕ числом ===');
+{
+  const R = ov => Object.assign({}, defaultBoxParams(), {threadMode:'cap', threadD:30, threadPitch:3,
+                    threadLen:16, threadWall:2.5, threadDepth:0}, ov || {});
+  /* 1. ПОСТРОЕННАЯ ДЕТАЛЬ. Резьба крышки — внутренняя, поэтому корень у неё САМОЕ ШИРОКОЕ место
+     канала: щуп идёт лучом вдоль оси на разных радиусах и ищет, где материал кончается. Спрашивается
+     сетка, а не формула. */
+  for (const ov of [{}, {threadDepth:1.2}, {threadD:12, threadPitch:1.5}, {threadD:48, threadPitch:5, threadDepth:3}]){
+    const p = R(ov), t = buildThread(p), m = threadMinorR(p), clr = 0.4;
+    const hit = r => { let n = 0; for (const T of t){ const c = [(T[0][0]+T[1][0]+T[2][0])/3, (T[0][2]+T[1][2]+T[2][2])/3];
+                         if (Math.abs(Math.hypot(c[0], c[1]) - r) < 0.35) n++; } return n; };
+    /* Впадина женской резьбы лежит на minorR+clr, гребень — на majorR+clr; между ними материала нет. */
+    chk('крышка ' + JSON.stringify(ov) + ': поверхность есть на корне из функции',
+        hit(m + clr) > 20, {корень:+m.toFixed(3), граней:hit(m + clr)});
+    chk('крышка ' + JSON.stringify(ov) + ': и её нет там, где корень был бы при чужой глубине',
+        hit(m + clr) > 4*hit(m - 1.2 + clr), {науровне:hit(m + clr), нижена12:hit(m - 1.2 + clr)});
+  }
+  /* 2. ЦАНГА. Ширина лепестка печатается в предупреждении и считается ОТ КОРНЯ — значит, текст
+     выдаёт, каким корнем пользуется проверка печати. Сверяем с корнем из функции. */
+  const gp = Object.assign(R({threadMode:'gland', threadD:10, threadPitch:1, threadColletN:24,
+                              threadColletLen:8}), {});
+  const cwG = Math.max(1.2, Math.min(2.5, threadMinorR(gp)*0.22));
+  const bWant = colletFingerWidth(threadMinorR(gp), cwG, 24);
+  const wG = collectPrintWarnings(gp).find(x => /лепесток шириной/.test(x)) || '';
+  chk('цанга: названная ширина лепестка выведена из корня ИЗ ФУНКЦИИ',
+      wG.indexOf(bWant.toFixed(1)) >= 0, {втексте:wG, ждали:bWant.toFixed(1)});
+  /* ...И ЭТОГО МАЛО. Ширина печатается с одним знаком, а корень входит в неё поделённым на число
+     лепестков: подмена правила сдвигает её на сотые, и округление съедает подмену целиком — мутация
+     «цанга считает корень по-своему» прошла эту строку насквозь. Сравнение округлённого числа вообще
+     плохая проверка: у него разрешение хуже, чем ошибка, которую ищем.
+     Спрашивать надо ПОРОГ. «Лепестки короче своего радиуса» — это `cl < minorR`, ровно один
+     переход, и он ловится с точностью до пяти сотых, сколько бы знаков ни печаталось. */
+  const thr = Object.assign({}, defaultBoxParams(), {threadMode:'gland', threadD:30, threadPitch:5});
+  const mThr = threadMinorR(thr);
+  const shortW = ov => collectPrintWarnings(Object.assign({}, thr, ov)).some(x => /лепестки короче своего радиуса/.test(x));
+  chk('цанга: порог «короче своего радиуса» стоит РОВНО на корне из функции — снизу',
+      shortW({threadColletLen: mThr - 0.05}), {корень:+mThr.toFixed(3)});
+  chk('цанга: и сверху', !shortW({threadColletLen: mThr + 0.05}), {корень:+mThr.toFixed(3)});
+  /* 3. НАКИДНАЯ ГАЙКА. При незаданном канале выход под кабель — ровно половина корня, и Ø печатается
+     в предупреждении. Значит, названное число обязано равняться самому корню. */
+  for (const ov of [{threadD:30, threadPitch:3}, {threadD:16, threadPitch:2, threadDepth:1.1}]){
+    const cp = R(Object.assign({threadMode:'glandcap', threadBore:0, threadCapOut:0}, ov));
+    const wC = collectPrintWarnings(cp).find(x => /накидная гайка: шестигранник/.test(x)) || '';
+    const want = threadMinorR(cp).toFixed(1);
+    chk('накидная гайка ' + JSON.stringify(ov) + ': Ø под кабель — это корень из функции',
+        wC.indexOf('Ø' + want + ' мм') >= 0, {втексте:wC, ждали:want});
+  }
+  /* 4. НОСИК ПЕРЕХОДНИКА. Опубликованная спецификация обязана сойтись с правилом — и сойтись по
+     СВОЕМУ Ø и шагу, а не по крышкиным. */
+  const np = R({threadTopMode:'neck', threadNeckD:20, threadNeckPitch:2});
+  const ns = threadNeckSpec(np);
+  chk('носик: спецификация выдана', !!ns, ns);
+  chk('носик: стенка + канал — это его собственный корень',
+      ns && Math.abs((ns.bore/2 + ns.wall) - threadMinorROf(10, 2, 0)) < 1e-9,
+      ns && {корень:+(ns.bore/2 + ns.wall).toFixed(4), правило:+threadMinorROf(10, 2, 0).toFixed(4)});
+  /* И ГЛАВНОЕ — заказанная глубина профиля на носик НЕ ИДЁТ, и это не забывчивость, а решение:
+     ручка одна на деталь, а резьба на носике другая, своего Ø. Пиши я свод «как проще», глубина
+     утекла бы на носик, и Ø8 при заказе трёх миллиметров съело бы его до оси. */
+  const nsDeep = threadNeckSpec(R({threadTopMode:'neck', threadNeckD:20, threadNeckPitch:2, threadDepth:3}));
+  chk('носик: заказанная глубина профиля его НЕ трогает',
+      nsDeep && Math.abs(nsDeep.bore - ns.bore) < 1e-9 && Math.abs(nsDeep.wall - ns.wall) < 1e-9,
+      {без:ns && +ns.bore.toFixed(4), с:nsDeep && +nsDeep.bore.toFixed(4)});
+  chk('а саму крышку — трогает, иначе проверка выше ничего не значила бы',
+      Math.abs(threadMinorR(R({threadDepth:3})) - threadMinorR(R({}))) > 0.3,
+      {без:+threadMinorR(R({})).toFixed(3), с:+threadMinorR(R({threadDepth:3})).toFixed(3)});
+  /* 5. ВТУЛКА СТРУБЦИНЫ пользуется тем же правилом и по той же причине не читает ручку: у неё нет
+     `p` вовсе, она резьба ПОД БОЛТ ГЕНЕРАТОРА и живёт его Ø и шагом. Проверяется тем, что глубина
+     профиля не двигает струбцину ни на вершину. */
+  const gc = ov => buildGClamp(Object.assign({}, defaultBoxParams(), {mntMode:'gclamp', gcNut:'thread'}, ov));
+  const a = gc({}), b = gc({threadDepth:3});
+  chk('струбцина: втулка живёт болтом, а не ручкой глубины профиля',
+      a.length === b.length && a.every((T, i) => T.every((v, j) => v.every((x, k) => Math.abs(x - b[i][j][k]) < 1e-9))),
+      {без:a.length, с:b.length});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

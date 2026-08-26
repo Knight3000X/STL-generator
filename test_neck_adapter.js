@@ -149,6 +149,24 @@ console.log('=== the whole point: a passage runs right through it ===');
       {hi:+hi.toFixed(2), bore:+spec.bore.toFixed(2)});
   chk('канал не шире корня верхней резьбы', spec.bore < 24 - 1, {bore:+spec.bore.toFixed(2)});
 }
+/* СПЕЦИФИКАЦИЯ И ПОСТРОЕННАЯ ДЕТАЛЬ ОБЯЗАНЫ СХОДИТЬСЯ И ТАМ, ГДЕ ЗАКАЗАНА ГЛУБИНА ПРОФИЛЯ (v24.16.1).
+   Ручка глубины одна на деталь, а резьб в переходнике две: крышкина и носика. Носик её НЕ читает —
+   абсолютная глубина, годная для Ø30, на Ø24 съела бы стенку, — и это решение живёт в двух местах
+   сразу: в опубликованной спецификации и в самом построителе. Сойтись они обязаны, а разойтись могли
+   бы молча: канал сузился бы, переходник остался бы герметичным, и заметить это можно было бы только
+   на паре, которая не свинчивается. Поэтому канал МЕРЯЕТСЯ в сетке и сверяется со спецификацией. */
+{ for (const dep of [0, 0.8, 3]){
+    const t = mk({threadDepth:dep}), B = computeBBox(t), spec = threadNeckSpec(paramState.box);
+    const hi = boreAt(t, B.maxY-2.13, 0.31);
+    chk('глубина профиля ' + dep + ': канал носика в сетке равен объявленному',
+        !!spec && Math.abs(hi - spec.bore) < 0.4, {измерен:+hi.toFixed(2), объявлен:spec && +spec.bore.toFixed(2)});
+  }
+  /* И встречная проверка: у САМОЙ КРЫШКИ глубина профиля работает, иначе три строки выше сошлись бы
+     просто оттого, что ручка никуда не идёт. */
+  const shallow = threadMinorR(setp({threadDepth:0})), deep = threadMinorR(setp({threadDepth:3}));
+  chk('а корень крышки заказанной глубине послушен — и уходит ВНУТРЬ, как ей и положено',
+      shallow - deep > 0.3, {без:+shallow.toFixed(2), с:+deep.toFixed(2)});
+}
 { // The spigot is a MALE thread: outside it there is nothing, and its crest is the nominal Ø.
   const t = mk({}), B = computeBBox(t);
   let r = 0; for(const T of t) for(const v of T) if(v[1] > B.maxY-8 && v[1] < B.maxY-2) r = Math.max(r, Math.hypot(v[0],v[2]));

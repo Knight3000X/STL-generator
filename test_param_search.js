@@ -67,7 +67,8 @@ console.log('=== every foreign group names a kind the picker actually has ===');
                 hook:{hookMount:'wall'}, wallorg:{woBack:'cleat'}, pbox:{pbPart:'tray'},
                 stand:{psOn:true}, funnel:{fnOn:true}, coaster:{csMode:'round'},
                 litho:{ltMode:'flat'}, test:{tstMode:'temptower'}, frame:{frMode:'frame'}, tile:{tlMode:'tile'}, ball:{lnMode:'ball'},
-                clock:{clMode:'dial'}, spool:{spMode:'roller'}, seal:{sealMode:'oring'} };
+                clock:{clMode:'dial'}, spool:{spMode:'roller'}, seal:{sealMode:'oring'},
+                cardholder:{chMode:'wallet'} };
   for(const [group, kind] of Object.entries(GROUP_KIND)){
     const p = setp(ACT[kind] || {});
     chk('«'+group+'» оживает на «'+kind+'»', sectionRelevant(group, dominantMode(p), !!p.hollow), {});

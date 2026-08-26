@@ -134,6 +134,7 @@ console.log('=== мажорный разряд — это счётчик баз�
                  baseplate:{gfBaseplate:true}, logo3d:{logo3d:true}, litho:{ltMode:'flat'},
                  frame:{frMode:'frame'}, tile:{tlMode:'tile'}, ball:{lnMode:'ball'}, clock:{clMode:'dial'},
                  spool:{spMode:'roller'}, seal:{sealMode:'oring'},
+                 cardholder:{chMode:'wallet'},
                  test:{tstMode:'temptower'}};
   const D = defaultBoxParams();
   for (const k of shapes){

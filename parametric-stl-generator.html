@@ -1039,6 +1039,7 @@
         <button class="base-btn" data-base="wallorg" title="Настенный органайзер: французская планка / перфопанель + крючок/полка">🗄️ Органайзер</button>
         <button class="base-btn" data-base="pbox" title="Электрокорпус (project box): лоток + крышка + стойки под винты и PCB">📦 Корпус</button>
         <button class="base-btn" data-base="funnel" title="Воронка: конус со сливным носиком, оболочка постоянной толщины">🔻 Воронка</button>
+        <button class="base-btn" data-base="cardholder" title="Картодержатель с выдвижением карт: лоток с толкателем, печать в сборе; карта по ISO/IEC 7810 ID-1">💳 Картодержатель</button>
         <button class="base-btn" data-base="coaster" title="Подстаканник: круг или квадрат со скруглёнными углами, логотип внизу, двухцветная печать через AMS">☕ Подстаканник</button>
         <button class="base-btn" data-base="stand" title="Подставка под телефон / планшет: регулируемый угол, упор и кабельный вырез">📱 Подставка</button>
         <button class="base-btn" data-base="test" title="Тесты печати: калибровочные образцы — температурная башня, мосты и нависания, ретракт">📏 Тесты</button>
@@ -1245,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v24.21.0';
+const APP_VERSION = 'v25.0.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6149,6 +6150,19 @@ const SHAPE_PARAMS = {
     {group:'Воронка', key:'fnSpoutLen', label:'Воронка: длина носика', min:2, max:200, step:1, default:25, unit:'мм'},
     {group:'Воронка', key:'fnConeH', label:'Воронка: высота конуса', min:4, max:300, step:1, default:45, unit:'мм'},
     {group:'Воронка', key:'fnWall', label:'Воронка: толщина стенки', min:0.8, max:8, step:0.1, default:1.6, unit:'мм'},
+    {group:'Картодержатель', key:'chMode', label:'Картодержатель с выдвижением', type:'select', default:'none',
+      options:[{v:'none',t:'нет'},{v:'wallet',t:'лоток с толкателем (печать в сборе)'}],
+      hint:'Карта задаётся стандартом ISO/IEC 7810 ID-1: 85.60 × 53.98 × 0.76 мм. «Веером» карты не разъезжаются — это трение карты о карту, а не геометрия.'},
+    {group:'Картодержатель', key:'chCards', only:{chMode:['wallet']}, label:'Сколько карт', min:1, max:20, step:1, default:6, unit:'', int:true},
+    {group:'Картодержатель', key:'chTravel', only:{chMode:['wallet']}, label:'Ход толкателя', min:5, max:60, step:1, default:20, unit:'мм'},
+    {group:'Картодержатель', key:'chLip', only:{chMode:['wallet']}, label:'Вылет губы над пачкой', min:0.3, max:6, step:0.1, default:1.2, unit:'мм'},
+    {group:'Картодержатель', key:'chSlot', only:{chMode:['wallet']}, label:'Ширина паза под толкатель (0 = авто)', min:0, max:30, step:0.5, default:0, unit:'мм'},
+    {group:'Картодержатель', key:'chBlade', only:{chMode:['wallet']}, label:'Толщина лопасти толкателя (0 = авто)', min:0, max:12, step:0.1, default:0, unit:'мм'},
+    {group:'Картодержатель', key:'chTabLen', only:{chMode:['wallet']}, label:'Язычок у устья: вылет', min:3, max:40, step:0.5, default:8, unit:'мм'},
+    {group:'Картодержатель', key:'chTabT', only:{chMode:['wallet']}, label:'Язычок: толщина', min:0.4, max:4, step:0.1, default:1, unit:'мм'},
+    {group:'Картодержатель', key:'chTabW', only:{chMode:['wallet']}, label:'Язычок: ширина', min:3, max:40, step:0.5, default:8, unit:'мм'},
+    {group:'Картодержатель', key:'chTabLift', only:{chMode:['wallet']}, label:'Язычок: на сколько карта его поднимает', min:0.1, max:3, step:0.05, default:0.4, unit:'мм'},
+    {group:'Картодержатель', key:'chCardT', only:{chMode:['wallet']}, label:'Толщина одной карты', min:0.4, max:3, step:0.05, default:0.76, unit:'мм'},
     {group:'Подстаканник', key:'csMode', label:'Подстаканник', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'round',t:'круглый'},{v:'square',t:'квадратный (скруглённые углы)'}]},
     {group:'Подстаканник', key:'csPart', label:'Что печатаем', type:'select', default:'body',
@@ -7607,6 +7621,7 @@ function dominantMode(p){
   if (p.woBack && p.woBack !== 'none') return 'wallorg';
   if (p.pbPart && p.pbPart !== 'none') return 'pbox';
   if (lithoOn(p)) return 'litho';
+  if (p.chMode && p.chMode !== 'none') return 'cardholder';
   if (p.csMode && p.csMode !== 'none') return 'coaster';
   if (p.frMode && p.frMode !== 'none') return 'frame';
   if (p.tlMode && p.tlMode !== 'none') return 'tile';
@@ -7699,6 +7714,7 @@ function sectionRelevant(key, mode, hollow){
     case 'Крючок': return mode==='hook';
     case 'Настенный органайзер': return mode==='wallorg';
     case 'Корпус (электроника)': return mode==='pbox';
+    case 'Картодержатель': return mode==='cardholder';
     case 'Подстаканник': return mode==='coaster';
     case 'Рамка для фото': return mode==='frame';
     case 'Настенная плитка': return mode==='tile';
@@ -7725,6 +7741,10 @@ function sectionRelevant(key, mode, hollow){
   if (mode==='logo3d')    return key==='Размеры';
   if (mode==='wallorg')   return key==='Настенный органайзер';
   if (mode==='pbox')      return key==='Корпус (электроника)';
+  /* КАРТОДЕРЖАТЕЛЬ — форма со своей единственной группой, как подстаканник и «Тесты». Без этой строки
+     он проваливался бы в общий `return true` ниже и показывал размеры куба, многогранник, наклон стенок
+     и Gridfinity — ровно то, о чём предупреждает комментарий у «Тестов». Проверка это и поймала. */
+  if (mode==='cardholder') return key==='Картодержатель';
   if (mode==='coaster')   return key==='Подстаканник';
   if (mode==='frame')     return key==='Рамка для фото';
   if (mode==='tile')      return key==='Настенная плитка';
@@ -7766,7 +7786,7 @@ const GROUP_KIND = {
   'Дюбель по гипсокартону':'thread',
   'Шестерня':'gear', 'Крепёж / монтаж':'mount', 'Крючок':'hook',
   'Настенный органайзер':'wallorg', 'Корпус (электроника)':'pbox',
-  'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster',
+  'Подставка (телефон / планшет)':'stand', 'Воронка':'funnel', 'Подстаканник':'coaster', 'Картодержатель':'cardholder',
   'Рамка для фото':'frame', 'Настенная плитка':'tile', 'Ажурный шар':'ball', 'Настенные часы':'clock',
   'Держатель катушки':'spool',
   'Уплотнение':'seal',
@@ -7777,6 +7797,7 @@ const KIND_LABEL = {
   keycap:'Кейкап', sheet:'Лист / панель', thread:'Резьба', hinge:'Петля', gear:'Шестерня',
   mount:'Крепёж', hook:'Крючок', wallorg:'Органайзер', pbox:'Корпус', stand:'Подставка',
   funnel:'Воронка', die:'Кость', baseplate:'Gridfinity', box:'Куб / призма', coaster:'Подстаканник',
+  cardholder:'Картодержатель',
   frame:'Рамка для фото', tile:'Настенная плитка', ball:'Ажурный шар', clock:'Настенные часы',
   spool:'Держатель катушки', seal:'Уплотнение', litho:'Литофания', test:'Тесты',
   logo3d:'Объёмный логотип',   // dominantMode returns it, so it needs a name like every other kind
@@ -8360,6 +8381,7 @@ function setBaseShape(kind){
   setSel('hookMount',  kind==='hook'   ? 'wall'   : 'none');
   setSel('woBack',     kind==='wallorg'? 'cleat'  : 'none');
   setSel('pbPart',     kind==='pbox'   ? 'tray'   : 'none');
+  setSel('chMode',     kind==='cardholder' ? 'wallet' : 'none');
   setSel('csMode',     kind==='coaster'? 'round'  : 'none');
   setSel('frMode',     kind==='frame'  ? 'frame'  : 'none');
   setSel('tlMode',     kind==='tile'   ? 'tile'   : 'none');
@@ -13138,6 +13160,140 @@ function articHeadTris(e, seg){
        : e.endB === 'board' ? articBoardHolderTris(e, seg)
        : e.endB === 'lens'  ? articLensRingTris(e, seg)
        : [];
+}
+/* КАРТОДЕРЖАТЕЛЬ С ВЫДВИЖЕНИЕМ (v24.22.0) — лоток с толкателем, печатается В СБОРЕ.
+
+   КАРТА — СТАНДАРТ, А НЕ ВЫДУМАННОЕ ЧИСЛО. ISO/IEC 7810 ID-1: 85.60 × 53.98 × 0.76 мм. Это таблица
+   того же рода, что `NUT_HEX` и шаги ISO 261: размер, который нельзя «прикинуть», потому что карта
+   приходит из кармана, а не из панели.
+
+   ЧТО ЗДЕСЬ СЧИТАЕТСЯ. Одно число, и оно не про толкатель: УСИЛИЕ ЗАКЛАДКИ КАРТЫ. Карты держат губы,
+   нависающие над пачкой; чтобы вложить карту, стенку надо отогнуть наружу ровно на вылет губы. Стенка —
+   консоль, и считается она той же механикой, что защёлка, зажим для пакета и держатель платы: прогиб
+   задан, отсюда сила и напряжение в корне. Слабые губы — карты выпадут, сильные — лоток треснет при
+   закладке, и ни то ни другое на экране не видно.
+
+   ЧЕГО ЗДЕСЬ НЕ ОБЕЩАЮТ, и это записано в дорожную карту ДО начала работы: «карты веером». Разъезд
+   карт лесенкой — поведение ТРЕНИЯ карты о карту, а не геометрии: зависит от того, чем карта покрыта и
+   насколько затёрта. Проверяемо «толкатель выдвигает пачку на столько-то и не вываливается» — это и
+   проверяется.
+
+   ПОЧЕМУ ПРИЗМЫ ВДОЛЬ ДЛИНЫ КАРТЫ. Паз под толкатель идёт во всю длину, и это не упрощение: у призмы
+   сечение постоянно, а частичный паз пришлось бы РЕЗАТЬ — резать в этом приложении нечем. Толкатель
+   удерживают не концы паза, а лопасть над полом и пятка под ним: обе шире паза. */
+const CARD_ISO = { w: 53.98, l: 85.60, t: 0.76 };   // ISO/IEC 7810 ID-1
+const CARD_WALL  = 1.6;    // стенка лотка
+const CARD_FLOOR = 1.2;    // пол
+const CARD_LIP   = 1.0;    // толщина губы
+const CARD_END   = 2.0;    // задняя стенка и передняя перемычка
+function cardSpec(p){
+  const cl_ = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
+  const n = Math.round(cl_(p.chCards, 1, 20, 6));
+  const gap = Math.max(0.15, Math.min(1.2, fitTuned(p, p.pipGap != null ? p.pipGap : 0.3)));
+  const lipOver = cl_(p.chLip, 0.3, 6, 1.2);
+  const travel = cl_(p.chTravel, 5, 60, 20);
+  const cardT = cl_(p.chCardT, 0.4, 3, CARD_ISO.t);
+  const stack = n*cardT + gap;                       // высота пачки с печатным зазором
+  const cw = CARD_ISO.w + gap;                       // ширина кармана
+  const clen = CARD_ISO.l + gap;                     // длина карты в кармане
+  const tF = CARD_FLOOR, tW = CARD_WALL, tLip = CARD_LIP, tE = CARD_END;
+  const xi = cw/2, xo = xi + tW;                     // внутренняя и наружная грань стенки
+  /* СТЕНКА ПОДНИМАЕТСЯ ПОД ЯЗЫЧОК, а не язычок торчит над стенкой. Первая запись давала ему выступать:
+     габарит расходился с названным ровно на этот выступ, а сам язычок оставался снаружи незащищённым —
+     задеть его в кармане проще всего. */
+  const hWmin = stack + tLip;
+  const tabT0 = cl_(p.chTabT, 0.4, 4, 1.0), tabLift0 = cl_(p.chTabLift, 0.1, 3, 0.4);
+  const hW = Math.max(hWmin, stack + tabLift0 + tabT0);
+  const sw = cl_(p.chSlot, 0, 30, 0) > 0 ? cl_(p.chSlot, 0, 30, 0) : Math.max(6, cw*0.22);
+  const blade = cl_(p.chBlade, 0, 12, 0) > 0 ? Math.max(1.6, cl_(p.chBlade, 0, 12, 0)) : 2.4;
+  const over = Math.max(1.2, sw*0.35);               // насколько лопасть и пятка шире паза
+  const padT = Math.max(1.2, tF);                    // пятка под полом
+  const inner = clen + travel + blade;               // карта, ход и сама лопасть
+  const yBot = -(padT + gap + 0.8);                   // низ передней перемычки — самая нижняя точка
+  const outer = { x: 2*xo, y: (tF + hW) - yBot, z: inner + 2*tE, yBot, yTop: tF + hW };
+  /* ЗДЕСЬ Я ПОТЯНУЛСЯ ЗА ПРИВЫЧНЫМ МОЛОТКОМ И ПОЛУЧИЛ АБСУРД — стоит записать, потому что число было
+     правдоподобным по виду. Первая запись считала УСИЛИЕ ЗАКЛАДКИ как отгиб боковой стенки на вылет
+     губы: та же консоль, что у защёлки, зажима и держателя платы. Вышло 1677 Н на карту и 214 МПа при
+     65 допустимых — то есть «карту в кошелёк не вложить руками».
+     Абсурд был не в формуле, а в замысле: у лотка в таком виде НЕТ упругого элемента вовсе. Стенка
+     высотой шесть миллиметров и толщиной полтора, да ещё шириной во всю длину карты, не пружина —
+     она балка. Карты в такой лоток и не вкладывают сверху: их вдвигают с устья В СВОЕЙ ПЛОСКОСТИ, и
+     ничему гнуться не нужно.
+     Значит, упругий элемент надо ЗАВЕСТИ, а не выдумать ему работу: короткий ЯЗЫЧОК у устья, который
+     верхняя карта приподнимает, выходя. Он и держит пачку от выпадения, и он же считается — и числа у
+     него человеческие, потому что он короткий, тонкий и узкий, а не во всю длину лотка. */
+  const mat = snapMatOf(p, null, 'petg');
+  const tabL = cl_(p.chTabLen, 3, 40, 8);            // вылет язычка над устьем
+  const tabT = tabT0;                                // его толщина
+  const tabW = cl_(p.chTabW, 3, 40, 8);              // ширина
+  const tabLift = tabLift0;                          // на сколько карта его поднимает
+  const Itab = tabW*Math.pow(tabT, 3)/12;
+  const F = 3*mat.E*Itab*tabLift/Math.pow(tabL, 3);  // Н, чтобы вывести карту из-под язычка
+  const sigma = 3*mat.E*tabLift*tabT/(2*tabL*tabL);  // МПа в корне язычка
+  const allow = mat.E*(mat.eps/100);
+  /* ГЕОМЕТРИЧЕСКИЕ ГАРАНТИИ, которые не требуют никакой упругости и потому надёжнее её:
+     сколько карты вылезает при полном ходе и сколько её остаётся под губами. */
+  const stickOut = travel;                           // на столько пачка выходит из устья
+  const held = clen - travel;                        // и на столько остаётся в лотке
+  const heldOk = held > CARD_ISO.l*0.35;
+  /* МАССЫ ЗДЕСЬ НЕТ, И ЭТО РЕШЕНИЕ. Первая запись складывала объёмы частей — пол, стенки, губы,
+     торцы — и разошлась с сеткой на шестнадцать процентов: части ПЕРЕСЕКАЮТСЯ, и сумма считает
+     перекрытия дважды, а паз под толкатель не вычитает вовсе. Сделать формулу точной здесь можно, но
+     она вышла бы длиннее самой детали; называть же неточное число граммов хуже, чем не называть
+     никакого — расход филамента человек и так увидит в слайсере, а вот доверие к остальным числам
+     сломать легко. Габарит назван, и его достаточно. */
+  return { n, gap, cardT, stack, cw, clen, tF, tW, tLip, tE, xi, xo, hW, sw, blade, over, padT,
+           lipOver, travel, inner, outer, mat, F, sigma, allow,
+           tabL, tabT, tabW, tabLift, stickOut, held, heldOk,
+           weak: F < 0.3, tooStiff: sigma > allow, slotWide: sw > cw*0.5 };
+}
+function buildCardHolder(p){
+  const s = cardSpec(p), out = [];
+  const zB = -s.outer.z/2, zF = s.outer.z/2;
+  /* ДВЕ ПОЛОВИНЫ ЛОТКА — по призме вдоль длины карты. Между ними паз во всю длину; их внутренние
+     грани лежат в РАЗНЫХ плоскостях (±sw/2), поэтому совпадающим граням здесь взяться неоткуда. */
+  for (const sgn of [1, -1]){
+    const x0 = sgn*s.sw/2, xI = sgn*s.xi, xO = sgn*s.xo, xL = sgn*(s.xi - s.lipOver);
+    const P = [[x0, 0], [xO, 0], [xO, s.tF + s.hW], [xL, s.tF + s.hW],
+               [xL, s.tF + s.stack], [xI, s.tF + s.stack], [xI, s.tF], [x0, s.tF]];
+    /* ПЕРЕСТАНОВКА ОСЕЙ x↔z — ЭТО ОТРАЖЕНИЕ, а не поворот: определитель −1, и все треугольники
+       выходят вывернутыми наизнанку. Герметичность такого не видит вовсе — она не спрашивает, какой
+       стороной повёрнута грань, — а объём получается отрицательным. Ловится это проверкой `vol > 0`,
+       и ею же поймалось. Меняем местами две вершины треугольника: отражение плюс перестановка снова
+       дают правильный обход. */
+    for (const T of prismXPolyTris(P.map(q => [q[1], q[0]]), zB + s.tE, zF - s.tE))
+      out.push([T[0], T[2], T[1]].map(v => [v[2], v[1], v[0]]));
+  }
+  /* ЗАДНЯЯ СТЕНКА и ПЕРЕДНЯЯ ПЕРЕМЫЧКА — они и держат половины вместе. Обе СТРОГО У́ЖЕ половин по
+     ширине и утоплены в пол по высоте: общих плоскостей с половинами нет ни одной. */
+  const xn = s.xo - 0.5;
+  for (const T of boxSpanTris(-xn, xn, 0.6, s.tF + s.hW - 0.5, zB, zB + s.tE + 0.6)) out.push(T);
+  for (const T of boxSpanTris(-xn, xn, -s.padT - s.gap - 0.8, 0.6, zF - s.tE - 0.6, zF)) out.push(T);
+  /* ЯЗЫЧОК У УСТЬЯ — единственный упругий элемент детали. Растёт он из передней перемычки НАЗАД, над
+     пачкой, и верхняя карта приподнимает его, выходя. Строго у́же половин и утоплен в перемычку телом:
+     общих плоскостей ни с чем нет. */
+  {
+    const yT0 = s.tF + s.stack + s.tabLift, yT1 = yT0 + s.tabT;
+    for (const T of boxSpanTris(-s.tabW/2, s.tabW/2, yT0, yT1,
+                                zF - s.tE - 0.6 - s.tabL, zF - 0.4)) out.push(T);
+  }
+  /* ТОЛКАТЕЛЬ — ОДНО тело: профиль-двутавр (пятка под полом, стойка сквозь паз, лопасть над полом),
+     протянутый вдоль своей толщины. Зазор со всех сторон — тот же печатный. */
+  /* НАЧАЛО ТОЛКАТЕЛЯ ОТСЧИТЫВАЕТСЯ ОТ НАСТОЯЩЕГО КРАЯ ЗАДНЕЙ СТЕНКИ, а не от её номинала: стенка
+     утоплена в лоток на 0.6, и первая запись ставила толкатель прямо в неё — 21 вершина оказалась
+     внутри лотка. Печать в сборе от такого не спасает: сетка остаётся герметичной, а печатается один
+     сросшийся кусок.
+     И СТОЙКА У́ЖЕ ПАЗА НА ЗАЗОР С КАЖДОЙ СТОРОНЫ, а не на половину зазора: `sw/2 − g/2` давало по
+     0.175 мм на сторону при заказанных 0.35, и мерная проверка это поймала. */
+  const g = s.gap, zP0 = zB + s.tE + 0.6 + g, zP1 = zP0 + s.blade;
+  const wStem = s.sw/2 - g, wWide = s.sw/2 + s.over;
+  const yPad0 = -s.padT - g, yPad1 = -g, yBl0 = s.tF + g, yBl1 = s.tF + s.stack;
+  const I2 = [[-wWide, yPad0], [wWide, yPad0], [wWide, yPad1], [wStem, yPad1],
+              [wStem, yBl0], [wWide, yBl0], [wWide, yBl1], [-wWide, yBl1],
+              [-wWide, yBl0], [-wStem, yBl0], [-wStem, yPad1], [-wWide, yPad1]];
+  for (const T of prismXPolyTris(I2.map(q => [q[1], q[0]]), zP0, zP1))
+    out.push([T[0], T[2], T[1]].map(v => [v[2], v[1], v[0]]));
+  return out;
 }
 /* ОСНОВАНИЕ ТРЕТЬЕЙ РУКИ (v24.18.0) — плита с гнёздами под хвостовики.
 
@@ -24515,6 +24671,9 @@ function buildTrisForShapeCore(shape, p) {
     if (p.pbPart && p.pbPart !== 'none') {
       return snapWeldTris(buildProjectBox(p));
     }
+    if (p.chMode && p.chMode !== 'none') {
+      return snapWeldTris(buildCardHolder(p));
+    }
     if (p.csMode && p.csMode !== 'none') {
       return snapWeldTris(buildCoaster(p, typeof logoResolution !== 'undefined' ? logoResolution : 120));
     }
@@ -24927,7 +25086,7 @@ const GROUP_TAB = {
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
   'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Логотипы (рельеф на гранях)':'finish',
-  'Держатель катушки':'form','Уплотнение':'form',
+  'Держатель катушки':'form','Уплотнение':'form','Картодержатель':'form',
 };
 for (const g of PIP_GROUPS) GROUP_TAB[g] = 'form';   // the print-in-place family lives under «Форма»
 function buildAllParamUI() {
@@ -26201,6 +26360,9 @@ function activeShapeLabel() {
       sphere:'купола', fit:'посадка', tower:'башня диаметров', dim:'проверка размеров',
       wall:'тонкие стенки', fan:'веер нависаний', string:'стрункость', spiral:'кольца / спираль', infill:'ячейка заполнения', surface:'площадка корки'})[p.tstMode];
   if (p.pbPart && p.pbPart !== 'none') return 'электрокорпус: ' + ({tray:'лоток',lid:'крышка',both:'лоток + крышка'})[p.pbPart];
+  if (p.chMode && p.chMode !== 'none'){ const g = cardSpec(p);
+    return 'картодержатель на ' + g.n + ' карт (' + Math.round(g.outer.x) + '×' +
+           Math.round(g.outer.z) + '×' + g.outer.y.toFixed(1) + ', ход ' + Math.round(g.travel) + ')'; }
   if (p.csMode && p.csMode !== 'none') { const g = coasterSpec(p);
     return 'подстаканник ' + (g.shape==='round' ? 'Ø' : '') + Math.round(g.size) + (g.shape==='round' ? '' : ' мм') +
            (g.part==='inlay' ? ' — вставка' : ''); }
@@ -27953,6 +28115,39 @@ function collectPrintWarnings(p){
     const ns = threadNeckSpec(p);
     if (!ns) w.push('переходник: под такой резьбой не остаётся потолка, чтобы открыть в нём канал — крышка вышла глухой');
     else if (ns.wall < 0.8) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше 0.8 мм');
+  }
+  if (p.chMode && p.chMode !== 'none'){
+    const g = cardSpec(p);
+    w.push('картодержатель: ' + g.n + ' карт по ' + g.cardT.toFixed(2) + ' мм (ISO/IEC 7810 ID-1 — ' +
+           CARD_ISO.l.toFixed(2) + '×' + CARD_ISO.w.toFixed(2) + '×' + CARD_ISO.t.toFixed(2) +
+           '), габарит ' + g.outer.x.toFixed(1) + '×' + g.outer.z.toFixed(1) + '×' + g.outer.y.toFixed(1) +
+           ' мм. Печатается В СБОРЕ: толкатель отделён зазором ' +
+           g.gap.toFixed(2) + ' мм со всех сторон');
+    /* ГЕОМЕТРИЧЕСКИЕ ГАРАНТИИ ИДУТ ПЕРВЫМИ, потому что они надёжнее упругих: они не зависят ни от
+       материала, ни от того, как напечатано. */
+    w.push('при полном ходе пачка выходит на ' + g.stickOut.toFixed(0) + ' мм, а под губами остаётся ' +
+           g.held.toFixed(0) + ' мм карты — это и держит её от вываливания');
+    if (!g.heldOk)
+      w.push('ход ' + g.travel.toFixed(0) + ' мм оставляет под губами всего ' + g.held.toFixed(0) +
+             ' мм карты: пачка вылетит целиком. Ход меньше трети длины карты — это ' +
+             Math.floor(CARD_ISO.l*0.6) + ' мм и меньше');
+    /* И ТОЛЬКО ПОТОМ — УПРУГОЕ. Язычок здесь единственный, кто гнётся, и сказать надо, что он ОДИН:
+       боковые стенки не пружины, карты вдвигают с устья в своей плоскости, а не вкладывают сверху. */
+    w.push('держит пачку ЯЗЫЧОК у устья: ' + g.F.toFixed(1) + ' Н, чтобы вывести карту из-под него, ' +
+           g.sigma.toFixed(0) + ' МПа в его корне при ' + g.allow.toFixed(0) + ' допустимых. Он тут ' +
+           'единственный упругий: стенки лотка — балки, и карты в него ВДВИГАЮТ с устья, а не ' +
+           'вкладывают сверху');
+    if (g.tooStiff)
+      w.push('язычок в корне нагружен выше допустимого (' + g.sigma.toFixed(0) + ' против ' +
+             g.allow.toFixed(0) + ' МПа) — он отломится, а не согнётся. Длиннее язычок или тоньше: ' +
+             'напряжение падает как КВАДРАТ длины и растёт прямо с толщиной');
+    if (g.weak)
+      w.push('язычок держит всего ' + g.F.toFixed(2) + ' Н — пачка выпадет сама. Короче язычок, ' +
+             'толще или выше подъём');
+    if (g.slotWide)
+      w.push('паз под толкатель шире половины кармана — карты провиснут в него серединой');
+    w.push('«веером» карты НЕ разъезжаются, и обещать этого нельзя: лесенка зависит от трения карты о ' +
+           'карту, а не от геометрии. Толкатель выдвигает пачку целиком');
   }
   if (p.csMode && p.csMode !== 'none'){
     const g = coasterSpec(p);

@@ -120,7 +120,7 @@ console.log('=== имена не пересекаются с хомутом ==='
      осмысленно и строила правдоподобную деталь — поймать это можно было только заметив, что «авто» не
      работает. Проверка утверждает и то, и другое: свои имена читаются, чужое не читается. */
   const own = SHAPE_PARAMS.box.filter(r => r.w && r.w.indexOf('gclamp') >= 0);
-  chk('у струбцины десять своих строк', own.length === 10, own.map(r => r.key));
+  chk('у струбцины пятнадцать своих строк', own.length === 15, own.map(r => r.key));
   chk('и все они начинаются с gc', own.every(r => /^gc/.test(r.key)), own.map(r => r.key));
   chk('ни одна не зовётся clampW', own.every(r => r.key !== 'clampW'));
   chk('а clampW принадлежит хомуту',
@@ -622,6 +622,161 @@ console.log('\n=== печатная резьба вместо гнезда по�
             }
     chk('72 набора с печатной резьбой герметичны', bad === 0 && n === 72, worst || n);
     chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
+  }
+}
+
+console.log('\n=== подвижный пятак на шаровом шарнире ===');
+{
+  const D = ov => Object.assign({}, defaultBoxParams(), {mntMode:'gclamp', gcPart:'pad'}, ov || {});
+  const ds = ov => gclampPadSpec(D(ov));
+  const dm = ov => buildGClampPad(D(ov));
+  const dw = ov => collectPrintWarnings(D(ov));
+  /* УМОЛЧАНИЕ — СКОБА. Пятак добавлен рядом, а не вместо: деталь по умолчанию не меняется. */
+  chk('умолчание строит скобу, а не пятак',
+      Math.abs(meshVolume(raw({})) - meshVolume(buildGClamp(G({gcPart:'clamp'})))) < 1e-9);
+  chk('пятак включается выбором', meshVolume(dm({})) > 0 &&
+      Math.abs(meshVolume(dm({})) - meshVolume(raw({}))) > 1);
+
+  /* ЗАМОК ДЕРЖИТ: устье уже шара. Ноль или меньше — пятак слетает, а деталь при этом строится и
+     выглядит правдоподобно. */
+  for (const ov of [{}, {gcBolt:4}, {gcBolt:16}, {gcPadSwing:3}, {gcPadSwing:40}, {gcPadBall:40}]){
+    const d = ds(ov);
+    chk('устье уже шара '+JSON.stringify(ov), d.captive === true && d.grip >= d.gripMin - 1e-9,
+        {устье:+d.rMouth.toFixed(2), шар:+d.R.toFixed(2), захват:+d.grip.toFixed(2)});
+  }
+  /* ХОД УПИРАЕТСЯ В ЗАХВАТ, и предел СЧИТАЕТСЯ, а не назначается: он ровно там, где устье сравнялось бы
+     с шаром. Проверяется значением, а не флажком — флажок считается отдельно и мутацию «не урезать»
+     пропустил бы насквозь, как уже пропустил у губы зажима. */
+  {
+    const d = ds({gcPadSwing:40});
+    chk('ход урезан', d.swing < 40 - 1e-9 && Math.abs(d.swing - d.swingMax) < 1e-9,
+        {ход:+d.swing.toFixed(2), предел:+d.swingMax.toFixed(2)});
+    chk('и ровно там, где захват стал бы меньше трёх десятых',
+        Math.abs(d.grip - d.gripMin) < 1e-6, {захват:+d.grip.toFixed(3)});
+    chk('урезание помечено', d.swingCut === true);
+    chk('и названо вслух', dw({gcPadSwing:40}).some(x => /ход урезан с/.test(x)), dw({gcPadSwing:40}));
+    chk('просторный ход не трогают', ds({gcPadSwing:3}).swingCut === false &&
+        Math.abs(ds({gcPadSwing:3}).swing - 3) < 1e-9);
+    chk('крупнее шар — больше ход помещается', ds({gcPadBall:40}).swingMax > ds({gcPadBall:14}).swingMax,
+        [ds({gcPadBall:14}).swingMax, ds({gcPadBall:40}).swingMax]);
+  }
+  /* ДАВЛЕНИЕ — ДВА РАЗНЫХ ЧИСЛА ИЗ ОДНОГО УСИЛИЯ, и усилие берётся у самой скобы, а не назначается. */
+  {
+    const d = ds({});
+    chk('усилие взято у скобы', Math.abs(d.F - gclampSpec(D({})).Pmax) < 1e-9, d.F);
+    chk('давление на заготовке — усилие на площадь пятака',
+        Math.abs(d.pWork - d.F/(Math.PI*d.rPad*d.rPad)) < 1e-12, d.pWork);
+    chk('в гнезде — на проекцию шара', Math.abs(d.pSeat - d.F/(Math.PI*d.R*d.R)) < 1e-12, d.pSeat);
+    /* КВАДРАТ, А НЕ ЛИНЕЙНО: вдвое шире пятак — вчетверо меньше давление. Ошибись здесь степенью, и
+       совет «пятак шире» стал бы вдвое слабее, чем есть. */
+    /* Числа взяты ЗАВЕДОМО БОЛЬШЕ ПОТОЛКА: у́же чашки пятак не бывает, и на двадцати миллиметрах он
+       упирается в этот предел — отношение выходит не четыре, а два и девять десятых. Проверка на
+       двадцати и сорока падала именно поэтому, а не из-за степени. */
+    chk('вдвое шире пятак — ровно вчетверо меньше давление',
+        Math.abs(ds({gcPadD:30}).pWork/ds({gcPadD:60}).pWork - 4) < 1e-9,
+        [ds({gcPadD:30}).pWork, ds({gcPadD:60}).pWork]);
+    chk('и у́же чашки пятак не бывает', ds({gcPadD:2}).rPad >= ds({gcPadD:2}).padRmin - 1e-9 &&
+        ds({gcPadD:2}).padRcut === true, [ds({gcPadD:2}).rPad, ds({gcPadD:2}).padRmin]);
+    chk('и предел древесины назван числом', dw({}).some(x => /мнётся от 5 МПа/.test(x)), dw({}));
+    chk('узкий пятак назван мнущим древесину',
+        ds({gcPadD:0, gcBolt:16, gcT:40, gcW:60}).pWork > WOOD_CRUSH
+          ? dw({gcPadD:0, gcBolt:16, gcT:40, gcW:60}).some(x => /промнутся/.test(x)) : true);
+    chk('а просторный не ругается', !dw({gcPadD:60}).some(x => /промнутся/.test(x)));
+  }
+  /* ПЕЧАТЬ В СБОРЕ. Тот же вопрос, что у зажима для пакета, и тот же способ его задать: связностью
+     вершин не спросить — тела собраны из отдельных оболочек, — поэтому объёмом и мерой. */
+  {
+    const DIR = [0.113, 0.2317, 0.9661];
+    const prep = tris => { const A = new Float64Array(tris.length*14); let m = 0;
+      for (const T of tris){ const p0 = T[0];
+        const e1x=T[1][0]-p0[0], e1y=T[1][1]-p0[1], e1z=T[1][2]-p0[2];
+        const e2x=T[2][0]-p0[0], e2y=T[2][1]-p0[1], e2z=T[2][2]-p0[2];
+        const hx=DIR[1]*e2z-DIR[2]*e2y, hy=DIR[2]*e2x-DIR[0]*e2z, hz=DIR[0]*e2y-DIR[1]*e2x;
+        const a2 = e1x*hx + e1y*hy + e1z*hz; if (Math.abs(a2) < 1e-12) continue;
+        const nx=e1y*e2z-e1z*e2y, ny=e1z*e2x-e1x*e2z, nz=e1x*e2y-e1y*e2x;
+        const o = m*14; m++;
+        A[o]=p0[0];A[o+1]=p0[1];A[o+2]=p0[2];A[o+3]=e1x;A[o+4]=e1y;A[o+5]=e1z;
+        A[o+6]=e2x;A[o+7]=e2y;A[o+8]=e2z;A[o+9]=hx;A[o+10]=hy;A[o+11]=hz;A[o+12]=1/a2;
+        A[o+13]=(nx*DIR[0]+ny*DIR[1]+nz*DIR[2]) > 0 ? 1 : -1; }
+      return {A, m}; };
+    const wind = (M, px, py, pz) => { const A = M.A; let n = 0;
+      for (let i = 0, o = 0; i < M.m; i++, o += 14){
+        const sx=px-A[o], sy=py-A[o+1], sz=pz-A[o+2], f=A[o+12];
+        const u = f*(sx*A[o+9] + sy*A[o+10] + sz*A[o+11]); if (u < 1e-9 || u > 1-1e-9) continue;
+        const e1x=A[o+3], e1y=A[o+4], e1z=A[o+5];
+        const qx=sy*e1z-sz*e1y, qy=sz*e1x-sx*e1z, qz=sx*e1y-sy*e1x;
+        const v = f*(DIR[0]*qx + DIR[1]*qy + DIR[2]*qz); if (v < 1e-9 || u+v > 1-1e-9) continue;
+        if (f*(A[o+6]*qx + A[o+7]*qy + A[o+8]*qz) <= 1e-9) continue; n += A[o+13]; }
+      return n; };
+    /* ШАР И ЧАШКА — РАЗНЫЕ ТЕЛА, и разделяет их зазор подвижности. Строятся они здесь ЗАНОВО, теми же
+       помощниками, что и в построителе: иначе спросить «слиплись ли» не у чего — построитель отдаёт их
+       одной сеткой. Совпадение объёмов проверяется отдельно и связывает эту сборку с настоящей. */
+    for (const ov of [{}, {gcBolt:4}, {gcBolt:16}, {gcPadSwing:3}]){
+      const d = ds(ov), seg = Math.max(48, Math.round(d.Ri*5)), NS = 48;
+      const cy = GC_PAD_FLOOR + d.Ri;
+      const phi0 = 8*Math.PI/180, rHole = d.Ri*Math.sin(phi0), yFloor = cy - d.Ri*Math.cos(phi0);
+      const yRim = cy - d.Ri*Math.cos(d.phiM);
+      const inn = [[rHole, 0]], out = [[d.rPad, 0]];
+      for (let k = 0; k <= NS; k++){ const f = phi0 + (d.phiM - phi0)*k/NS;
+        inn.push([Math.max(0.05, d.Ri*Math.sin(f)), cy - d.Ri*Math.cos(f)]);
+        out.push([d.rPad, yFloor + (yRim - yFloor)*k/NS]); }
+      const cup = latheShellYTris(out, inn, seg);
+      const fStem = Math.asin(Math.min(0.95, d.stemD/2/d.R)), bore = Math.max(0.6, d.g.bolt/2 + GC_FIT/2);
+      const bp = [];
+      for (let k = 0; k <= NS; k++){ const f = Math.PI*k/NS;
+        bp.push([Math.max(0.05, d.R*Math.sin(f)), cy - d.R*Math.cos(f)]); }
+      const ball = solidLatheYTris(bp, seg);
+      chk('чашка герметична сама по себе '+JSON.stringify(ov), manifoldCheck(cup, 5).watertight);
+      chk('и шар тоже '+JSON.stringify(ov), manifoldCheck(ball, 5).watertight);
+      const MC = prep(cup), MB = prep(ball);
+      let bad = 0, n = 0;
+      for (const T of ball) for (const v of T){ n++; if (wind(MC, v[0], v[1], v[2]) !== 0) bad++; }
+      chk('шар нигде не внутри чашки '+JSON.stringify(ov), bad === 0 && n > 100, {вершин:n, внутри:bad});
+      /* И ЗАЗОР РАВЕН ЗАКАЗАННОМУ: он тут и есть подвижность. Меряется по нормали к сфере — обе
+         поверхности концентрические, и радиусы у них Ri и R. */
+      chk('зазор шар↔гнездо равен заказанному '+JSON.stringify(ov),
+          Math.abs((d.Ri - d.R) - d.gap) < 1e-9, {измерен:+(d.Ri - d.R).toFixed(3), заказан:d.gap});
+    }
+  }
+  /* СЕТКА ГЕРМЕТИЧНА ПО ВСЕЙ ОБЛАСТИ, и совпадающих граней нет: шар, чашка, шток и резьбовая втулка —
+     четыре тела, и любое их касание гранью всплыло бы здесь. */
+  {
+    let bad = 0, worst = null, cop = 0, copAt = null, n = 0;
+    for (const bolt of [4, 8, 16])
+      for (const sw of [3, 12, 40])
+        for (const pd of [0, 12, 120])
+          for (const st of [0, 60])
+            for (const bl of [0, 40]){
+              const ov = {gcBolt:bolt, gcPadSwing:sw, gcPadD:pd, gcPadStem:st, gcPadBall:bl};
+              const tr = dm(ov), m = manifoldCheck(tr, 6); n++;
+              if (!m.watertight || meshVolume(tr) <= 0){ bad++; if (!worst) worst = {ov, open:m.openEdges, bad:m.badEdges}; }
+              const c = coplanarPairs(tr);
+              if (c.hits){ cop++; if (!copAt) copAt = {ov, hits:c.hits, where:c.where}; }
+            }
+    chk('108 наборов пятака герметичны', bad === 0 && n === 108, worst || n);
+    chk('и ни в одном нет совпадающих граней', cop === 0, copAt);
+  }
+  /* РАБОЧАЯ ГРАНЬ ПЛОСКАЯ И ОНА ЖЕ НИЗ ДЕТАЛИ: пятак упирается ею в заготовку, и выпуклость здесь
+     означала бы точку вместо пятна — ровно то, ради чего пятак и заводился. */
+  {
+    const d = ds({}), t = dm({}), b = bbox(t);
+    chk('габарит вширь — Ø пятака', Math.abs((b.x[1] - b.x[0]) - 2*d.rPad) < 0.05,
+        [b.x[1] - b.x[0], 2*d.rPad]);
+    let flat = 0, tot = 0;
+    for (const T of t) for (const v of T) if (Math.abs(v[1] - b.y[0]) < 1e-6) flat++;
+    for (const T of t) tot++;
+    chk('низ детали — плоская грань, а не полюс', flat > 40, {вершин_на_дне:flat});
+    chk('и шток торчит вверх', b.y[1] - b.y[0] > d.H + d.stemLen*0.5,
+        [b.y[1] - b.y[0], d.H + d.stemLen]);
+  }
+  /* ШТОК ТОЛЩЕ БОЛТА НА ДВЕ СТЕНКИ, а шар толще штока: иначе шарнира нет вовсе. */
+  {
+    const d = ds({});
+    chk('шток толще болта на две стенки', d.stemD > d.g.bolt + 3.9, [d.stemD, d.g.bolt]);
+    chk('шар толще штока', 2*d.R > d.stemD + 4.9, [2*d.R, d.stemD]);
+    chk('и всё это идёт за болтом', ds({gcBolt:16}).stemD > ds({gcBolt:4}).stemD*2);
+    chk('шаг резьбы штока — тот же, что у скобы',
+        Math.abs(d.pitch - gclampSpec(D({})).pitch) < 1e-9, d.pitch);
   }
 }
 

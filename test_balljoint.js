@@ -600,6 +600,143 @@ function coplanarPairs(tris){
   chk('умолчание — по-прежнему цепочка со свободными концами',
       E({}).endA === 'ball' && E({}).endB === 'cup' && shells(B({})) === 3*A({}).N,
       {низ:E({}).endA, верх:E({}).endB, тел:shells(B({}))});
+
+  /* ================================================================================================
+     ОСНОВАНИЕ ТРЕТЬЕЙ РУКИ (v24.18.0) — плита с гнёздами.
+
+     Геометрия здесь простая: одна протяжка с отверстиями-петлями. Сложное — ЧИСЛО, и оно одно:
+     опрокидывание. Проверять его надо так, чтобы проверка не повторяла формулу — иначе она докажет
+     лишь то, что я дважды написал одно и то же. Поэтому:
+
+       1. РАВНОВЕСИЕ ПИШЕТСЯ В ПРОВЕРКЕ ЗАНОВО, из масс и плеч, и требуется, чтобы выведенная глубина
+          стояла ровно на его границе: на миллиметр мельче — плита валится. Бракетинг, а не сверка.
+       2. МАССА ПЛИТЫ БЕРЁТСЯ ИЗ СЕТКИ, а не из спецификации: объём × плотность.
+       3. ПЛЕЧО — ПО МЕНЬШЕЙ СТОРОНЕ. Рука смотрит куда захочет; плита, устойчивая «по глубине» и
+          узкая, валится вбок. Проверяется тем, что плита и её перевёрнутая копия держат поровну.
+       4. ГНЕЗДО МЕРЯЕТСЯ В СЕТКЕ и сверяется с ХВОСТОВИКОМ ИЗ ДРУГОЙ ДЕТАЛИ — это единственное, ради
+          чего гнездо существует.
+     ================================================================================================ */
+  console.log('=== третья рука: основание ===');
+  const S  = ov => artStandSpec(P(Object.assign({artPart:'stand', artEndA:'post'}, ov)));
+  const BS = ov => B(Object.assign({artPart:'stand', artEndA:'post'}, ov));
+  const WS = ov => W(Object.assign({artPart:'stand', artEndA:'post'}, ov));
+  for (const ov of [{}, {artArms:1}, {artArms:8}, {artStandOut:4}, {artStandT:20},
+                    {artN:4, ballD:10}, {artStandD:60}, {artPostD:14}]){
+    const t = BS(ov), mc = manifoldCheck(t, 4);
+    chk('основание '+JSON.stringify(ov)+' герметично', mc.watertight && vol(t) > 0,
+        {open:mc.openEdges, bad:mc.badEdges});
+    chk('  и одним телом, без совпадающих граней', shells(t) === 1 && coplanarPairs(t).hits === 0,
+        {тел:shells(t), совпад:coplanarPairs(t).hits});
+  }
+  /* ГАБАРИТ И МАССА — ИЗ СЕТКИ. Масса входит в расчёт опрокидывания, поэтому она обязана быть массой
+     НАПЕЧАТАННОГО, а не аккуратно посчитанной по забытым гнёздам. */
+  for (const ov of [{}, {artArms:8}, {artStandT:20}]){
+    const st = S(ov), t = BS(ov), b = computeBBox(t);
+    chk('плита '+JSON.stringify(ov)+': габарит тот, что назван',
+        Math.abs((b.maxX-b.minX) - st.W) < 0.05 && Math.abs((b.maxZ-b.minZ) - st.D) < 0.05 &&
+        Math.abs((b.maxY-b.minY) - st.t) < 0.05,
+        {назван:[+st.W.toFixed(1), +st.D.toFixed(1), +st.t.toFixed(1)],
+         габарит:[+(b.maxX-b.minX).toFixed(1), +(b.maxZ-b.minZ).toFixed(1), +(b.maxY-b.minY).toFixed(1)]});
+    const gMesh = meshVolume(t)/1000*st.rho;
+    chk('  и масса — это масса СЕТКИ, с вычтенными гнёздами',
+        Math.abs(gMesh - st.plateG) < 0.5, {сетка:+gMesh.toFixed(2), названо:+st.plateG.toFixed(2)});
+  }
+  /* ГНЁЗДА: сколько заказано, там, где заказано, и сквозные. */
+  for (const ov of [{}, {artArms:1}, {artArms:8}, {artPostD:14}]){
+    const st = S(ov), t = BS(ov), tag = ' ' + JSON.stringify(ov);
+    let holes = 0;
+    for (let k = 0; k < st.n; k++){
+      const x = (k - (st.n - 1)/2)*st.pitch;
+      if (!insideBoth(t, [x, 0, 0]) && insideBoth(t, [x, 0, st.rS + 1.2])) holes++;
+    }
+    chk('гнёзд ровно столько, сколько заказано'+tag, holes === st.n, {нашли:holes, заказано:st.n});
+    /* СКВОЗНОЕ: пусто на всей толщине, а не ямка сверху. */
+    const x0 = -((st.n - 1)/2)*st.pitch;
+    chk('  и гнездо сквозное'+tag,
+        !insideBoth(t, [x0, -st.t/2 + 0.3, 0]) && !insideBoth(t, [x0, st.t/2 - 0.3, 0]), {t:+st.t.toFixed(1)});
+  }
+  /* Ø ГНЕЗДА МЕРЯЕТСЯ В СЕТКЕ и сверяется с ХВОСТОВИКОМ ДРУГОЙ ДЕТАЛИ. Сверять его со спецификацией
+     основания бессмысленно: обе стороны считает одна формула, и забудь я зазор — они съедут вместе. */
+  for (const ov of [{}, {artPostD:14}, {ballD:10, artN:4}]){
+    const st = S(ov), t = BS(ov), tag = ' ' + JSON.stringify(ov);
+    const x0 = -((st.n - 1)/2)*st.pitch;
+    const rSock = (() => { let hit = -1;
+      for (let m = 0.05; m <= 40; m += 0.05) if (insideBoth(t, [x0, 0, m])){ hit = m; break; }
+      if (hit < 0) return 1e9;
+      let lo = hit - 0.05, hi = hit;
+      for (let i = 0; i < 30; i++){ const m = (lo + hi)/2; if (insideBoth(t, [x0, 0, m])) hi = m; else lo = m; }
+      return (lo + hi)/2; })();
+    /* Хвостовик меряется в СВОЕЙ сетке — у руки, а не у основания. */
+    const ta = B(Object.assign({artEndA:'post'}, ov)), ba = computeBBox(ta);
+    const yMid = ba.minY + st.e.postLen*0.5;
+    const rPost = (() => { let hit = -1;
+      for (let m = 0.05; m <= 40; m += 0.05) if (insideBoth(ta, [m, yMid, 0])){ hit = m; break; }
+      if (hit < 0) return -1e9;
+      let lo = hit, hi = hit + 0.05;   // ищем ВНЕШНЮЮ границу: материал есть, дальше нет
+      for (let i = 0; i < 200 && insideBoth(ta, [hi, yMid, 0]); i++) hi += 0.05;
+      let a2 = hi - 0.05, b2 = hi;
+      for (let i = 0; i < 30; i++){ const m = (a2 + b2)/2; if (insideBoth(ta, [m, yMid, 0])) a2 = m; else b2 = m; }
+      return (a2 + b2)/2; })();
+    chk('гнездо шире хвостовика ровно на печатный зазор'+tag,
+        Math.abs(2*(rSock - rPost) - A(ov).j.gap) < 0.08,
+        {гнездо:+(2*rSock).toFixed(3), хвостовик:+(2*rPost).toFixed(3), зазор:+A(ov).j.gap.toFixed(3)});
+  }
+  /* ================= ОПРОКИДЫВАНИЕ: РАВНОВЕСИЕ ПИШЕТСЯ ЗАНОВО ================= */
+  {
+    /* Момент относительно ближней кромки, из масс и плеч. Плечо — половина МЕНЬШЕЙ стороны: рука
+       смотрит куда захочет. Положительный запас — плита стоит. */
+    const marg = (st, W_, D_, gPlate) => { const m = Math.min(W_, D_)/2;
+      return gPlate*m + st.nOut*(st.armG*(m - st.reach/2) + st.load*(m - st.reach)); };
+    for (const ov of [{}, {artStandOut:4}, {artStandT:20}, {artArms:8}, {artN:4, ballD:10}, {artStandLoad:200}]){
+      const st = S(ov), tag = ' ' + JSON.stringify(ov);
+      const gAt = (W_, D_) => (W_*D_ - st.n*Math.PI*st.rS*st.rS)*st.t*st.rho/1000;
+      chk('выведенная плита стоит'+tag, marg(st, st.W, st.D, gAt(st.W, st.D)) > -1e-6,
+          {запас:+marg(st, st.W, st.D, gAt(st.W, st.D)).toFixed(3)});
+      /* ...И СТОИТ ЕДВА. Иначе «выведена» означало бы «взята с потолка щедро»: глубина на миллиметр
+         меньше обязана валить плиту. Это и есть разница между выводом и назначением. */
+      const D2 = st.D - 1, W2 = Math.max(st.wMin, Math.min(st.W, D2));
+      chk('  и на миллиметр мельче — валится'+tag, marg(st, W2, D2, gAt(W2, D2)) < 0,
+          {запас:+marg(st, W2, D2, gAt(W2, D2)).toFixed(3)});
+      /* НАЗВАННЫЙ ГРУЗ — ЭТО ЗАКАЗАННЫЙ ГРУЗ: на выведенной плите она держит ровно его. */
+      chk('  и держит ровно заказанное'+tag, Math.abs(st.holdG - st.load) < 0.5,
+          {держит:+st.holdG.toFixed(2), заказано:+st.load.toFixed(2)});
+      chk('  и рук выдерживает ровно столько, сколько заказано вытянутыми'+tag,
+          st.armsOK === st.nOut, {выдержит:st.armsOK, заказано:st.nOut});
+    }
+    /* ПЛЕЧО ПО МЕНЬШЕЙ СТОРОНЕ — утверждение проверяемое: плита и её перевёрнутая копия держат
+       поровну. Считай я по глубине, узкая и глубокая держала бы «больше» широкой и мелкой. */
+    /* Обе стороны заказаны ЗАВЕДОМО БОЛЬШЕ минимума по гнёздам — иначе одна из них подтянется вверх,
+       массы разойдутся, и проверка провалится не потому, что плечо неверно. Первая запись брала 70 при
+       минимуме 77 и ловила именно это. */
+    const a1 = S({artStandW:140, artStandD:90}), a2 = S({artStandW:90, artStandD:140});
+    chk('плита и её перевёрнутая копия держат поровну', Math.abs(a1.holdG - a2.holdG) < 0.05,
+        {'140×90':+a1.holdG.toFixed(2), '90×140':+a2.holdG.toFixed(2)});
+    /* И МАССА У НИХ ОДНА — иначе равенство выше вышло бы само собой, из разной массы и разного плеча. */
+    chk('  при равной массе — значит сошлось именно плечо', Math.abs(a1.plateG - a2.plateG) < 1e-9,
+        {'140×90':+a1.plateG.toFixed(2), '90×140':+a2.plateG.toFixed(2)});
+  }
+  /* ЗАКАЗАННАЯ МЕЛКАЯ ПЛИТА — ОБЪЯВЛЯЕТСЯ, а не подтягивается молча. */
+  {
+    const st = S({artStandD:60});
+    chk('мелкая плита: опрокидывание объявлено',
+        st.tips && WS({artStandD:60}).some(x => /опрокидывается ПОД САМИМИ РУКАМИ/.test(x)),
+        WS({artStandD:60}));
+    /* И ПРОМЕЖУТОЧНЫЙ СЛУЧАЙ: плита, которая стоит под самими руками, но держит меньше заказанного,
+       обязана назвать, СКОЛЬКО она держит. «Мелковата» без числа — это не предупреждение. */
+    let mid = null;
+    for (let d = Math.ceil(S({}).dMin); d < Math.floor(S({}).dNeed); d += 1){
+      const q = S({artStandD:d}); if (!q.tips && q.thin){ mid = d; break; } }
+    chk('мелковатая плита названа вместе с тем, сколько держит', mid !== null &&
+        WS({artStandD:mid}).some(x => /мельче, чем требует равновесие/.test(x) &&
+                                      x.indexOf(S({artStandD:mid}).holdG.toFixed(0) + ' г вместо') >= 0),
+        {глубина:mid, держит:mid && +S({artStandD:mid}).holdG.toFixed(1), слова:mid && WS({artStandD:mid})});
+    chk('плита без хвостовика у руки объявлена',
+        W({artPart:'stand'}).some(x => /садиться нечему/.test(x)), W({artPart:'stand'}));
+    chk('и на выведенной плите об опрокидывании молчат',
+        !WS({}).some(x => /опрокидывается ПОД САМИМИ РУКАМИ|мельче, чем требует равновесие/.test(x)), WS({}));
+  }
+  /* УМОЛЧАНИЕ ОСНОВАНИЯ НЕ ТРОГАЕТ РУКУ: `artPart` — выбор детали, и цепочка при нём та же. */
+  chk('основание не трогает саму цепочку', A({artPart:'stand'}).len === A({}).len);
 }
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail) process.exitCode = 1;

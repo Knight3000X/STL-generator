@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.10.0';
+const APP_VERSION = 'v25.11.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5216,7 +5216,10 @@ function keycapCoreSpec(p, yPlate){
   // lump floating in mid-air. Resting on the stem it is simply the next layers up in the same print, which
   // is what a two-colour job is. The two objects touch on a plane and share no volume.
   const clr = 0;
-  const sh = stem ? keycapStemHeightmap(p.keyStem, Math.max(0, Math.min(0.5, p.keyStemTol || 0.1))) : null;
+  /* НОЛЬ — ЗАКОННОЕ ЗНАЧЕНИЕ ЭТОЙ РУЧКИ, и `|| 0.1` его молча съедал: у строки min = 0, человек
+     ставил ноль и получал прежнюю десятку. Нашлось при переписи молчунов — форма не говорила о посадке
+     ничего, и разойтись ручке с деталью было негде. */
+  const sh = stem ? keycapStemHeightmap(p.keyStem, keycapStemTol(p)) : null;
   // Meat left for a plug above the stem, inside the plate. The stem reaches 0.6·plateT into it and never
   // more than 1.2, so this is 0.4·plateT up to a 2 mm plate and plateT − 1.2 after — at the thinnest plate
   // the app allows, 0.4 mm, and it only grows. There is therefore always room, which is why nothing here
@@ -11162,6 +11165,46 @@ function buildSheet(p){
      'core'   — AMS inner insert: base slab + legend PLUGS rising flush with the shell's top surface.
    Shell + core are meant to be two assembly models (black + white) → two objects in the 3MF, the
    slicer maps each to its own AMS filament. */
+/* ЧТО ЗНАЕТ КЕЙКАП О ПОСАДКЕ (v25.11.0) — седьмой разобранный молчун переписи 10.4. Сто пятьдесят
+   девять разновидностей настроек, и единственное, что форма говорила, — про стабилизаторы на семи «u».
+
+   ПОСАДКА НА ПЕРЕКЛЮЧАТЕЛЬ — единственное, из-за чего колпачок выходит негодным, и число это на экране
+   не видно. У MX допуск РАСШИРЯЕТ ПАЗ: крест переключателя входит в колпачок. У Choc наоборот — там в
+   переключатель входят СТОЛБИКИ колпачка, и допуск их УЖИМАЕТ. Одна ручка, два противоположных действия,
+   и не сказать об этом — значит отдать человеку монетку.
+
+   ЧИСЛА НОМИНАЛА названы вслух: крест MX это примерно 1.17 × 4.1 мм, а литой колпачок делают под паз
+   1.35 — приложение от него и пляшет. Печать ужимает отверстие на десятую-другую, поэтому припуск по
+   умолчанию положительный.
+
+   ДОПУСК ЗДЕСЬ НЕ ПРОХОДИТ ЧЕРЕЗ ОБЩУЮ ПОПРАВКУ НА МАТЕРИАЛ (`fitTuned`), которой живут остальные посадки
+   приложения, и это сказано прямо: на ABS и нейлоне усадка больше, и допуск придётся добавить руками.
+   Тихо подкрутить размер было бы хуже — у людей уже напечатаны колпачки по этим числам. */
+const KEYCAP_MX = {slotW: 1.35, slotL: 4.1, crossW: 1.17};   // номинал: паз литого колпачка и сам крест
+const KEYCAP_CHOC = {postW: 1.2, postL: 3.0, span: 5.7};
+function keycapStemTol(p){
+  const v = (p && p.keyStemTol != null) ? +p.keyStemTol : 0.1;
+  return Math.max(0, Math.min(0.5, isFinite(v) ? v : 0.1));
+}
+function keycapFitSpec(p){
+  const tol = keycapStemTol(p);
+  const choc = p.keyStem === 'choc';
+  const wall = Math.max(0.8, Math.min(3, p.keyWall||1.3));
+  const u = Math.max(0.25, Math.min(7, p.keySizeU||1));
+  /* Те же выражения, что в `keycapStemHeightmap`: у MX паз шире номинала на два допуска, у Choc столбик
+     тоньше номинала на один. */
+  const slotW = choc ? Math.max(0.6, KEYCAP_CHOC.postW - tol) : KEYCAP_MX.slotW + 2*tol;
+  const slotL = choc ? KEYCAP_CHOC.postL : 4.25;
+  const play = choc ? (KEYCAP_CHOC.postW - slotW)          // насколько столбик тоньше номинала
+                    : (slotW - KEYCAP_MX.crossW);          // насколько паз шире креста
+  return {tol, choc, slotW, slotL, play, wall, u,
+          walls: wall/0.4,
+          stab: (p.keyStab === 'none') ? 'none' : 'auto',
+          wide: u >= 2,
+          thinWall: wall < 0.8 - 1e-9,
+          tight: !choc && play < 0.05, loose: !choc && play > 0.6,
+          chocThin: choc && slotW <= 0.65};
+}
 function keycapStemHeightmap(kind, tol){
   const S=LOGO_HM_SIZE, hm=new Float32Array(S*S);
   let spanX, spanZ;
@@ -11361,7 +11404,7 @@ function buildKeycap(p, logoRes){
     tris.push(orient(T.map(q=>[q[0],yPlate,q[1]]),[0,-1,0]));                    // plate-bottom annulus
   // stem (MX bore / Choc legs), embedded into the plate from below — appended closed shell
   if(p.keyStem && p.keyStem!=='none'){
-    const sh=keycapStemHeightmap(p.keyStem, Math.max(0,Math.min(0.5,p.keyStemTol||0.1)));
+    const sh=keycapStemHeightmap(p.keyStem, keycapStemTol(p));
     const stemH=yPlate+Math.min(1.2,plateT*0.6);
     const st=buildLogoExtrudeTris({heightmap:sh.heightmap,rotation:0,invert:false,threshold:0.5},
       sh.spanX, sh.spanZ, stemH, 150);
@@ -28914,6 +28957,36 @@ function collectPrintWarnings(p){
         w.push('надпись ВЫПУКЛАЯ, а этой гранью футляр ложится на стол: бугор поднимет деталь с ' +
                'первого слоя. Утопленная (глубина со знаком минус) печатается здесь начисто');
     }
+  }
+  /* КЕЙКАП. Единственное, из-за чего колпачок выходит негодным, — посадка на переключатель, и число
+     это на экране не видно. У MX и Choc допуск работает в РАЗНЫЕ стороны, и об этом сказано прямо. */
+  if (p.keycapMode && p.keycapMode !== 'none'){
+    const f = keycapFitSpec(p);
+    if (f.choc)
+      w.push('посадка Choc: столбики ' + f.slotW.toFixed(2) + ' × ' + f.slotL.toFixed(1) +
+             ' мм при номинале ' + KEYCAP_CHOC.postW.toFixed(2) + ', то есть допуск ' + f.tol.toFixed(2) +
+             ' УЖИМАЕТ их — в переключатель входят они. Печать столбик ещё и раздувает, поэтому ' +
+             'припуск здесь отрицательный по смыслу');
+    else
+      w.push('посадка MX: паз креста ' + f.slotW.toFixed(2) + ' × ' + f.slotL.toFixed(1) +
+             ' мм при кресте переключателя около ' + KEYCAP_MX.crossW.toFixed(2) + ' × ' +
+             KEYCAP_MX.slotL.toFixed(1) + ' — зазор ' + f.play.toFixed(2) + ' мм. Литой колпачок делают ' +
+             'под ' + KEYCAP_MX.slotW.toFixed(2) + ', остальное здесь добавляет допуск ' + f.tol.toFixed(2) +
+             ': печать отверстие ужимает');
+    w.push('допуск посадки НЕ пересчитывается под материал (в отличие от прочих посадок приложения): ' +
+           'на ABS и нейлоне усадка больше, и десятую-другую придётся добавить руками');
+    if (f.tight)
+      w.push('зазор ' + f.play.toFixed(2) + ' мм — это в притирку к номиналу креста: колпачок сядет туго ' +
+             'и может расколоть юбку. Допуск 0.05…0.15 — обычная величина для печати');
+    if (f.loose)
+      w.push('зазор ' + f.play.toFixed(2) + ' мм — колпачок будет болтаться на переключателе: уменьшите ' +
+             'допуск');
+    if (f.chocThin)
+      w.push('столбик Choc ужат до ' + f.slotW.toFixed(2) + ' мм — тоньше двух проходов сопла 0.4 он ' +
+             'просто отломится');
+    /* Про перекос широкой клавиши на одном стеме приложение уже говорит своей строкой — повторять
+       нечего. Нашлось это не сразу: моя перепись крутила по одной ручке за раз, а тут нужны ДВЕ (2u и
+       выключенные стабилизаторы), и потому семейство выглядело молчаливее, чем оно есть. */
   }
   /* ОБЪЁМНЫЙ ЛОГОТИП. Число, которого не видно нигде: самая тонкая перемычка рисунка. */
   if (p.logo3d){

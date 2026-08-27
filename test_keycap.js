@@ -580,5 +580,100 @@ console.log('=== кейкап отдаётся уже сваренным ===');
   chk('и сеток набралось, а не ноль', n >= 12, n);
 }
 
+/* ПОСАДКА НА ПЕРЕКЛЮЧАТЕЛЬ (v25.11.0) — седьмой разобранный молчун переписи 10.4. Из-за посадки колпачок
+   и выходит негодным, а число это на экране не видно.
+
+   Проверяется:
+     1. ДОПУСК НОЛЬ — ЗАКОННОЕ ЗНАЧЕНИЕ. Стояло `p.keyStemTol || 0.1`, и ноль молча превращался в
+        десятую: у строки min = 0, человек ставил ноль и получал прежний паз. Дефект найден переписью и
+        закрыт; проверка меряет ПАЗ В СЕТКЕ, а не спецификацию.
+     2. ДОПУСК РАБОТАЕТ В РАЗНЫЕ СТОРОНЫ. У MX он расширяет ПАЗ (крест входит в колпачок), у Choc ужимает
+        СТОЛБИКИ (они входят в переключатель). Одна ручка, два противоположных действия.
+     3. ЧИСЛА НОМИНАЛА НАЗВАНЫ, и зазор считается от креста, а не от паза литого колпачка. */
+console.log('=== кейкап: посадка на переключатель ===');
+{
+  const P_ = ov => Object.assign(defaultBoxParams(), {keycapMode:'single'}, ov||{});
+  const W_ = ov => { const p = P_(ov); logos.length = 0; Object.assign(paramState.box, p);
+                     return collectPrintWarnings(p) || []; };
+  /* ШИРИНА ПАЗА — ИЗ САМОЙ КАРТЫ СТЕМА, которую строит построитель. Мерить надо не по середине: там
+     проходит ВТОРОЙ луч креста, и пустой промежуток равен его ДЛИНЕ (4.25), а не ширине. Поэтому столбец
+     берётся на конце луча — за пределами центрального квадрата, где пусто только по ширине паза. */
+  const slotFromMask = (p) => {
+    const sh = keycapStemHeightmap(p.keyStem, keycapStemTol(p));
+    const S = LOGO_HM_SIZE;
+    const col = Math.round((1.8/sh.spanX + 0.5)*S);      // x ≈ 1.8 мм — внутри луча, вне середины
+    let runEmpty = 0, best = 0;
+    for (let j = 0; j < S; j++){
+      const v = sh.heightmap[j*S + col];
+      if (!v){ runEmpty++; if (runEmpty > best) best = runEmpty; } else runEmpty = 0;
+    }
+    return {mm: best*sh.spanZ/S, span: sh.spanZ};
+  };
+  const postFromMask = (p) => {
+    const sh = keycapStemHeightmap(p.keyStem, keycapStemTol(p));
+    const S = LOGO_HM_SIZE, mid = (S/2)|0;
+    let run = 0, best = 0;
+    for (let i = 0; i < S; i++){
+      const v = sh.heightmap[mid*S + i];
+      if (v){ run++; if (run > best) best = run; } else run = 0;
+    }
+    return {mm: best*sh.spanX/S, span: sh.spanX};
+  };
+
+  // 1. НОЛЬ — ЭТО НОЛЬ
+  {
+    const zero = slotFromMask(P_({keyStemTol:0})), ten = slotFromMask(P_({keyStemTol:0.1}));
+    chk('допуск 0 даёт паз у́же, чем допуск 0.1 — ноль больше не съедается',
+        zero.mm < ten.mm - 0.1, {ноль:+zero.mm.toFixed(2), десятая:+ten.mm.toFixed(2)});
+    chk('  и паз при нуле равен номиналу литого колпачка',
+        Math.abs(zero.mm - KEYCAP_MX.slotW) <= zero.span/LOGO_HM_SIZE + 1e-9,
+        {измерено:+zero.mm.toFixed(3), номинал:KEYCAP_MX.slotW});
+    chk('  спецификация говорит то же самое', Math.abs(keycapFitSpec(P_({keyStemTol:0})).slotW - KEYCAP_MX.slotW) < 1e-9,
+        keycapFitSpec(P_({keyStemTol:0})).slotW);
+  }
+
+  // 2. РАЗНЫЕ СТОРОНЫ
+  {
+    const mxA = slotFromMask(P_({keyStemTol:0.1})), mxB = slotFromMask(P_({keyStemTol:0.4}));
+    chk('у MX допуск РАСШИРЯЕТ паз', mxB.mm > mxA.mm + 0.3, {'0.1':+mxA.mm.toFixed(2), '0.4':+mxB.mm.toFixed(2)});
+    const chA = postFromMask(P_({keyStem:'choc', keyStemTol:0.1})), chB = postFromMask(P_({keyStem:'choc', keyStemTol:0.4}));
+    chk('  а у Choc УЖИМАЕТ столбик', chB.mm < chA.mm - 0.2, {'0.1':+chA.mm.toFixed(2), '0.4':+chB.mm.toFixed(2)});
+    chk('  и сказано это разными словами', /РАСШИРЯЕТ|добавляет допуск/.test(W_({}).join(' ')) &&
+        /УЖИМАЕТ/.test(W_({keyStem:'choc'}).join(' ')), {});
+    /* И ЧИСЛО ИЗ СПЕЦИФИКАЦИИ СХОДИТСЯ С КАРТОЙ — у обоих креплений. Без этой сверки мутация «у Choc
+       допуск тоже расширяет» проходит незамеченной: текст остаётся прежним, карта строится своей
+       формулой, а спецификация врёт молча. Так и случилось при первом прогоне мутаций. */
+    for (const [kind, get] of [['mx', slotFromMask], ['choc', postFromMask]]){
+      for (const tol of [0, 0.1, 0.3]){
+        const pp = P_({keyStem:kind, keyStemTol:tol});
+        const meas = get(pp).mm, spec = keycapFitSpec(pp).slotW;
+        chk('  ' + kind + ' при допуске ' + tol + ': спецификация сходится с картой стема',
+            Math.abs(meas - spec) <= (kind === 'mx' ? 5.8 : 7.6)/LOGO_HM_SIZE + 1e-9,
+            {карта:+meas.toFixed(3), спец:+spec.toFixed(3)});
+      }
+    }
+  }
+
+  // 3. ЗАЗОР СЧИТАЕТСЯ ОТ КРЕСТА
+  {
+    const f = keycapFitSpec(P_({}));
+    chk('зазор считается от креста переключателя, а не от паза литого колпачка',
+        Math.abs(f.play - (f.slotW - KEYCAP_MX.crossW)) < 1e-12 && f.play > 0.3,
+        {зазор:+f.play.toFixed(3)});
+    chk('  болтающийся допуск объявлен', W_({keyStemTol:0.5}).some(x => /болтаться/.test(x)), {});
+    chk('  а умолчание — нет', !W_({}).some(x => /болтаться|в притирку/.test(x)), W_({}));
+    chk('  тонкий столбик Choc объявлен',
+        W_({keyStem:'choc', keyStemTol:0.5}).some(x => /отломится/.test(x)) ||
+        !keycapFitSpec(P_({keyStem:'choc', keyStemTol:0.5})).chocThin,
+        {столбик:+keycapFitSpec(P_({keyStem:'choc', keyStemTol:0.5})).slotW.toFixed(2)});
+    chk('  и про материал сказано честно',
+        W_({}).some(x => /НЕ пересчитывается под материал/.test(x)), {});
+  }
+
+  // 4. ЧИСЛО НАЗЫВАЕТСЯ ВСЕГДА
+  chk('посадка названа числом', W_({}).some(x => /посадка MX: паз креста/.test(x)), W_({}));
+  chk('  и у Choc тоже', W_({keyStem:'choc'}).some(x => /посадка Choc: столбики/.test(x)), {});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

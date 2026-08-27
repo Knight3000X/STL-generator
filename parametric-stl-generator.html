@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.15.0';
+const APP_VERSION = 'v25.16.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -19733,6 +19733,85 @@ function buildHexPanel(p){
 /* ---- Wall organiser (настенный органайзер) ------------------------------------------------------
    A wall-storage ecosystem: a BACK that hangs on a standard (French cleat / pegboard) + a FRONT holder
    (hook / flat shelf / shelf with tool sockets). Plain plate + prisms + swept-tube hook → watertight. */
+/* НАСТЕННЫЙ ОРГАНАЙЗЕР — ЧТО ОН ДЕРЖИТ И ЧЕМ ДЕРЖИТСЯ (v25.16.0). Одиннадцатый разобранный молчун
+   переписи 10.4, и молчал он обиднее прочих: КРЮЧОК У НЕГО ТОТ ЖЕ САМЫЙ, что у отдельного семейства
+   «крючок», которое с v25.4.0 говорит, сколько держит, — только ручки названы иначе (`woHookBar` вместо
+   `hookBar`), и потому весь расчёт проходил мимо. Одна и та же деталь на одной странице то называла свой
+   груз, то молчала о нём, смотря каким путём человек до неё дошёл.
+
+   ВТОРОЕ ЧИСЛО ЗДЕСЬ СВОЁ, и оно важнее первого: держатель висит НА СТЕНЕ, а не растёт из стола. Груз на
+   вылете отжимает верх задника от стены рычагом — плечо это вылет, опора нижняя кромка задника, — и сила
+   на зацепе получается W·d/H. Задник крутится от 20 мм, вылет крючка до 100: отношение доходит до пяти,
+   то есть трёхкилограммовая сумка тянет планку от стены с полутора десятками килограммов. На экране от
+   этого не видно ничего.
+
+   ТРЕТЬЕ — деталь умеет РАЗВАЛИТЬСЯ НА ДВА КУСКА молча. Крючок садится на высоту max(загиб + пруток + 2,
+   H/2), и при большом загибе на низком заднике эта высота уходит ВЫШЕ задника: стержень висит в воздухе,
+   не касаясь пластины. Оболочки замкнуты обе, `manifoldCheck` довольна, а печатать нечего. */
+const WO_G = 9.80665;
+const WO_BOND = 0.5;          // тот же межслойный множитель, что у крючка: задник на столе, держатель растёт вверх
+const WO_PEG_HOLE = 6.35;     // ¼″ — отверстие стандартной перфопанели
+const WO_PEG_PITCH = 25.4;    // 1″ — её же шаг
+function wallOrgSpec(p){
+  const back = p.woBack || 'none';
+  if (back === 'none' || back === 'hexpanel' || back === 'hexshelf') return null;  // у этих двух своя геометрия
+  const W = Math.max(20, p.woW||60), t = Math.max(3, p.woT||5), H = Math.max(20, p.woH||60);
+  const front = p.woFront || 'hook';
+  const mat = snapMatOf(p, null, 'pla');
+  const allow = mat.E*(mat.eps/100), sigma = allow*WO_BOND;
+  /* Сечение держателя — то же самое правило, что у отдельного крючка, включая ОГРАНКУ прутка:
+     построитель кладёт max(12, round(R·4)) граней, и считать пруток кругом значило бы обещать
+     прочность, которой в детали нет (найдено срезом сетки ещё в v25.4.0). */
+  let I = 0, c = 1, arm = 1, what = '', reach = 0;
+  const rBar = Math.max(2,(p.woHookBar||8)/2), drop = Math.max(rBar+2, p.woHookDrop||14);
+  const hookY = Math.max(drop + rBar + 2, H*0.5);        // высота оси стержня — то же выражение, что в построителе
+  if (front === 'hook'){
+    reach = Math.max(6, p.woHookReach||24);
+    const sweep = (p.woHookSweep||230)*Math.PI/180;
+    const nf = Math.max(12, Math.round(rBar*4));
+    I = nf*Math.pow(rBar, 4)*Math.sin(2*Math.PI/nf)/12*(1 + Math.cos(2*Math.PI/nf)/2);
+    c = rBar;
+    arm = (sweep >= Math.PI) ? reach : reach + drop*Math.sin(sweep);
+    what = 'пруток крючка';
+  } else if (front === 'shelf'){
+    const sd = Math.max(10, p.woShelfD||35), st = Math.max(2, p.woShelfT||4), sw = W - 2;
+    I = sw*Math.pow(st, 3)/12; c = st/2; arm = sd; reach = sd; what = 'полка у задника';
+  } else if (front === 'tools'){
+    const sd = Math.max(15, p.woShelfD||34), st = Math.max(3, p.woShelfT||4);
+    const n = Math.max(1, Math.round(p.woToolN||3)), tr = Math.min(Math.max(1.5,(p.woToolD||16)/2), sd/2 - 1.5);
+    I = W*Math.pow(st, 3)/12; c = st/2; arm = sd; reach = sd; what = 'полка у задника';
+    /* СЕЧЕНИЕ БЕРЁТСЯ У ЗАДНИКА, а не по ряду гнёзд, и это НЕ упрощение из лени. Гнёзда и правда съедают
+       полку посередине, но сколько их там останется — решает не эта строка: `buildBoxWithHoles` держит
+       отверстие, только если его клетка сетки не пересекается с уже принятой, и заказанные три гнезда
+       Ø16 на полке 60 мм превращаются в два. Повторить этот отбор здесь нельзя без всей сетки построителя,
+       а напечатать «остаётся 12 мм», когда в детали остаётся 32, значит соврать числом. Отбор надо
+       выносить в общее правило, как вынесена раскладка винтов уголка, — это отдельный заход. */
+  } else { what = 'держателя нет'; }
+  const cap = (I, c, arm) => sigma*(I/Math.max(0.01, c))/Math.max(1, arm)/WO_G;   // кг
+  const kg = front === 'none' ? Infinity : cap(I, c, arm);
+  /* РЫЧАГ НА СТЕНУ. Плечо — от плоскости стены ДО ГРУЗА, опора — нижняя кромка задника. У крючка груз
+     скатывается к ДАЛЬНЕМУ концу прямого стержня (виток за ним уходит вверх), и построитель ставит этот
+     конец на t + вылет; у полки — на переднюю кромку. Замер по сетке подтверждает обе точки. */
+  const dWall = t + reach;
+  const pry = front === 'none' ? 0 : dWall/H;
+  const cleatLip = Math.max(4, p.woCleatLip||8);
+  const pegD = Math.max(3, p.woPegD||6), pegPitch = Math.max(15, p.woPegSpacing||25.4);
+  const ROLE = {hook:{need:3, t:'сумки или куртки'}, shelf:{need:1, t:'того, что кладут на полку'},
+                tools:{need:1, t:'инструмента в гнёздах'}, none:{need:0, t:''}};
+  const role = ROLE[front] || ROLE.hook;
+  return {back, front, W, H, t, mat, allow, sigma, I, c, arm, what, reach, dWall, pry, kg,
+          rBar, drop, hookY, cleatLip, pegD, pegPitch,
+          need: role.need, role: role.t, bond: WO_BOND,
+          weak: front !== 'none' && kg < role.need,
+          levered: front !== 'none' && pry > 1,
+          /* Две разные беды, и путать их нельзя: `adrift` — стержень НЕ ДОСТАЁТ до задника вовсе, два
+             отдельных куска; `perched` — достаёт, но свисает выше кромки и держится частью сечения. */
+          adrift:  front === 'hook' && hookY - rBar > H,
+          perched: front === 'hook' && hookY - rBar <= H && hookY + rBar > H,
+          lipDeep: back === 'cleat' && cleatLip > H,
+          pegFat: back === 'peg' && pegD > WO_PEG_HOLE,
+          pegOffPitch: back === 'peg' && Math.abs(pegPitch - WO_PEG_PITCH) > 0.5};
+}
 function buildWallOrg(p){
   if((p.woBack||'cleat')==='hexshelf') return buildHexShelf(p);
   if((p.woBack||'cleat')==='hexpanel') return buildHexPanel(p);
@@ -28247,6 +28326,36 @@ function collectPrintWarnings(p, mesh){
   /* СТРУБЦИНА. Названо то, чего не видно на экране: что болт и гайку надо напечатать отдельно и какими
      настройками, и что скоба выросла против заказанного. Вылет и ширина — числа, ради которых её и
      задают, поэтому их урезание молчать не может. */
+  { const o = wallOrgSpec(p);
+    if (o){
+      /* Груз печатается ВСЕГДА, как у крючка и уголка: держатель несущий, а числа его невидимы. */
+      w.push('органайзер: ' + (o.front === 'none'
+               ? 'пластина без держателя, задник ' + o.H.toFixed(0) + ' мм'
+               : 'держит ' + (o.kg >= 10 ? o.kg.toFixed(0) : o.kg.toFixed(1)) + ' кг, слабое место — ' +
+                 o.what + '; груз на вылете ' + o.dWall.toFixed(0) + ' мм отжимает верх от стены с ' +
+                 o.pry.toFixed(2) + ' своего веса (задник ' + o.H.toFixed(0) + ' мм)') +
+             (o.back === 'peg' ? '. Штырь Ø' + o.pegD.toFixed(1) + ' с шагом ' + o.pegPitch.toFixed(1) + ' мм' : ''));
+      if (o.adrift) w.push('КРЮЧОК НЕ КАСАЕТСЯ ЗАДНИКА: ось стержня садится на высоту ' +
+        o.hookY.toFixed(0) + ' мм (загиб ' + o.drop.toFixed(0) + ' + пруток), а задник всего ' +
+        o.H.toFixed(0) + ' мм — деталь выйдет двумя отдельными кусками. Выше задник или меньше загиб');
+      else if (o.perched) w.push('стержень крючка свисает выше кромки задника: ось на ' +
+        o.hookY.toFixed(0) + ' мм при заднике ' + o.H.toFixed(0) + ' мм — держится он неполным сечением' +
+        ', и ломаться будет именно там');
+      if (o.weak) w.push('всего ' + o.kg.toFixed(1) + ' кг — для ' + o.role + ' этого мало' +
+        (o.front === 'hook' ? ': пруток входит в прочность в ЧЕТВЁРТОЙ степени — толще на четверть значит вдвое крепче' : ''));
+      if (o.front === 'tools') w.push('счёт ведётся по сечению У ЗАДНИКА: гнёзда съедают полку посередине,' +
+        ' и там она слабее — насколько, зависит от того, сколько гнёзд построитель поставит на самом деле');
+      if (o.levered) w.push('рычаг на стену ' + o.pry.toFixed(1) + '× веса: вылет ' + o.dWall.toFixed(0) +
+        ' мм при заднике ' + o.H.toFixed(0) + ' мм отжимает верх сильнее, чем сам груз тянет вниз —' +
+        ' выше задник или короче вылет, иначе сорвёт с ' +
+        (o.back === 'cleat' ? 'планки' : o.back === 'peg' ? 'перфопанели' : 'зацепов'));
+      if (o.lipDeep) w.push('зацеп планки ' + o.cleatLip.toFixed(0) + ' мм глубже самого задника ' +
+        o.H.toFixed(0) + ' мм — клин свисает ниже пластины и на стене ни на что не опирается');
+      if (o.pegFat) w.push('штырь Ø' + o.pegD.toFixed(1) + ' мм в отверстие стандартной перфопанели (¼″ = ' +
+        WO_PEG_HOLE + ' мм) не войдёт');
+      if (o.pegOffPitch) w.push('шаг штырей ' + o.pegPitch.toFixed(1) + ' мм — у стандартной перфопанели он ' +
+        WO_PEG_PITCH + ' мм (1″); на дюймовую доску такой держатель не сядет');
+    } }
   { const b = lbracketSpec(p);
     if (b){
       /* Главное число печатается ВСЕГДА: уголок — деталь несущая, и груз с экрана не считывается. */

@@ -261,5 +261,214 @@ console.log('=== gating + regression ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('woBack none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+/* ===============================================================================================
+   ОРГАНАЙЗЕР ГОВОРИТ, ЧТО ДЕРЖИТ И ЧЕМ ДЕРЖИТСЯ (v25.16.0). Молчал он обиднее прочих: КРЮЧОК У НЕГО
+   ТОТ ЖЕ САМЫЙ, что у отдельного семейства «крючок», которое с v25.4.0 называет свой груз, — только
+   ручки зовутся иначе (`woHookBar` вместо `hookBar`), и весь расчёт проходил мимо. Одна деталь на одной
+   странице то называла число, то молчала, смотря каким путём человек до неё дошёл. Первая же проверка
+   ниже это и запирает: два семейства обязаны отдать ОДНО И ТО ЖЕ число на одних размерах.
+
+   Второе число здесь своё: держатель висит НА СТЕНЕ. Груз на вылете отжимает верх задника рычагом, и
+   сила на зацепе — W·d/H. Третье: деталь умеет молча РАЗВАЛИТЬСЯ НА ДВА КУСКА, и это проверяется
+   счётом связных кусков сетки, а не глазами. */
+console.log('\n=== органайзер говорит, что держит ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
+      woBack:'cleat',woFront:'hook',woW:60,woH:60,woT:5,woCleatLip:8,woPegD:6,woPegSpacing:25.4,
+      woPegN:2,woPegLen:10,woHookBar:8,woHookReach:24,woHookDrop:14,woHookSweep:230,
+      woShelfD:35,woShelfT:4,woToolN:3,woToolD:16,
+      hookMount:'none',mntMode:'none',gearMode:'none',pipMode:'none',threadMode:'none',
+      sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,scoopDir:'none',
+      labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(s => /^органайзер: /.test(s));
+  const spec = (ov) => wallOrgSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('органайзер больше не молчит: на умолчаниях есть строка с грузом',
+      line(warn({})) !== undefined, warn({}));
+  chk('  и это единственная строка — жаловаться на умолчаниях не на что', warn({}).length === 1, warn({}));
+
+  /* 1. ОДИН КРЮЧОК — ОДНО ЧИСЛО. Отдельное семейство «крючок» и крючок органайзера обязаны сойтись
+     на одних размерах до последнего знака: правило у них одно, а не два похожих. */
+  {
+    const o = spec({});
+    const h = hookSpec(Object.assign(defaultBoxParams(), {hookMount:'plate', hookStyle:'bar',
+      hookBar:8, hookReach:24, hookDrop:14, hookSweep:230}));
+    chk('крючок органайзера и отдельный крючок дают ОДНО число',
+        Math.abs(o.kg - h.kg) < 1e-9, {органайзер:+o.kg.toFixed(4), крючок:+h.kg.toFixed(4)});
+    chk('  и совпадают они сечением, а не случайно',
+        Math.abs(o.I - h.I) < 1e-9 && Math.abs(o.c - h.c) < 1e-9 && Math.abs(o.arm - h.arm) < 1e-9,
+        {I:[+o.I.toFixed(3), +h.I.toFixed(3)], arm:[o.arm, h.arm]});
+    chk('  и половина за слои у обоих одна', o.bond === h.bond, [o.bond, h.bond]);
+    /* Разные размеры расходятся тоже одинаково — иначе совпадение было бы совпадением одной точки. */
+    const o2 = spec({woHookBar:5, woHookReach:40});
+    const h2 = hookSpec(Object.assign(defaultBoxParams(), {hookMount:'plate', hookStyle:'bar',
+      hookBar:5, hookReach:40, hookDrop:14, hookSweep:230}));
+    chk('  и на других размерах тоже', Math.abs(o2.kg - h2.kg) < 1e-9,
+        {органайзер:+o2.kg.toFixed(4), крючок:+h2.kg.toFixed(4)});
+  }
+  /* 2. ПРУТОК — МНОГОГРАННИК, А НЕ КРУГ. Меряется по построенной сетке: сечение стержня плоскостью
+     z = const растеризуется, из него берётся второй момент, и он обязан сойтись с гранёной формулой, а
+     НЕ с круглой. Это то же самое, что нашлось у отдельного крючка в v25.4.0, — и здесь оно живое. */
+  {
+    const g = spec({}), t = mesh({}), b = computeBBox(t);
+    /* Стержень идёт вдоль Z на высоте оси; сечение берём в его середине, отступив от задника. */
+    const zCut = b.minZ + g.t + (g.reach)*0.45;
+    const seg = [];
+    for (const T of t){ const pts = [];
+      for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+        if ((A[2] - zCut)*(B[2] - zCut) > 0) continue;
+        if (Math.abs(A[2] - B[2]) < 1e-12) continue;
+        const u = (zCut - A[2])/(B[2] - A[2]); if (u < 0 || u > 1) continue;
+        pts.push([A[0] + u*(B[0] - A[0]), A[1] + u*(B[1] - A[1])]); }
+      if (pts.length === 2) seg.push(pts); }
+    // растеризация по столбцам x
+    let A = 0, Sy = 0, Iy = 0; const nx = 900;
+    const x0 = -g.rBar - 1, x1 = g.rBar + 1, dx = (x1 - x0)/nx;
+    for (let i = 0; i < nx; i++){ const x = x0 + dx*(i + 0.5), ys = [];
+      for (const [P, Q] of seg){
+        if ((P[0] - x)*(Q[0] - x) > 0) continue;
+        if (Math.abs(P[0] - Q[0]) < 1e-12) continue;
+        const u = (x - P[0])/(Q[0] - P[0]); if (u < 0 || u > 1) continue;
+        ys.push(P[1] + u*(Q[1] - P[1])); }
+      ys.sort((a,c) => a-c);
+      for (let k = 0; k + 1 < ys.length; k += 2){ const a = ys[k], c = ys[k+1];
+        A += (c - a)*dx; Sy += (c*c - a*a)/2*dx; Iy += (c*c*c - a*a*a)/3*dx; } }
+    chk('сечение стержня читается из сетки', A > 0, +A.toFixed(2));
+    const Imeas = Iy - A*(Sy/A)*(Sy/A);
+    const Icirc = Math.PI*Math.pow(g.rBar, 4)/4;
+    chk('  второй момент сходится с ГРАНЁНОЙ формулой', Math.abs(Imeas - g.I) < 0.03*g.I,
+        {измерено:+Imeas.toFixed(1), гранёная:+g.I.toFixed(1)});
+    chk('  и НЕ сходится с круглой — огранка режет момент на проценты', Imeas < Icirc*0.99,
+        {измерено:+Imeas.toFixed(1), круглая:+Icirc.toFixed(1)});
+  }
+  /* 3. ДВА КУСКА. Крючок садится на высоту max(загиб + пруток + 2, H/2), и при большом загибе на низком
+     заднике эта высота уходит выше задника целиком: стержень висит в воздухе.
+
+     СЧИТАТЬ СВЯЗНЫЕ КУСКИ СЕТКИ ЗДЕСЬ НЕЛЬЗЯ, и первый мой замер на этом и сорвался — он отдал ЧЕТЫРЕ
+     куска на здоровой детали. Всё приложение строит формы ВЗАИМОПРОНИКАЮЩИМИ замкнутыми оболочками, а не
+     объединением: задник, клин планки, полоса усиления, трубка крючка и шарик на кончике общих вершин не
+     имеют вовсе и по вершинам не связаны никогда. Связность здесь — вопрос ОБЪЁМА: если тела и правда
+     срослись, найдётся точка, лежащая ВНУТРИ ДВУХ оболочек разом, и число оборотов в ней равно двум.
+     Его и считаем — вдоль вертикальной прямой в толще задника. */
+  {
+    const winding = (tris, P) => { let w = 0;
+      for (const T of tris){
+        const a = [T[0][0]-P[0], T[0][1]-P[1], T[0][2]-P[2]];
+        const b = [T[1][0]-P[0], T[1][1]-P[1], T[1][2]-P[2]];
+        const c = [T[2][0]-P[0], T[2][1]-P[1], T[2][2]-P[2]];
+        const la = Math.hypot(a[0],a[1],a[2]), lb = Math.hypot(b[0],b[1],b[2]), lc = Math.hypot(c[0],c[1],c[2]);
+        const det = a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+        const den = la*lb*lc + (a[0]*b[0]+a[1]*b[1]+a[2]*b[2])*lc +
+                    (b[0]*c[0]+b[1]*c[1]+b[2]*c[2])*la + (c[0]*a[0]+c[1]*a[1]+c[2]*a[2])*lb;
+        w += 2*Math.atan2(det, den); }
+      return Math.abs(w/(4*Math.PI)); };
+    /* Сколько высот на прямой x = 0 в толще задника лежат ВНУТРИ ДВУХ тел разом. */
+    const welded = (ov) => { const g = spec(ov), t = mesh(ov), b = computeBBox(t);
+      const zW = b.minZ + (g.back === 'cleat' ? g.cleatLip : 0);      // плоскость стены: клин уходит за неё
+      let n = 0;
+      for (let k = 0; k <= 60; k++){
+        const y = b.minY + (b.maxY - b.minY)*k/60;
+        if (winding(t, [0, y, zW + g.t*0.6]) > 1.5) n++; }
+      return n; };
+    chk('на умолчаниях крючок и задник срослись объёмом', welded({}) > 0, welded({}));
+    const ov = {woH:20, woHookDrop:60};
+    chk('  а высокий загиб на низком заднике не касается его вовсе', welded(ov) === 0, welded(ov));
+    chk('  спецификация зовёт это оторвавшимся', spec(ov).adrift === true,
+        {ось:+spec(ov).hookY.toFixed(1), задник:spec(ov).H});
+    chk('  и говорит словами', /НЕ КАСАЕТСЯ ЗАДНИКА/.test(warn(ov).join(' ')), warn(ov));
+    chk('  на умолчаниях не оторвался и не свисает',
+        spec({}).adrift === false && spec({}).perched === false);
+    /* Свисание — ДРУГАЯ беда: стержень достаёт до задника, но держится неполным сечением. */
+    chk('  свисание отличается от отрыва: тела ещё срослись',
+        spec({woH:20}).adrift === false && spec({woH:20}).perched === true && welded({woH:20}) > 0,
+        {ось:+spec({woH:20}).hookY.toFixed(1), сросшихся:welded({woH:20})});
+  }
+  /* 4. РЫЧАГ НА СТЕНУ. Плечо берётся у ПОСТРОИТЕЛЯ: после разворота витка на 180° самая низкая линия
+     дуги приходится ровно на её ось, z = t − 3 + вылет. Проверяется по сетке: у самой низкой линии
+     крючка берётся ДАЛЬНИЙ её конец — по всему стержню высота одна, и минимум по y без этого
+     неоднозначен (первый мой замер вернул случайную точку стержня). */
+  {
+    const g = spec({}), t = mesh({}), b = computeBBox(t);
+    const zW = b.minZ + g.cleatLip;                    // плоскость стены
+    let yMin = 1e9;
+    for (const T of t) for (const v of T) if (v[2] > zW + g.t + 1 && v[1] < yMin) yMin = v[1];
+    let zAt = -1e9;
+    for (const T of t) for (const v of T)
+      if (v[2] > zW + g.t + 1 && v[1] < yMin + 0.3 && v[2] > zAt) zAt = v[2];
+    const dMeas = zAt - zW;
+    chk('низ витка меряется по сетке и сходится с плечом рычага',
+        Math.abs(dMeas - g.dWall) < 1.5, {измерено:+dMeas.toFixed(1), спец:+g.dWall.toFixed(1)});
+    chk('  рычаг — это плечо, делённое на высоту задника',
+        Math.abs(g.pry - g.dWall/g.H) < 1e-9, +g.pry.toFixed(3));
+    chk('  на умолчаниях он меньше единицы и молчит', g.levered === false, +g.pry.toFixed(2));
+    const ov = {woH:20, woHookReach:100};
+    chk('  а низкий задник с длинным вылетом даёт пятикратный рычаг',
+        spec(ov).levered === true && spec(ov).pry > 4 &&
+        /рычаг на стену 5\.\d× веса/.test(warn(ov).join(' ')), {рычаг:+spec(ov).pry.toFixed(2)});
+  }
+  /* 5. ПОЛКА С ГНЁЗДАМИ считается ПО СЕЧЕНИЮ У ЗАДНИКА, и об этом сказано вслух. Гнёзда съедают полку
+     посередине, но сколько их там останется — решает отбор `buildBoxWithHoles`: заказанные три Ø16 на
+     полке 60 мм превращаются в ДВА. Повторить отбор в спецификации нельзя без всей сетки построителя,
+     а печатать число, которого в детали нет, нельзя тем более. Проверка запирает обе стороны: полка
+     считается по заднику, а про гнёзда сказано, что они слабее. */
+  {
+    const ov = {woFront:'tools'};
+    const g = spec(ov), t = mesh(ov), b = computeBBox(t);
+    const zW = b.minZ + g.cleatLip;
+    const st = Math.max(3, 4), sd = Math.max(15, 34);
+    const yc = b.minY + 0.4*g.H + st/2;                // середина плиты полки
+    const zRow = zW + g.t - 1 + sd/2;                  // ряд гнёзд стоит на середине глубины
+    const seg = [];
+    for (const T of t){ const pts = [];
+      for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+        if ((A[2] - zRow)*(B[2] - zRow) > 0) continue;
+        if (Math.abs(A[2] - B[2]) < 1e-12) continue;
+        const u = (zRow - A[2])/(B[2] - A[2]); if (u < 0 || u > 1) continue;
+        pts.push([A[0] + u*(B[0] - A[0]), A[1] + u*(B[1] - A[1])]); }
+      if (pts.length === 2) seg.push(pts); }
+    const xs = [];
+    for (const [P, Q] of seg){
+      if ((P[1] - yc)*(Q[1] - yc) > 0) continue;
+      if (Math.abs(P[1] - Q[1]) < 1e-12) continue;
+      const u = (yc - P[1])/(Q[1] - P[1]); if (u < 0 || u > 1) continue;
+      xs.push(P[0] + u*(Q[0] - P[0])); }
+    xs.sort((a, c) => a - c);
+    let solid = 0; for (let k = 0; k + 1 < xs.length; k += 2) solid += xs[k+1] - xs[k];
+    chk('ряд гнёзд и правда съедает полку', solid < g.W - 10 && solid > 1,
+        {осталось:+solid.toFixed(1), ширина:g.W});
+    /* Заказано три гнезда Ø16 — это 48 мм из 60; остаётся ЗАМЕТНО больше, потому что отбор их роняет.
+       Это и есть причина, по которой число в предупреждении не называется. */
+    chk('  и гнёзд в детали меньше заказанных: 60 − 3×16 было бы 12',
+        solid > 60 - 3*16 + 5, {осталось:+solid.toFixed(1)});
+    chk('  поэтому счёт ведётся по заднику и сказано об этом',
+        g.what === 'полка у задника' && /по сечению У ЗАДНИКА/.test(warn(ov).join(' ')), warn(ov));
+    chk('  у плоской полки этой оговорки нет', !/У ЗАДНИКА/.test(warn({woFront:'shelf'}).join(' ')));
+  }
+  /* 6. ЗАДНИК: зацеп планки и стандарт перфопанели. */
+  {
+    chk('зацеп глубже задника объявлен', spec({woH:20, woCleatLip:25}).lipDeep === true &&
+        /клин свисает ниже пластины/.test(warn({woH:20, woCleatLip:25}).join(' ')));
+    chk('  на умолчаниях зацеп мельче задника', spec({}).lipDeep === false);
+    chk('толстый штырь в дюймовое отверстие не входит',
+        spec({woBack:'peg', woPegD:12}).pegFat === true &&
+        /6\.35 мм\) не войдёт/.test(warn({woBack:'peg', woPegD:12}).join(' ')));
+    chk('  недюймовый шаг объявлен', spec({woBack:'peg', woPegSpacing:20}).pegOffPitch === true);
+    chk('  а умолчания перфопанели дюймовые и молчат',
+        spec({woBack:'peg'}).pegFat === false && spec({woBack:'peg'}).pegOffPitch === false);
+    chk('  и штырь с шагом названы в строке',
+        /Штырь Ø6\.0 с шагом 25\.4 мм/.test(line(warn({woBack:'peg'}))), line(warn({woBack:'peg'})));
+  }
+  /* 7. СОТОВАЯ ПАНЕЛЬ И СОТА-ПОЛКА — другие детали со своей геометрией, их эта строка не касается. */
+  chk('строки нет у сотовой панели и соты-полки',
+      ['hexpanel','hexshelf'].every(m => wallOrgSpec(setP({woBack:m})) === null &&
+        line(warn({woBack:m})) === undefined));
+  chk('  и у выключенного органайзера', wallOrgSpec(setP({woBack:'none'})) === null);
+  setP({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

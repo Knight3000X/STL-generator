@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.11.0';
+const APP_VERSION = 'v25.12.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -27522,9 +27522,61 @@ function bestOrientation(rawTris){
   return { rx: best[0], rz: best[1], area: bestA };
 }
 // Parameter-level thin-feature warnings (the parametric source of truth beats probing the mesh).
-function collectPrintWarnings(p){
+/* ВЛЕЗЕТ ЛИ ДЕТАЛЬ НА СТОЛ (v25.12.0) — вопрос, на который приложение до сих пор отвечало только в
+   раскладке сборки, то есть когда человек уже нажал «разложить». Между тем стол оно ЗНАЕТ: габарит
+   приезжает из шаблона проекта Orca вместе с палитрой, а без шаблона считается по 256 × 256.
+
+   Габарит детали из параметров не выведешь — у половины форм он получается только после построения, —
+   поэтому сетка передаётся ВТОРЫМ аргументом, и только оттуда, где она уже построена. Нет сетки — нет и
+   этой строки: выдумывать габарит по ширине куба, когда строится червячное колесо, было бы хуже
+   молчания.
+
+   ПОВОРОТ НА 90° УЧИТЫВАЕТСЯ: деталь 300 × 200 на столе 250 × 250 не влезает как есть и влезает
+   повёрнутой, и сказать надо именно это, а не «не влезает».
+
+   ЗАПАС ПО КРАЮ. Юбка, кайма и раздув первого слоя съедают по нескольку миллиметров с каждой стороны,
+   поэтому «впритык» — это отдельный случай, а не «влезло». */
+const BED_MARGIN = 5;      // мм по краю: юбка, кайма и раздув первого слоя
+function bedFitSpec(mesh){
+  if (!mesh || !mesh.length) return null;
+  const bed = (typeof arrangeBed === 'function') ? arrangeBed() : null;
+  if (!bed) return null;
+  const b = bboxOfTris(mesh);
+  const w = b.hi[0] - b.lo[0], d = b.hi[2] - b.lo[2], h = b.hi[1] - b.lo[1];
+  const asIs = w <= bed.w && d <= bed.d;
+  const turned = d <= bed.w && w <= bed.d;
+  const slack = asIs ? Math.min(bed.w - w, bed.d - d)
+              : turned ? Math.min(bed.w - d, bed.d - w) : -1;
+  return {bed, w, d, h, asIs, turned, slack,
+          fits: asIs || turned, onlyTurned: !asIs && turned,
+          tight: (asIs || turned) && slack < BED_MARGIN,
+          tooTall: bed.h > 0 && h > bed.h};
+}
+function collectPrintWarnings(p, mesh){
   p = normalizeBoxParams(p);
   const w = [];
+  /* Стол — первым делом: деталь, которая на него не встаёт, отменяет все остальные числа. */
+  { const f = bedFitSpec(mesh);
+    if (f){
+      const where = f.bed.fallback ? 'стол не объявлен, считаю по ' + Math.round(f.bed.w) + '×' + Math.round(f.bed.d)
+                                   : 'стол' + (f.bed.name ? ' «' + f.bed.name + '»' : '') + ' ' +
+                                     Math.round(f.bed.w) + '×' + Math.round(f.bed.d);
+      if (!f.fits)
+        w.push('НА СТОЛ НЕ ВЛЕЗАЕТ: деталь ' + f.w.toFixed(0) + '×' + f.d.toFixed(0) + ' мм, ' + where +
+               '. Разрежьте, уменьшите или отдайте шаблон проекта с настоящим столом');
+      else if (f.onlyTurned)
+        w.push('влезает только ПОВЁРНУТОЙ: деталь ' + f.w.toFixed(0) + '×' + f.d.toFixed(0) + ' мм, ' +
+               where + '. Разверните её на столе на 90°');
+      /* Оговорки НЕЗАВИСИМЫ: деталь может влезать только повёрнутой И стоять впритык — это два разных
+         наблюдения, и одно не отменяет другого. Единственное, что вправе молчать при невлезании, — сам
+         запас: он тогда отрицателен, и «остаётся −1 мм по краю» было бы не наблюдением, а нелепостью.
+         Стережёт это `tight`, а не порядок веток. */
+      if (f.tight)
+        w.push('на столе остаётся ' + f.slack.toFixed(0) + ' мм по краю (' + where + '): юбке и кайме ' +
+               'этого мало — печатайте без них или подвиньте деталь к центру');
+      if (f.tooTall)
+        w.push('деталь выше стола: ' + f.h.toFixed(0) + ' мм при высоте печати ' + Math.round(f.bed.h));
+    } }
   if ((p.hollow || p.rim)) {
     const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness || 2);
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
@@ -29274,7 +29326,7 @@ function updatePrintStats(tris){
   orcaNoteRefresh();
   const prEl = document.getElementById('stat-printable');
   if (prEl) {
-    const warns = collectPrintWarnings(paramState.box);
+    const warns = collectPrintWarnings(paramState.box, tris);
     prEl.textContent = warns.length ? warns[0] : 'ок';
     prEl.title = warns.join('; ');
     prEl.className = 'v mono' + (warns.length ? ' warn' : ' ok');

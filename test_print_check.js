@@ -70,6 +70,115 @@ console.log('\n=== collectPrintWarnings ===');
   logos.length = 0;
 }
 
+/* ВЛЕЗЕТ ЛИ НА СТОЛ (v25.12.0). Габарит стола приложение знало давно — он приезжает из шаблона проекта
+   Orca вместе с палитрой, — но спрашивали его только в раскладке сборки, то есть уже ПОСЛЕ того, как
+   человек нажал «разложить». Деталь, которая на стол не встаёт, до сих пор строилась молча.
+
+   Проверки здесь стерегут ровно четыре решения, каждое из которых легко потерять:
+     • меряется СЕТКА, а не ширина куба (у половины форм габарит известен только после построения);
+     • нет сетки — нет и строки (иначе перепись молчунов в test_registry.js начала бы врать);
+     • поворот на 90° считается влезанием, но с другой формулировкой;
+     • «впритык» — отдельный случай: юбка и кайма съедают по краю несколько миллиметров. */
+console.log('\n=== влезет ли деталь на стол ===');
+{
+  const noBed  = () => { orcaTemplate = null; };
+  const bedOf  = (w, d, h) => { orcaTemplate = { name:'t', cfg: JSON.stringify({
+      printable_area: ['0x0', w+'x0', w+'x'+d, '0x'+d],
+      printable_height: [String(h)], printer_settings_id: 'Стенд' }) }; };
+  const bedLine = (ws) => ws.find(s => /стол|СТОЛ|ПОВЁРНУТОЙ|краю/.test(s));
+  // деталь задаётся своей сеткой: параметры куба тут ни при чём, и это же проверяется ниже
+  const warn = (w, h, d) => collectPrintWarnings(paramState.box, plainBoxShellTris(w, h, d));
+
+  setBox({});
+  noBed();
+  check('без сетки строки про стол нет вовсе', bedLine(collectPrintWarnings(paramState.box)) === undefined,
+        collectPrintWarnings(paramState.box));
+  check('пустая сетка — не повод считать', bedFitSpec([]) === null && bedFitSpec(null) === null);
+
+  const fb = bedFitSpec(plainBoxShellTris(10, 10, 10));
+  check('без шаблона стол считается по 256×256', fb.bed.fallback && fb.bed.w === 256 && fb.bed.d === 256,
+        {w: fb.bed.w, d: fb.bed.d});
+  check('стол берётся у раскладки, а не считается заново',
+        fb.bed.w === arrangeBed().w && fb.bed.d === arrangeBed().d && fb.bed.h === arrangeBed().h);
+
+  check('деталь 100×100 на столе 256 — молчание', warn(100, 50, 100).length === 0, warn(100, 50, 100));
+  check('деталь 250×250 влезает и молчит', warn(250, 50, 250).length === 0, warn(250, 50, 250));
+
+  {
+    const w300 = warn(300, 50, 200), line = bedLine(w300);
+    check('деталь 300×200 на столе 256 не влезает', /НЕ ВЛЕЗАЕТ/.test(line || ''), line);
+    check('в строке названы обе стороны детали', /300/.test(line) && /200/.test(line), line);
+    check('в строке названо, ОТКУДА стол', /не объявлен/.test(line) && /256/.test(line), line);
+    /* Ровно ОДНА строка: «не влезает» и «остаётся −1 мм по краю» в одной шапке — это не два наблюдения,
+       а одно наблюдение и одна арифметическая нелепость. */
+    check('и это единственная строка про стол', w300.length === 1, w300);
+  }
+
+  /* Поворот. 300 × 200 на столе 250 × 350 не влезает как есть и влезает повёрнутой — сказать надо
+     именно это. Стол здесь НЕ квадратный намеренно: на квадратном эту ветку не отличить от прочих. */
+  bedOf(250, 350, 0);
+  {
+    const sp = bedFitSpec(plainBoxShellTris(300, 50, 200));
+    check('300×200 на 250×350: как есть не встаёт', sp.asIs === false);
+    check('300×200 на 250×350: повёрнутой встаёт', sp.turned === true && sp.fits === true);
+    const line = bedLine(collectPrintWarnings(paramState.box, plainBoxShellTris(300, 50, 200)));
+    check('и сказано про поворот, а не «не влезает»',
+          /ПОВЁРНУТОЙ/.test(line || '') && !/НЕ ВЛЕЗАЕТ/.test(line || ''), line);
+    check('стол назван по имени из шаблона', /Стенд/.test(line || ''), line);
+  }
+  check('300×300 не влезет ни так, ни этак',
+        /НЕ ВЛЕЗАЕТ/.test(bedLine(collectPrintWarnings(paramState.box, plainBoxShellTris(300, 50, 300))) || ''));
+  /* Запас считается по ТОЙ ЖЕ ориентации, в которой деталь встала: как есть 349 × 249 не влезает вовсе,
+     и запас «как есть» был бы отрицательным. */
+  check('запас меряется у повёрнутой детали', bedFitSpec(plainBoxShellTris(349, 50, 249)).slack === 1,
+        bedFitSpec(plainBoxShellTris(349, 50, 249)).slack);
+  /* «Влезает повёрнутой» и «стоит впритык» — два независимых наблюдения, и второе не отменяется первым. */
+  {
+    const ws = collectPrintWarnings(paramState.box, plainBoxShellTris(349, 50, 249));
+    check('повёрнутая впритык получает обе оговорки',
+          ws.some(s => /ПОВЁРНУТОЙ/.test(s)) && ws.some(s => /краю/.test(s)), ws);
+  }
+
+  /* Впритык. Ровно BED_MARGIN — ещё не впритык, меньше — уже. */
+  noBed();
+  check('запас ровно в 5 мм — молчание', warn(246, 50, 246).length === 0, warn(246, 50, 246));
+  {
+    const line = bedLine(warn(254, 50, 254));
+    check('запас в 2 мм — предупреждение', /краю/.test(line || ''), line);
+    check('и названо, сколько именно осталось', /остаётся 2 мм/.test(line || ''), line);
+  }
+
+  /* Высота. Габарит по Z объявлен не у всякого стола: если его нет, выдумывать нечего. */
+  bedOf(250, 250, 100);
+  {
+    const ws = collectPrintWarnings(paramState.box, plainBoxShellTris(50, 400, 50));
+    check('деталь выше стола названа высокой', ws.some(s => /выше стола/.test(s)), ws);
+    check('в строке и рост детали, и высота печати',
+          ws.some(s => /400/.test(s) && /100/.test(s)), ws);
+  }
+  noBed();
+  check('стол без объявленной высоты о росте молчит',
+        collectPrintWarnings(paramState.box, plainBoxShellTris(50, 400, 50)).length === 0);
+
+  /* Порядок. В шапке видна ПЕРВАЯ строка, и деталь, которая не встаёт на стол, отменяет все
+     остальные числа: тонкая стенка у ненапечатанной детали никого не занимает. */
+  setBox({ hollow:true, wallThickness:0.8 });
+  {
+    const ws = collectPrintWarnings(paramState.box, plainBoxShellTris(300, 50, 200));
+    check('строка про стол идёт первой', /НЕ ВЛЕЗАЕТ/.test(ws[0] || ''), ws[0]);
+    check('прочие жалобы при этом не пропали', ws.some(s => /стенка/.test(s)), ws);
+  }
+
+  /* Меряется сетка, а не параметры. Пара проверок ловит соблазн взять width/depth: у половины форм
+     (червячное колесо, ваза, крючок) габарит из параметров не выводится вовсе. */
+  setBox({ width: 40, depth: 40 });
+  check('маленькие параметры не спасают большую сетку',
+        /НЕ ВЛЕЗАЕТ/.test(bedLine(warn(300, 50, 300)) || ''));
+  setBox({ width: 300, depth: 300 });
+  check('большие параметры не топят маленькую сетку', warn(40, 40, 40).length === 0, warn(40, 40, 40));
+  setBox({});
+}
+
 console.log('\n=== snapWeldTris (final safety weld) ===');
 {
   // a sliver quad whose two long edges are 1e-6 apart must vanish entirely

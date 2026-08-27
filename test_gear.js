@@ -411,5 +411,130 @@ console.log('=== червяк лежит на своей же аналитиче
   }
 }
 
+
+/* ЧТО КОЛЕСО ГОВОРИТ О СВОЁМ ЗУБЕ (v25.6.0) — второй разобранный молчун переписи 10.4. Шестерня молчала
+   громче всех: 2193 разновидности настроек и предупреждение на шесть из них.
+
+   Проверяется не «есть ли текст», а то, что числа в нём — про ЭТУ деталь:
+
+     1. ПЛОЩАДКА ВЕРШИНЫ БЕРЁТСЯ ИЗ КОНТУРА. Спецификация считает её тем же выражением, что и построитель;
+        сверяется она с ИЗМЕРЕННОЙ по построенному контуру дугой между кончиками боковин. Разойдись они —
+        и число на экране будет про другую деталь.
+     2. ПОРОГ ПОДРЕЗАНИЯ — ФОРМУЛА, А НЕ ТАБЛИЦА: Zmin = 2/sin²α, и при 14.5° он втрое строже, чем при 25°.
+     3. ОСТРИЁ — ЭТО ГРАНИЦА, А НЕ ВКУС: полуширина вершины уходит в ноль, и контур начинает сам себя
+        пересекать.
+     4. НА СВОИХ УМОЛЧАНИЯХ ПРИЛОЖЕНИЕ НЕ РУГАЕТСЯ. Ради этого сателлит планетарной поднят с 16 до 19
+        зубьев — и именно до 19, потому что 18 ломает симметрию сателлитов.
+     5. МОЛЧАЛИВОЙ ПОДМЕНЫ ЗАКАЗА БОЛЬШЕ НЕТ: число сателлитов приложение опускает само, и теперь говорит
+        об этом. */
+console.log('=== зуб: подрезание, остриё, сопло, люфт ===');
+{
+  const P_ = ov => Object.assign(defaultBoxParams(), {gearMode:'spur'}, ov);
+  const W_ = ov => collectPrintWarnings(P_(ov)) || [];
+  const G = ov => gearToothSpec(P_(ov));
+
+  // 1. ПЛОЩАДКА ВЕРШИНЫ — ИЗ КОНТУРА
+  for (const [m, Z, pa] of [[2, 20, 20], [1, 12, 14.5], [3, 40, 25]]){
+    const o = gearOutline(m, Z, pa), g = G({gearModule:m, gearTeeth:Z, gearPA:pa});
+    /* Вершина в контуре — точка на радиусе ra; их ровно Z, по одной на зуб. Дуга между соседними
+       точками ОДНОГО зуба и есть площадка. Ищется она по мешу контура, а не по формуле. */
+    const tips = o.P.filter(q => Math.abs(Math.hypot(q[0], q[1]) - o.ra) < 1e-6);
+    chk('m'+m+' Z'+Z+' α'+pa+': вершины в контуре есть', tips.length >= Z, {точек:tips.length, зубьев:Z});
+    if (tips.length < 2) continue;
+    // соседние точки одной вершины идут подряд: берём первую пару с малым углом между ними
+    const ang = q => Math.atan2(q[1], q[0]);
+    let land = null;
+    for (let i = 0; i + 1 < tips.length; i++){
+      let d = Math.abs(ang(tips[i+1]) - ang(tips[i]));
+      if (d > Math.PI) d = 2*Math.PI - d;
+      if (d < Math.PI/Z){ land = d*o.ra; break; }
+    }
+    chk('  площадка вершины из контура сходится с расчётом',
+        land !== null && Math.abs(land - g.tipLand) < 1e-6,
+        {измерено:land === null ? null : +land.toFixed(4), расчёт:+g.tipLand.toFixed(4)});
+  }
+
+  // 2. ПОРОГ ПОДРЕЗАНИЯ — ФОРМУЛА
+  chk('при 20° порог 17 с небольшим', Math.abs(G({}).Zmin - 2/Math.pow(Math.sin(20*Math.PI/180), 2)) < 1e-12,
+      +G({}).Zmin.toFixed(2));
+  chk('  при 14.5° он вдвое строже, при 25° — вдвое мягче',
+      G({gearPA:14.5}).Zmin > 30 && G({gearPA:25}).Zmin < 12,
+      {'14.5':+G({gearPA:14.5}).Zmin.toFixed(1), '25':+G({gearPA:25}).Zmin.toFixed(1)});
+  chk('на 10 зубьях подрезание объявлено', W_({gearTeeth:10}).some(x => /ПОДРЕЗАН/.test(x)), {});
+  chk('  на 20 — нет', !W_({gearTeeth:20}).some(x => /ПОДРЕЗАН/.test(x)), {});
+  chk('  а при 25° и 12 зубьях — снова нет: порог зависит от УГЛА',
+      !W_({gearTeeth:12, gearPA:25}).some(x => /ПОДРЕЗАН/.test(x)) &&
+      W_({gearTeeth:12, gearPA:20}).some(x => /ПОДРЕЗАН/.test(x)),
+      {'12при25':G({gearTeeth:12, gearPA:25}).undercut, '12при20':G({gearTeeth:12, gearPA:20}).undercut});
+
+  // 3. СОПЛО
+  chk('модуль 0.3 объявлен непечатаемым', W_({gearModule:0.3}).some(x => /меньше двух проходов сопла/.test(x)),
+      {зуб:+G({gearModule:0.3}).sPitch.toFixed(2)});
+  chk('  и порог назван числом, а не словом',
+      W_({gearModule:0.3}).some(x => x.indexOf((4*GEAR_NOZZLE/Math.PI).toFixed(2)) >= 0), {});
+  chk('  на модуле 2 про сопло не говорится', !W_({}).some(x => /сопла/.test(x)), {});
+  chk('тонкая вершина ловится отдельно от тонкого зуба',
+      G({gearModule:0.55, gearTeeth:20}).tipThin && !G({gearModule:0.55, gearTeeth:20}).toothThin,
+      {вершина:+G({gearModule:0.55}).tipLand.toFixed(2), зуб:+G({gearModule:0.55}).sPitch.toFixed(2)});
+
+  // 4. УМОЛЧАНИЯ ЧИСТЫ
+  for (const md of ['spur','helical','bevel','planetary']){
+    const bad = W_({gearMode:md}).filter(x => /ПОДРЕЗАН|ОСТРИЁ|каше|печатать нечем/.test(x));
+    chk('на умолчаниях «'+md+'» приложение не ругается на само себя', bad.length === 0, bad);
+  }
+  chk('  сателлит по умолчанию выше порога подрезания',
+      G({gearMode:'planetary'}).Zp >= Math.ceil(G({}).Zmin), G({gearMode:'planetary'}).Zp);
+  chk('  и три сателлита по умолчанию действительно расставляются',
+      G({gearMode:'planetary'}).nFit === 3 && !G({gearMode:'planetary'}).planetCut,
+      {сателлитов:G({gearMode:'planetary'}).nFit});
+
+  // 5. МОЛЧАЛИВАЯ ПОДМЕНА ЗАКАЗА
+  chk('заказ четырёх сателлитов урезается — и об этом сказано',
+      G({gearMode:'planetary', planetN:4}).planetCut &&
+      W_({gearMode:'planetary', planetN:4}).some(x => /вместо заказанных 4/.test(x)),
+      {дали:G({gearMode:'planetary', planetN:4}).nFit});
+  chk('  и приложение строит ровно столько, сколько назвало', (() => {
+      const p = P_({gearMode:'planetary', planetN:4});
+      Object.assign(paramState.box, p);
+      const t = buildTrisForShape('box', p);
+      /* Сателлиты — тела, чей центр отстоит от оси на радиус водила. Считаются они по СЕТКЕ: связные
+         куски, у которых центр тяжести лежит на этом радиусе. */
+      const g = gearToothSpec(p), a = g.m*(g.Zs + g.Zp)/2;
+      const key = q => q.map(c => Math.round(c*1e5)).join(',');
+      const par = [...t.keys()], find = i => par[i]===i ? i : (par[i] = find(par[i]));
+      const vm = new Map();
+      t.forEach((T, i) => T.forEach(v => { const k = key(v);
+        if (vm.has(k)){ const x = find(vm.get(k)), y = find(i); if (x!==y) par[x] = y; } else vm.set(k, i); }));
+      const grp = new Map();
+      t.forEach((_, i) => { const r = find(i); if (!grp.has(r)) grp.set(r, []); grp.get(r).push(i); });
+      let planets = 0;
+      for (const idx of grp.values()){
+        let sx = 0, sz = 0, n = 0;
+        for (const i of idx) for (const v of t[i]){ sx += v[0]; sz += v[2]; n++; }
+        const r = Math.hypot(sx/n, sz/n);
+        if (Math.abs(r - a) < a*0.25) planets++;
+      }
+      return planets === g.nFit;
+    })(), {});
+
+  // ЛЮФТ
+  chk('про отсутствие люфта сказано, и названо межосевое',
+      W_({}).some(x => /ЛЮФТА В ЗАЦЕПЛЕНИИ НЕТ/.test(x) && x.indexOf(G({}).axis.toFixed(1)) >= 0),
+      {межосевое:G({}).axis});
+  chk('  а у планетарной вместо этого назван её собственный зазор',
+      !W_({gearMode:'planetary'}).some(x => /ЛЮФТА В ЗАЦЕПЛЕНИИ НЕТ/.test(x)) &&
+      W_({gearMode:'planetary'}).some(x => /Зазор в зацеплении/.test(x)), {});
+
+  // КОСОЗУБАЯ
+  chk('осевое перекрытие названо и посчитано',
+      Math.abs(G({gearMode:'helical'}).epsB - 6*Math.tan(15*Math.PI/180)/(Math.PI*2)) < 1e-12,
+      +G({gearMode:'helical'}).epsB.toFixed(3));
+  chk('  и сказано, что меньше единицы толку от наклона нет',
+      W_({gearMode:'helical'}).some(x => /плавности наклон не добавляет/.test(x)), {});
+  chk('  а толстое колесо с большим наклоном перекрытие набирает',
+      G({gearMode:'helical', gearHelix:40, gearThick:30}).epsB > 1, 
+      +G({gearMode:'helical', gearHelix:40, gearThick:30}).epsB.toFixed(2));
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

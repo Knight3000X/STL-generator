@@ -167,7 +167,7 @@ console.log('=== ПЕРЕПИСЬ МОЛЧУНОВ (10.4): список може
      остаётся памятью о том, что список сокращается разбором, а не правкой списка: вычеркнуть можно
      только то, что и правда заговорило, — проверка ниже это и требует. */
   const SILENT = ['baseplate', 'logo3d', 'wallorg', 'pbox', 'coaster', 'frame', 'tile', 'clock',
-                  'funnel', 'test', 'mount', 'hinge', 'thread', 'sheet',
+                  'test', 'mount', 'hinge', 'thread', 'sheet',
                   'keycap', 'die', 'box'];
   const now = [];
   for (const f of FAMILIES){

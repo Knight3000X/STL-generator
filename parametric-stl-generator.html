@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.9.0';
+const APP_VERSION = 'v25.10.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4506,6 +4506,88 @@ function buildLogoSilhouetteMask(logo, N) {
 // Extrude the silhouette into a solid: footprint sizeX×sizeZ (XZ plane, image top away from the
 // viewer), thickness along Y, centred at the origin like every other model. Lies flat — prints
 // support-free as-is.
+/* ЧТО ЗНАЕТ ОБЪЁМНЫЙ ЛОГОТИП (v25.10.0) — шестой разобранный молчун переписи 10.4.
+
+   САМАЯ ТОНКАЯ ПЕРЕМЫЧКА РИСУНКА — вот число, которого не видно нигде и которое решает, выйдет ли
+   логотип буквами или кашей. Справка сказать его не может: она статична, а число зависит от ЭТОЙ
+   картинки и ЭТОГО размера. Тонкая засечка, хвостик буквы, точка над «i» — всё это на экране выглядит
+   как рисунок, а соплом 0.4 просто не печатается.
+
+   КАК МЕРЯЕТСЯ. По той же маске силуэта, которую строит сам построитель. Считается расстояние от каждой
+   закрашенной клетки до ближайшей пустой (двухпроходное преобразование расстояний, с РАЗНЫМ шагом по
+   осям — рисунок можно растянуть), затем берутся ГРЕБНИ этого поля: клетки, где расстояние не меньше,
+   чем у всех восьми соседей. Гребень — это средняя линия штриха, и удвоенное расстояние на нём и есть
+   ширина штриха. Минимум по гребням — самая тонкая перемычка.
+
+   Брать просто минимум по всем клеткам нельзя: у любого штриха с краю расстояние стремится к нулю, и
+   такой «минимум» всегда был бы нулём независимо от рисунка.
+
+   СКОЛЬКО ТЕЛ. Силуэт из букв — это НЕСКОЛЬКО отдельных тел: подложки у этой формы нет, буквы ничем не
+   связаны. Печатать так можно (каждая встанет на стол сама), но знать об этом надо заранее: три буквы
+   это три детали, а не одна. */
+const LOGO3D_NOZZLE = 0.4;
+function logo3dSpec(p){
+  const lg = (typeof logos !== 'undefined' && logos.length) ? logos.find(l => l.heightmap) : null;
+  const N = (typeof logoResolution !== 'undefined') ? Math.max(48, Math.min(256, logoResolution*3)) : 160;
+  const sizeX = Math.max(1, p.width||60), sizeZ = Math.max(1, p.depth||60), t = Math.max(0.2, p.height||3);
+  const mask = lg ? buildLogoSilhouetteMask(lg, N) : null;
+  if (!mask) return {lg, N, sizeX, sizeZ, t, empty: true, bodies: 0, minStroke: Infinity,
+                     thin: false, cellX: sizeX/N, cellZ: sizeZ/N};
+  const dx = sizeX/N, dz = sizeZ/N, dd = Math.hypot(dx, dz);
+  /* Преобразование расстояний в МИЛЛИМЕТРАХ: шаг по осям разный, поэтому и веса разные. */
+  const INF = 1e9, D = new Float64Array(N*N);
+  for (let q = 0; q < N*N; q++) D[q] = mask[q] ? INF : 0;
+  const at = (i, j) => (i >= 0 && j >= 0 && i < N && j < N) ? D[j*N+i] : 0;   // за краем — пусто
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
+    if (!mask[j*N+i]) continue;
+    D[j*N+i] = Math.min(D[j*N+i], at(i-1,j)+dx, at(i,j-1)+dz, at(i-1,j-1)+dd, at(i+1,j-1)+dd);
+  }
+  for (let j = N-1; j >= 0; j--) for (let i = N-1; i >= 0; i--){
+    if (!mask[j*N+i]) continue;
+    D[j*N+i] = Math.min(D[j*N+i], at(i+1,j)+dx, at(i,j+1)+dz, at(i+1,j+1)+dd, at(i-1,j+1)+dd);
+  }
+  /* ГРЕБНИ поля расстояний — средние линии штрихов. Ширина штриха там равна удвоенному расстоянию. */
+  let minStroke = Infinity, ridges = 0;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
+    if (!mask[j*N+i]) continue;
+    const d0 = D[j*N+i];
+    let top = true;
+    for (let b = -1; b <= 1 && top; b++) for (let a = -1; a <= 1; a++){
+      if (!a && !b) continue;
+      if (at(i+a, j+b) > d0 + 1e-12){ top = false; break; }
+    }
+    if (!top) continue;
+    ridges++;
+    if (2*d0 < minStroke) minStroke = 2*d0;
+  }
+  /* СКОЛЬКО ОТДЕЛЬНЫХ ТЕЛ — по связности маски, и связность тут ВОСЬМИСТОРОННЯЯ. Это не вкус: клетки,
+     соприкасающиеся углом, построитель специально сращивает (иначе на общем ребре сошлись бы четыре
+     стенки — немыслимая сетка), заливая одного из двух пустых соседей. Считать по четырём сторонам
+     значило бы насчитать тел БОЛЬШЕ, чем их окажется в детали. */
+  const seen = new Uint8Array(N*N); let bodies = 0;
+  const stack = [];
+  for (let q0 = 0; q0 < N*N; q0++){
+    if (!mask[q0] || seen[q0]) continue;
+    bodies++; seen[q0] = 1; stack.length = 0; stack.push(q0);
+    while (stack.length){
+      const q = stack.pop(), i = q % N, j = (q/N)|0;
+      const nb = [[i-1,j],[i+1,j],[i,j-1],[i,j+1],[i-1,j-1],[i+1,j-1],[i-1,j+1],[i+1,j+1]];
+      for (const [a, b] of nb){
+        if (a < 0 || b < 0 || a >= N || b >= N) continue;
+        const r = b*N + a;
+        if (mask[r] && !seen[r]){ seen[r] = 1; stack.push(r); }
+      }
+    }
+  }
+  let filled = 0; for (let q = 0; q < N*N; q++) if (mask[q]) filled++;
+  return {lg, N, sizeX, sizeZ, t, empty: false, bodies, minStroke, ridges,
+          cover: filled/(N*N), cellX: dx, cellZ: dz,
+          /* Порог со ЗНАКОМ РАВЕНСТВА: число квантовано клеткой сетки, и настоящая перемычка 0.6 мм
+             приходит сюда как 0.8. Строгое «меньше» пропустило бы ровно тот случай, ради которого всё
+             и меряется. */
+          need: 2*LOGO3D_NOZZLE, thin: minStroke <= 2*LOGO3D_NOZZLE + 1e-9,
+          layers: t/0.2};
+}
 function buildLogoExtrudeTris(logo, sizeX, sizeZ, thickness, N) {
   N = Math.max(16, Math.min(256, Math.round(N || 160)));
   const t = Math.max(0.2, thickness);
@@ -28831,6 +28913,30 @@ function collectPrintWarnings(p){
       if (logos.some(lg => lg.heightmap && (lg.depth||0) > 0))
         w.push('надпись ВЫПУКЛАЯ, а этой гранью футляр ложится на стол: бугор поднимет деталь с ' +
                'первого слоя. Утопленная (глубина со знаком минус) печатается здесь начисто');
+    }
+  }
+  /* ОБЪЁМНЫЙ ЛОГОТИП. Число, которого не видно нигде: самая тонкая перемычка рисунка. */
+  if (p.logo3d){
+    const g = logo3dSpec(p);
+    if (g.empty){
+      w.push('объёмный логотип: картинки нет (или порог отсёк всё) — выйдет сплошная плитка ' +
+             g.sizeX.toFixed(0) + '×' + g.sizeZ.toFixed(0) + '×' + g.t.toFixed(1) + ' мм');
+    } else {
+      w.push('объёмный логотип ' + g.sizeX.toFixed(0) + '×' + g.sizeZ.toFixed(0) + '×' + g.t.toFixed(1) +
+             ' мм: рисунок занимает ' + (g.cover*100).toFixed(0) + ' % площадки, самая тонкая перемычка ' +
+             g.minStroke.toFixed(2) + ' мм. Точнее ячейки оцифровки (' + Math.max(g.cellX, g.cellZ).toFixed(2) +
+             ' мм) это число не бывает');
+      if (g.thin)
+        w.push('перемычка ' + g.minStroke.toFixed(2) + ' мм — это не толще двух проходов сопла ' +
+               LOGO3D_NOZZLE.toFixed(1) + ': тонкие места выйдут кашей или пропадут вовсе. Крупнее ' +
+               'модель, жирнее рисунок или сопло 0.25 мм');
+      if (g.bodies > 1)
+        w.push('силуэт распадается на ' + g.bodies + ' отдельных ' +
+               (g.bodies % 10 === 1 && g.bodies % 100 !== 11 ? 'тело'
+                : (g.bodies % 10 >= 2 && g.bodies % 10 <= 4 && (g.bodies % 100 < 10 || g.bodies % 100 >= 20) ? 'тела' : 'тел')) +
+               ': подложки у этой формы нет, и ' +
+               'буквы между собой ничем не связаны — на столе они встанут отдельными деталями, а в ' +
+               'файле поедут одним объектом');
     }
   }
   /* КОСТЬ. Число здесь ровно одно, зато то самое, ради которого кость и существует: насколько она

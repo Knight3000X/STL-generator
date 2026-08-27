@@ -244,5 +244,264 @@ for(const ov of [{mntDtW:4},{mntDtW:120},{mntDtH:3},{mntDtH:60},{mntDtClear:0},{
   chk('dovetail '+JSON.stringify(ov)+' watertight', mc.watertight&&vol(t)>0, {open:mc.openEdges,bad:mc.badEdges});
 }
 
+/* ===============================================================================================
+   L-КРОНШТЕЙН ГОВОРИТ, СКОЛЬКО ДЕРЖИТ (v25.15.0). Уголок — деталь несущая, и вопрос к ней ровно один:
+   какой груз. Из картинки он не выводится вовсе, а из ручек — только тремя числами разом.
+
+   ГЛАВНОЕ ЗДЕСЬ — НЕ ФОРМУЛА, А МЕСТО. Ребро жёсткости стоит в углу и сходит на нет за свою длину:
+   глубина сечения падает от t + gl до t, а момент за то же расстояние падает лишь с F·legA до
+   F·(legA − gl). Глубина входит в момент сопротивления В КВАДРАТЕ — значит опасное сечение не в углу, а
+   у кончика ребра, и на умолчаниях разница восьмикратная.
+
+   Проверяется это НЕ ПОВТОРЕНИЕМ ФОРМУЛЫ, а замером по построенной детали: плоскость z = const режет
+   сетку, сечение растеризуется по столбцам, и из него берутся площадь, центр тяжести и второй момент —
+   те самые, из которых считается момент сопротивления. Совпадение расчёта с замером и есть проверка. */
+console.log('\n=== L-кронштейн говорит, сколько держит ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
+      mntMode:'lbracket',mntW:40,mntT:4,mntLegA:45,mntLegB:45,mntScrewD:4.5,mntGusset:'yes',
+      mntHoleN:1,mntGussetLen:0,mntGussetW:0,mntVesa:'100',mntCenterD:0,
+      gearMode:'none',pipMode:'none',threadMode:'none',sheetShape:'none',keycapMode:'none',
+      platonic:'none',polyN:0,binRound:0,scoopDir:'none',labelTab:'none',mountHoles:'none',
+      gripWall:'none',divX:1,divZ:1,stackFeet:false,gfOn:false}, ov);
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(s => /^L-кронштейн: /.test(s));
+  const spec = (ov) => lbracketSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  /* Сечение плоскостью z = c, растеризованное по столбцам x: для каждого x собираются пересечения
+     вертикальной прямой с отрезками сечения, сортируются, и материал — это промежутки чётности.
+     Отсюда площадь, центр тяжести и второй момент относительно него — численно, без единой формулы
+     из построителя. */
+  const sectionZ = (tris, c) => { const seg = [];
+    for (const T of tris){ const pts = [];
+      for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+        if ((A[2] - c)*(B[2] - c) > 0) continue;
+        if (Math.abs(A[2] - B[2]) < 1e-12) continue;
+        const u = (c - A[2])/(B[2] - A[2]); if (u < 0 || u > 1) continue;
+        pts.push([A[0] + u*(B[0] - A[0]), A[1] + u*(B[1] - A[1])]); }
+      if (pts.length === 2) seg.push(pts); }
+    return seg; };
+  const sectionProps = (seg, x0, x1, nx) => {
+    let A = 0, Sy = 0, Iy = 0;
+    const dx = (x1 - x0)/nx;
+    for (let i = 0; i < nx; i++){
+      const x = x0 + dx*(i + 0.5), ys = [];
+      for (const [P, Q] of seg){
+        if ((P[0] - x)*(Q[0] - x) > 0) continue;
+        if (Math.abs(P[0] - Q[0]) < 1e-12) continue;
+        const u = (x - P[0])/(Q[0] - P[0]); if (u < 0 || u > 1) continue;
+        ys.push(P[1] + u*(Q[1] - P[1])); }
+      ys.sort((a,b) => a-b);
+      for (let k = 0; k + 1 < ys.length; k += 2){
+        const a = ys[k], b = ys[k+1];
+        A  += (b - a)*dx;
+        Sy += (b*b - a*a)/2*dx;
+        Iy += (b*b*b - a*a*a)/3*dx; } }
+    if (A <= 0) return null;
+    const yb = Sy/A;
+    return {A, yb, I: Iy - A*yb*yb, top: (() => { let m = -1e9;
+      for (const [P, Q] of seg){ m = Math.max(m, P[1], Q[1]); } return m; })()}; };
+
+  chk('L-кронштейн больше не молчит: на умолчаниях есть строка с грузом',
+      line(warn({})) !== undefined, warn({}));
+
+  /* 1. МОМЕНТ СОПРОТИВЛЕНИЯ — ИЗ СЕТКИ. Сечение берётся там, где спецификация назвала опасное место, и
+     считается численно. Совпадение с расчётным Z проверяет и формулу тавра, и то, что ребро в этом
+     сечении и правда той высоты, какой его считают. */
+  {
+    const g = spec({}), t = mesh({});
+    const b = computeBBox(t);
+    /* Станции — в АБСОЛЮТНОМ z нижней полки, ровно как в спецификации: она построена от z = 0, а
+       заделка стоит на z = t + 0.3. Первый мой замер отсчитывал ребро от заделки, а построитель
+       ведёт его от z = 0.3, и расчёт разошёлся с сеткой ровно на толщину полки. */
+    for (const [nm, z] of [['у заделки', g.zRoot + 0.5], ['в опасном сечении', g.atZ]]){
+      const pr = sectionProps(sectionZ(t, b.minZ + z), b.minX - 1, b.maxX + 1, 800);
+      chk('сечение ' + nm + ' читается из сетки', pr !== null && pr.A > 0, pr && +pr.A.toFixed(1));
+      const Zmeas = pr.I/(pr.top - pr.yb);
+      /* То же сечение по правилу спецификации: h — остаток ребра на этой станции. */
+      const h = g.ribAt(z);
+      const A1 = g.W*g.t, A2 = 2*g.gw*h;
+      const yb = A2 > 0 ? (A1*g.t/2 + A2*(g.t + h/2))/(A1 + A2) : g.t/2;
+      const I = g.W*g.t*g.t*g.t/12 + A1*(yb - g.t/2)**2 + (A2 > 0 ? 2*g.gw*h*h*h/12 + A2*(g.t + h/2 - yb)**2 : 0);
+      const Zcalc = I/(g.t + h - yb);
+      chk('  и момент сопротивления сходится с расчётным (' + nm + ')',
+          Math.abs(Zmeas - Zcalc) < 0.12*Zcalc, {измерено:+Zmeas.toFixed(0), расчёт:+Zcalc.toFixed(0)});
+    }
+  }
+  /* 2. ОПАСНОЕ СЕЧЕНИЕ НЕ У УГЛА. Проверяется прямым перебором станций ПО ЗАМЕРАМ: напряжение
+     M(z)/Z(z) считается из измеренных сечений, и его максимум обязан лежать там, где сказала
+     спецификация, — у кончика ребра, а не в углу. */
+  {
+    const g = spec({}), t = mesh({});
+    const b = computeBBox(t);
+    let bestZ = g.zRoot, best = 0;
+    for (let k = 0; k <= 12; k++){
+      const z = g.zRoot + 0.4 + (g.zTip - g.zRoot - 0.4)*k/12;
+      const pr = sectionProps(sectionZ(t, b.minZ + z), b.minX - 1, b.maxX + 1, 600);
+      if (!pr) continue;
+      const q = (g.legA - z)/(pr.I/(pr.top - pr.yb));
+      if (q > best){ best = q; bestZ = z; } }
+    chk('измеренное опасное сечение — у кончика ребра, а не у заделки',
+        bestZ - g.zRoot > (g.zTip - g.zRoot)*0.7,
+        {измерено:+(bestZ - g.zRoot).toFixed(1), ребро:+(g.zTip - g.zRoot).toFixed(1)});
+    chk('  и спецификация называет то же место', Math.abs(bestZ - g.atZ) < g.gl*0.25,
+        {измерено:+bestZ.toFixed(1), спец:+g.atZ.toFixed(1)});
+    chk('  переоценка «по углу» и правда кратная', g.overCorner > 4, +g.overCorner.toFixed(1));
+    chk('  и названа в предупреждении',
+        new RegExp('завысить его ×' + g.overCorner.toFixed(0)).test(warn({}).join(' ')),
+        {спец:+g.overCorner.toFixed(1), строки:warn({})});
+  }
+  /* 3. ГРУЗ. Число выводится из измеримых величин, и обратный ход это подтверждает: допускаемое
+     напряжение, делённое на напряжение при единичной силе, — это и есть сила. */
+  {
+    const g = spec({});
+    chk('груз — это допускаемое напряжение, делённое на напряжение от единичной силы',
+        Math.abs(g.N - g.allow/g.worst) < 1e-6 && Math.abs(g.kg - g.N/9.80665) < 1e-6,
+        {N:+g.N.toFixed(1), kg:+g.kg.toFixed(2)});
+    chk('  поперёк слоёв ровно вдвое меньше', Math.abs(g.kgAcross*2 - g.kg) < 1e-9);
+    chk('  и оба числа названы', /держит 28 кг/.test(line(warn({}))) && /14 кг/.test(line(warn({}))),
+        line(warn({})));
+    chk('  материал участвует: нейлон и PLA дают разные числа',
+        spec({printMat:'nylon'}).kg > spec({printMat:'pla'}).kg*1.5,
+        [+spec({printMat:'nylon'}).kg.toFixed(1), +spec({printMat:'pla'}).kg.toFixed(1)]);
+    /* Толщина полки входит В КВАДРАТЕ — это и есть та ручка, которой чинят слабый кронштейн. Ровно
+       четырёх не выходит, и это не погрешность: заделка стоит на дальней грани задней полки, поэтому
+       толстая полка укорачивает ещё и плечо. Проверяется поэтому и то, и другое — по отдельности. */
+    const rT = spec({mntT:8, mntGusset:'no'}).kg / spec({mntT:4, mntGusset:'no'}).kg;
+    chk('  вдвое толще — БОЛЬШЕ чем вчетверо: квадрат толщины плюс укоротившееся плечо',
+        rT > 4 && rT < 4.6, +rT.toFixed(3));
+    const a45 = spec({mntGusset:'no'}), a90 = spec({mntLegA:90, mntGusset:'no'});
+    chk('  а вылет — строго линейно по плечу от заделки',
+        Math.abs(a90.kg/a45.kg - (a45.legA - a45.zRoot)/(a90.legA - a90.zRoot)) < 1e-9,
+        {отношение:+(a90.kg/a45.kg).toFixed(4)});
+  }
+  /* 4. РЕБРО, КОТОРОЕ НЕ РАБОТАЕТ. При полке много длиннее ребра момент у его кончика почти тот же,
+     что у угла, и прочности ребро не добавляет вовсе. То же самое приложение говорит про косынки
+     струбцины — и там это верно всегда, а здесь зависит от длины. */
+  {
+    chk('на умолчаниях ребро работает', spec({}).ribIdle === false && spec({}).gain > 1.5,
+        +spec({}).gain.toFixed(2));
+    chk('  а при полке 200 мм — уже нет', spec({mntLegA:200}).ribIdle === true,
+        +spec({mntLegA:200}).gain.toFixed(2));
+    chk('  и об этом сказано словами', /прочности НЕ добавляет/.test(warn({mntLegA:200}).join(' ')),
+        warn({mntLegA:200}));
+    /* Ребро и правда стоит в детали — его объём меряется разностью и совпадает с двумя призмами. */
+    const g = spec({});
+    const vG = vol(mesh({})), vN = vol(mesh({mntGusset:'no'}));
+    chk('  объём ребра в детали совпадает с двумя треугольными призмами',
+        Math.abs((vG - vN) - g.gl*g.gl*(g.gw - 0.2)) < 0.03*(vG - vN),
+        {измерено:+(vG - vN).toFixed(0), расчёт:+(g.gl*g.gl*(g.gw - 0.2)).toFixed(0)});
+  }
+  /* 5. ВИНТЫ, КОТОРЫЕ МОЛЧА ПРОПАДАЮТ. `buildBoxWithHoles` держит отверстие только если его клетка не
+     пересекается с уже принятой, и на узкой полке четыре заказанных винта превращаются в два.
+     Раскладка теперь ОДНА на построитель и спецификацию, и проверка считает дырки ПО СЕТКЕ. */
+  {
+    /* Отверстия считаются по горизонтальному сечению нижней плиты: связные куски контура сечения —
+       это наружная кромка плюс по одному кольцу на отверстие. */
+    const holesIn = (ov) => { const g = spec(ov), t = mesh(ov), b = computeBBox(t);
+      const y = b.minY + Math.min(0.25*g.t, g.t - g.hD - 0.2);   // ниже потая, внутри плиты
+      const pts = [];
+      for (const T of t) for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+        if ((A[1] - y)*(B[1] - y) > 0) continue;
+        if (Math.abs(A[1] - B[1]) < 1e-12) continue;
+        const u = (y - A[1])/(B[1] - A[1]); if (u < 0 || u > 1) continue;
+        const x = A[0] + u*(B[0] - A[0]), z = A[2] + u*(B[2] - A[2]);
+        if (z > b.minZ + g.t + 1.0) pts.push([x, z]); }        // только нижняя плита, без задней
+      // связные куски: объединение точек, отстоящих меньше чем на 1.5 мм
+      const par = pts.map((_, i) => i);
+      const find = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
+        if (Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < 1.5){
+          const a = find(i), c = find(j); if (a !== c) par[a] = c; }
+      const roots = new Set(); for (let i = 0; i < pts.length; i++) roots.add(find(i));
+      return roots.size - 1; };                                  // минус наружная кромка
+    chk('один заказанный винт — одно отверстие в детали', holesIn({}) === 1, holesIn({}));
+    chk('четыре заказанных на широкой полке и правда четыре',
+        holesIn({mntHoleN:4}) === 4 && spec({mntHoleN:4}).nBase === 4, holesIn({mntHoleN:4}));
+    const nar = {mntHoleN:4, mntW:20};
+    chk('на узкой полке их меньше — и деталь согласна со спецификацией',
+        holesIn(nar) === spec(nar).nBase && spec(nar).nBase < 4,
+        {вдетали:holesIn(nar), спец:spec(nar).nBase});
+    chk('  и об этом сказано', spec(nar).screwsLost === true &&
+        /винтов помещается 2, а не 4/.test(warn(nar).join(' ')), warn(nar));
+    chk('  на умолчаниях ничего не теряется', spec({}).screwsLost === false);
+  }
+  /* 6. МАТЕРИАЛ ПОД ПОТАЕМ — та стенка, которой винт прижимает кронштейн. Меряется по детали: внизу
+     плиты отверстие узкое (тело винта), вверху широкое (конус головки), и разность высот, на которых
+     это меняется, и есть глубина потая. Диаметр берётся по КЛАСТЕРУ точек сечения, а не по максимуму
+     |x|: наружная кромка плиты шире любого отверстия, и первый мой замер мерил именно её. */
+  {
+    const holeD = (ov, frac) => { const g = spec(ov), t = mesh(ov), b = computeBBox(t);
+      const y = b.minY + g.t*frac;
+      const pts = [];
+      for (const T of t) for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+        if ((A[1] - y)*(B[1] - y) > 0) continue;
+        if (Math.abs(A[1] - B[1]) < 1e-12) continue;
+        const u = (y - A[1])/(B[1] - A[1]); if (u < 0 || u > 1) continue;
+        const x = A[0] + u*(B[0] - A[0]), z = A[2] + u*(B[2] - A[2]);
+        if (z > b.minZ + g.t + 1.0) pts.push([x, z]); }
+      const par = pts.map((_, i) => i);
+      const find = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
+        if (Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < 1.5){
+          const a = find(i), c = find(j); if (a !== c) par[a] = c; }
+      const by = new Map();
+      for (let i = 0; i < pts.length; i++){ const rt = find(i);
+        const q = by.get(rt) || [1e9,-1e9,1e9,-1e9];
+        q[0] = Math.min(q[0], pts[i][0]); q[1] = Math.max(q[1], pts[i][0]);
+        q[2] = Math.min(q[2], pts[i][1]); q[3] = Math.max(q[3], pts[i][1]);
+        by.set(rt, q); }
+      let d = 0;                                     // самый широкий кластер, НЕ дотягивающий до кромки
+      for (const q of by.values()){
+        if (q[1] - q[0] > g.W - 1.5) continue;        // это наружная кромка плиты
+        d = Math.max(d, q[1] - q[0]); }
+      return d; };
+    const ov = {mntT:2, mntScrewD:12};
+    const g = spec(ov);
+    const low = holeD(ov, 0.12), high = holeD(ov, 0.98);
+    chk('снизу отверстие — тело винта, сверху — конус головки', high > low + 1,
+        {низ:+low.toFixed(2), верх:+high.toFixed(2)});
+    chk('  снизу это ровно Ø винта', Math.abs(low - g.sd) < 0.5, {низ:+low.toFixed(2), винт:g.sd});
+    /* САМ ОСТАТОК меряется прямо: на какой высоте отверстие перестаёт быть телом винта и начинает
+       расширяться конусом. Это и есть материал под потаем — та стенка, которой винт прижимает. */
+    let start = g.t;
+    for (let k = 1; k <= 40; k++){ const f = k/40;
+      if (holeD(ov, f) > g.sd + 0.4){ start = g.t*f; break; } }
+    chk('  измеренный остаток под потаем сходится с объявленным',
+        Math.abs(start - g.underSink) < g.t*0.06,
+        {измерено:+start.toFixed(2), спец:+g.underSink.toFixed(2)});
+    chk('  остаток под потаем назван тонким', g.thinUnderSink === true &&
+        /под потаем остаётся 0\.60/.test(warn(ov).join(' ')));
+    chk('  на умолчаниях он толще двух проходов сопла', spec({}).thinUnderSink === false,
+        +spec({}).underSink.toFixed(2));
+  }
+  /* 7. МОЛЧАЛИВЫЕ ЗАЖИМЫ РЕБРА и слишком большое отверстие. */
+  {
+    chk('длина ребра, урезанная короткой полкой, объявлена',
+        spec({mntGussetLen:150}).glCut === true && /укорочено с 150 до 40/.test(warn({mntGussetLen:150}).join(' ')));
+    chk('толщина ребра, урезанная шириной полки, объявлена',
+        spec({mntGussetW:30}).gwCut === true && /утоньшено с 30\.0 до 19\.0/.test(warn({mntGussetW:30}).join(' ')));
+    chk('отверстие шире полки объявлено', spec({mntW:10, mntScrewD:12}).holeTooBig === true &&
+        /рвать будет по отверстию/.test(warn({mntW:10, mntScrewD:12}).join(' ')));
+    chk('на умолчаниях зажимов нет',
+        spec({}).glCut === false && spec({}).gwCut === false && spec({}).holeTooBig === false);
+    chk('слабый кронштейн назван слабым', spec({mntLegA:150, mntW:15, mntT:2}).weak === true &&
+        /для полки этого мало/.test(warn({mntLegA:150, mntW:15, mntT:2}).join(' ')));
+    chk('  а умолчания слабыми не зовутся', spec({}).weak === false, +spec({}).kg.toFixed(1));
+  }
+  /* 8. ЧУЖИЕ РАЗНОВИДНОСТИ КРЕПЕЖА НЕ ЗАТРОНУТЫ. */
+  chk('строка про уголок есть только у уголка',
+      ['vesa','boss','hub','dinclip','tool','pipe','foot','dovetail','gclamp']
+        .every(m => line(warn({mntMode:m})) === undefined),
+      ['vesa','boss','hub','dinclip','tool','pipe','foot','dovetail','gclamp']
+        .filter(m => line(warn({mntMode:m})) !== undefined));
+  chk('  и спецификация у них пуста',
+      ['vesa','boss','dovetail','gclamp'].every(m => lbracketSpec(setP({mntMode:m})) === null));
+  setP({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

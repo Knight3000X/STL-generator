@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.14.0';
+const APP_VERSION = 'v25.15.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -18460,6 +18460,123 @@ function prismXTris(P, x0, x1){ const out=[], [A,B,C]=P, cy=(A[0]+B[0]+C[0])/3, 
     out.push(orient([[x0,u[0],u[1]],[x1,v[0],v[1]],[x1,u[0],u[1]]],ref)); }
   return out;
 }
+/* РАСКЛАДКА ВИНТОВ ВЫНЕСЕНА ИЗ ПОСТРОИТЕЛЯ (v25.15.0) — не ради красоты, а потому что число реально
+   поставленных отверстий стало ЧИСЛОМ, которое надо назвать вслух: `buildBoxWithHoles` держит отверстие
+   только если его клетка сетки не пересекается с уже принятой, и на узкой полке заказанные четыре винта
+   молча превращаются в два. Считать это вторым правилом рядом с построителем значило бы завести ту самую
+   двойную бухгалтерию, которая расходится молча, — поэтому правило одно, и зовут его оба. */
+function lbracketHoleGrid(nH, r, hR, spanP, spanQ, box){
+  const gres=Math.max(box[0],box[1],box[2])/24;
+  const cell=(s)=>s/Math.max(2, Math.round(s/gres));
+  const blk=1.7*Math.max(hR, r), rad=Math.max(hR, r);
+  const pitchP=2*blk + 2.2*cell(spanP), pitchQ=2*blk + 2.2*cell(spanQ);
+  // The centre band is capped so a head can never hang off the plate, however small the plate is.
+  const band=(span,inset)=>Math.max(0, Math.min(span/2 - rad - 0.5, span/2 - Math.max(blk+0.5, span*inset)));
+  const halfP=band(spanP,0.16), halfQ=band(spanQ,0.2);
+  const fit=(half,pitch)=>Math.max(1, Math.floor(2*half/pitch) + 1);
+  const maxC=fit(halfP,pitchP), maxR=fit(halfQ,pitchQ);
+  let cols=Math.min(nH, maxC), rows=Math.min(maxR, Math.ceil(nH/cols));
+  if(cols*rows < nH) cols=Math.min(maxC, Math.ceil(nH/rows));
+  const n=Math.min(nH, cols*rows), out=[];
+  const stepQ=rows>1 ? Math.max(pitchQ, 2*halfQ/(rows-1)) : 0;
+  for(let k=0;k<n;k++){ const j=Math.floor(k/cols), inRow=Math.min(cols, n-j*cols), i=k-j*cols;
+    const stepP=inRow>1 ? Math.max(pitchP, 2*halfP/(inRow-1)) : 0;
+    out.push([inRow===1 ? 0 : -stepP*(inRow-1)/2 + stepP*i, halfQ - stepQ*j]); }
+  return out;
+}
+/* L-КРОНШТЕЙН — СКОЛЬКО ОН ДЕРЖИТ И ГДЕ ЛОМАЕТСЯ (v25.15.0). Десятый разобранный молчун переписи 10.4.
+   Уголок — деталь несущая, и вопрос к ней ровно один: какой груз. На экране его нет, а вывести из
+   картинки нельзя вовсе — решают три числа, из которых видно только одно.
+
+   ОПАСНОЕ СЕЧЕНИЕ — НЕ У УГЛА. Ребро жёсткости стоит в углу и СХОДИТ НА НЕТ за свою длину: глубина
+   сечения падает от t + gl до t на протяжении gl, а момент за то же расстояние падает лишь с F·legA до
+   F·(legA − gl). Глубина входит в момент сопротивления В КВАДРАТЕ, момент — линейно, поэтому напряжение
+   максимально не в углу, а У КОНЧИКА РЕБРА. На умолчаниях разница шестикратная: посчитать уголок по углу
+   значит переоценить его в шесть раз. То же самое приложение уже говорит про струбцину — «косынки
+   ПРОЧНОСТИ не добавляют вовсе, опасное сечение спинки посередине, куда косынка не достаёт», — и здесь
+   ребро прочность как раз добавляет, но не там, где кажется.
+
+   СЛОИ. Печатается уголок полкой на стол, слои ложатся в плоскости XZ, а растяжение у корня несущей
+   полки идёт ВДОЛЬ полки, то есть внутри слоя: это сильное направление, и половину за межслойную
+   прочность здесь брать НЕ НАДО. Но стоит поставить деталь на ребро (или повесить груз на ту полку,
+   что задумана настенной) — и то же самое сечение растягивается ПОПЕРЁК слоёв, вдвое слабее. Два числа
+   и называются оба: они отличаются ровно вдвое, и выбор между ними — это выбор ориентации на столе.
+
+   ЧТО В РАСЧЁТ НЕ ВХОДИТ, сказано вслух: винты, дюбели и сама стена. Пластик — обычно не самое слабое
+   звено в этой цепочке, и обещать по нему всю сборку было бы враньём. */
+const LB_LAYER_BOND = 0.5;      // та же половина за слои, что у крючка
+const LB_G = 9.80665;
+const LB_NOZZLE = 0.4;
+function lbracketSpec(p){
+  if ((p.mntMode || 'none') !== 'lbracket') return null;
+  const W = Math.max(10, p.mntW||40), t = Math.max(2, p.mntT||4);
+  const legA = Math.max(t+8, p.mntLegA||45), legB = Math.max(t+8, p.mntLegB||45);
+  const sd = Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5), r = sd/2;
+  const hR = sd*0.95, hD = Math.min(t*0.7, sd*0.55);
+  const nAsk = Math.max(1, Math.min(4, Math.round(p.mntHoleN||1)));
+  /* Раскладка — ТА ЖЕ функция, что у построителя, а не её копия. */
+  const nBase = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, W, legA, [W,t,legA]).length : 0;
+  const bw = W - 0.6, hb = legB - (t - 0.5);
+  const nBack = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, bw, hb, [bw,hb,t]).length : 0;
+
+  const gOn = p.mntGusset !== 'no';
+  const glWant = p.mntGussetLen>0 ? p.mntGussetLen : Math.min(legA,legB)*0.55;
+  const gwWant = p.mntGussetW>0 ? p.mntGussetW : Math.max(t,3);
+  const gl = gOn ? Math.max(3, Math.min(glWant, Math.min(legA,legB)-t-1)) : 0;
+  const gw = gOn ? Math.max(1.5, Math.min(gwWant, W/2-1)) : 0;
+
+  const mat = snapMatOf(p, null, 'pla');
+  const allow = mat.E*(mat.eps/100);                  // МПа — тот же предел, что у всей упругости здесь
+  /* Станции считаются в АБСОЛЮТНОМ z нижней полки: она построена от z = 0 до z = legA, задняя полка
+     стоит на z ∈ [0.3, t+0.3], а ребро начинается с z = 0.3 и сходит на нет за gl. Значит заделка —
+     это ДАЛЬНЯЯ грань задней полки (z = t + 0.3), и у самой заделки ребро уже не полной высоты, а на
+     толщину полки ниже. Отсчёт «от угла» тут не мелочь: на умолчаниях это четыре миллиметра из
+     двадцати пяти, и замер по сетке разошёлся бы с расчётом именно на них. */
+  const zRoot = t + 0.3, zRib = 0.3;
+  /* Напряжение при единичной силе на конце несущей полки. Сечение — тавр: полка W×t плюс два ребра
+     gw×h(z), где h(z) — остаток ребра на этой станции. */
+  const ribAt = (z) => Math.max(0, gl - (z - zRib));
+  const sigmaAt = (z) => {
+    const h = ribAt(z);
+    const A1 = W*t, A2 = 2*gw*h;
+    const yb = A2 > 0 ? (A1*t/2 + A2*(t + h/2))/(A1 + A2) : t/2;
+    const I  = W*t*t*t/12 + A1*(yb - t/2)*(yb - t/2) +
+               (A2 > 0 ? 2*gw*h*h*h/12 + A2*(t + h/2 - yb)*(t + h/2 - yb) : 0);
+    /* Считается РАСТЯНУТОЕ волокно, а не самое дальнее: печатный пластик рвётся растяжением задолго до
+       того, как сомнётся сжатием, и груз на конце полки растягивает ВЕРХ — ту сторону, где стоит ребро.
+       Взять здесь max(…) значило бы мерить сжатую сторону там, где ребро поднимает нейтральную ось. */
+    const c  = t + h - yb;
+    const Z  = I/Math.max(1e-9, c);                   // мм³
+    return (legA - z)/Math.max(1e-9, Z);              // МПа на ньютон
+  };
+  const atCorner = sigmaAt(zRoot);                    // напряжение У ЗАДЕЛКИ — для сверки, не для вывода
+  const zTip = zRib + gl;                             // кончик ребра
+  let worst = 0, atZ = zRoot;
+  for (let k = 0; k <= 40; k++){ const z = zRoot + (Math.max(zRoot, zTip) - zRoot)*k/40;
+    const q = sigmaAt(z); if (q > worst){ worst = q; atZ = z; } }
+  { const q = sigmaAt(Math.max(zRoot, zTip) + 1e-6); if (q > worst){ worst = q; atZ = Math.max(zRoot, zTip); } }
+  const at = atZ - zRoot;                             // «в стольких-то миллиметрах от угла»
+  const N   = allow/Math.max(1e-9, worst);            // Н вдоль слоёв
+  const kg  = N/LB_G, kgAcross = kg*LB_LAYER_BOND;
+  /* Что дают рёбра — считается тем же правилом при gl = 0, а не прикидкой. */
+  const bare = (legA - zRoot)/(W*t*t/6);
+  const kgBare = allow/bare/LB_G;
+  const underSink = t - hD;                           // материал под потаем — им винт и прижимает
+  return {W, t, legA, legB, sd, r, hR, hD, underSink, nAsk, nBase, nBack, gOn, gl, gw,
+          zRoot, zRib, zTip, atZ, ribAt, sigmaAt,
+          glWant, gwWant, mat, allow, worst, at, N, kg, kgAcross, kgBare,
+          atCorner, overCorner: worst/Math.max(1e-9, atCorner),
+          gain: gOn ? kg/Math.max(1e-9, kgBare) : 1,
+          /* Ребро жёсткости прочности не добавляет, когда полка много длиннее его самого: опасное
+             сечение всё равно уезжает к кончику ребра, а момент там почти тот же, что у угла. */
+          ribIdle: gOn && kg < kgBare*1.05,
+          atTip: gOn && atZ > zTip - gl*0.2,
+          screwsLost: sd > 0.5 && Math.min(nBase, nBack) < nAsk,
+          holeTooBig: sd > 0.5 && sd >= W - 2,
+          thinUnderSink: sd > 0.5 && underSink < 2*LB_NOZZLE,
+          glCut: gOn && glWant > gl + 1e-9, gwCut: gOn && gwWant > gw + 1e-9,
+          weak: kg < 5};
+}
 function buildLBracket(p){
   const W=Math.max(10,p.mntW||40), t=Math.max(2,p.mntT||4);
   const legA=Math.max(t+8,p.mntLegA||45), legB=Math.max(t+8,p.mntLegB||45);
@@ -18476,25 +18593,7 @@ function buildLBracket(p){
   // A countersink's block is 1.7·headR each way, and the clash test compares GRID INDICES, so the pitch has
   // to clear the block twice over plus two cells of index rounding. Two holes only clash when BOTH ranges
   // overlap, so a second row is free — which is what makes four screws fit on a 40 mm plate at all.
-  const layout=(spanP, spanQ, box)=>{
-    const gres=Math.max(box[0],box[1],box[2])/24;
-    const cell=(s)=>s/Math.max(2, Math.round(s/gres));
-    const blk=1.7*Math.max(hR, r), rad=Math.max(hR, r);
-    const pitchP=2*blk + 2.2*cell(spanP), pitchQ=2*blk + 2.2*cell(spanQ);
-    // The centre band is capped so a head can never hang off the plate, however small the plate is.
-    const band=(span,inset)=>Math.max(0, Math.min(span/2 - rad - 0.5, span/2 - Math.max(blk+0.5, span*inset)));
-    const halfP=band(spanP,0.16), halfQ=band(spanQ,0.2);
-    const fit=(half,pitch)=>Math.max(1, Math.floor(2*half/pitch) + 1);
-    const maxC=fit(halfP,pitchP), maxR=fit(halfQ,pitchQ);
-    let cols=Math.min(nH, maxC), rows=Math.min(maxR, Math.ceil(nH/cols));
-    if(cols*rows < nH) cols=Math.min(maxC, Math.ceil(nH/rows));
-    const n=Math.min(nH, cols*rows), out=[];
-    const stepQ=rows>1 ? Math.max(pitchQ, 2*halfQ/(rows-1)) : 0;
-    for(let k=0;k<n;k++){ const j=Math.floor(k/cols), inRow=Math.min(cols, n-j*cols), i=k-j*cols;
-      const stepP=inRow>1 ? Math.max(pitchP, 2*halfP/(inRow-1)) : 0;
-      out.push([inRow===1 ? 0 : -stepP*(inRow-1)/2 + stepP*i, halfQ - stepQ*j]); }
-    return out;
-  };
+  const layout=(spanP, spanQ, box)=>lbracketHoleGrid(nH, r, hR, spanP, spanQ, box);
   const baseHoles = sd>0.5 ? layout(W, legA, [W,t,legA])
       .map(([cp,cq])=>({axis:1,cp,cq,r,head:'sink',headR:hR,headDepth:hD,headSide:1})) : [];
   for(const T of buildBoxWithHoles(W,t,legA,baseHoles)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+legA/2]));   // base z∈[0,legA]
@@ -28148,6 +28247,36 @@ function collectPrintWarnings(p, mesh){
   /* СТРУБЦИНА. Названо то, чего не видно на экране: что болт и гайку надо напечатать отдельно и какими
      настройками, и что скоба выросла против заказанного. Вылет и ширина — числа, ради которых её и
      задают, поэтому их урезание молчать не может. */
+  { const b = lbracketSpec(p);
+    if (b){
+      /* Главное число печатается ВСЕГДА: уголок — деталь несущая, и груз с экрана не считывается. */
+      w.push('L-кронштейн: держит ' + (b.kg >= 10 ? b.kg.toFixed(0) : b.kg.toFixed(1)) +
+             ' кг на конце полки ' + b.legA.toFixed(0) + ' мм из ' + b.mat.t +
+             ' (полкой на стол — растяжение вдоль слоёв; на ребро — вдвое меньше, ' +
+             (b.kgAcross >= 10 ? b.kgAcross.toFixed(0) : b.kgAcross.toFixed(1)) +
+             ' кг). Опасное сечение в ' + b.at.toFixed(0) + ' мм от угла' +
+             (b.gOn ? ' (ребро длиной ' + b.gl.toFixed(0) + ' мм)' : ', ребра нет') +
+             '. Винты, дюбели и стена в расчёт не входят');
+      if (b.weak) w.push('всего ' + b.kg.toFixed(1) + ' кг — для полки этого мало: толще полка (толщина' +
+        ' входит в квадрате), короче вылет или длиннее ребро');
+      if (b.ribIdle) w.push('ребро при полке ' + b.legA.toFixed(0) + ' мм прочности НЕ добавляет: опасное' +
+        ' сечение всё равно у его кончика, а момент там почти тот же, что у угла (' + b.kg.toFixed(1) +
+        ' кг против ' + b.kgBare.toFixed(1) + ' без ребра). Ребро нужно длиной хотя бы в треть полки');
+      else if (b.gOn && b.atTip) w.push('ребро держит угол, но ломаться будет у его кончика, в ' +
+        b.at.toFixed(0) + ' мм от угла: глубина сечения падает там до толщины полки, а момент падает' +
+        ' медленнее. Считать этот уголок по самому УГЛУ — завысить его ×' + b.overCorner.toFixed(0));
+      if (b.screwsLost) w.push('винтов помещается ' + Math.min(b.nBase, b.nBack) + ', а не ' + b.nAsk +
+        ': голова Ø' + (2*b.hR).toFixed(1) + ' мм со своим полем не встаёт на полку ' + b.W.toFixed(0) +
+        '×' + b.legA.toFixed(0) + ' мм столько раз. Уже винт или шире полка');
+      if (b.holeTooBig) w.push('отверстие Ø' + b.sd.toFixed(1) + ' мм на полке шириной ' + b.W.toFixed(0) +
+        ' мм — от полки по краям почти ничего не остаётся, рвать будет по отверстию');
+      if (b.thinUnderSink) w.push('под потаем остаётся ' + b.underSink.toFixed(2) +
+        ' мм — тоньше двух проходов сопла, а это ровно та стенка, которой винт прижимает кронштейн');
+      if (b.glCut) w.push('ребро укорочено с ' + b.glWant.toFixed(0) + ' до ' + b.gl.toFixed(0) +
+        ' мм — длиннее оно вышло бы за край короткой полки');
+      if (b.gwCut) w.push('ребро утоньшено с ' + b.gwWant.toFixed(1) + ' до ' + b.gw.toFixed(1) +
+        ' мм — толще два ребра сошлись бы посередине полки');
+    } }
   if (p.mntMode === 'gclamp' && p.gcPart === 'pad'){
     const d = gclampPadSpec(p);
     /* ГЛАВНОЕ ЧИСЛО ПЯТАКА — ДАВЛЕНИЕ НА ЗАГОТОВКЕ, ради него он и нужен. Сравнивается оно с прочностью

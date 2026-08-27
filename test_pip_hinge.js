@@ -539,5 +539,185 @@ function caseLogo(ov, lg){
 }
 logos.length = 0;
 
+/* ===============================================================================================
+   ПЕТЛЯ ГОВОРИТ О СЕБЕ (v25.14.0). У всех прочих разновидностей печати в сборе — телескопа, цепи,
+   шарового шарнира, живого шарнира, футляра, защёлки — предупреждения были давно, и ровно у той
+   единственной, что зовётся «петля», их не было ни одного. При том что у неё почти ничего не задано
+   напрямую: Ø штифта ВЫВОДИТСЯ из толщины листа и зазора, стенка узла — из них же, ширина узла — из
+   длины и числа узлов, и каждое из этих чисел умеет молча выйти невозможным.
+
+   Меряется всё ПО СЕЧЕНИЯМ построенной детали. Сечение выбрано не случайно: вершин в нужных местах у
+   этой сетки нет вовсе (штифт — призма от торца до торца, без промежуточных станций), поэтому перебор
+   вершин показал бы пустоту. Плоскость x = const режет треугольники, а по кольцу радиусов вокруг оси
+   читаются сразу три числа: штифт, отверстие узла и наружный радиус узла — то есть и зазор, и стенка. */
+console.log('\n=== плоская петля называет свои числа ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
+      pipMode:'flat',pipLen:60,pipLeafW:22,pipLeafT:6,pipKnuckles:5,pipPinD:0,pipGap:0.35,pipPin:'inplace',
+      threadMode:'none',sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
+      scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,
+      gfOn:false}, ov);
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(s => /^петля: /.test(s));
+  const spec = (ov) => hingeSpec(setP(ov));
+
+  /* Сечение плоскостью x = c: точки пересечения рёбер треугольников, и берётся ПОЛОВИНА сечения — та,
+     где нет язычка. Кольца симметричны, так что половины хватает, а язычок иначе подмешивает свои углы:
+     первый мой замер получил шесть колец вместо трёх, и лишние три — это hypot(лист/2, отступ язычка) и
+     его дальние углы. Створки отсекаются заодно по |z|: дальше язычка идут плоские плиты. */
+  const section = (tris, c, zLim, zSide) => { const out = [];
+    for (const T of tris) for (let k = 0; k < 3; k++){
+      const A = T[k], B = T[(k+1)%3];
+      if ((A[0] - c)*(B[0] - c) > 0) continue;
+      if (Math.abs(A[0] - B[0]) < 1e-12) continue;
+      const u = (c - A[0])/(B[0] - A[0]); if (u < 0 || u > 1) continue;
+      const y = A[1] + u*(B[1] - A[1]), z = A[2] + u*(B[2] - A[2]);
+      if (Math.abs(z) > zLim) continue;
+      if (zSide && z*zSide < -1e-9) continue;           // сторона без язычка
+      out.push(Math.hypot(y, z)); }                     // ось петли лежит на y = 0, z = 0
+    return out.sort((a,b) => a-b); };
+  /* Кольцо в сетке — многогранник, а не окружность: измеренный радиус меньше настоящего на стрелку
+     хорды. При 24 гранях это до четырёх сотых по диаметру, поэтому сверка идёт с этим допуском. */
+  const FACET = 0.05;
+  /* Кольца радиусов: близкие значения — одна и та же цилиндрическая поверхность. */
+  const rings = (rs, tol) => { const out = [];
+    for (const r of rs){ if (!out.length || r - out[out.length-1][1] > tol) out.push([r, r]);
+      else out[out.length-1][1] = r; }
+    return out.map(q => (q[0] + q[1])/2); };
+
+  chk('петля больше не молчит: на умолчаниях есть строка со своими числами',
+      line(warn({})) !== undefined, warn({}));
+  chk('  и это единственная строка — жаловаться на умолчаниях не на что',
+      warn({}).length === 1, warn({}));
+
+  /* 1. ТРИ РАДИУСА ИЗ ОДНОГО СЕЧЕНИЯ. Сечение через узел-трубку даёт штифт, отверстие и наружный
+     радиус узла; разности между ними — это зазор и стенка узла, оба выведенные, а не заданные. */
+  {
+    const g = spec({}), t = base({});
+    // узлы стоят с шагом w начиная с −L/2 + w/2; нечётные (i = 1, 3, …) — трубки створки B
+    const xTube = -g.L/2 + 1.5*g.w;
+    const r = rings(section(t, xTube, g.fingerLen - 0.2, -1), 0.05);
+    chk('в сечении узла ровно три кольца: штифт, отверстие, наружный радиус', r.length === 3, r);
+    chk('  штифт измерен и совпал со спецификацией', Math.abs(2*r[0] - g.pinD) < FACET,
+        {измерено:+(2*r[0]).toFixed(3), спец:+g.pinD.toFixed(3)});
+    chk('  зазор — это разность первых двух колец', Math.abs((r[1] - r[0]) - g.gap) < FACET,
+        {измерено:+(r[1] - r[0]).toFixed(3), спец:+g.gap.toFixed(3)});
+    chk('  стенка узла — разность двух последних', Math.abs((r[2] - r[1]) - g.tubeWall) < FACET,
+        {измерено:+(r[2] - r[1]).toFixed(3), спец:+g.tubeWall.toFixed(3)});
+    chk('  и все три названы в строке', /штифт Ø3\.5/.test(line(warn({}))) &&
+        /стенка узла 0\.90/.test(line(warn({}))) && /зазор 0\.35/.test(line(warn({}))), line(warn({})));
+  }
+  /* РУЧКА ЗАЗОРА ТОЧИТ ШТИФТ — связь, которую не угадать: штифт выводится как leafT/2 − (зазор + 0.9).
+     Меряется на детали: подняли зазор — штифт в сечении и правда похудел ровно на столько же. */
+  {
+    const gA = spec({pipGap:0.35}), gB = spec({pipGap:0.8});
+    const rA = rings(section(base({pipGap:0.35}), -30 + 1.5*12, gA.fingerLen - 0.2, -1), 0.05);
+    const rB = rings(section(base({pipGap:0.8}),  -30 + 1.5*12, gB.fingerLen - 0.2, -1), 0.05);
+    chk('зазор точит штифт: 0.35 → 0.8 съедает 0.9 мм диаметра',
+        Math.abs((2*rA[0] - 2*rB[0]) - 0.9) < 0.03, {было:+(2*rA[0]).toFixed(2), стало:+(2*rB[0]).toFixed(2)});
+    chk('  стенка узла при этом НЕ меняется — её и держит формула штифта',
+        Math.abs((rA[2] - rA[1]) - (rB[2] - rB[1])) < 0.02);
+    chk('  и об этом сказано, когда зазор велик',
+        /похудел до Ø2\.6/.test(warn({pipGap:0.8}).join(' ')), warn({pipGap:0.8}));
+    chk('  а тесный зазор назван тесным', spec({pipGap:0.15}).tight === true &&
+        /спекутся/.test(warn({pipGap:0.15}).join(' ')), warn({pipGap:0.15}));
+    chk('  на умолчаниях зазор не тесен и не велик', !spec({}).tight && !spec({}).sloppy);
+  }
+  /* 2. ВЫВЕРНУТЫЙ УЗЕЛ. Отверстие с зазором оказывается ШИРЕ самого узла — трубки не остаётся вовсе.
+     Оболочка при этом замкнута и `manifoldCheck` довольна: поймать это можно только замером. */
+  {
+    for (const ov of [{pipLeafT:2}, {pipPinD:10}]){
+      const g = spec(ov), t = base(ov);
+      const r = rings(section(t, -g.L/2 + 1.5*g.w, g.fingerLen - 0.2, -1), 0.05);
+      chk('вывернутый узел ' + JSON.stringify(ov) + ': отверстие шире наружного радиуса узла',
+          r[r.length-1] > g.zEdge + 0.02, {кольца:r.map(x => +x.toFixed(2)), zEdge:g.zEdge});
+      chk('  и сетка при этом замкнута — глазом и проверкой герметичности не поймать',
+          manifoldCheck(t, 4).watertight === true);
+      chk('  спецификация зовёт это вывернутым', g.inverted === true, g.tubeWall);
+      chk('  и говорит словами', /УЗЕЛ ВЫВЕРНУТ/.test(warn(ov).join(' ')), warn(ov));
+    }
+    chk('на умолчаниях узел не вывернут', spec({}).inverted === false, spec({}).tubeWall);
+    chk('  тонкий лист виноват не всегда: при листе 3 мм узел ещё цел',
+        spec({pipLeafT:3}).inverted === false, spec({pipLeafT:3}).tubeWall);
+  }
+  /* 3. СПЁКШИЕСЯ СТВОРКИ. Ширина узла зажата снизу двумя миллиметрами, а шаг — это длина на число
+     узлов. При длине 15 и 21 узле шаг выходит 0.71 мм, и каждый узел лезет в соседние: петля
+     печатается сплошным бруском. Меряется тем, что в ПРОМЕЖУТКЕ между узлами остаётся материал
+     наружного радиуса, тогда как у здоровой петли там только штифт. */
+  {
+    const outerAtGaps = (ov) => { const g = spec(ov), t = base(ov);
+      let worst = 0;                                    // самый большой радиус, найденный в промежутках
+      for (let i = 0; i + 1 < g.N; i++){
+        const xg = -g.L/2 + (i + 1)*g.w;                // граница между узлами i и i+1
+        const r = section(t, xg, g.fingerLen - 0.2, -1);
+        if (r.length) worst = Math.max(worst, r[r.length-1]); }
+      return worst; };
+    const healthy = outerAtGaps({}), fusedM = outerAtGaps({pipLen:15, pipKnuckles:21});
+    chk('у здоровой петли в промежутке между узлами только штифт',
+        Math.abs(healthy - spec({}).pinD/2) < 0.05, {найдено:+healthy.toFixed(2), штифт:+(spec({}).pinD/2).toFixed(2)});
+    chk('  а у спёкшейся там материал узла на всю его ширину',
+        fusedM > spec({pipLen:15, pipKnuckles:21}).zEdge - 0.05,
+        {найдено:+fusedM.toFixed(2), zEdge:spec({pipLen:15, pipKnuckles:21}).zEdge});
+    chk('  спецификация зовёт это спёкшимся', spec({pipLen:15, pipKnuckles:21}).fused === true);
+    chk('  и говорит словами', /СТВОРКИ СПЕКУТСЯ/.test(warn({pipLen:15, pipKnuckles:21}).join(' ')));
+    chk('  на умолчаниях створки не спекаются', spec({}).fused === false, [spec({}).w, spec({}).wf]);
+    /* Граница проходит там, где шаг сравнивается с зажатой шириной: при длине 45 и 21 узле шаг 2.14
+       ещё больше двух, при длине 40 — уже меньше. */
+    chk('  граница спекания там, где шаг падает ниже двух миллиметров',
+        spec({pipLen:45, pipKnuckles:21}).fused === false &&
+        spec({pipLen:40, pipKnuckles:21}).fused === true,
+        [spec({pipLen:45, pipKnuckles:21}).w, spec({pipLen:40, pipKnuckles:21}).w]);
+  }
+  /* 4. МОЛЧАЛИВЫЕ ПРАВКИ ЗАКАЗА. Чётное число узлов поднимается до нечётного, узкая створка
+     расширяется до минимальной, а зазор проходит через поправку посадки материала. Все три до сих пор
+     срабатывали без единого слова. */
+  {
+    chk('чётное число узлов поднято до нечётного и об этом сказано',
+        spec({pipKnuckles:4}).N === 5 && spec({pipKnuckles:4}).oddened === true &&
+        /узлов 5, а не 4/.test(warn({pipKnuckles:4}).join(' ')), warn({pipKnuckles:4}));
+    const g = spec({pipLeafW:6});
+    chk('узкая створка расширена, и новая ширина названа',
+        g.leafGrew === true && Math.abs(g.leafW - (g.fingerLen + 3)) < 1e-9 &&
+        /поднята до 8\.1 мм с 6\.0/.test(warn({pipLeafW:6}).join(' ')), warn({pipLeafW:6}));
+    const b = computeBBox(base({pipLeafW:6}));
+    chk('  и деталь и правда стала этой ширины, а не заказанной',
+        Math.abs((b.maxZ - b.minZ) - 2*g.leafW) < 0.05, {измерено:+(b.maxZ-b.minZ).toFixed(2), спец:2*g.leafW});
+    chk('поправка посадки материала двигает зазор петли, и это объявлено',
+        Math.abs(spec({fitTune:0.1}).gap - 0.45) < 1e-9 &&
+        /вместо заказанных 0\.35/.test(warn({fitTune:0.1}).join(' ')), warn({fitTune:0.1}));
+    chk('  на умолчаниях поправки нет и молчание законно',
+        spec({}).gapShifted === false && spec({}).oddened === false && spec({}).leafGrew === false);
+  }
+  /* 5. РАЗБОРНАЯ. Штифт не печатается вовсе — сквозь узлы продевают пруток. Диаметр канала при этом
+     выводится из ЛИСТА, а не из прутка, и на умолчаниях выходит 4.2 мм: филамент Ø1.75 в нём болтается.
+     Ручка «Ø штифта» здесь и есть Ø прутка — но узнать это было неоткуда. */
+  {
+    const g = spec({pipPin:'removable'});
+    chk('у разборной канал назван каналом, а не штифтом',
+        /канал под пруток Ø4\.2 мм/.test(line(warn({pipPin:'removable'}))), line(warn({pipPin:'removable'})));
+    const t = base({pipPin:'removable'});
+    const r = rings(section(t, -g.L/2 + 1.5*g.w, g.fingerLen - 0.2, -1), 0.05);
+    chk('  и в сечении штифта нет: колец два, а не три', r.length === 2, r);
+    chk('  измеренный канал равен объявленному', Math.abs(2*r[0] - g.bore) < FACET,
+        {измерено:+(2*r[0]).toFixed(3), спец:+g.bore.toFixed(3)});
+    chk('  сказано, что канал выведен не из прутка', g.rodBlind === true &&
+        /выведен из ТОЛЩИНЫ ЛИСТА/.test(warn({pipPin:'removable'}).join(' ')));
+    chk('  а заданный Ø прутка снимает оговорку',
+        spec({pipPin:'removable', pipPinD:1.75}).rodBlind === false);
+    chk('  у неразборной этой оговорки нет вовсе', spec({}).rodBlind === false);
+  }
+  /* 6. ЧУЖИЕ РАЗНОВИДНОСТИ НЕ ЗАТРОНУТЫ: у футляра, клипсы, цепи и прочих свои числа и свои строки. */
+  chk('строка про петлю есть только у плоской петли',
+      ['box','clip','tie','clamp','snap','ball','chain','living','telescope','energy']
+        .every(m => line(warn({pipMode:m})) === undefined),
+      ['box','clip','tie','clamp','snap','ball','chain','living','telescope','energy']
+        .filter(m => line(warn({pipMode:m})) !== undefined));
+  chk('  и спецификация у них пуста',
+      ['box','clip','snap','ball'].every(m => hingeSpec(setP({pipMode:m})) === null));
+  setP({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

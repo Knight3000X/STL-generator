@@ -214,8 +214,14 @@ console.log('=== the lower thread is untouched by what stands on top ===');
 { // ...and when it does, the part says so. A silently blind cap looks like a bug in the app.
   const w = collectPrintWarnings(setp({threadD:4, threadPitch:3}));
   chk('и предупреждает, что горловины не будет', w.some(s=>/переходник/.test(s)), w);
-  chk('на нормальных размерах не предупреждает ни о чём',
-      collectPrintWarnings(setp({})).length === 0, collectPrintWarnings(setp({})));
+  /* «Ни о чём» — это ни о чём ПЛОХОМ. С v25.13.0 крепёж всегда печатает строку со своими числами
+     (зацеп, витки, слои) ровно как пружина печатает жёсткость: это не жалоба, а то, чего на экране нет.
+     Строка узнаётся по началу и из счёта исключается — иначе проверка требовала бы от резьбы молчания,
+     то есть ровно того, из-за чего она восемь сборок и стояла в переписи молчунов. */
+  const complaints = ov => collectPrintWarnings(setp(ov)).filter(s => !/^резьба Ø/.test(s));
+  chk('на нормальных размерах не предупреждает ни о чём', complaints({}).length === 0, complaints({}));
+  chk('  но числа резьбы называет и на нормальных размерах',
+      collectPrintWarnings(setp({})).some(s => /^резьба Ø/.test(s)), collectPrintWarnings(setp({})));
   const thin = collectPrintWarnings(setp({threadD:12, threadPitch:1, threadNeckD:5, threadNeckPitch:1}));
   chk('тонкую стенку горловины замечает', thin.every(s=>!/переходник/.test(s)), thin);
 }

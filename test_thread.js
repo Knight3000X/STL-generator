@@ -960,5 +960,226 @@ console.log('=== резьба: потребители отвечают ТЕМ Ж
       {без:a.length, с:b.length});
 }
 
+/* ===============================================================================================
+   ПАРА ГОВОРИТ О СЕБЕ (v25.13.0). Резьба была самым населённым молчуном переписи 10.4: пятнадцать
+   разновидностей, и говорили из них только шнек, штопор, пружина и кабельный ввод — то есть всё,
+   кроме собственно КРЕПЁЖА. Проверки ниже держат четыре числа, и держат их НА ПОСТРОЕННОЙ ДЕТАЛИ, а
+   не на повторённой формуле: зацеп меряется как перекрытие мужского гребня и женской впадины у ДВУХ
+   собранных деталей, глубина профиля — разностью радиусов, площадка гребня — длиной полки вдоль оси,
+   а прорезанная насечкой крышка — тем, что снаружи неё появляется точка без материала на уровне
+   резьбы. Сама спецификация сверяется с этими замерами, иначе она вправе врать молча — ровно на этом
+   в v25.11.0 выжила мутация у кейкапа. */
+console.log('\n=== резьбовая пара называет свои числа ===');
+{
+  /* Спецификация и предупреждения читают ПАРАМЕТРЫ, а не сетку, — значит и строить её незачем:
+     `base` строит деталь, и звать его ради одного числа значило бы гонять построитель сотню раз. */
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {threadMode:'cap',threadD:30,threadPitch:3,threadStarts:1,
+      threadLen:16,threadClear:0.4,threadDepth:0,threadFlat:0.14,threadHand:'right',threadWall:2.5,threadTop:2.5,
+      threadGrip:24,threadGripD:0.9,threadFlange:3,sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,
+      binRound:0,scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,stackFeet:false,
+      gfOn:false}, ov);
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(s => /^резьба Ø/.test(s));
+  const spec = (ov) => threadFitSpec(setP(ov));
+  /* Замер по сетке: кольцевые крайности радиуса в полосе высот, взятой ВНУТРИ резьбы. */
+  const band = (tris, y0, y1) => { let lo = 1e9, hi = -1e9;
+    for (const T of tris) for (const v of T){ if (v[1] < y0 || v[1] > y1) continue;
+      const r = Math.hypot(v[0], v[2]); if (r < lo) lo = r; if (r > hi) hi = r; }
+    return {lo, hi}; };
+
+  chk('крепёж больше не молчит: на умолчаниях крышки есть строка про резьбу',
+      line(warn({})) !== undefined, warn({}));
+  chk('  и она у всех девяти крепёжных разновидностей',
+      ['cap','jar','stud','bolt','nut','wingnut','gland','glandcap','leadscrew']
+        .every(m => line(warn({threadMode:m})) !== undefined),
+      ['cap','jar','stud','bolt','nut','wingnut','gland','glandcap','leadscrew']
+        .filter(m => line(warn({threadMode:m})) === undefined));
+  chk('  а у шнека, штопора, пружины и ёлочки её нет — у них свои числа',
+      ['auger','corkscrew','spring','barb','anchor'].every(m => line(warn({threadMode:m})) === undefined),
+      ['auger','corkscrew','spring','barb','anchor'].filter(m => line(warn({threadMode:m})) !== undefined));
+
+  /* 1. ЗАЦЕП. Меряется на ПАРЕ: наружный радиус мужского гребня минус внутренний радиус женской
+     впадины. Полоса высот взята заведомо внутри резьбы обеих деталей. */
+  {
+    const male = band(base({threadMode:'stud'}), -4, 4);
+    const fem  = band(base({threadMode:'cap'}),  -4, 4);
+    const measured = male.hi - fem.lo;
+    const t = spec({threadMode:'cap'});
+    chk('зацеп из спецификации равен измеренному на паре', Math.abs(measured - t.grip) < 0.02,
+        {измерено:+measured.toFixed(3), спец:+t.grip.toFixed(3)});
+    chk('  и глубина профиля тоже измерена, а не обещана', Math.abs((male.hi - male.lo) - t.h) < 0.02,
+        {измерено:+(male.hi - male.lo).toFixed(3), спец:+t.h.toFixed(3)});
+    chk('  автоматическая глубина — 0.55 шага', Math.abs(t.h - 0.55*3) < 1e-6, t.h);
+    chk('  число названо в строке', /зацеп 1\.25 мм/.test(line(warn({})) || ''), line(warn({})));
+  }
+  /* САМОЕ ВАЖНОЕ ЧИСЛО ЭТОГО ЗАХОДА: при мелком шаге глубина профиля (0.55·P) оказывается МЕНЬШЕ
+     стандартного зазора 0.4, и пара перестаёт касаться друг друга вовсе. Ручка шага крутится от 0.5,
+     зазор по умолчанию 0.4 — доехать сюда можно ОДНОЙ ручкой. Проверяется это не арифметикой: у
+     построенной пары женская впадина оказывается ШИРЕ мужского гребня. */
+  {
+    const male = band(base({threadMode:'stud', threadPitch:0.5}), -3, 3);
+    const fem  = band(base({threadMode:'cap',  threadPitch:0.5}), -3, 3);
+    chk('шаг 0.5: женская впадина шире мужского гребня — пара не касается',
+        fem.lo > male.hi + 0.05, {женская:+fem.lo.toFixed(3), мужской:+male.hi.toFixed(3)});
+    const t = spec({threadPitch:0.5});
+    chk('  спецификация зовёт это «не сойдётся»', t.loose === true && t.grip < 0, t.grip);
+    chk('  и говорит об этом словами', /НЕ СОЙДЁТСЯ/.test(warn({threadPitch:0.5}).join(' ')),
+        warn({threadPitch:0.5}));
+    chk('  а при зазоре 0.05 пара сходится, но держится на одном проходе сопла',
+        spec({threadPitch:0.5, threadClear:0.05}).weakGrip === true &&
+        /тоньше прохода сопла/.test(warn({threadPitch:0.5, threadClear:0.05}).join(' ')),
+        warn({threadPitch:0.5, threadClear:0.05}));
+    chk('  на умолчаниях приложение молчит про зацеп', !spec({}).loose && !spec({}).weakGrip);
+  }
+  /* 2. ВИТКИ. Держит резьба ВИТКАМИ, а за оборот многозаходная уходит на шаг × число заходов —
+     значит витков зацепления во столько же раз МЕНЬШЕ. Проверяется по сетке: при постоянном угле
+     радиус повторяется с периодом ШАГА, поэтому число гребней вдоль резьбы даёт длину/шаг, а витки
+     зацепления — это оно же, делённое на число заходов. */
+  {
+    /* Считать гребни надо в ОДНОМ угловом столбце. По всей детали сразу их не сосчитать вовсе:
+       резьба — винт, гребень при каждом угле стоит на своей высоте, и вершины гребня покрывают весь
+       диапазон высот сплошь. Первый мой замер именно так и вышел — «один гребень» на пяти витках. */
+    const crestsAlong = (ov) => { const t = base(ov), s = spec(ov), eps = 0.02, tol = 2*Math.PI/400;
+      const ys = [];
+      for (const T of t) for (const v of T){
+        if (Math.abs(Math.atan2(v[2], v[0])) > tol) continue;
+        if (Math.abs(Math.hypot(v[0], v[2]) - s.majorR) < eps) ys.push(v[1]); }
+      ys.sort((a,b) => a-b);
+      let n = 0, prev = -1e9;                        // группы вершин гребня, разделённые впадиной
+      for (const y of ys){ if (y - prev > s.P*0.5) n++; prev = y; }
+      return n; };
+    const t1 = spec({threadMode:'stud'});
+    chk('гребней вдоль резьбы ≈ длина/шаг', Math.abs(crestsAlong({threadMode:'stud'}) - t1.len/t1.P) <= 1,
+        {гребней:crestsAlong({threadMode:'stud'}), ожидалось:+(t1.len/t1.P).toFixed(1)});
+    const t3 = spec({threadMode:'stud', threadStarts:3});
+    chk('  а витков зацепления втрое меньше при трёх заходах',
+        Math.abs(t3.turns*3 - t3.len/t3.P) < 1e-6 && Math.abs(t3.turns - t1.turns/3) < 1e-6,
+        {заходов3:+t3.turns.toFixed(2), заход1:+t1.turns.toFixed(2)});
+    chk('  PCO-1881 (Ø27.4×2.7 в три захода) — это два оборота, и об этом сказано',
+        /2\.0 об/.test(line(warn({threadD:27.4, threadPitch:2.7, threadStarts:3})) || '') &&
+        /первый виток/.test(warn({threadD:27.4, threadPitch:2.7, threadStarts:3}).join(' ')),
+        warn({threadD:27.4, threadPitch:2.7, threadStarts:3}));
+    chk('  на умолчаниях витков хватает', spec({}).fewTurns === false, spec({}).turns);
+    chk('  у гайки длина резьбы — её высота, а не ручка длины',
+        Math.abs(spec({threadMode:'nut'}).len - 30*0.8) < 1e-6 &&
+        Math.abs(spec({threadMode:'nut', threadLen:100}).len - 30*0.8) < 1e-6,
+        spec({threadMode:'nut', threadLen:100}).len);
+  }
+  /* 3. СЛОИ. Высота слоя объявлена вслух: выдумывать её молча было бы той самой прикидкой. */
+  {
+    chk('слоёв на виток считается от шага, а не от хода',
+        Math.abs(spec({threadStarts:3}).layers - spec({threadStarts:1}).layers) < 1e-9,
+        [spec({threadStarts:3}).layers, spec({threadStarts:1}).layers]);
+    chk('  шаг 0.5 — это лесенка в два с половиной слоя',
+        spec({threadPitch:0.5}).steppy === true &&
+        /слоёв на виток всего 2\.5/.test(warn({threadPitch:0.5}).join(' ')), warn({threadPitch:0.5}));
+    chk('  на умолчаниях лесенки нет', spec({}).steppy === false, spec({}).layers);
+    chk('  высота слоя названа в самой строке', /при слое 0\.2 мм/.test(line(warn({})) || ''), line(warn({})));
+  }
+  /* 4. ПЛОЩАДКА ГРЕБНЯ. Меряется вдоль оси у одного углового столбца: длина полки, на которой радиус
+     держится наружного. У профиля из построителя она равна 2·flat·P. */
+  {
+    const crestFlat = (ov) => { const t = base(ov), s = spec(ov), eps = 0.01;
+      /* Один столбец: берутся вершины с почти одинаковым углом, чтобы полка не смазалась винтом. */
+      const a0 = 0, tol = 2*Math.PI/400;
+      let lo = 1e9, hi = -1e9;
+      for (const T of t) for (const v of T){
+        const th = Math.atan2(v[2], v[0]); if (Math.abs(th - a0) > tol) continue;
+        if (Math.abs(Math.hypot(v[0], v[2]) - s.majorR) > eps) continue;
+        if (v[1] > 0 && v[1] < s.P){ if (v[1] < lo) lo = v[1]; if (v[1] > hi) hi = v[1]; } }
+      return hi - lo; };
+    /* Замер по вершинам — это НИЖНЯЯ оценка полки: сетка режется по высоте с шагом P/spp, и края
+       полки почти никогда не попадают на узел. Поэтому сверяется вилка, а не равенство: измеренное не
+       больше расчётного и не меньше его на два шага сетки. Вилка всё равно узкая — вдвое большая или
+       вдвое меньшая полка из неё выпадает. */
+    const SPP = 26;                                   // столько высот на шаг кладёт построитель
+    for (const flat of [0.14, 0.24]){
+      const s = spec({threadMode:'stud', threadFlat:flat});
+      const m = crestFlat({threadMode:'stud', threadFlat:flat});
+      chk('площадка гребня при flat=' + flat + ' измерена на детали и сходится с 2·flat·P',
+          m <= s.crest + 1e-6 && m >= s.crest - 2*s.P/SPP - 1e-6,
+          {измерено:+m.toFixed(3), спец:+s.crest.toFixed(3)});
+    }
+    const s = spec({threadMode:'stud'});
+    chk('  при нулевой полке профиль сходится в ребро, и об этом сказано',
+        spec({threadFlat:0}).sharp === true && /сходится в ребро/.test(warn({threadFlat:0}).join(' ')),
+        warn({threadFlat:0}));
+    chk('  тонкая полка мелкого шага названа тонкой',
+        spec({threadPitch:0.5}).thinCrest === true &&
+        /площадка гребня 0\.14/.test(warn({threadPitch:0.5}).join(' ')), warn({threadPitch:0.5}));
+    chk('  на умолчаниях полка толще прохода сопла', spec({}).thinCrest === false && spec({}).sharp === false);
+  }
+  /* 5. НАСЕЧКА, ПРОРЕЗАЮЩАЯ КРЫШКУ. Лыски режутся в НАРУЖНЫЙ радиус, а он отсчитан от женской впадины
+     плюс стенка: глубже стенки лыска выходит внутрь, до самой резьбы. Ручки независимы, зажима между
+     ними нет, и оба конца диапазона законны — то есть крышку в прорезях можно построить двумя ручками
+     и не узнать об этом. Меряется это НА ДЕТАЛИ: точка чуть снаружи самой глубокой женской впадины,
+     на угле дна лыски, либо лежит в материале, либо нет. */
+  {
+    const winding = (tris, P) => { let w = 0;
+      for (const T of tris){
+        const a = [T[0][0]-P[0], T[0][1]-P[1], T[0][2]-P[2]];
+        const b = [T[1][0]-P[0], T[1][1]-P[1], T[1][2]-P[2]];
+        const c = [T[2][0]-P[0], T[2][1]-P[1], T[2][2]-P[2]];
+        const la = Math.hypot(a[0],a[1],a[2]), lb = Math.hypot(b[0],b[1],b[2]), lc = Math.hypot(c[0],c[1],c[2]);
+        const det = a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+        const den = la*lb*lc + (a[0]*b[0]+a[1]*b[1]+a[2]*b[2])*lc +
+                    (b[0]*c[0]+b[1]*c[1]+b[2]*c[2])*la + (c[0]*a[0]+c[1]*a[1]+c[2]*a[2])*lb;
+        w += 2*Math.atan2(det, den); }
+      return Math.abs(w/(4*Math.PI)); };
+    const solidAtFlute = (ov) => { const t = base(ov), s = spec(ov);
+      const r = s.majorR + s.clr + 0.2;                 // чуть снаружи самой глубокой женской впадины
+      const a = Math.PI/s.nFlute;                       // дно лыски: cos(nθ) = −1
+      let lo = 1e9, hi = -1e9; for (const T of t) for (const v of T){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
+      return winding(t, [r*Math.cos(a), (lo+hi)/2, r*Math.sin(a)]) > 0.5; };
+    chk('на умолчаниях крышка на уровне резьбы сплошная', solidAtFlute({}) === true);
+    chk('  глубокая насечка при тонкой стенке ПРОРЕЗАЕТ её насквозь',
+        solidAtFlute({threadWall:1.2, threadGripD:2}) === false);
+    chk('  а при толстой стенке та же насечка не прорезает',
+        solidAtFlute({threadWall:2.5, threadGripD:2}) === true);
+    chk('спецификация зовёт прорезанной ровно ту, что прорезана',
+        spec({}).pierced === false &&
+        spec({threadWall:1.2, threadGripD:2}).pierced === true &&
+        spec({threadWall:2.5, threadGripD:2}).pierced === false,
+        [spec({}).pierced, spec({threadWall:1.2,threadGripD:2}).pierced, spec({threadWall:2.5,threadGripD:2}).pierced]);
+    chk('  и говорит об этом словами', /ПРОРЕЗАЕТ крышку/.test(warn({threadWall:1.2, threadGripD:2}).join(' ')),
+        warn({threadWall:1.2, threadGripD:2}));
+    chk('  гладкая крышка (насечек 0) не прорезана ничем',
+        spec({threadWall:1.2, threadGripD:2, threadGrip:0}).pierced === false);
+  }
+  /* 6. МОЛЧАЛИВЫЕ ЗАЖИМЫ. Глубина профиля режется дважды — ручкой сверху (0.7 радиуса) и
+     автоматически снизу (шагом), — и до сих пор оба зажима срабатывали без единого слова. */
+  {
+    chk('глубина, урезанная ручкой, объявляется',
+        spec({threadD:6, threadDepth:8}).depthCut === true &&
+        /урезана до 2\.10/.test(warn({threadD:6, threadDepth:8}).join(' ')), warn({threadD:6, threadDepth:8}));
+    chk('  шаг крупнее, чем несёт диаметр, объявляется тоже',
+        spec({threadD:6, threadPitch:8}).pitchTooBig === true &&
+        /пологой волной/.test(warn({threadD:6, threadPitch:8}).join(' ')), warn({threadD:6, threadPitch:8}));
+    chk('  и это РАЗНЫЕ зажимы: ручной не путается с автоматическим',
+        spec({threadD:6, threadDepth:8}).pitchTooBig === false &&
+        spec({threadD:6, threadPitch:8}).depthCut === false);
+    chk('  на умолчаниях не срезается ничего', spec({}).depthCut === false && spec({}).pitchTooBig === false);
+  }
+  /* 7. ЗАЗОР — СВОЙСТВО ЖЕНСКОЙ ДЕТАЛИ. Ручка показана у крышки, гайки и барашка, и в построителе он
+     прибавляется только к женской поверхности. Обещать мужской детали посадку с ненапечатанной
+     ответной частью значило бы выдумывать — поэтому у неё названа глубина профиля, а не зацеп. */
+  {
+    chk('у мужских разновидностей зазор не участвует',
+        ['jar','stud','bolt','gland','leadscrew'].every(m => spec({threadMode:m}).clr === 0 &&
+          spec({threadMode:m}).female === false));
+    chk('  и в строке у них не «зацеп», а профиль',
+        ['jar','stud','bolt','gland','leadscrew'].every(m => /профиль 1\.65 мм/.test(line(warn({threadMode:m}))) &&
+          !/зацеп/.test(line(warn({threadMode:m})))));
+    chk('  у женских наоборот', ['cap','nut','wingnut','glandcap'].every(m => spec({threadMode:m}).female === true &&
+          /зацеп/.test(line(warn({threadMode:m})))));
+    chk('  ручка зазора двигает зацеп на ту же величину',
+        Math.abs((spec({threadClear:0.4}).grip - spec({threadClear:0.7}).grip) - 0.3) < 1e-6,
+        [spec({threadClear:0.4}).grip, spec({threadClear:0.7}).grip]);
+  }
+  base({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

@@ -672,5 +672,87 @@ console.log('=== свой шаг у плавных узоров ===');
   const t=buildTrisForShape('box',paramState.box); const b=computeBBox(t);
   chk('sheetShape none → normal cube', manifoldCheck(t,4).watertight && Math.abs((b.maxX-b.minX)-40)<1e-6, {}); }
 
+/* ===============================================================================================
+   ЛИСТ НАЗЫВАЕТ СВОИ ЧИСЛА (v25.18.0). Плоская панель выглядит самой простой формой набора, и ровно
+   поэтому у неё всё выведенное: шаг узора, перемычка и подъём фаски берутся автоматически, а ручки
+   показывают НОЛЬ. Ноль на панели значит «как было», и человек видит ноль там, где в детали полтора
+   миллиметра. Толщина же — единственное, что он задаёт прямо, и она решает, лист это или плёнка. */
+console.log('\n=== лист называет свои числа ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:80, height:3, depth:60, sheetShape:'rect',
+      sheetThick:3, sheetCut:'texture', sheetPattern:'diamond', sheetTexH:0.6, sheetRim:0}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^лист /.test(x));
+  const spec = (ov) => sheetSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('лист больше не молчит: на умолчаниях есть строка с числами', line(warn({})) !== undefined, warn({}));
+  /* 1. ТОЛЩИНА И ТЕКСТУРА МЕРЯЮТСЯ ПО ДЕТАЛИ. Плита стоит серединой на нуле, текстура надстроена сверху:
+     значит нижняя грань даёт половину толщины, а верх — половину плюс высоту рисунка. */
+  {
+    const g = spec({}), b = computeBBox(mesh({}));
+    chk('толщина плиты измерена снизу', Math.abs(-b.minY*2 - g.t) < 0.02,
+        {измерено:+(-b.minY*2).toFixed(3), спец:g.t});
+    chk('  высота текстуры измерена сверху', Math.abs((b.maxY - g.t/2) - g.texH) < 0.02,
+        {измерено:+(b.maxY - g.t/2).toFixed(3), спец:g.texH});
+    chk('  и оба числа названы', /толщина 3\.0 мм/.test(line(warn({}))) &&
+        /высота 0\.6 мм = 3 слоя/.test(line(warn({}))), line(warn({})));
+    const plain = computeBBox(mesh({sheetPattern:'none'}));
+    chk('  без узора лист ровно своей толщины',
+        Math.abs((plain.maxY - plain.minY) - g.t) < 0.02, +(plain.maxY - plain.minY).toFixed(3));
+  }
+  /* 2. СЛОИ И РУССКИЙ СЧЁТ. «2 слоёв» и «5 слоя» читаются как небрежность там, где число важно. */
+  {
+    chk('слоёв считается от общей высоты слоя', Math.abs(spec({}).layers - 3/0.2) < 1e-9);
+    chk('  и слово согласовано с числом',
+        layerWord(1) === 'слой' && layerWord(2) === 'слоя' && layerWord(5) === 'слоёв' &&
+        layerWord(11) === 'слоёв' && layerWord(21) === 'слой' && layerWord(22) === 'слоя',
+        [layerWord(1), layerWord(2), layerWord(5), layerWord(11), layerWord(21), layerWord(22)]);
+    chk('  тонкий лист назван плёнкой', spec({sheetThick:0.4}).film === true &&
+        /получится плёнка/.test(warn({sheetThick:0.4}).join(' ')));
+    chk('  а на умолчаниях плёнкой не зовётся', spec({}).film === false, spec({}).layers);
+  }
+  /* 3. ПЕРЕМЫЧКА УЗОРА — выведенная, и она же держит решётку. Меряется по детали: у сквозного узора
+     между отверстиями остаётся именно она. */
+  {
+    const g = spec({sheetCut:'through', sheetPattern:'honeycomb', sheetPatCell:2.5});
+    chk('мелкая клетка даёт перемычку тоньше двух сопел', g.thinRib === true && g.rib < 0.8,
+        +g.rib.toFixed(2));
+    chk('  и об этом сказано', /перемычка узора 0\.75/.test(warn({sheetCut:'through',
+        sheetPattern:'honeycomb', sheetPatCell:2.5}).join(' ')));
+    chk('  на крупной клетке перемычка нормальная',
+        spec({sheetCut:'through', sheetPattern:'honeycomb'}).thinRib === false,
+        +spec({sheetCut:'through', sheetPattern:'honeycomb'}).rib.toFixed(2));
+    /* Сквозной узор и правда сквозной: он снимает объём. */
+    const solid = vol(mesh({sheetCut:'none', sheetPattern:'none'}));
+    const netted = vol(mesh({sheetCut:'through', sheetPattern:'honeycomb'}));
+    chk('  сквозной узор снимает объём', netted < solid*0.9, {сплошной:+solid.toFixed(0), решётка:+netted.toFixed(0)});
+  }
+  /* 4. ФАСКА: заказанный угол держится не всегда — подъём зажат толщиной листа. */
+  {
+    const g = spec({sheetChamfer:10, sheetChamferAngle:80});
+    chk('крутая фаска на тонком листе легла положе заказанной',
+        g.chamferCut === true && g.angGot < 80 - 1, {получилось:+g.angGot.toFixed(1)});
+    chk('  и об этом сказано числом', new RegExp('фаска легла под ' + g.angGot.toFixed(0) + '°')
+        .test(warn({sheetChamfer:10, sheetChamferAngle:80}).join(' ')),
+        warn({sheetChamfer:10, sheetChamferAngle:80}));
+    /* Подъём меряется по детали: нижняя грань сужена на ширину фаски, и она поднимается на `rise`. */
+    const b = computeBBox(mesh({sheetChamfer:6, sheetChamferAngle:45}));
+    const gg = spec({sheetChamfer:6, sheetChamferAngle:45});
+    let wBot = 0;                                    // ширина нижней грани по X
+    { const t = mesh({sheetChamfer:6, sheetChamferAngle:45}); let lo = 1e9, hi = -1e9;
+      for (const T of t) for (const v of T) if (Math.abs(v[1] - b.minY) < 1e-6){
+        lo = Math.min(lo, v[0]); hi = Math.max(hi, v[0]); }
+      wBot = hi - lo; }
+    chk('фаска и правда сужает нижнюю грань на свою ширину',
+        Math.abs((80 - wBot)/2 - gg.chW) < 0.2, {снято:+((80 - wBot)/2).toFixed(2), фаска:gg.chW});
+    chk('  на умолчаниях фаски нет и оговорки тоже',
+        spec({}).chW === 0 && spec({}).chamferCut === false);
+  }
+  setP({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

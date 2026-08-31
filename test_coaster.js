@@ -1003,5 +1003,71 @@ console.log('=== мозаика не складывается сама на се
   logos.length = 0;
 }
 
+/* ===============================================================================================
+   ПОДСТАКАННИК НАЗЫВАЕТ СЛОИ ЦВЕТА И ЁМКОСТЬ БОРТА (v25.18.0). Печатается он рисунком ВНИЗ, и карман под
+   цвет — это ПЕРВЫЕ слои детали: сколько их там, решает, выйдет цвет плотным или просвечивающим. Число
+   выведенное, на экране его нет, а ручка кармана вдобавок молча зажата половиной толщины. Второе число —
+   сколько борт удержит пролитого: борт в два миллиметра выглядит символическим, а держит десяток. */
+console.log('\n=== подстаканник называет слои цвета и ёмкость борта ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {csMode:'round', csD:90, csT:6, csRim:2, csRimW:4,
+      csInlay:0.8, csPart:'body', logoResolution:120}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^подстаканник /.test(x));
+  const spec = (ov) => coasterSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('подстаканник больше не молчит: на умолчаниях есть строка с числами',
+      line(warn({})) !== undefined, warn({}));
+  /* БОРТ МЕРЯЕТСЯ ПО ДЕТАЛИ: у кольца борта свой внутренний радиус, и ёмкость считается по нему. */
+  {
+    const g = spec({}), t = mesh({}), b = computeBBox(t);
+    let inner = 1e9, outer = 0, flatY = 0;
+    for (const T of t) for (const v of T){
+      const r = Math.hypot(v[0], v[2]);
+      if (Math.abs(v[1] - b.maxY) < 1e-6){ inner = Math.min(inner, r); outer = Math.max(outer, r); } }
+    chk('внутренний радиус борта измерен и совпал с половиной минус ширина борта',
+        Math.abs(inner - (g.half - g.rimW)) < 0.3, {измерено:+inner.toFixed(2), спец:+(g.half - g.rimW).toFixed(2)});
+    chk('  наружный — это сама деталь', Math.abs(outer - g.half) < 0.3, +outer.toFixed(2));
+    chk('  высота борта измерена от плоского верха',
+        Math.abs((b.maxY - b.minY) - g.t) < 0.05, +(b.maxY - b.minY).toFixed(2));
+    const ml = Math.PI*inner*inner*g.rim/1000;
+    chk('  ёмкость борта считается по измеренному радиусу', Math.abs(ml - 10.6) < 0.6, +ml.toFixed(1));
+    chk('  и названа в строке', /удержит около 11 мл/.test(line(warn({}))), line(warn({})));
+    chk('  без борта про ёмкость не говорится',
+        /борта нет/.test(line(warn({csRim:0}))), line(warn({csRim:0})));
+  }
+  /* СЛОИ ЦВЕТА. Карман — первые слои детали, и их число решает, просвечивает цвет или нет. */
+  {
+    const g = spec({});
+    chk('слоёв цвета — это карман, делённый на высоту слоя',
+        Math.abs(g.inlay/PRINT_LAYER - 4) < 1e-9, +(g.inlay/PRINT_LAYER).toFixed(1));
+    chk('  и число названо со словом в нужном падеже',
+        /0\.8 мм — это 4 слоя цвета по 0\.2/.test(line(warn({}))), line(warn({})));
+    chk('  мелкий карман назван просвечивающим', /просвечивает телом/.test(warn({csInlay:0.4}).join(' ')),
+        warn({csInlay:0.4}));
+    chk('  на умолчаниях такой жалобы нет', !/просвечивает телом/.test(warn({}).join(' ')));
+  }
+  /* ДВА МОЛЧАЛИВЫХ ЗАЖИМА: карман режется половиной толщины, борт — тем, что под ним должны остаться
+     карман и дно. На тонком подстаканнике срабатывают оба разом, и от борта не остаётся даже сопла. */
+  {
+    const g = spec({csT:2, csInlay:3});
+    chk('карман урезан половиной толщины', Math.abs(g.inlay - 1) < 1e-9 &&
+        /карман урезан с 3\.0 до 1\.0/.test(warn({csT:2, csInlay:3}).join(' ')), g.inlay);
+    chk('  и борт урезан следом', g.rim < 0.4 &&
+        /не осталось даже прохода сопла/.test(warn({csT:2, csInlay:3}).join(' ')), +g.rim.toFixed(2));
+    chk('  деталь и правда такой толщины', (() => { const b = computeBBox(mesh({csT:2, csInlay:3}));
+        return Math.abs((b.maxY - b.minY) - 2) < 0.05; })());
+    chk('  на умолчаниях ни один зажим не срабатывает',
+        !/урезан/.test(warn({}).join(' ')), warn({}));
+  }
+  /* Цветные детали — отдельные пробки, и эта строка их не касается. */
+  chk('у цветной детали строки про карман и борт нет',
+      line(warn({csPart:'ink1'})) === undefined, warn({csPart:'ink1'}));
+  setP({});
+}
+
 console.log('=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 if(fail) process.exit(1);

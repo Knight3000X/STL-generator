@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.17.0';
+const APP_VERSION = 'v25.18.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6671,7 +6671,21 @@ function capThroatR(p){ return throatROf(threadMinorR(p)); }
    Зазор — свойство ЖЕНСКОЙ детали: ручка показана у крышки, гайки и барашка, и в построителе `clr`
    прибавляется только к женской поверхности. Поэтому зацеп считается только там, где ручка живая:
    обещать мужской детали посадку с ненапечатанной ответной частью значило бы выдумывать. */
-const THREAD_LAYER  = 0.2;    // высота слоя, от которой считается лесенка витка — объявлена, а не подразумевается
+/* ВЫСОТА СЛОЯ, ОТ КОТОРОЙ СЧИТАЮТСЯ ВСЕ «СКОЛЬКО ЭТО СЛОЁВ» (v25.18.0). Число объявлено вслух и одно на
+   всё приложение: заводить его по второму разу для каждой формы значило бы позволить двум ответам на один
+   вопрос разойтись молча. Живой шарнир держит свою ручку `lhLayer` нарочно — там высота слоя это ЗАКАЗ
+   человека, а не допущение, — а здесь именно допущение, и оно названо. */
+const PRINT_LAYER = 0.2;
+/* «2 слоёв» и «5 слоя» — мелочь, которая читается как небрежность ровно там, где число важно. Правило
+   русского счёта одно на всё приложение: 1 — слой, 2–4 — слоя, дальше слоёв, кроме одиннадцати-четырнадцати. */
+function layerWord(n){
+  const k = Math.round(n), h = k % 100, u = k % 10;
+  if (h >= 11 && h <= 14) return 'слоёв';
+  if (u === 1) return 'слой';
+  if (u >= 2 && u <= 4) return 'слоя';
+  return 'слоёв';
+}
+const THREAD_LAYER = PRINT_LAYER;   // прежнее имя: витки резьбы считаются той же высотой слоя
 const THREAD_NOZZLE = 0.4;
 /* Крепёж — это те разновидности, у которых есть НАСТОЯЩАЯ винтовая резьба с шагом и профилем. Шнек,
    штопор, пружина, ёлочка и дюбель живут по своим правилам и говорят своими числами. */
@@ -11173,6 +11187,40 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
   let lo=Infinity,hi=-Infinity; for(const t of tris) for(const v of t){ if(v[1]<lo)lo=v[1]; if(v[1]>hi)hi=v[1]; }
   const dy=-(lo+hi)/2;   // center vertically — rebuild with FRESH point arrays (fan centers are shared refs)
   return polyDropDegen(tris.map(T=>[[T[0][0],T[0][1]+dy,T[0][2]],[T[1][0],T[1][1]+dy,T[1][2]],[T[2][0],T[2][1]+dy,T[2][2]]]));
+}
+/* ЛИСТ — ЧИСЛА, КОТОРЫХ НА ЭКРАНЕ НЕТ (v25.18.0). Плоская панель выглядит самой простой формой набора, и
+   ровно поэтому у неё всё выведенное: шаг узора, перемычка и подъём фаски берутся АВТОМАТИЧЕСКИ, а ручки
+   их показывают нулём. Ноль на панели — это «как было», и человек видит ноль там, где в детали полтора
+   миллиметра. Толщина же — единственное, что он задаёт прямо, и она же решает, лист это или плёнка. */
+const SHEET_NOZZLE = 0.4;
+function sheetSpec(p){
+  const shape = p.sheetShape || 'none';
+  if (shape === 'none') return null;
+  const W = Math.max(1, p.width || 40), D = Math.max(1, p.depth || 40);
+  const t = Math.max(0.4, p.sheetThick || 3);
+  const cut = p.sheetCut || 'texture';
+  const pattern = (p.sheetPattern && p.sheetPattern !== 'none') ? p.sheetPattern : null;
+  /* Те же выражения, что в построителе, — и это ровно тот случай, когда копия недопустима: авто-шаг
+     читает ручку ЧУЖОЙ формы (сетчатого дна), и разойтись им было бы легко. */
+  const cell = pattern ? Math.max(1, p.sheetPatCell > 0 ? p.sheetPatCell : sheetAutoCell(pattern, p.latticeCell)) : 0;
+  const rib  = pattern ? Math.max(0.1, p.sheetPatRib > 0 ? p.sheetPatRib : sheetAutoRib(cell, p.latticeRib)) : 0;
+  const texH = Math.max(0.1, p.sheetTexH || 0.6);
+  const through = cut === 'through' && !!pattern && !SHEET_TEXTURE_ONLY.has(pattern);
+  const textured = cut === 'texture' && !!pattern;
+  /* Фаска тыльной стороны: её ПОДЪЁМ зажат толщиной, поэтому заказанный угол держится не всегда. */
+  const chW = Math.max(0, Math.min(p.sheetChamfer || 0, Math.min(W, D)/2*0.4));
+  const chAng = Math.max(10, Math.min(80, p.sheetChamferAngle || 45));
+  const riseWant = chW*Math.tan(chAng*Math.PI/180);
+  const rise = chW > 0.1 ? Math.min(t - 0.4, riseWant) : 0;
+  const angGot = (chW > 0.1 && chW > 0) ? Math.atan(rise/chW)*180/Math.PI : chAng;
+  return {shape, W, D, t, cut, pattern, cell, rib, texH, through, textured,
+          layers: t/PRINT_LAYER, texLayers: texH/PRINT_LAYER,
+          chW, chAng, rise, riseWant, angGot,
+          film:     t < 3*PRINT_LAYER,
+          thinRib:  through && rib < 2*SHEET_NOZZLE,
+          flatTex:  textured && texH < PRINT_LAYER,
+          chamferCut: chW > 0.1 && riseWant > rise + 1e-9,
+          rimH: Math.max(0, p.sheetRim || 0), rimW: Math.max(1, p.sheetRimW || 2)};
 }
 function buildSheet(p){
   const hw=p.width/2, hd=p.depth/2, t=Math.max(0.4, p.sheetThick||3), yb=-t/2, yt=t/2;
@@ -27983,6 +28031,15 @@ function collectPrintWarnings(p, mesh){
      это видно сразу. И слишком мелкая сетка на длинной волне превращает узор в кашу. */
   if (p.tlMode && p.tlMode !== 'none'){
     const ts = tileSpec(p);
+    /* ПАННО — ГЛАВНОЕ, ЧЕГО НЕ ВИДНО: на экране одна плитка, а печатать их nx×nz, и общий размер стены
+       нигде не назывался. Склон рельефа считается по самой волне: у синуса амплитуды amp и длины lam
+       наибольший наклон равен π·amp/lam — то самое число, на котором печать начинает нависать. */
+    { const slope = ts.lam > 0 ? Math.atan(Math.PI*ts.amp/ts.lam)*180/Math.PI : 0;
+      w.push('плитка ' + (ts.ix+1) + ':' + (ts.iz+1) + ' из панно ' + ts.nx + '×' + ts.nz + ' — ' +
+             ts.W.toFixed(0) + '×' + ts.H.toFixed(0) + '×' + (ts.T + ts.amp).toFixed(1) + ' мм, всё панно ' +
+             (ts.nx*ts.W).toFixed(0) + '×' + (ts.nz*ts.H).toFixed(0) + ' мм из ' + (ts.nx*ts.nz) +
+             ' штук; рельеф ' + ts.amp.toFixed(1) + ' мм на волне ' + ts.lam.toFixed(0) +
+             ' — склон ' + slope.toFixed(0) + '°, узлов на волну ' + (ts.lam/ts.step).toFixed(0)); }
     if (ts.ixWant > ts.ix || ts.izWant > ts.iz)
       w.push('плитка ' + (ts.ixWant+1) + ':' + (ts.izWant+1) + ' не помещается в панно ' + ts.nx + '×' + ts.nz +
              ' — взята ' + (ts.ix+1) + ':' + (ts.iz+1) + '; поднимите размер панно или уменьшите номер');
@@ -28605,6 +28662,15 @@ function collectPrintWarnings(p, mesh){
      задник со снимком, глубокий профиль съест переднюю губу, а слишком широкий багет схлопнет проём. */
   if (p.frMode && p.frMode !== 'none'){
     const fs = frameSpec(p);
+    /* ЧТО ВИДНО — И ЧТО ВЛЕЗЕТ. Человек задаёт размер СНИМКА, а губа накрывает его с каждой стороны: на
+       100×150 при нахлёсте 4 видно 92×142, и нигде это не называлось. Второе число — сколько в фальце
+       остаётся ПОД САМ СНИМОК после задника: три миллиметра фальца минус двухмиллиметровый задник это
+       миллиметр, куда бумага войдёт, а стекло нет. */
+    w.push('рамка под снимок ' + fs.photoW.toFixed(0) + '×' + fs.photoH.toFixed(0) + ': наружный габарит ' +
+           fs.W.toFixed(0) + '×' + fs.H.toFixed(0) + ' мм, ВИДНО ' + fs.openW.toFixed(0) + '×' +
+           fs.openH.toFixed(0) + ' мм (губа ' + fs.ov.toFixed(1) + ' мм с каждой стороны); фальц ' +
+           fs.rabD.toFixed(1) + ' мм — задник ' + fs.backT.toFixed(1) + ' и ' +
+           Math.max(0, fs.rabD - fs.backT).toFixed(1) + ' мм под сам снимок');
     if (fs.rabWant > fs.rabD + 0.05)
       w.push('фальц: просили ' + fs.rabWant.toFixed(1) + ' мм, толщина рамки держит ' + fs.rabD.toFixed(1) +
              ' — передней губе нужно ' + FRAME_MIN_LIP + ' мм; толще рамка или мельче фальц');
@@ -28614,6 +28680,9 @@ function collectPrintWarnings(p, mesh){
     if (fs.rabD < fs.backT + 0.3)
       w.push('фальц ' + fs.rabD.toFixed(1) + ' мм мельче задника (' + fs.backT.toFixed(1) +
              ' мм) со снимком — задник встанет заподлицо или выше рамки');
+    if (fs.ov < 0.05)
+      w.push('нахлёста губы нет вовсе: рамка не прижимает снимок ничем — он держится только задником и' +
+             ' выпадет вперёд, стоит рамку наклонить');
     if (fs.ovWant > fs.ov + 0.05)
       w.push('нахлёст губы: просили ' + fs.ovWant.toFixed(1) + ' мм, снимок держит ' + fs.ov.toFixed(1) +
              ' — от него должно остаться видно хотя бы ' + FRAME_MIN_OPEN + ' мм');
@@ -28826,6 +28895,27 @@ function collectPrintWarnings(p, mesh){
   /* ОТСТУП ТЕКСТУРЫ, КОТОРЫЙ ПОДНЯЛИ ЗА ПОЛЬЗОВАТЕЛЯ. При бортике текстура обязана держаться от его
      стенки, иначе она в неё упрётся; заказанное число в этом случае не выполняется, и молчать об этом
      нельзя — на экране стоит одно, на модели другое. */
+  { const sh = sheetSpec(p);
+    if (sh){
+      /* Главные числа печатаются ВСЕГДА: у листа почти всё выведенное, а ручки показывают ноль. */
+      w.push('лист ' + sh.W.toFixed(0) + '×' + sh.D.toFixed(0) + ' мм, толщина ' + sh.t.toFixed(1) +
+             ' мм — это ' + sh.layers.toFixed(0) + ' ' + layerWord(sh.layers) + ' по ' + PRINT_LAYER +
+             (sh.pattern ? '; узор шагом ' + sh.cell.toFixed(1) + ' мм, перемычка ' + sh.rib.toFixed(2) + ' мм' +
+                (sh.textured ? ', высота ' + sh.texH.toFixed(1) + ' мм = ' + sh.texLayers.toFixed(0) +
+                   ' ' + layerWord(sh.texLayers) : '')
+              : '; без узора') +
+             (sh.rimH > 0 ? '; бортик ' + sh.rimH.toFixed(1) + '×' + sh.rimW.toFixed(1) + ' мм' : ''));
+      if (sh.film) w.push('толщина ' + sh.t.toFixed(1) + ' мм — это ' + sh.layers.toFixed(0) + ' ' +
+        layerWord(sh.layers) + ': получится плёнка, а не панель, и снимать её со стола придётся по кускам');
+      if (sh.thinRib) w.push('перемычка узора ' + sh.rib.toFixed(2) +
+        ' мм — тоньше двух проходов сопла, а держит решётку именно она: крупнее шаг узора или задайте' +
+        ' перемычку числом');
+      if (sh.flatTex) w.push('высота текстуры ' + sh.texH.toFixed(2) + ' мм — меньше одного слоя (' +
+        PRINT_LAYER + ' мм): рисунка на детали не будет вовсе');
+      if (sh.chamferCut) w.push('фаска легла под ' + sh.angGot.toFixed(0) + '°, а не под ' +
+        sh.chAng.toFixed(0) + ': на ширине ' + sh.chW.toFixed(1) + ' мм заказанный угол поднял бы её на ' +
+        sh.riseWant.toFixed(1) + ' мм при толщине листа ' + sh.t.toFixed(1));
+    } }
   if ((p.sheetShape && p.sheetShape !== 'none') && p.sheetCut === 'texture' &&
       p.sheetPattern && p.sheetPattern !== 'none'){
     const gap = sheetTexEdgeGap(p), want = p.sheetTexInset > 0 ? p.sheetTexInset : 0;
@@ -28985,6 +29075,32 @@ function collectPrintWarnings(p, mesh){
   // whole value of the feature, because a gauge that is wrong looks exactly like one that is right.
   // The coaster clips the artwork into its window, and clipping is silent: the logo card still says 60 mm
   // and the pocket is 44. Say it here rather than let someone discover it on a printed part.
+  /* ПОДСТАКАННИК. Печатается он РИСУНКОМ ВНИЗ, и карман под цвет — это первые слои детали: сколько их
+     там, решает, выйдет цвет плотным или просвечивающим. Число это выведенное и на экране его нет, а
+     ручка кармана вдобавок молча зажата половиной толщины. Второе число — сколько борт удержит
+     пролитого: борт в два миллиметра выглядит символическим, а держит десяток. */
+  if (p.csMode && p.csMode !== 'none'){
+    const g = coasterSpec(p);
+    if (g.part === 'body'){
+      const inWant = Math.max(0.4, Math.min(3, p.csInlay == null ? 0.8 : p.csInlay));
+      const rimWant = Math.max(0, Math.min(8, p.csRim == null ? 2 : p.csRim));
+      const inner = Math.max(0, g.half - g.rimW);
+      const ml = (g.shape === 'round' ? Math.PI*inner*inner : 4*inner*inner)*g.rim/1000;
+      w.push('подстаканник ' + (g.shape === 'round' ? 'Ø' : '') + g.size.toFixed(0) +
+             (g.shape === 'round' ? '' : ' мм') + '×' + g.t.toFixed(1) + ' мм; карман под рисунок ' +
+             g.inlay.toFixed(1) + ' мм — это ' + (g.inlay/PRINT_LAYER).toFixed(0) + ' ' +
+             layerWord(g.inlay/PRINT_LAYER) + ' цвета по ' + PRINT_LAYER + ', печать рисунком ВНИЗ' +
+             (g.rim > 0.05 ? '; борт ' + g.rim.toFixed(1) + ' мм удержит около ' + ml.toFixed(0) + ' мл'
+                           : '; борта нет'));
+      if (g.inlay/PRINT_LAYER < 2.5) w.push('в кармане ' + (g.inlay/PRINT_LAYER).toFixed(0) + ' ' +
+        layerWord(g.inlay/PRINT_LAYER) +
+        ' цвета — тонкий цвет просвечивает телом подстаканника; глубже карман или тоньше слой');
+      if (inWant > g.inlay + 1e-6) w.push('карман урезан с ' + inWant.toFixed(1) + ' до ' +
+        g.inlay.toFixed(1) + ' мм — глубже половины толщины он съел бы саму деталь');
+      if (rimWant > g.rim + 1e-6) w.push('борт урезан с ' + rimWant.toFixed(1) + ' до ' + g.rim.toFixed(1) +
+        ' мм: под ним должны остаться карман (' + g.inlay.toFixed(1) + ') и дно' +
+        (g.rim < 0.4 ? ', и от борта не осталось даже прохода сопла' : ''));
+    } }
   if (p.csMode && p.csMode !== 'none' && typeof logos !== 'undefined' && logos.length){
     const g = coasterSpec(p), lg = logos[0];
     const need = Math.max(lg.w||0, lg.h||0);

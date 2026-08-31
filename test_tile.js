@@ -212,7 +212,12 @@ console.log('=== пределы названы вслух ===');
   chk('в пределах — молчит', !wOf({tlIX:2,tlNX:3}).some(w=>/не помещается/.test(w)));
   chk('гранёный узор', wOf({tlScale:5,tlRes:2}).some(w=>/узлов сетки/.test(w)), wOf({tlScale:5,tlRes:2}));
   chk('слишком крутой рельеф', wOf({tlAmp:18,tlScale:20}).some(w=>/склон круче/.test(w)));
-  chk('обычная плитка молчит', wOf({}).length === 0, wOf({}));
+  /* «Молчит» — это молчит О ПЛОХОМ. С v25.18.0 плитка всегда печатает строку со своими числами (панно,
+     склон, узлы на волну) ровно как пружина печатает жёсткость: это не жалоба, а то, чего на экране нет.
+     Строка узнаётся по началу и из счёта исключается — иначе проверка требовала бы от плитки молчания,
+     то есть ровно того, из-за чего она и стояла в переписи молчунов. */
+  chk('обычная плитка ни на что не жалуется', wOf({}).filter(x => !/^плитка /.test(x)).length === 0, wOf({}));
+  chk('  но свои числа называет всегда', wOf({}).some(x => /^плитка /.test(x)), wOf({}));
 }
 
 console.log('=== плитка не задевает остальное приложение ===');
@@ -222,6 +227,68 @@ console.log('=== плитка не задевает остальное прил�
   chk('надстройки органайзера на плитку не лезут', Math.abs(a-b)<1e-9, {a,b});
   const t=base({tlMode:'none'}), B=computeBBox(t);
   chk('«нет» — это обычная коробка', Math.abs((B.maxX-B.minX)-paramState.box.width)<0.6, {w:B.maxX-B.minX});
+}
+
+/* ===============================================================================================
+   ПЛИТКА НАЗЫВАЕТ ПАННО И СКЛОН (v25.18.0). На экране одна плитка, а печатать их nx×nz — и общий размер
+   стены не назывался нигде. Второе число — СКЛОН рельефа: у волны амплитуды amp и длины lam наибольший
+   наклон равен π·amp/lam, и это то самое, на чём печать начинает нависать. Меряется он не формулой, а
+   по нормалям верхней поверхности построенной плитки. */
+console.log('\n=== плитка называет панно и склон ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {tlMode:'tile', tlPattern:'dunes',
+      tlW:100, tlH:100, tlT:3, tlAmp:4, tlScale:60, tlAngle:30, tlNX:3, tlNZ:3, tlIX:0, tlIZ:0,
+      tlBorder:0, tlRes:0}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^плитка /.test(x));
+  const spec = (ov) => tileSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('плитка больше не молчит: на умолчаниях есть строка с числами', line(warn({})) !== undefined, warn({}));
+  {
+    const g = spec({}), b = computeBBox(mesh({}));
+    chk('полная высота плитки — основание плюс рельеф',
+        Math.abs((b.maxY - b.minY) - (g.T + g.amp)) < 0.05,
+        {измерено:+(b.maxY - b.minY).toFixed(2), спец:+(g.T + g.amp).toFixed(2)});
+    chk('  и размер плитки тот, что заказан',
+        Math.abs((b.maxX - b.minX) - g.W) < 0.05 && Math.abs((b.maxZ - b.minZ) - g.H) < 0.05);
+    chk('  панно названо целиком', /всё панно 300×300 мм из 9 штук/.test(line(warn({}))), line(warn({})));
+    chk('  и это и правда nx·W на nz·H',
+        Math.abs(g.nx*g.W - 300) < 1e-9 && Math.abs(g.nz*g.H - 300) < 1e-9);
+  }
+  /* СКЛОН МЕРЯЕТСЯ ПО НОРМАЛЯМ, а не повторением формулы. Верхняя поверхность — треугольники, чья
+     нормаль смотрит вверх; наибольший её наклон от горизонтали и есть крутизна рельефа. */
+  {
+    const slopeOf = (ov) => { const t = mesh(ov); let mx = 0;
+      for (const T of t){
+        const u = [T[1][0]-T[0][0], T[1][1]-T[0][1], T[1][2]-T[0][2]];
+        const v = [T[2][0]-T[0][0], T[2][1]-T[0][1], T[2][2]-T[0][2]];
+        const n = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+        const L = Math.hypot(n[0], n[1], n[2]); if (L < 1e-12) continue;
+        if (n[1]/L < 0.05) continue;                  // только верх, без боков и низа
+        mx = Math.max(mx, Math.acos(Math.min(1, n[1]/L))*180/Math.PI); }
+      return mx; };
+    const g = spec({});
+    const calc = Math.atan(Math.PI*g.amp/g.lam)*180/Math.PI;
+    chk('склон рельефа измерен по нормалям и сходится с π·amp/lam',
+        Math.abs(slopeOf({}) - calc) < 2.5, {измерено:+slopeOf({}).toFixed(1), расчёт:+calc.toFixed(1)});
+    chk('  и назван в строке', new RegExp('склон ' + calc.toFixed(0) + '°').test(line(warn({}))), line(warn({})));
+    const steep = {tlAmp:20, tlScale:10};
+    chk('  крутой рельеф и правда круче на детали', slopeOf(steep) > 60, +slopeOf(steep).toFixed(1));
+    chk('  и назван нависающим', /склон круче 45°/.test(warn(steep).join(' ')), warn(steep));
+    chk('  а умолчания пологие и молчат',
+        !/склон круче/.test(warn({}).join(' ')) && calc < 45, +calc.toFixed(1));
+  }
+  {
+    const g = spec({});
+    chk('узлов на волну — это длина волны, делённая на шаг сетки',
+        Math.abs(g.lam/g.step - 30) < 0.5, +(g.lam/g.step).toFixed(1));
+    chk('  и число названо', /узлов на волну 30/.test(line(warn({}))), line(warn({})));
+    chk('  на грубой сетке приложение жалуется', /гранёным/.test(warn({tlRes:8}).join(' ')), warn({tlRes:8}));
+  }
+  setP({});
 }
 
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');

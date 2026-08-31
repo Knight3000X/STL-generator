@@ -432,5 +432,83 @@ console.log('=== рамка не задевает остальное прило�
   chk('надстройки органайзера на рамку не лезут', Math.abs(a-b)<1e-9, {a,b});
 }
 
+/* ===============================================================================================
+   РАМКА НАЗЫВАЕТ, ЧТО ВИДНО И ЧТО ВЛЕЗЕТ (v25.18.0). Человек задаёт размер СНИМКА, а губа накрывает его
+   с каждой стороны: на 100×150 при нахлёсте 4 видно 92×142, и нигде это не называлось. Второе число —
+   сколько в фальце остаётся ПОД САМ СНИМОК после задника: три миллиметра фальца минус двухмиллиметровый
+   задник это миллиметр, куда бумага войдёт, а стекло нет. Оба меряются по построенной рамке. */
+console.log('\n=== рамка называет, что видно и что влезет ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {frMode:'frame', frPhotoW:100, frPhotoH:150,
+      frWidth:12, frOverlap:4, frT:10, frRabbetD:3, frBackT:2, frProfile:'flat', frCorner:0}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^рамка под снимок /.test(x));
+  const spec = (ov) => frameSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('рамка больше не молчит: на умолчаниях есть строка с числами', line(warn({})) !== undefined, warn({}));
+  /* ПРОЁМ МЕРЯЕТСЯ ПО ЛИЦЕВОЙ ГРАНИ: у неё внутренняя кромка и есть то, что видно. */
+  {
+    const g = spec({}), t = mesh({}), b = computeBBox(t);
+    /* Проём меряется СЕЧЕНИЕМ ПОСЕРЕДИНЕ, а не перебором вершин лицевой грани: у скруглённого проёма
+       вершины стоят на дугах углов, и ближайшая к оси оказывается концом дуги, а не кромкой — первый мой
+       замер получил из-за этого 91.6 вместо 92. Плоскость через середину рамки режет прямой участок. */
+    const edgeAt = (tris, along, yCut) => {           // along: 0 — вдоль X (сечение z=0), 2 — вдоль Z
+      const other = along === 0 ? 2 : 0, seg = [];
+      for (const T of tris){ const pts = [];
+        for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+          if (A[other]*B[other] > 0) continue;
+          if (Math.abs(A[other] - B[other]) < 1e-12) continue;
+          const u = -A[other]/(B[other] - A[other]); if (u < 0 || u > 1) continue;
+          pts.push([A[along] + u*(B[along] - A[along]), A[1] + u*(B[1] - A[1])]); }
+        if (pts.length === 2) seg.push(pts); }
+      const xs = [];
+      for (const [P, Q] of seg){
+        if ((P[1] - yCut)*(Q[1] - yCut) > 0) continue;
+        if (Math.abs(P[1] - Q[1]) < 1e-12) continue;
+        const u = (yCut - P[1])/(Q[1] - P[1]); if (u < 0 || u > 1) continue;
+        xs.push(P[0] + u*(Q[0] - P[0])); }
+      xs.sort((m, n) => m - n);
+      const u = xs.filter((v, i) => i === 0 || v > xs[i-1] + 1e-6);
+      return u; };
+    const ex = edgeAt(t, 0, b.maxY - 0.05), ez = edgeAt(t, 2, b.maxY - 0.05);
+    /* Пересечений четыре: наружная кромка, кромка проёма, и то же с другой стороны. */
+    chk('проём измерен сечением лицевой грани и совпал с объявленным',
+        ex.length === 4 && ez.length === 4 &&
+        Math.abs((ex[2] - ex[1]) - g.openW) < 0.05 && Math.abs((ez[2] - ez[1]) - g.openH) < 0.05,
+        {измерено:[+(ex[2]-ex[1]).toFixed(2), +(ez[2]-ez[1]).toFixed(2)], спец:[g.openW, g.openH]});
+    chk('  и он МЕНЬШЕ заказанного снимка ровно на две губы',
+        Math.abs(g.photoW - g.openW - 2*g.ov) < 1e-9 && g.openW < g.photoW);
+    chk('  наружный габарит тоже измерен',
+        Math.abs((b.maxX - b.minX) - g.W) < 0.05 && Math.abs((b.maxZ - b.minZ) - g.H) < 0.05,
+        {измерено:[+(b.maxX-b.minX).toFixed(1), +(b.maxZ-b.minZ).toFixed(1)], спец:[g.W, g.H]});
+    chk('  и всё это названо в строке',
+        /ВИДНО 92×142 мм/.test(line(warn({}))) && /наружный габарит 125×175 мм/.test(line(warn({}))),
+        line(warn({})));
+  }
+  /* СКОЛЬКО ОСТАЁТСЯ ПОД СНИМОК. Число выведенное: фальц минус задник. */
+  {
+    const g = spec({});
+    chk('под снимок остаётся фальц минус задник',
+        Math.abs((g.rabD - g.backT) - 1.0) < 1e-9, +(g.rabD - g.backT).toFixed(2));
+    chk('  и это названо', /задник 2\.0 и 1\.0 мм под сам снимок/.test(line(warn({}))), line(warn({})));
+    chk('  глубже фальц — больше места', spec({frRabbetD:6}).rabD - spec({frRabbetD:6}).backT > 3.5);
+    chk('  а мельче задника приложение жалуется отдельно',
+        /мельче задника/.test(warn({frRabbetD:1}).join(' ')), warn({frRabbetD:1}));
+  }
+  /* НАХЛЁСТ В НОЛЬ — снимку не за что держаться, и это отдельная беда, а не «просто видно больше». */
+  {
+    const g = spec({frOverlap:0});
+    chk('без нахлёста проём равен снимку', Math.abs(g.openW - g.photoW) < 1e-9);
+    chk('  и сказано, что держать снимок нечем',
+        /нахлёста губы нет вовсе/.test(warn({frOverlap:0}).join(' ')), warn({frOverlap:0}));
+    chk('  на умолчаниях этой оговорки нет',
+        !/нахлёста губы нет/.test(warn({}).join(' ')));
+  }
+  setP({});
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

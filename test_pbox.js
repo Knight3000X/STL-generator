@@ -310,5 +310,95 @@ console.log('=== вводы под проводку ===');
       manifoldCheck(buildTrisForShape('box', paramState.box), 4).watertight);
 }
 
+/* ===============================================================================================
+   КОРПУС НАЗЫВАЕТ, ЧТО В НЕГО ВЛЕЗЕТ (v25.19.0). Человек задаёт НАРУЖНЫЙ размер, а кладёт внутрь плату,
+   и между этими двумя числами стоят три вычитания, ни одно из которых не видно: стенки, юбка основания
+   и — главное — УГЛОВЫЕ СТОЙКИ под винты крышки. Стойка Ø8 в каждом углу, отодвинутая от стенки на
+   ширину рёбра крышки с двумя зазорами, съедает больше самих стенок: у корпуса 80 × 60 полость выходит
+   72 × 52, а прямоугольник МЕЖДУ СТОЙКАМИ — 50 × 30. Плата 60 × 40 в такой корпус не ложится, и узнать
+   об этом можно было только примеркой напечатанного. Меряется всё по построенному лотку. */
+console.log('\n=== корпус называет, что в него влезет ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {pbPart:'tray', pbW:80, pbD:60, pbH:30,
+      pbWall:2.4, pbFloor:2.4, pbScrewD:3, pbPostD:8, pbClear:0.35, pbVent:'none', pbCable:'none'}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^корпус /.test(x));
+  const spec = (ov) => pboxFitSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('корпус больше не молчит: на умолчаниях есть строка с размерами', line(warn({})) !== undefined, warn({}));
+  /* ПОЛОСТЬ И ПРЯМОУГОЛЬНИК МЕЖДУ СТОЙКАМИ — по сечению лотка на высоте посередине стенок: там стоят и
+     стенки, и стойки, и по промежуткам между ними читается всё сразу. */
+  {
+    const g = spec({}), t = mesh({}), b = computeBBox(t);
+    const yCut = b.minY + g.floorT + (g.H - g.floorT)*0.5;
+    const xsAt = (zLine) => { const seg = [];
+      for (const T of t){ const pts = [];
+        for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+          if ((A[1] - yCut)*(B[1] - yCut) > 0) continue;
+          if (Math.abs(A[1] - B[1]) < 1e-12) continue;
+          const u = (yCut - A[1])/(B[1] - A[1]); if (u < 0 || u > 1) continue;
+          pts.push([A[0] + u*(B[0] - A[0]), A[2] + u*(B[2] - A[2])]); }
+        if (pts.length === 2) seg.push(pts); }
+      const xs = [];
+      for (const [P, Q] of seg){
+        if ((P[1] - zLine)*(Q[1] - zLine) > 0) continue;
+        if (Math.abs(P[1] - Q[1]) < 1e-12) continue;
+        const u = (zLine - P[1])/(Q[1] - P[1]); if (u < 0 || u > 1) continue;
+        xs.push(P[0] + u*(Q[0] - P[0])); }
+      xs.sort((m, n) => m - n);
+      return xs.filter((v, i) => i === 0 || v > xs[i-1] + 1e-6); };
+    /* Посередине корпуса стоек нет — там видна вся полость. */
+    const mid = xsAt(0);
+    chk('полость измерена по сечению посередине', mid.length === 4 &&
+        Math.abs((mid[2] - mid[1]) - g.Wi) < 0.4,
+        {измерено:mid.length === 4 ? +(mid[2]-mid[1]).toFixed(1) : mid.length, спец:+g.Wi.toFixed(1)});
+    /* А ЧТО ВЛЕЗЕТ — это самый узкий просвет по всей глубине: где стоят стойки, там он и сужается.
+       Гадать, на какой именно линии они стоят, незачем — перебор находит её сам. */
+    let narrow = 1e9;
+    for (let k = 0; k <= 120; k++){
+      const z = b.minZ + (b.maxZ - b.minZ)*k/120;
+      const xs = xsAt(z);
+      if (xs.length < 4) continue;                   // за пределами полости
+      /* Промежуток, накрывающий ось: правый край последнего куска материала слева и левый край
+         первого справа. Куски идут парами [xs[2k], xs[2k+1]], и брать «первый xs[i] > 0» надо среди
+         ЧЁТНЫХ индексов — первый мой замер брал нечётные и мерил не тот край, отчего просвет вышел
+         на два с лишним миллиметра шире настоящего. */
+      let lo = -1e9, hi = 1e9;
+      for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i] < 0) lo = Math.max(lo, xs[i+1]);
+      for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i] > 0){ hi = xs[i]; break; }
+      if (lo > -1e8 && hi < 1e8) narrow = Math.min(narrow, hi - lo); }
+    chk('  самый узкий просвет по глубине — это и есть место под плату',
+        Math.abs(narrow - g.boardW) < 1.5, {измерено:+narrow.toFixed(1), спец:+g.boardW.toFixed(1)});
+    chk('  и всё это названо в строке',
+        /внутри 72×52×28 мм/.test(line(warn({}))) && /плата 50×30 мм/.test(line(warn({}))),
+        line(warn({})));
+    chk('  стойки съедают больше стенок', g.eaten > g.wall,
+        {съедаетстойка:+g.eaten.toFixed(1), стенка:g.wall});
+  }
+  /* ТОЛСТАЯ СТОЙКА СЪЕДАЕТ КОРПУС ЦЕЛИКОМ. */
+  {
+    const g = spec({pbPostD:20});
+    chk('стойка Ø20 не оставляет места под плату', g.noBoard === true,
+        {плата:[+g.boardW.toFixed(0), +g.boardD.toFixed(0)]});
+    chk('  и об этом сказано', /между стойками не осталось места вовсе/.test(warn({pbPostD:20}).join(' ')));
+    chk('  на умолчаниях место есть и жалобы нет',
+        spec({}).noBoard === false && !/не осталось места/.test(warn({}).join(' ')));
+  }
+  /* ЗАЗОР КРЫШКИ проходит через поправку посадки материала, как все посадки приложения. */
+  {
+    chk('зазор крышки назван в строке', /зазор крышки 0\.35 мм на сторону/.test(line(warn({}))), line(warn({})));
+    chk('  и поправка материала его двигает',
+        Math.abs(spec({fitTune:0.1}).clr - 0.45) < 1e-9, +spec({fitTune:0.1}).clr.toFixed(2));
+  }
+  /* Крышка — та же спецификация: числа у пары общие, и расходиться им нельзя. */
+  chk('у крышки те же числа, что у лотка',
+      spec({pbPart:'lid'}).boardW === spec({pbPart:'tray'}).boardW &&
+      spec({pbPart:'lid'}).Wi === spec({pbPart:'tray'}).Wi);
+  setP({});
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);

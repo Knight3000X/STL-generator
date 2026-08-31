@@ -710,6 +710,11 @@ console.log('\n=== лист называет свои числа ===');
         layerWord(1) === 'слой' && layerWord(2) === 'слоя' && layerWord(5) === 'слоёв' &&
         layerWord(11) === 'слоёв' && layerWord(21) === 'слой' && layerWord(22) === 'слоя',
         [layerWord(1), layerWord(2), layerWord(5), layerWord(11), layerWord(21), layerWord(22)]);
+    /* Слои приходят ДРОБНЫМИ — 0.8 мм кармана это четыре слоя, а 0.1 мм текстуры полслоя. Число в
+       строке округляется, значит и слово обязано округляться вместе с ним: иначе выходит «1 слоёв». */
+    chk('  и дробное число считается по округлённому',
+        layerWord(0.5) === 'слой' && layerWord(2.6) === 'слоя' && layerWord(4.7) === 'слоёв',
+        [layerWord(0.5), layerWord(2.6), layerWord(4.7)]);
     chk('  тонкий лист назван плёнкой', spec({sheetThick:0.4}).film === true &&
         /получится плёнка/.test(warn({sheetThick:0.4}).join(' ')));
     chk('  а на умолчаниях плёнкой не зовётся', spec({}).film === false, spec({}).layers);

@@ -76,5 +76,57 @@ console.log('=== addGridfinityBaseplate makes a model ===');
 }
 
 paramState.box.gfBaseplate = false;
+/* ===============================================================================================
+   ПЛИТА НАЗЫВАЕТ СВОЙ РАЗМЕР И ОДИН МОЛЧАЛИВЫЙ ЗАЖИМ (v25.19.0). Плита задаётся В ЯЧЕЙКАХ, а стоит на
+   столе в миллиметрах: 3 × 2 это 126 × 84, и нигде это не называлось. Толщина же основания под гнёздами
+   имеет в строке параметров потолок в МИЛЛИОН миллиметров — очевидная заглушка, — а построитель молча
+   режет её шестью: человек, поставивший двадцать, получает шесть и не узнаёт об этом ниоткуда. */
+console.log('\n=== плита называет размер и зажим основания ===');
+{
+  const setP = (ov) => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:true, gfX:1, gfY:1}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^плита Gridfinity /.test(x));
+  const spec = (ov) => baseplateSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  check('плита больше не молчит: на умолчаниях есть строка с размером', line(warn({})) !== undefined, warn({}));
+  /* РАЗМЕР МЕРЯЕТСЯ ПО ДЕТАЛИ, а не пересказывается: ячейки × шаг обязаны сойтись с габаритом. */
+  for (const [nx, ny] of [[1,1], [3,2], [5,5]]){
+    const g = spec({gfX:nx, gfY:ny}), b = computeBBox(mesh({gfX:nx, gfY:ny}));
+    check('плита ' + nx + '×' + ny + ': габарит измерен и равен ячейкам на шаг',
+        Math.abs((b.maxX - b.minX) - g.W) < 0.02 && Math.abs((b.maxZ - b.minZ) - g.D) < 0.02,
+        {измерено:[+(b.maxX-b.minX).toFixed(2), +(b.maxZ-b.minZ).toFixed(2)], спец:[g.W, g.D]});
+    check('  и высота тоже', Math.abs((b.maxY - b.minY) - g.H) < 0.02,
+        {измерено:+(b.maxY-b.minY).toFixed(2), спец:+g.H.toFixed(2)});
+  }
+  check('шаг именно 42 мм, как у стандарта', spec({}).pitch === 42);
+  check('  и число гнёзд — это произведение ячеек', spec({gfX:3, gfY:2}).cells === 6);
+  check('  строка называет и миллиметры, и гнёзда',
+      /126×84×5\.95 мм и 6 гнёзд/.test(line(warn({gfX:3, gfY:2}))), line(warn({gfX:3, gfY:2})));
+  /* ЗАЖИМ ОСНОВАНИЯ. Строка параметров разрешает миллион, построитель кладёт шесть — и теперь говорит. */
+  {
+    const g = spec({gfBaseThk:1000});
+    check('основание урезано до шести миллиметров', g.thkCut === true && Math.abs(g.baseThk - 6) < 1e-9,
+        g.baseThk);
+    check('  и деталь и правда такой высоты', (() => { const b = computeBBox(mesh({gfBaseThk:1000}));
+        return Math.abs((b.maxY - b.minY) - (4.75 + 6)) < 0.02; })());
+    check('  и сказано, что потолок в строке — заглушка',
+        /потолок в строке параметров стоит заглушкой/.test(warn({gfBaseThk:1000}).join(' ')),
+        warn({gfBaseThk:1000}));
+    check('  на умолчаниях зажим не срабатывает', spec({}).thkCut === false, spec({}).baseThk);
+    check('  и на разумной толщине тоже', spec({gfBaseThk:3}).thkCut === false);
+  }
+  /* И второй зажим — по числу ячеек: больше семи по стороне построитель не кладёт. */
+  {
+    const g = spec({gfX:12, gfY:1});
+    check('сетка урезана семью ячейками', g.gridCut === true && g.n === 7, {ячеек:g.n});
+    check('  и об этом сказано', /больше семи ячеек/.test(warn({gfX:12, gfY:1}).join(' ')));
+    check('  на умолчаниях не урезана', spec({}).gridCut === false);
+  }
+  setP({});
+}
+paramState.box.gfBaseplate = false;
 console.log(`\n=== TOTAL: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

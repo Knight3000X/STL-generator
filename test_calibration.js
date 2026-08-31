@@ -745,5 +745,83 @@ for(const rec of PLATE_RECIPES){
 }
 chk('неизвестный рецепт даёт первый, а не исключение', platePlan('нетакой').cells.length > 0);
 
+/* ===============================================================================================
+   ТЕСТ ПЕЧАТИ НАЗЫВАЕТ ШАГ СВОЕГО РЯДА (v25.19.0). У печатных тестов есть справочная карточка с «что
+   мерит» и «как печатать», и в переписи молчунов они стояли именно поэтому: человеку они говорят —
+   просто не предупреждениями. Но карточка СТАТИЧНА, а ряд образцов зависит от ручек: восемь ступеней от
+   Ø5 до Ø40 идут через пять миллиметров, а четырнадцать — через два с половиной. ШАГ РЯДА и есть то,
+   что тест меряет: он задаёт разрешение ответа, и его-то карточка сказать не может.
+
+   Второе число — ВЫСОТА. Башня на восемь ступеней по двенадцать миллиметров это деталь в десять
+   сантиметров; на экране она выглядит так же, как двадцатимиллиметровая. */
+console.log('\n=== тест печати называет шаг ряда ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {tstMode:'tower'}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^тест «/.test(x));
+  const spec = (ov) => testSweepSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('тест больше не молчит: на умолчаниях есть строка с рядом', line(warn({})) !== undefined, warn({}));
+  /* ВЫСОТА МЕРЯЕТСЯ ПО ДЕТАЛИ. Башня — единственный тест, где ступени стоят друг на друге. */
+  {
+    const g = spec({}), b = computeBBox(mesh({}));
+    chk('высота башни измерена и совпала с плитой плюс ступени',
+        Math.abs((b.maxY - b.minY) - g.height) < 0.5,
+        {измерено:+(b.maxY - b.minY).toFixed(1), спец:+g.height.toFixed(1)});
+    chk('  и названа', /всего 100 мм высоты/.test(line(warn({}))), line(warn({})));
+    const g14 = spec({tstN:14}), b14 = computeBBox(mesh({tstN:14}));
+    chk('  четырнадцать ступеней и правда выше', Math.abs((b14.maxY - b14.minY) - g14.height) < 0.5 &&
+        g14.height > g.height, {измерено:+(b14.maxY - b14.minY).toFixed(1), спец:+g14.height.toFixed(1)});
+    chk('  и на такой высоте приложение уже предупреждает',
+        g14.tall === true && /долгая печать/.test(warn({tstN:14}).join(' ')));
+    chk('  а на умолчаниях молчит — сто миллиметров это его же настройка', g.tall === false, g.height);
+  }
+  /* ШАГ РЯДА. У башни оба конца заданы ручками, значит между крайними ступенями их N−1. */
+  {
+    const g = spec({});
+    chk('шаг ряда — это диапазон, делённый на число промежутков',
+        Math.abs(g.step - (40 - 5)/7) < 1e-9, +g.step.toFixed(3));
+    chk('  и он назван', /Ø ступени от 5 до 40 мм с шагом 5/.test(line(warn({}))), line(warn({})));
+    chk('  больше ступеней — мельче шаг', spec({tstN:14}).step < g.step);
+    /* НИЖНИЙ КОНЕЦ РЯДА УЧАСТВУЕТ. На умолчаниях это не видно: (40−5)/7 и 40/8 дают ровно пять, и
+       мутация «делить наибольшее на число ступеней» первый прогон пережила. Смещённый диапазон их
+       разводит: (40−10)/7 = 4.29, а 40/8 = 5. */
+    chk('  и нижний конец диапазона участвует в шаге',
+        Math.abs(spec({tstTowMin:10}).step - (40 - 10)/7) < 1e-9,
+        +spec({tstTowMin:10}).step.toFixed(3));
+    /* И диаметры в детали и правда идут этим шагом: крайние ступени меряются по габариту. */
+    const t = mesh({}), b = computeBBox(t);
+    chk('  нижняя ступень в детали — это наибольший Ø', Math.abs((b.maxX - b.minX) - (40 + 6)) < 1.0,
+        {измерено:+(b.maxX - b.minX).toFixed(1), ожидалось:46});
+  }
+  /* СЛИШКОМ МЕЛКИЙ ШАГ. Ряд, отвечающий точнее, чем можно измерить, — это потраченный пластик. */
+  {
+    const g = spec({tstMode:'wall', tstN:14, tstWallMax:0.5});
+    chk('шаг мельче сотки назван нечитаемым', g.tooFine === true && g.step < 0.05, +g.step.toFixed(3));
+    chk('  и сказано словами', /мельче того, что различит/.test(
+        warn({tstMode:'wall', tstN:14, tstWallMax:0.5}).join(' ')));
+    chk('  на умолчаниях стенок шаг читаемый', spec({tstMode:'wall'}).tooFine === false,
+        +spec({tstMode:'wall'}).step.toFixed(3));
+  }
+  /* ТЕСТЫ БЕЗ РЯДА не получают выдуманных ступеней: у них свои ручки, и сказано ровно это. */
+  {
+    for (const m of ['ruler', 'string', 'spiral', 'infill', 'surface']){
+      const g = spec({tstMode:m});
+      chk('у теста «' + g.label + '» ряда нет, и ступени не выдуманы',
+          g.sweep === false && /ряда образцов у него нет/.test(line(warn({tstMode:m}))),
+          line(warn({tstMode:m})));
+    }
+    for (const m of ['tower', 'dim', 'radius', 'chamfer', 'overhang', 'bridge', 'sphere', 'fit', 'wall', 'fan']){
+      chk('  а у теста «' + spec({tstMode:m}).label + '» ряд есть и шаг назван',
+          spec({tstMode:m}).sweep === true && /с шагом /.test(line(warn({tstMode:m}))),
+          line(warn({tstMode:m})));
+    }
+  }
+  setP({});
+}
+
 console.log('\n'+(fail?'FAILED':'ALL PASSED')+': '+pass+' passed, '+fail+' failed');
 if(fail) process.exitCode=1;

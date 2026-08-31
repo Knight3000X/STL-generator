@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.18.0';
+const APP_VERSION = 'v25.19.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6678,13 +6678,12 @@ function capThroatR(p){ return throatROf(threadMinorR(p)); }
 const PRINT_LAYER = 0.2;
 /* «2 слоёв» и «5 слоя» — мелочь, которая читается как небрежность ровно там, где число важно. Правило
    русского счёта одно на всё приложение: 1 — слой, 2–4 — слоя, дальше слоёв, кроме одиннадцати-четырнадцати. */
-function layerWord(n){
-  const k = Math.round(n), h = k % 100, u = k % 10;
-  if (h >= 11 && h <= 14) return 'слоёв';
-  if (u === 1) return 'слой';
-  if (u >= 2 && u <= 4) return 'слоя';
-  return 'слоёв';
-}
+/* СЧЁТ ПО-РУССКИ ЖИВЁТ В ОДНОМ МЕСТЕ. Своё `plural` я тут завёл и через полчаса нашёл ЧУЖОЕ — оно
+   стояло у карточек кости с незапамятных времён, и мутация «считать всё во множественном» пережила
+   прогон именно поэтому: объявления функций поднимаются, второе побеждало первое, и правил стало два.
+   Дубль убран, а к оставшемуся добавлено ОКРУГЛЕНИЕ: слои приходят дробными, и «1 слоёв» на 0.5
+   получалось ровно из-за его отсутствия. */
+function layerWord(n){ return plural(n, 'слой', 'слоя', 'слоёв'); }
 const THREAD_LAYER = PRINT_LAYER;   // прежнее имя: витки резьбы считаются той же высотой слоя
 const THREAD_NOZZLE = 0.4;
 /* Крепёж — это те разновидности, у которых есть НАСТОЯЩАЯ винтовая резьба с шагом и профилем. Шнек,
@@ -21220,6 +21219,52 @@ function buildTestRuler(p){
    так, чтобы при умолчании N = 8 доли выходили круглыми (16 мм → 2, 4, … 16; 0.8 мм → 0.1, 0.2, … 0.8).
    Поставьте своё N — доли пересчитаются, и подписи скажут правду, какой бы некруглой она ни оказалась:
    подпись берётся из той же величины, что и фигура, а не пишется рядом отдельным списком. */
+/* ТЕСТ ПЕЧАТИ — ЧТО ИМЕННО ОН ПЕРЕБИРАЕТ (v25.19.0). У печатных тестов есть своя справочная карточка с
+   «что мерит» и «как печатать», и в переписи молчунов они стояли именно поэтому: человеку они говорят —
+   просто не предупреждениями. Но карточка СТАТИЧНА, а ряд образцов зависит от ручек: восемь ступеней от
+   Ø5 до Ø40 идут через пять миллиметров, а четырнадцать — через два с половиной. ШАГ РЯДА и есть то, что
+   тест меряет: он задаёт разрешение ответа, и его-то карточка сказать не может.
+
+   Второе число — ВЫСОТА. Тест на восемь ступеней по двенадцать миллиметров это деталь в десять
+   сантиметров, и печатать её полтора часа; на экране она выглядит так же, как двадцатимиллиметровая. */
+const TST_SWEEP = {
+  tower:   {what:'Ø ступени',         lo:p => tstNum(p.tstTowMin, 2, 40, 5),
+                                      hi:p => Math.max(tstNum(p.tstTowMin, 2, 40, 5) + 2, tstNum(p.tstTowMax, 5, 80, 40)), unit:'мм'},
+  dim:     {what:'сторона фигуры',    lo:p => tstNum(p.tstDimMin, 3, 30, 5),
+                                      hi:p => Math.max(tstNum(p.tstDimMin, 3, 30, 5) + 2, tstNum(p.tstDimMax, 5, 60, 19)), unit:'мм'},
+  radius:  {what:'радиус',            hi:p => tstNum(p.tstRadMax, 2, 24, 16), unit:'мм'},
+  chamfer: {what:'фаска',             hi:p => tstNum(p.tstChfMax, 1, 16, 8), unit:'мм'},
+  overhang:{what:'угол от вертикали', hi:p => tstNum(p.tstAngMax, 40, 85, 80), unit:'°'},
+  fan:     {what:'угол от вертикали', hi:p => tstNum(p.tstAngMax, 40, 85, 80), unit:'°'},
+  bridge:  {what:'пролёт',            hi:p => tstNum(p.tstSpan, 10, 120, 80), unit:'мм'},
+  sphere:  {what:'Ø купола',          hi:p => tstNum(p.tstSphMax, 6, 40, 24), unit:'мм'},
+  fit:     {what:'зазор',             hi:p => tstNum(p.tstFitMax, 0.2, 1.6, 0.8), unit:'мм'},
+  wall:    {what:'толщина стенки',    hi:p => tstNum(p.tstWallMax, 0.4, 4, 1.6), unit:'мм'},
+};
+const TST_LABEL = {ruler:'линейка', radius:'образец скруглений', chamfer:'образец фасок',
+  overhang:'нависания', bridge:'мосты', sphere:'купола', fit:'посадка', tower:'башня диаметров',
+  dim:'проверка размеров', wall:'тонкие стенки', fan:'веер нависаний', string:'стрункость',
+  spiral:'кольца / спираль', infill:'ячейка заполнения', surface:'площадка корки'};
+function testSweepSpec(p){
+  const mode = p.tstMode || 'none';
+  if (mode === 'none' || !TST_LABEL[mode]) return null;
+  const N = tstCount(p), t = tstPlateT(p), hL = tstFeatH(p);
+  const sw = TST_SWEEP[mode] || null;
+  const hi = sw ? sw.hi(p) : 0, lo = sw && sw.lo ? sw.lo(p) : 0;
+  /* Шаг ряда: между крайними ступенями их N−1, а когда нижний конец не задаётся ручкой, ряд идёт долями
+     наибольшего — тогда шаг это hi/N. Оба выражения взяты у построителей, а не придуманы. */
+  const step = !sw ? 0 : (sw.lo ? (hi - lo)/Math.max(1, N - 1) : hi/N);
+  return {mode, label:TST_LABEL[mode], N, plateT:t, featH:hL, sweep:!!sw,
+          what:sw ? sw.what : '', lo, hi, step, unit:sw ? sw.unit : '',
+          twoEnds: !!(sw && sw.lo),
+          /* «Высокая» — это выше того, что приложение предлагает САМО: башня на умолчаниях выходит
+             ровно сто миллиметров, и ругаться на неё значило бы ругаться на собственную настройку. */
+          tall: t + hL*(mode === 'tower' ? N : 1) > 120,
+          height: t + hL*(mode === 'tower' ? N : 1),
+          /* Шаг мельче сотки на глаз не различить, а мельче двух десятых не различит и штангенциркуль
+             новичка: ряд из четырнадцати ступеней по 0.03 мм отвечает точнее, чем можно измерить. */
+          tooFine: !!sw && sw.unit === 'мм' && step > 0 && step < 0.05};
+}
 function tstNum(v, lo, hi, d){ const n = (v == null || Number.isNaN(+v)) ? d : +v; return Math.max(lo, Math.min(hi, n)); }
 function tstCount(p){ return Math.round(tstNum(p.tstN, 3, 14, 8)); }
 function tstPlateT(p){ return tstNum(p.tstT, 2, 20, 4); }
@@ -23588,6 +23633,33 @@ function pboxDentsLogo(p, lg){
   if (!lg || !lg.heightmap || !(lg.depth||0)) return false;
   return pboxPartFaces(p.pbPart).indexOf(lg.face) >= 0;
 }
+/* КОРПУС — ЧТО В НЕГО ВЛЕЗЕТ (v25.19.0). Человек задаёт НАРУЖНЫЙ размер, а кладёт внутрь плату, и между
+   этими двумя числами стоят три вычитания, ни одно из которых не видно: стенки, юбка основания и —
+   главное — УГЛОВЫЕ СТОЙКИ под винты крышки. Стойка Ø8 в каждом углу, да ещё отодвинутая от стенки на
+   ширину рёбра крышки с двумя зазорами, съедает больше самих стенок: у корпуса 80 × 60 полость выходит
+   72 × 52, а прямоугольник МЕЖДУ СТОЙКАМИ — 50 × 30. Плата 60 × 40 в такой корпус не ложится, и узнать
+   об этом можно было только примеркой напечатанного. */
+function pboxFitSpec(p){
+  const part = p.pbPart || 'none';
+  if (part === 'none') return null;
+  const d = pboxDims(p);
+  const clr = Math.max(0.1, Math.min(1.0, fitTuned(p, p.pbClear != null ? p.pbClear : 0.35)));
+  const screwD = Math.max(2, p.pbScrewD || 3);
+  const postD = Math.max(screwD + 3, p.pbPostD || (screwD + 5));
+  const Wi = Math.max(6, d.Ww - 2*d.wall), Di = Math.max(6, d.Dw - 2*d.wall);
+  const lipWall = Math.max(1.0, d.wall - 0.6);
+  const pm = d.wall + lipWall + 2*clr + postD/2 + 0.4;          // то же выражение, что в построителе
+  const boardW = Math.max(0, 2*(Wi/2 - (pm - d.wall) - postD/2));
+  const boardD = Math.max(0, 2*(Di/2 - (pm - d.wall) - postD/2));
+  const inH = Math.max(0, d.H - d.floorT);
+  return {part, W:d.W, D:d.D, H:d.H, wall:d.wall, floorT:d.floorT, lidT:d.lidT, flange:d.flange,
+          clr, screwD, postD, Wi, Di, inH, boardW, boardD,
+          eaten: (Wi - boardW)/2,                              // сколько съедает одна стойка
+          /* «Тесно» тут не жалоба, а устройство корпуса: на умолчаниях стойки съедают треть полости, и
+             ругаться на это значило бы ругаться на собственные настройки. Числом сказано — и довольно.
+             Жалоба остаётся одна: места между стойками не осталось вовсе. */
+          noBoard: boardW < 10 || boardD < 10};
+}
 function buildProjectBox(p){
   const part  = p.pbPart || 'tray';
   const {W, D, H, wall, floorT, lidT, flange, emb, Ww, Dw} = pboxDims(p);   // см. pboxDims — один источник
@@ -24231,6 +24303,23 @@ function buildGridfinityLip(p){
 const GFB_PROFILE = [ // [depth below top, half-size, corner radius] — mirror of the foot, +0.1 clearance
   [0, 41.6/2, 3.75], [2.15, 37.3/2, 1.6], [3.95, 37.3/2, 1.6], [4.75, 35.7/2, 0.8],
 ];
+/* БАЗПЛЕЙТ — РАЗМЕР, ВЕС И ОДИН МОЛЧАЛИВЫЙ ЗАЖИМ (v25.19.0). Плита задаётся В ЯЧЕЙКАХ, а стоит на столе
+   в миллиметрах: 3 × 2 это 126 × 84, и нигде это не называлось. Толщина же основания под гнёздами имеет в
+   строке параметров потолок в МИЛЛИОН миллиметров — очевидная заглушка, — а построитель молча режет её
+   шестью. Человек, поставивший 20, получает 6 и не узнаёт об этом ниоткуда. */
+function baseplateSpec(p){
+  if (!p || !p.gfBaseplate) return null;
+  const n = Math.max(1, Math.min(7, Math.round(p.gfX || 1)));
+  const m = Math.max(1, Math.min(7, Math.round(p.gfY || 1)));
+  const pitch = 42, socketD = 4.75;
+  const want = p.gfBaseThk > 0 ? p.gfBaseThk : 1.2;
+  const baseThk = Math.max(0.8, Math.min(want, 6));
+  const nxWant = Math.round(p.gfX || 1), nyWant = Math.round(p.gfY || 1);
+  return {n, m, pitch, socketD, baseThk, want, nxWant, nyWant,
+          W: n*pitch, D: m*pitch, H: socketD + baseThk, cells: n*m,
+          thkCut: want > baseThk + 1e-9,
+          gridCut: nxWant > n || nyWant > m};
+}
 function buildGridfinityBaseplate(p){
   const n = Math.max(1, Math.min(7, Math.round(p.gfX||1))), m = Math.max(1, Math.min(7, Math.round(p.gfY||1)));
   const pitch = 42, socketD = 4.75, baseThk = Math.max(0.8, Math.min(p.gfBaseThk > 0 ? p.gfBaseThk : 1.2, 6));
@@ -27333,7 +27422,7 @@ function updateDieSection(){
   for (let i = dieFaces.length-1; i >= 0; i--) if ((dieFaces[i].face|0) >= n) dieFaces.splice(i,1);
   renderDieCards();
 }
-function plural(n,one,few,many){ const m10=n%10,m100=n%100; if(m10===1&&m100!==11)return one; if(m10>=2&&m10<=4&&(m100<10||m100>=20))return few; return many; }
+function plural(n,one,few,many){ const k=Math.round(n), m10=k%10,m100=k%100; if(m10===1&&m100!==11)return one; if(m10>=2&&m10<=4&&(m100<10||m100>=20))return few; return many; }
 function nextFreeDieFace(n){ const used=new Set(dieFaces.map(a=>a.face|0)); for(let i=0;i<n;i++) if(!used.has(i)) return i; return 0; }
 function renderDieCards(){
   const container = document.getElementById('die-cards'); if (!container) return;
@@ -28489,6 +28578,47 @@ function collectPrintWarnings(p, mesh){
       if (b.gwCut) w.push('ребро утоньшено с ' + b.gwWant.toFixed(1) + ' до ' + b.gw.toFixed(1) +
         ' мм — толще два ребра сошлись бы посередине полки');
     } }
+  { const e = pboxFitSpec(p);
+    if (e){
+      /* Главное число печатается ВСЕГДА: наружный размер задан, а внутренний — вычислен трижды. */
+      w.push('корпус ' + e.W.toFixed(0) + '×' + e.D.toFixed(0) + '×' + e.H.toFixed(0) +
+             ' снаружи: внутри ' + e.Wi.toFixed(0) + '×' + e.Di.toFixed(0) + '×' + e.inH.toFixed(0) +
+             ' мм, а МЕЖДУ УГЛОВЫМИ СТОЙКАМИ помещается плата ' + e.boardW.toFixed(0) + '×' +
+             e.boardD.toFixed(0) + ' мм (стойка Ø' + e.postD.toFixed(0) + ' под винт М' +
+             e.screwD.toFixed(0) + '); зазор крышки ' + e.clr.toFixed(2) + ' мм на сторону');
+      if (e.noBoard) w.push('между стойками не осталось места вовсе (' + e.boardW.toFixed(0) + '×' +
+        e.boardD.toFixed(0) + ' мм): стойки Ø' + e.postD.toFixed(0) + ' в углах корпуса ' +
+        e.W.toFixed(0) + '×' + e.D.toFixed(0) + ' съедают его целиком — тоньше стойка, меньше винт или' +
+        ' крупнее корпус');
+    } }
+  { const ts = testSweepSpec(p);
+    if (ts){
+      /* У ряда образцов есть шаг, и он тут главное. У тестов без ряда (линейка, стрункость, спираль,
+         ячейка заполнения, площадка корки) выдумывать ступени и высоту нечего — там свои ручки, и
+         говорится только то, что и правда общее: толщина плиты. */
+      w.push('тест «' + ts.label + '»: ' + (ts.sweep
+             ? ts.N + ' ' + plural(ts.N, 'ступень', 'ступени', 'ступеней') + ', ' + ts.what + ' ' +
+               (ts.twoEnds ? 'от ' + fmtNum(ts.lo) + ' до ' : 'до ') + fmtNum(ts.hi) +
+               (ts.unit === '°' ? '°' : ' ' + ts.unit) +
+               ' с шагом ' + fmtNum(+ts.step.toFixed(2)) + '; плита ' + fmtNum(ts.plateT) +
+               ' мм, элемент ' + fmtNum(ts.featH) + ' мм — всего ' + ts.height.toFixed(0) + ' мм высоты'
+             : 'плита ' + fmtNum(ts.plateT) + ' мм; ряда образцов у него нет — размеры задаются своими ручками'));
+      if (ts.tooFine) w.push('шаг ряда ' + ts.step.toFixed(3) + ' мм — мельче того, что различит' +
+        ' штангенциркуль: ответ такой тест даст точнее, чем его можно прочитать. Меньше ступеней или' +
+        ' шире диапазон');
+      if (ts.tall && ts.sweep) w.push('деталь выходит ' + ts.height.toFixed(0) + ' мм высотой — это долгая печать и' +
+        ' высокая тонкая башня; меньше ступеней или ниже элемент, если тест нужен на пробу');
+    } }
+  { const g = baseplateSpec(p);
+    if (g){
+      w.push('плита Gridfinity ' + g.n + '×' + g.m + ' — это ' + g.W + '×' + g.D + '×' +
+             g.H.toFixed(2) + ' мм и ' + g.cells + ' ' + plural(g.cells, 'гнездо', 'гнезда', 'гнёзд') + ' с шагом ' + g.pitch +
+             ' мм; основание под гнёздами ' + g.baseThk.toFixed(1) + ' мм');
+      if (g.thkCut) w.push('основание урезано с ' + g.want.toFixed(1) + ' до ' + g.baseThk.toFixed(1) +
+        ' мм — потолок в строке параметров стоит заглушкой, а построитель дальше шести не идёт');
+      if (g.gridCut) w.push('плита ' + g.n + '×' + g.m + ', а не ' + g.nxWant + '×' + g.nyWant +
+        ': больше семи ячеек по стороне построитель не кладёт');
+    } }
   if (p.mntMode === 'gclamp' && p.gcPart === 'pad'){
     const d = gclampPadSpec(p);
     /* ГЛАВНОЕ ЧИСЛО ПЯТАКА — ДАВЛЕНИЕ НА ЗАГОТОВКЕ, ради него он и нужен. Сравнивается оно с прочностью
@@ -28617,6 +28747,18 @@ function collectPrintWarnings(p, mesh){
   }
   if (p.clMode && p.clMode !== 'none' && p.clMode !== 'hands'){
     const cs = clockSpec(p);
+    /* ЧТО У ЦИФЕРБЛАТА ВЫВЕДЕНО: длина и ширина метки берутся долями диаметра и режутся дважды — шагом
+       между метками и краем пластины, — а на панели у обеих ручек стоит ноль. И ещё одно число, которого
+       нет нигде: НА КАКОМ СЛОЕ менять филамент. Метки стоят отдельными телами на лице пластины, все
+       начинаются на одной высоте, поэтому смена одна на всю деталь — и приходится она ровно на верх
+       пластины. */
+    w.push('циферблат ' + (cs.shape === 'ring' ? 'кольцом ' : '') + 'Ø' + cs.D.toFixed(0) + '×' +
+           cs.T.toFixed(1) + ' мм, отверстие под вал Ø' + cs.shaftD.toFixed(1) +
+           (cs.marks !== 'none' && cs.marksFit
+             ? '; метка ' + cs.hourL.toFixed(0) + '×' + cs.hourW.toFixed(1) + ' мм на высоте ' +
+               cs.markH.toFixed(1) + ' мм' : '; меток нет') +
+           '; смена филамента на слое ' + Math.round(cs.T/PRINT_LAYER) + ' (высота ' + cs.T.toFixed(1) +
+           ' мм при слое ' + PRINT_LAYER + ')');
     if (cs.T > CLOCK_SHAFT_LEN)
       w.push('пластина ' + cs.T.toFixed(1) + ' мм: у кварцевого механизма резьба вала обычно 6–8 мм, и гайка ' +
              'со стрелками садится на неё ПОВЕРХ циферблата — промерьте свой вал или возьмите механизм с длинным');

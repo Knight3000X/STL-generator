@@ -774,7 +774,11 @@ console.log('=== предупреждения ===');
       W({clShape:'ring', clD:80, clShaftD:20, clRimW:40}));
   chk('метки выше пластины названы', W({clT:2, clMarkH:5}).some(x => /метки выше пластины/.test(x)));
   chk('у диска про лучи не говорится', !W({clShape:'disc', clD:250}).some(x => /луч/.test(x)));
-  chk('на настройках по умолчанию часы не жалуются', W({}).length === 0, W({}));
+  /* «Не жалуются» — это не жалуются НА ПЛОХОЕ. С v25.19.0 циферблат всегда печатает строку со своими
+     числами (пластина, метка, слой смены филамента) — это не жалоба, а то, чего на экране нет. */
+  chk('на настройках по умолчанию часы не жалуются',
+      W({}).filter(x => !/^циферблат /.test(x)).length === 0, W({}));
+  chk('  но свои числа называют всегда', W({}).some(x => /^циферблат /.test(x)), W({}));
 }
 
 console.log('=== форма зарегистрирована как базовая ===');
@@ -1016,6 +1020,68 @@ console.log('\n=== стрелки: часы стали семейством ==='
   chk('через настоящий путь строятся стрелки, а не циферблат',
       Math.abs(meshVolume(t) - meshVolume(hands({}))) < 1e-6, [meshVolume(t), meshVolume(hands({}))]);
   chk('и имя модели это говорит', /стрелки часов: все три/.test(activeShapeLabel()), activeShapeLabel());
+}
+
+/* ===============================================================================================
+   ЦИФЕРБЛАТ НАЗЫВАЕТ СВОИ ЧИСЛА (v25.19.0). Предупреждений у часов шесть, и все шесть про урезания —
+   ни одно не срабатывает на умолчаниях. Значит нужен не новый расчёт, а НАЗВАННОЕ число: длина и ширина
+   метки берутся долями диаметра и режутся дважды (шагом между метками и краем пластины), а на панели у
+   обеих ручек стоит ноль. И ещё одно, которого нет нигде: НА КАКОМ СЛОЕ менять филамент — метки стоят
+   отдельными телами на лице пластины и все начинаются на одной высоте, так что смена одна на деталь. */
+console.log('\n=== циферблат называет свои числа ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {clMode:'dial', clShape:'disc', clD:250, clT:4,
+      clShaftD:11, clMarks:'hours', clNum:'none', clMarkH:2, clMarkL:0, clMarkW:0}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^циферблат /.test(x));
+  const spec = (ov) => clockSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  chk('циферблат больше не молчит: на умолчаниях есть строка с числами', line(warn({})) !== undefined, warn({}));
+  /* ПЛАСТИНА И МЕТКИ — по габариту: пластина плюс высота метки. */
+  {
+    const g = spec({}), b = computeBBox(mesh({}));
+    chk('диаметр измерен по детали', Math.abs((b.maxX - b.minX) - g.D) < 0.6,
+        {измерено:+(b.maxX-b.minX).toFixed(1), спец:g.D});
+    chk('  полная толщина — пластина плюс метка',
+        Math.abs((b.maxY - b.minY) - (g.T + g.markH)) < 0.05,
+        {измерено:+(b.maxY-b.minY).toFixed(2), спец:+(g.T+g.markH).toFixed(2)});
+    chk('  и оба числа названы', /Ø250×4\.0 мм/.test(line(warn({}))) &&
+        /на высоте 2\.0 мм/.test(line(warn({}))), line(warn({})));
+  }
+  /* СМЕНА ФИЛАМЕНТА. Метки начинаются на верхе пластины, значит слой смены это T/высоту слоя. */
+  {
+    const g = spec({});
+    chk('слой смены филамента — это толщина пластины, делённая на высоту слоя',
+        Math.round(g.T/PRINT_LAYER) === 20, Math.round(g.T/PRINT_LAYER));
+    chk('  и он назван', /смена филамента на слое 20/.test(line(warn({}))), line(warn({})));
+    chk('  толще пластина — дальше слой', Math.round(spec({clT:6}).T/PRINT_LAYER) === 30);
+    /* И метки в детали и правда начинаются на верхе пластины, а не где-нибудь ещё. */
+    const t = mesh({}), b = computeBBox(t);
+    let below = 0;
+    for (const T of t) for (const v of T) if (v[1] > b.minY + g.T + 0.01) below++;
+    chk('  метки и правда стоят НАД пластиной', below > 0);
+  }
+  /* МЕТКА ВЫВЕДЕННАЯ: у обеих ручек на панели ноль, а в детали двадцать один на четыре. */
+  {
+    const g = spec({});
+    chk('длина метки выведена из диаметра', Math.abs(g.hourL - 250*0.085) < 0.1, +g.hourL.toFixed(2));
+    chk('  ширина тоже', Math.abs(g.hourW - Math.max(2, 250*0.016)) < 0.1, +g.hourW.toFixed(2));
+    chk('  и обе названы', /метка 21×4\.0 мм/.test(line(warn({}))), line(warn({})));
+    /* На кольце места меньше, и метка режется — приложение об этом говорило и раньше, а теперь
+       называет и то, что получилось. */
+    const r = spec({clShape:'ring'});
+    chk('  на кольце метка короче', r.hourL < g.hourL - 5, +r.hourL.toFixed(1));
+    chk('  и строка показывает уже урезанную', new RegExp('метка ' + r.hourL.toFixed(0) + '×')
+        .test(line(warn({clShape:'ring'}))), line(warn({clShape:'ring'})));
+  }
+  /* Без меток строка так и говорит, а не выдумывает размеры. */
+  chk('без меток сказано, что их нет', /меток нет/.test(line(warn({clMarks:'none'}))), line(warn({clMarks:'none'})));
+  /* Стрелки — другая деталь, и эта строка их не касается. */
+  chk('у стрелок строки про циферблат нет', line(warn({clMode:'hands'})) === undefined, warn({clMode:'hands'}));
+  setP({});
 }
 
 console.log((fail? 'FAIL ':'OK   ') + pass + ' passed, ' + fail + ' failed');

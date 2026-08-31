@@ -853,6 +853,25 @@ console.log('=== резьба: правило корня и горла живё�
      развилка «заказано или авто» существует в файле ровно одна. */
   chk('«заказано или авто» решается ровно в одном месте',
       wantCopies.length === 0 && askCopies.length === 1, {threadDepth:wantCopies.length, want:askCopies.length});
+  /* ЗДЕСЬ ЖЕ — ДВЕ КОНСТАНТЫ, КОТОРЫЕ ПОТРЕБОВАЛ РАСЧЁТ ПРОЧНОСТИ (v25.23.0), и стоит проверка тут
+     потому, что вынудила её резьба: заводить ПЯТУЮ копию `g` и ЧЕТВЁРТУЮ копию межслойного множителя
+     ради «сколько держит» значило бы повторить ровно ту ошибку, которую эти же проверки и стерегут у
+     глубины профиля. Ускорение стояло шестью копиями, из них две — с ДРУГИМ числом (9.81 у третьей
+     руки против 9.80665 у крючка), то есть килограмм-сила считалась в файле двумя способами. */
+  /* Ищется число В ВЫРАЖЕНИИ, а не в тексте: в комментарии выше обе величины названы поимённо, и
+     без требования оператора перед числом проверка ловила бы собственное объяснение. */
+  const gLiterals = (app.match(/[=*/+\-(]\s*(?:9\.80665|9\.81)(?![\d])/g) || []);
+  const bondLiterals = (app.match(/const \w*BOND\w* = 0\.5;/g) || []).filter(x => !/const LAYER_BOND/.test(x));
+  chk('ускорение свободного падения написано числом РОВНО ОДИН раз', gLiterals.length === 1, gLiterals);
+  chk('  и все прежние имена — ссылки на него',
+      LB_G === G_MS2 && HOOK_G === G_MS2 && WO_G === G_MS2 && STAND_G === G_MS2 &&
+      Math.abs(G_MS2 - 9.80665) < 1e-12, {LB_G, HOOK_G, WO_G, STAND_G, G_MS2});
+  chk('межслойный множитель написан числом РОВНО ОДИН раз',
+      bondLiterals.length === 0 && (app.match(/const LAYER_BOND = 0\.5;/g) || []).length === 1,
+      bondLiterals);
+  chk('  и прежние имена — ссылки на него',
+      LB_LAYER_BOND === LAYER_BOND && HOOK_LAYER_BOND === LAYER_BOND && WO_BOND === LAYER_BOND &&
+      LAYER_BOND === 0.5, {LB_LAYER_BOND, HOOK_LAYER_BOND, WO_BOND, LAYER_BOND});
 }
 
 console.log('=== резьба: числовое правило, а не по `p` — резьб в детали бывает две ===');
@@ -1525,6 +1544,164 @@ console.log('\n=== профиль резьбы и дюймовый шаг ===');
       const t = mesh({threadStd:r.v, threadMode:'stud'});
       chk('ряд «' + r.label + '» строится замкнутым', manifoldCheck(t, 4).watertight, r.v);
     }
+  }
+  /* 9. СКОЛЬКО ДЕРЖИТ (v25.23.0). Резьба говорила, КАК она крутится, и молчала о том, СКОЛЬКО
+     выдержит, — а у струбцины и тисков это и есть главное число. */
+  {
+    /* ПЛОЩАДЬ СРЕЗА СТОИТ НА ОДНОМ УТВЕРЖДЕНИИ: на цилиндре СРЕДНЕГО Ø мужской и женский витки делят
+       шаг поровну, поэтому материала там ровно половина. Это не подобранный коэффициент, а
+       определение среднего диаметра, — и проверяется он по ПОСТРОЕННОМУ витку, а не пересказом.
+       Куски сетки, пересекающие цилиндр, считаются по доле: шаг сетки P/26, и без интерполяции
+       переход целиком уходил бы в пустоту, занижая долю до 0.46. */
+    /* МЕРИТЬ НАДО ЦЕЛЫМ ЧИСЛОМ ШАГОВ, и это выяснилось замером же. Первая попытка брала окно в
+       середине резьбы и давала 0.59 вместо половины — обрезок в полшага на конце окна попадал на
+       гребень и добавлял материала там, где его считать не следовало. Отсчёт ведётся от пересечения
+       среднего радиуса снизу вверх и кончается ровно через целое число ходов; куски сетки, режущие
+       цилиндр, считаются по доле, иначе шаг сетки P/26 занижает ответ. */
+    const pitchFrac = (ov) => { const g = spec(ov), rp = g.dm/2;
+      const m = new Map();                       // на одной высоте берётся НАИБОЛЬШИЙ радиус
+      for (const [y, r] of column(ov)){ const k = y.toFixed(6); if (!m.has(k) || m.get(k) < r) m.set(k, r); }
+      const col = [...m.entries()].map(([k, r]) => [+k, r]).sort((a, b) => a[0] - b[0]);
+      let i0 = -1;
+      for (let i = 1; i < col.length; i++) if (col[i-1][1] < rp && col[i][1] >= rp){ i0 = i; break; }
+      if (i0 < 0) return NaN;
+      const y0 = col[i0][0], nP = Math.floor((col[col.length-1][0] - y0)/g.lead);
+      if (nP < 1) return NaN;
+      const y1 = y0 + nP*g.lead;
+      let mat = 0, span = 0;
+      for (let i = i0+1; i < col.length && col[i][0] <= y1; i++){
+        const dy = col[i][0] - col[i-1][0], a = col[i-1][1] - rp, b = col[i][1] - rp;
+        span += dy;
+        if (a >= 0 && b >= 0) mat += dy;
+        else if (a > 0 || b > 0) mat += dy*Math.abs(a > 0 ? a : b)/Math.abs(a - b); }
+      return mat/span; };
+    for (const ov of [{}, {threadForm:'trap'}, {threadForm:'acme'}, {threadForm:'square'},
+                      {threadStd:'m10'}, {threadStd:'m12'}]){
+      const o = Object.assign({threadMode:'stud'}, ov), f = pitchFrac(o), g = spec(o);
+      chk('на среднем Ø материала половина (' + f.toFixed(3) + ') — ' + JSON.stringify(ov),
+          Math.abs(f - 0.5) < 0.01, +f.toFixed(4));
+      /* И ЭТА ПОЛОВИНА ДОЛЖНА БЫТЬ ТОЙ САМОЙ, ПО КОТОРОЙ СЧИТАЕТСЯ ПЛОЩАДЬ. Проверить допущение и не
+         связать его с расчётом — значит проверить пустоту: подмена «срез по наружному Ø» проходит
+         такую проверку насквозь, потому что доля на СРЕДНЕМ Ø от неё не меняется. Поэтому площадка из
+         спецификации сверяется с цилиндром, ИЗМЕРЕННЫМ по детали: тот же средний Ø, та же рабочая
+         длина, та же доля. */
+      const aMeasured = Math.PI*g.dm*g.shearL*f;
+      chk('  и площадка среза в расчёте — этот же цилиндр (' + g.aShear.toFixed(0) + ' мм²)',
+          Math.abs(g.aShear - aMeasured)/aMeasured < 0.03,
+          {расчёт:+g.aShear.toFixed(1), поДетали:+aMeasured.toFixed(1)});
+      /* А сам средний Ø — полусумма ИЗМЕРЕННЫХ наружного и внутреннего, а не объявленная величина. */
+      let lo = 1e9, hi = -1e9;
+      for (const [, r] of column(o)){ lo = Math.min(lo, r); hi = Math.max(hi, r); }
+      chk('  и средний Ø — полусумма измеренных наружного и впадины',
+          Math.abs(g.dm - (hi + lo)) < 0.06, {расчёт:+g.dm.toFixed(3), поДетали:+(hi + lo).toFixed(3)});
+    }
+    /* ВПАДИНА — ТОЖЕ ПО ДЕТАЛИ: по ней считается обрыв стержня, и брать её из спецификации значило бы
+       поверить формуле на слово. */
+    for (const ov of [{}, {threadPitch:1.5}, {threadStd:'m12'}]){
+      const o = Object.assign({threadMode:'stud'}, ov), g = spec(o), col = column(o);
+      let lo = 1e9; for (const [, r] of col) lo = Math.min(lo, r);
+      chk('впадина по детали совпала с расчётной (' + (2*lo).toFixed(2) + ' мм)',
+          Math.abs(lo - g.coreR) < 0.05, {деталь:+(2*lo).toFixed(3), спец:+(2*g.coreR).toFixed(3)});
+    }
+    /* ДАЛЬНИЕ ВИТКИ НЕ РАБОТАЮТ. Нагрузка садится на первые; считать тридцать витков крышки
+       работающими значило бы обещать усилие, которого не будет. Проверяется СЛЕДСТВИЕМ: до пяти
+       витков длина резьбы силу растит, после пяти — не двигает вовсе. */
+    {
+      const a = spec({threadMode:'stud', threadLen:6}),  b = spec({threadMode:'stud', threadLen:12});
+      const c = spec({threadMode:'stud', threadLen:40}), d = spec({threadMode:'stud', threadLen:90});
+      chk('короткая резьба: длина растит силу', b.holdN > a.holdN*1.5,
+          {'6мм':+a.holdN.toFixed(0), '12мм':+b.holdN.toFixed(0)});
+      chk('  а за пятью витками длина не даёт ничего',
+          Math.abs(c.holdN - d.holdN) < 1e-9 && c.workTurns === 5 && d.turns > 25,
+          {'40мм':+c.holdN.toFixed(0), '90мм':+d.holdN.toFixed(0), витков:+d.turns.toFixed(1)});
+    }
+    /* ДВА МЕСТА РАЗРЫВА СЧИТАЮТСЯ ОБА, и какое слабее — решают числа, а не общее правило. Проверка не
+       подставляет угаданный размер, а ИЩЕТ оба исхода: если бы стержень не считался, второго не
+       нашлось бы никогда. */
+    {
+      let stripFirst = null, snapFirst = null;
+      for (let D = 6; D <= 60 && !(stripFirst && snapFirst); D += 2) for (const P of [1, 2, 3, 5]){
+        const g = spec({threadMode:'stud', threadD:D, threadPitch:P});
+        if (g.shankFirst && !snapFirst) snapFirst = {Ø:D, шаг:P};
+        if (!g.shankFirst && !stripFirst) stripFirst = {Ø:D, шаг:P}; }
+      chk('есть размер, где первым срезает витки', stripFirst !== null, stripFirst);
+      chk('  и есть, где первым рвётся стержень', snapFirst !== null, snapFirst);
+      chk('  и слабейшее из двух и есть ответ',
+          [{threadD:16},{threadD:40},{threadPitch:1},{threadPitch:6}].every(ov => {
+            const g = spec(Object.assign({threadMode:'stud'}, ov));
+            return Math.abs(g.holdMin - Math.min(g.holdN, g.shankN)) < 1e-9; }));
+      chk('  у крышки и гайки стержня нет, и слабым звеном он не назначается',
+          ['cap','nut','wingnut'].every(m => { const g = spec({threadMode:m});
+            return g.hasShank === false && g.shankFirst === false &&
+                   Math.abs(g.holdMin - g.holdN) < 1e-9; }));
+    }
+    /* ПРОЧНОСТЬ БЕРЁТСЯ ИЗ ТОЙ ЖЕ ТАБЛИЦЫ, ЧТО У ЗАЩЁЛКИ И КРЮЧКА. Второй набор прочностей разошёлся
+       бы с первым молча, поэтому спрашивается сама таблица. */
+    for (const m of ['pla','petg','abs','nylon']){
+      const g = spec({threadMode:'stud', printMat:m}), s0 = SNAP_MATERIALS[m];
+      chk('прочность «' + m + '» — та же E·ε с межслойной половиной',
+          Math.abs(g.sigmaZ - s0.E*(s0.eps/100)*LAYER_BOND) < 1e-9 &&
+          Math.abs(g.tauZ - g.sigmaZ/Math.sqrt(3)) < 1e-9,
+          {сигма:+g.sigmaZ.toFixed(2), тау:+g.tauZ.toFixed(2)});
+    }
+    chk('  и материал двигает силу ровно как прочность',
+        Math.abs(spec({threadMode:'stud', printMat:'nylon'}).holdN /
+                 spec({threadMode:'stud', printMat:'pla'}).holdN -
+                 (SNAP_MATERIALS.nylon.E*SNAP_MATERIALS.nylon.eps) /
+                 (SNAP_MATERIALS.pla.E*SNAP_MATERIALS.pla.eps)) < 1e-9);
+    /* МОМЕНТ — СЛЕДСТВИЕМ, А НЕ ПЕРЕПИСЬЮ ФОРМУЛЫ: при том же усилии круче подъём — больше момент,
+       и самотормозящая пара тратит на трение больше, чем несамотормозящая. */
+    {
+      /* Проверяется НАПРАВЛЕНИЕ, а не угаданный множитель: удельный момент (на единицу усилия) обязан
+         расти с ходом монотонно, потому что в него входит tg λ. Один порог поймал бы одну подмену,
+         монотонность по всему ряду ловит любую, которая ход из формулы выбрасывает. */
+      const spec4 = [1, 2, 3, 4].map(S =>
+        spec({threadMode:'leadscrew', threadForm:'trap', threadStarts:S}));
+      const uT = spec4.map(g => 1000*g.torque/g.holdMin);
+      chk('круче подъём — больше момента на ту же силу, и это монотонно',
+          uT.every((v, i) => i === 0 || v > uT[i-1]) &&
+          spec4.every((g, i) => i === 0 || g.lam > spec4[i-1].lam) && uT[3] > uT[0]*1.4,
+          uT.map(v => +v.toFixed(3)));
+      /* ПЛЕЧО МОМЕНТА — СРЕДНИЙ РАДИУС, а не наружный: трение действует по тем же граням, по которым
+         считается срез, то есть по линии среднего Ø. Пересчитывается момент от ИЗМЕРЕННОГО цилиндра —
+         иначе подмена плеча на наружный радиус проходит незамеченной: она двигает число на шесть
+         процентов, а все отношения оставляет прежними. */
+      for (const ov of [{threadMode:'leadscrew', threadForm:'trap'},
+                        {threadMode:'leadscrew', threadForm:'square', threadPitch:5},
+                        {threadMode:'stud', threadStd:'m12'}]){
+        const g = spec(ov);
+        let lo = 1e9, hi = -1e9;
+        for (const [, r] of column(ov)){ lo = Math.min(lo, r); hi = Math.max(hi, r); }
+        const dmM = hi + lo, tl = g.lead/(Math.PI*dmM);
+        const muE = g.mu/Math.cos(g.alpha*Math.PI/180);
+        const want = g.holdMin*(dmM/2)*(tl + muE)/(1 - muE*tl)/1000;
+        chk('момент считается по ИЗМЕРЕННОМУ среднему Ø (' + g.torque.toFixed(2) + ' Н·м)',
+            Math.abs(g.torque - want)/want < 0.03,
+            {расчёт:+g.torque.toFixed(3), поДетали:+want.toFixed(3), dm:+dmM.toFixed(2)});
+      }
+      chk('  и момент назван строкой у ходовой',
+          /нужен момент .* Н·м — это .* Н на рукоятке 100 мм/.test(
+            warn({threadMode:'leadscrew', threadForm:'trap'}).join(' ')));
+      chk('  а у крышки от банки его нет', spec({threadMode:'cap'}).drive === false &&
+          !/нужен момент/.test(warn({threadMode:'cap'}).join(' ')));
+    }
+    /* РУКА СИЛЬНЕЕ РЕЗЬБЫ — сравнение двух ПОСЧИТАННЫХ чисел, а не порог на глазок. */
+    {
+      const weak = {threadMode:'leadscrew', threadForm:'trap', threadD:10};
+      const strong = {threadMode:'leadscrew', threadForm:'trap', threadD:40};
+      chk('тонкий ходовой винт рука срывает, и это сказано',
+          spec(weak).handStrips === true && spec(weak).torque < spec(weak).handTorque &&
+          /РУКА СИЛЬНЕЕ ЭТОЙ РЕЗЬБЫ/.test(warn(weak).join(' ')));
+      chk('  а толстый — нет', spec(strong).handStrips === false &&
+          !/РУКА СИЛЬНЕЕ/.test(warn(strong).join(' ')));
+    }
+    /* ОГОВОРКА ПРО ЗАПОЛНЕНИЕ — не украшение: она и объясняет, почему на реальной печати порядок
+       разрушения может быть обратным названному. */
+    chk('сказано, что числа для сплошной печати',
+        /Числа для СПЛОШНОЙ печати/.test(warn({threadMode:'stud'}).join(' ')));
+    chk('  и что заполнение бьёт по двум местам по-разному',
+        /витки лежат по краю и печатаются периметрами/.test(warn({threadMode:'stud'}).join(' ')) &&
+        !/заполнение бьёт/.test(warn({threadMode:'cap'}).join(' ')));
   }
   /* И НАЙДЕННОЕ ПО ДОРОГЕ: метрическая здесь не по ISO. Угол её грани следует из ручки площадки и
      глубины, а не из стандарта, и на умолчаниях выходит 21.8° вместо тридцати. Замер это и показал —

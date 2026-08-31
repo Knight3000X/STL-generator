@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.16.0';
+const APP_VERSION = 'v25.17.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -12226,8 +12226,19 @@ function holeFaceWithHoles(a, s, half, holes, N, dispFn) {
 //
 // `res` is cells along the LONGEST dimension. The grid is shared per axis, so asking for relief on one
 // face refines the neighbours too — that is what keeps the shared edges matching.
-function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res, zones, logoRes){
-  const half=[w/2,h/2,d/2], tris=[];
+/* ---- ОТВЕРСТИЯ: СЕТКА И ОТБОР ------------------------------------------------------------------
+   Вынесено из `buildBoxWithHoles` (v25.17.0) ровно затем, чтобы стало ЧИСЛОМ то, о чём построитель до
+   сих пор молчал: сколько заказанных отверстий он ставит на самом деле. Правило отбора разумное —
+   отверстие держится, только если его клетка сетки не пересекается с уже принятой, иначе расходится
+   сшивка кольца с бором и деталь перестаёт быть замкнутой, — но срабатывало оно БЕЗ ЕДИНОГО СЛОВА:
+   заказал человек четыре винта на узкой полке, получил два, и узнать было неоткуда.
+
+   Считать это вторым правилом рядом с построителем нельзя: блоки индексов зависят от САМОЙ сетки, а она
+   неравномерна и зависит от зон сгущения. Поэтому правило одно, и зовут его оба — построитель, чтобы
+   строить, и предупреждения, чтобы назвать потерю. Уголок в v25.15.0 обзавёлся для этого собственной
+   копией раскладки; здесь вынесен сам ОТБОР, и он общий для всех форм с отверстиями. */
+function holeGridStations(w, h, d, res, zones, logoRes){
+  const half=[w/2,h/2,d/2];
   const gres=Math.max(w,h,d)/Math.max(2, Math.round(res>0 ? res : 24));
   /* Сетка НЕРАВНОМЕРНАЯ: густая там, где рисунок, редкая всюду остальное. Равномерная не годится ни в ту,
      ни в другую сторону — на крышке 77 мм двести клеток дают шаг 0.385 мм, и надпись 16 × 4.2 мм ложится
@@ -12262,8 +12273,14 @@ function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res, zones, logoRes){
     // Слипшиеся станции — это вырожденные четырёхугольники; выбрасываются здесь, а не позже.
     return out.filter((v,i,arr)=> i===0 || v > arr[i-1] + 1e-7);
   });
+  return {half, N};
+}
+/* Какие из заказанных отверстий построитель поставит, а какие уронит. Возвращает по оси и списком. */
+function holeKeepSets(w, h, d, holes, res, zones, logoRes){
+  const {half, N} = holeGridStations(w, h, d, res, zones, logoRes);
   const byAxis={0:[],1:[],2:[]};
   for(const H of holes) byAxis[H.axis].push(H);
+  const asked = holes.length;
   // Drop any hole whose grid block would overlap OR touch an already-kept hole on the SAME axis.
   // Two holes on the same axis pierce the same pair of faces (a +Y and a -Y hole share axis Y), so
   // their blocks live in one shared grid; overlapping blocks share cells and break the annulus/bore
@@ -12286,6 +12303,12 @@ function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res, zones, logoRes){
     }
     byAxis[a]=kept;
   }
+  const kept = byAxis[0].concat(byAxis[1], byAxis[2]);
+  return {half, N, byAxis, kept, asked, dropped: asked - kept.length};
+}
+function buildBoxWithHoles(w,h,d, holes, dispFnsByFace, res, zones, logoRes){
+  const tris=[];
+  const {half, N, byAxis} = holeKeepSets(w, h, d, holes, res, zones, logoRes);
   const faceRims={};
   for(let a=0;a<3;a++){
     const nm='XYZ'[a], df=dispFnsByFace||{};
@@ -18514,10 +18537,18 @@ function lbracketSpec(p){
   const sd = Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5), r = sd/2;
   const hR = sd*0.95, hD = Math.min(t*0.7, sd*0.55);
   const nAsk = Math.max(1, Math.min(4, Math.round(p.mntHoleN||1)));
-  /* Раскладка — ТА ЖЕ функция, что у построителя, а не её копия. */
-  const nBase = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, W, legA, [W,t,legA]).length : 0;
+  /* Раскладка — ТА ЖЕ функция, что у построителя, а не её копия. И РАЗМЕЩЁННОЕ — ещё не поставленное:
+     `buildBoxWithHoles` роняет отверстие, если его клетка сетки задевает уже принятое, и до v25.17.0 эта
+     потеря была вторая, невидимая. Теперь заказ прогоняется через тот же отбор (`holeKeepSets`), которым
+     живёт построитель, и названо ФАКТИЧЕСКОЕ число. */
   const bw = W - 0.6, hb = legB - (t - 0.5);
-  const nBack = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, bw, hb, [bw,hb,t]).length : 0;
+  const asHole = (cp, cq) => ({axis:1, cp, cq, r, head:'sink', headR:hR, headDepth:hD, headSide:1});
+  const basePos = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, W, legA, [W,t,legA]) : [];
+  const backPos = sd > 0.5 ? lbracketHoleGrid(nAsk, r, hR, bw, hb, [bw,hb,t]) : [];
+  const nPlacedBase = basePos.length, nPlacedBack = backPos.length;
+  const nBase = sd > 0.5 ? holeKeepSets(W, t, legA, basePos.map(([cp,cq]) => asHole(cp,cq))).kept.length : 0;
+  const nBack = sd > 0.5 ? holeKeepSets(bw, hb, t,
+    backPos.map(([cp,cq]) => ({axis:2, cp, cq, r, head:'sink', headR:hR, headDepth:hD, headSide:1}))).kept.length : 0;
 
   const gOn = p.mntGusset !== 'no';
   const glWant = p.mntGussetLen>0 ? p.mntGussetLen : Math.min(legA,legB)*0.55;
@@ -18562,7 +18593,7 @@ function lbracketSpec(p){
   const bare = (legA - zRoot)/(W*t*t/6);
   const kgBare = allow/bare/LB_G;
   const underSink = t - hD;                           // материал под потаем — им винт и прижимает
-  return {W, t, legA, legB, sd, r, hR, hD, underSink, nAsk, nBase, nBack, gOn, gl, gw,
+  return {W, t, legA, legB, sd, r, hR, hD, underSink, nAsk, nBase, nBack, nPlacedBase, nPlacedBack, gOn, gl, gw,
           zRoot, zRib, zTip, atZ, ribAt, sigmaAt,
           glWant, gwWant, mat, allow, worst, at, N, kg, kgAcross, kgBare,
           atCorner, overCorner: worst/Math.max(1e-9, atCorner),
@@ -19762,7 +19793,7 @@ function wallOrgSpec(p){
   /* Сечение держателя — то же самое правило, что у отдельного крючка, включая ОГРАНКУ прутка:
      построитель кладёт max(12, round(R·4)) граней, и считать пруток кругом значило бы обещать
      прочность, которой в детали нет (найдено срезом сетки ещё в v25.4.0). */
-  let I = 0, c = 1, arm = 1, what = '', reach = 0;
+  let I = 0, c = 1, arm = 1, what = '', reach = 0, extra = null;
   const rBar = Math.max(2,(p.woHookBar||8)/2), drop = Math.max(rBar+2, p.woHookDrop||14);
   const hookY = Math.max(drop + rBar + 2, H*0.5);        // высота оси стержня — то же выражение, что в построителе
   if (front === 'hook'){
@@ -19779,16 +19810,26 @@ function wallOrgSpec(p){
   } else if (front === 'tools'){
     const sd = Math.max(15, p.woShelfD||34), st = Math.max(3, p.woShelfT||4);
     const n = Math.max(1, Math.round(p.woToolN||3)), tr = Math.min(Math.max(1.5,(p.woToolD||16)/2), sd/2 - 1.5);
+    /* ГНЁЗДА СЪЕДАЮТ ПОЛКУ РОВНО ПОСЕРЕДИНЕ её глубины, и сечение там уже, чем у задника. Момент там
+       вдвое меньше — сравниваются оба места, и слабейшее становится ответом.
+
+       СКОЛЬКО ГНЁЗД ТАМ БУДЕТ, до v25.17.0 сказать было нельзя: `buildBoxWithHoles` роняет отверстие,
+       если его клетка сетки задевает уже принятое, и заказанные три Ø16 на полке 60 мм становятся двумя.
+       Теперь отбор вынесен в общее правило, и спецификация зовёт ТО ЖЕ САМОЕ, чем живёт построитель, —
+       а не считает рядом похожее. Ширина по ряду гнёзд поэтому настоящая. */
+    const m = Math.max(tr + 3, W*0.5/n), rr = Math.min(tr, sd/2 - 1.5);
+    const pos = []; for (let k = 0; k < n; k++)
+      pos.push({axis:1, cp: n === 1 ? 0 : -W/2 + m + (W - 2*m)*k/(n - 1), cq: 0, r: rr});
+    const nSock = holeKeepSets(W, st, sd, pos).kept.length;
+    const wNet = Math.max(0.1, W - 2*nSock*rr);
     I = W*Math.pow(st, 3)/12; c = st/2; arm = sd; reach = sd; what = 'полка у задника';
-    /* СЕЧЕНИЕ БЕРЁТСЯ У ЗАДНИКА, а не по ряду гнёзд, и это НЕ упрощение из лени. Гнёзда и правда съедают
-       полку посередине, но сколько их там останется — решает не эта строка: `buildBoxWithHoles` держит
-       отверстие, только если его клетка сетки не пересекается с уже принятой, и заказанные три гнезда
-       Ø16 на полке 60 мм превращаются в два. Повторить этот отбор здесь нельзя без всей сетки построителя,
-       а напечатать «остаётся 12 мм», когда в детали остаётся 32, значит соврать числом. Отбор надо
-       выносить в общее правило, как вынесена раскладка винтов уголка, — это отдельный заход. */
+    extra = {n, nSock, tr: rr, wNet, I: wNet*Math.pow(st, 3)/12, c: st/2, arm: sd/2,
+             what: 'полка по ряду гнёзд', lost: nSock < n};
   } else { what = 'держателя нет'; }
   const cap = (I, c, arm) => sigma*(I/Math.max(0.01, c))/Math.max(1, arm)/WO_G;   // кг
-  const kg = front === 'none' ? Infinity : cap(I, c, arm);
+  let kg = front === 'none' ? Infinity : cap(I, c, arm), atSockets = false;
+  if (extra){ const k2 = cap(extra.I, extra.c, extra.arm);
+    if (k2 < kg){ kg = k2; what = extra.what; atSockets = true; } }
   /* РЫЧАГ НА СТЕНУ. Плечо — от плоскости стены ДО ГРУЗА, опора — нижняя кромка задника. У крючка груз
      скатывается к ДАЛЬНЕМУ концу прямого стержня (виток за ним уходит вверх), и построитель ставит этот
      конец на t + вылет; у полки — на переднюю кромку. Замер по сетке подтверждает обе точки. */
@@ -19800,7 +19841,7 @@ function wallOrgSpec(p){
                 tools:{need:1, t:'инструмента в гнёздах'}, none:{need:0, t:''}};
   const role = ROLE[front] || ROLE.hook;
   return {back, front, W, H, t, mat, allow, sigma, I, c, arm, what, reach, dWall, pry, kg,
-          rBar, drop, hookY, cleatLip, pegD, pegPitch,
+          rBar, drop, hookY, cleatLip, pegD, pegPitch, extra, atSockets,
           need: role.need, role: role.t, bond: WO_BOND,
           weak: front !== 'none' && kg < role.need,
           levered: front !== 'none' && pry > 1,
@@ -28342,9 +28383,14 @@ function collectPrintWarnings(p, mesh){
         o.hookY.toFixed(0) + ' мм при заднике ' + o.H.toFixed(0) + ' мм — держится он неполным сечением' +
         ', и ломаться будет именно там');
       if (o.weak) w.push('всего ' + o.kg.toFixed(1) + ' кг — для ' + o.role + ' этого мало' +
-        (o.front === 'hook' ? ': пруток входит в прочность в ЧЕТВЁРТОЙ степени — толще на четверть значит вдвое крепче' : ''));
-      if (o.front === 'tools') w.push('счёт ведётся по сечению У ЗАДНИКА: гнёзда съедают полку посередине,' +
-        ' и там она слабее — насколько, зависит от того, сколько гнёзд построитель поставит на самом деле');
+        (o.atSockets ? ': ломаться будет по ряду гнёзд, где от полки остаётся ' + o.extra.wNet.toFixed(0) +
+                       ' мм из ' + o.W.toFixed(0)
+         : o.front === 'hook' ? ': пруток входит в прочность в ЧЕТВЁРТОЙ степени — толще на четверть значит вдвое крепче' : ''));
+      if (o.extra && o.extra.lost) w.push('гнёзд встанет ' + o.extra.nSock + ', а не ' + o.extra.n +
+        ': отверстие Ø' + (2*o.extra.tr).toFixed(0) + ' мм со своим полем не помещается на полке ' +
+        o.W.toFixed(0) + ' мм столько раз. Уже гнездо, шире полка или меньше их число');
+      if (o.atSockets) w.push('слабое место — не задник, а РЯД ГНЁЗД посередине полки: от ширины ' +
+        o.W.toFixed(0) + ' мм там остаётся ' + o.extra.wNet.toFixed(0) + ' мм, и держит именно это');
       if (o.levered) w.push('рычаг на стену ' + o.pry.toFixed(1) + '× веса: вылет ' + o.dWall.toFixed(0) +
         ' мм при заднике ' + o.H.toFixed(0) + ' мм отжимает верх сильнее, чем сам груз тянет вниз —' +
         ' выше задник или короче вылет, иначе сорвёт с ' +

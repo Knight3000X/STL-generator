@@ -334,5 +334,116 @@ for(const axis of [0,1,2]){
   chk('подшипник оси в тонкой щеке (случай дозатора)', bad2===0 && wt(thin), {rays:bad2});
 }
 
+/* ===============================================================================================
+   ОТБОР ОТВЕРСТИЙ СТАЛ ЧИСЛОМ (v25.17.0). Правило у построителя разумное: отверстие держится, только
+   если его клетка сетки не пересекается с уже принятой, — иначе расходится сшивка кольца с бором и
+   деталь перестаёт быть замкнутой. Но срабатывало оно БЕЗ ЕДИНОГО СЛОВА: заказал человек четыре винта
+   на узкой полке, получил два, и узнать было неоткуда.
+
+   Считать это вторым правилом рядом с построителем нельзя — блоки индексов зависят от самой сетки, а
+   она неравномерна и зависит от зон сгущения. Поэтому правило ВЫНЕСЕНО: `holeGridStations` даёт сетку,
+   `holeKeepSets` — кто выжил, и зовут их оба, построитель и предупреждения. Проверки ниже держат ровно
+   это: отбор описывает ту деталь, которая и правда строится. */
+console.log('\n=== отбор отверстий: одно правило на построитель и на предупреждения ===');
+{
+  /* Сколько отверстий видно в детали: считается по горизонтальному сечению — связные куски контура это
+     наружная кромка плюс по одному кольцу на отверстие. */
+  const holesInMesh = (tris, y, guard) => {
+    const pts = [];
+    for (const T of tris) for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+      if ((A[1] - y)*(B[1] - y) > 0) continue;
+      if (Math.abs(A[1] - B[1]) < 1e-12) continue;
+      const u = (y - A[1])/(B[1] - A[1]); if (u < 0 || u > 1) continue;
+      pts.push([A[0] + u*(B[0] - A[0]), A[2] + u*(B[2] - A[2])]); }
+    const par = pts.map((_, i) => i);
+    const find = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
+      if (Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < guard){
+        const a = find(i), c = find(j); if (a !== c) par[a] = c; }
+    const roots = new Set(); for (let i = 0; i < pts.length; i++) roots.add(find(i));
+    return roots.size - 1; };
+
+  chk('правило отбора вынесено и зовётся снаружи',
+      typeof holeKeepSets === 'function' && typeof holeGridStations === 'function');
+  {
+    const g = holeGridStations(40, 6, 40, 0, null, 0);
+    chk('  сетка отдаёт по оси станции и половины габарита',
+        g.N.length === 3 && g.N.every(a => a.length >= 3) &&
+        g.half[0] === 20 && g.half[1] === 3 && g.half[2] === 20,
+        {half:g.half, n:g.N.map(a => a.length)});
+    chk('  станции возрастают и не слипаются',
+        g.N.every(a => a.every((v, i) => i === 0 || v > a[i-1] + 1e-9)));
+  }
+  /* ОДНО ОТВЕРСТИЕ ПРОХОДИТ ВСЕГДА, сколько бы их ни заказали: ронять первое нечему. */
+  {
+    const one = holeKeepSets(40, 6, 40, [{axis:1, cp:0, cq:0, r:3}]);
+    chk('одно отверстие остаётся', one.kept.length === 1 && one.dropped === 0 && one.asked === 1);
+  }
+  /* ДВА БЛИЗКИХ РОНЯЮТСЯ, ДВА ДАЛЬНИХ — НЕТ, и деталь с этим согласна. */
+  {
+    const mk = (dx) => [{axis:1, cp:-dx/2, cq:0, r:5}, {axis:1, cp:dx/2, cq:0, r:5}];
+    const near = holeKeepSets(60, 6, 60, mk(9)), far = holeKeepSets(60, 6, 60, mk(34));
+    chk('два отверстия впритык: одно роняется', near.kept.length === 1 && near.dropped === 1,
+        {осталось:near.kept.length});
+    chk('  а разнесённые оба остаются', far.kept.length === 2 && far.dropped === 0,
+        {осталось:far.kept.length});
+    /* И это ровно то, что видно в детали. */
+    const tN = buildBoxWithHoles(60, 6, 60, mk(9)), tF = buildBoxWithHoles(60, 6, 60, mk(34));
+    /* Порог склейки берётся ШИРЕ шага станций (60/24 = 2.5 мм), иначе наружная кромка рассыпается на
+       десятки «отверстий»: первый мой замер отдал девяносто шесть дырок в детали с одной. */
+    const G = 5;
+    chk('  в построенной детали дырок столько же (впритык)', holesInMesh(tN, 0, G) === near.kept.length,
+        {вдетали:holesInMesh(tN, 0, G), отбор:near.kept.length});
+    chk('  и столько же (разнесённые)', holesInMesh(tF, 0, G) === far.kept.length,
+        {вдетали:holesInMesh(tF, 0, G), отбор:far.kept.length});
+    chk('  обе детали замкнуты', wt(tN) && wt(tF));
+  }
+  /* СЕТКА ДВУМЕРНАЯ, И ОБЕ ЕЁ СТОРОНЫ РАВНОПРАВНЫ. Пара, разнесённая по ВТОРОЙ координате грани,
+     обязана пройти целиком, даже стоя на одной первой: блоки индексов должны не пересекаться ХОТЯ БЫ
+     по одной оси. Мутация «смотреть только первую» первый прогон пережила — этого случая у меня не
+     было вовсе, и половина условия ничем не держалась. */
+  {
+    const sameP = holeKeepSets(60, 6, 60, [{axis:1, cp:0, cq:-20, r:4}, {axis:1, cp:0, cq:20, r:4}]);
+    chk('пара на одной первой координате, но разнесённая по второй, проходит целиком',
+        sameP.kept.length === 2 && sameP.dropped === 0, {осталось:sameP.kept.length});
+    const sameQ = holeKeepSets(60, 6, 60, [{axis:1, cp:-20, cq:0, r:4}, {axis:1, cp:20, cq:0, r:4}]);
+    chk('  и наоборот — разнесённая по первой', sameQ.kept.length === 2 && sameQ.dropped === 0,
+        {осталось:sameQ.kept.length});
+    const both = holeKeepSets(60, 6, 60, [{axis:1, cp:0, cq:-3, r:4}, {axis:1, cp:0, cq:3, r:4}]);
+    chk('  а близкая по обеим — роняется', both.kept.length === 1 && both.dropped === 1,
+        {осталось:both.kept.length});
+    const t = buildBoxWithHoles(60, 6, 60, [{axis:1, cp:0, cq:-20, r:4}, {axis:1, cp:0, cq:20, r:4}]);
+    chk('  и в детали их и правда два', holesInMesh(t, 0, 5) === 2, holesInMesh(t, 0, 5));
+  }
+  /* ОСИ НЕЗАВИСИМЫ: отверстия по разным осям делят разные сетки и друг друга не роняют. */
+  {
+    const k = holeKeepSets(40, 40, 40, [{axis:0, cp:0, cq:0, r:6}, {axis:1, cp:0, cq:0, r:6},
+                                        {axis:2, cp:0, cq:0, r:6}]);
+    chk('три отверстия по трём осям остаются все', k.kept.length === 3 && k.dropped === 0,
+        {осталось:k.kept.length});
+    chk('  и по осям они разложены поштучно',
+        k.byAxis[0].length === 1 && k.byAxis[1].length === 1 && k.byAxis[2].length === 1);
+  }
+  /* ГОЛОВКА ВИНТА СЧИТАЕТСЯ ТОЖЕ: потайное отверстие занимает поле по своей ГОЛОВЕ, а не по телу. */
+  {
+    const plain = holeKeepSets(60, 6, 60, [{axis:1, cp:-9, cq:0, r:2}, {axis:1, cp:9, cq:0, r:2}]);
+    const sunk  = holeKeepSets(60, 6, 60,
+      [{axis:1, cp:-9, cq:0, r:2, head:'sink', headR:9, headDepth:2, headSide:1},
+       {axis:1, cp: 9, cq:0, r:2, head:'sink', headR:9, headDepth:2, headSide:1}]);
+    chk('без потая пара проходит, с потаем — нет: поле берётся по голове',
+        plain.kept.length === 2 && sunk.kept.length === 1,
+        {без:plain.kept.length, с:sunk.kept.length});
+  }
+  /* СЕТКА РЕШАЕТ. Одна и та же пара на РЕДКОЙ сетке роняется, а на густой проходит — это и есть
+     причина, по которой отбор нельзя считать «рядом» с построителем: он зависит от самой сетки. */
+  {
+    const pair = [{axis:1, cp:-7, cq:0, r:2}, {axis:1, cp:7, cq:0, r:2}];
+    const coarse = holeKeepSets(60, 6, 60, pair, 6), fine = holeKeepSets(60, 6, 60, pair, 120);
+    chk('на редкой сетке пара роняется, на густой проходит',
+        coarse.kept.length < fine.kept.length,
+        {редкая:coarse.kept.length, густая:fine.kept.length});
+  }
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 process.exit(fail>0?1:0);

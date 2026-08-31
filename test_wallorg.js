@@ -410,43 +410,56 @@ console.log('\n=== органайзер говорит, что держит ==='
         spec(ov).levered === true && spec(ov).pry > 4 &&
         /рычаг на стену 5\.\d× веса/.test(warn(ov).join(' ')), {рычаг:+spec(ov).pry.toFixed(2)});
   }
-  /* 5. ПОЛКА С ГНЁЗДАМИ считается ПО СЕЧЕНИЮ У ЗАДНИКА, и об этом сказано вслух. Гнёзда съедают полку
-     посередине, но сколько их там останется — решает отбор `buildBoxWithHoles`: заказанные три Ø16 на
-     полке 60 мм превращаются в ДВА. Повторить отбор в спецификации нельзя без всей сетки построителя,
-     а печатать число, которого в детали нет, нельзя тем более. Проверка запирает обе стороны: полка
-     считается по заднику, а про гнёзда сказано, что они слабее. */
+  /* 5. ГНЁЗДА СЪЕДАЮТ ПОЛКУ РОВНО ПОСЕРЕДИНЕ, и с v25.17.0 сказать можно, СКОЛЬКО их там будет.
+     В v25.16.0 это было отложено нарочно: `buildBoxWithHoles` роняет отверстие, если его клетка сетки
+     задевает уже принятое, повторить отбор без всей сетки было нельзя, а печатать число, которого в
+     детали нет, — хуже молчания. Теперь отбор вынесен в общее правило, спецификация зовёт ТО ЖЕ САМОЕ,
+     чем живёт построитель, и обе стороны сверяются с деталью. */
   {
     const ov = {woFront:'tools'};
     const g = spec(ov), t = mesh(ov), b = computeBBox(t);
     const zW = b.minZ + g.cleatLip;
     const st = Math.max(3, 4), sd = Math.max(15, 34);
     const yc = b.minY + 0.4*g.H + st/2;                // середина плиты полки
-    const zRow = zW + g.t - 1 + sd/2;                  // ряд гнёзд стоит на середине глубины
-    const seg = [];
-    for (const T of t){ const pts = [];
-      for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
-        if ((A[2] - zRow)*(B[2] - zRow) > 0) continue;
-        if (Math.abs(A[2] - B[2]) < 1e-12) continue;
-        const u = (zRow - A[2])/(B[2] - A[2]); if (u < 0 || u > 1) continue;
-        pts.push([A[0] + u*(B[0] - A[0]), A[1] + u*(B[1] - A[1])]); }
-      if (pts.length === 2) seg.push(pts); }
-    const xs = [];
-    for (const [P, Q] of seg){
-      if ((P[1] - yc)*(Q[1] - yc) > 0) continue;
-      if (Math.abs(P[1] - Q[1]) < 1e-12) continue;
-      const u = (yc - P[1])/(Q[1] - P[1]); if (u < 0 || u > 1) continue;
-      xs.push(P[0] + u*(Q[0] - P[0])); }
-    xs.sort((a, c) => a - c);
-    let solid = 0; for (let k = 0; k + 1 < xs.length; k += 2) solid += xs[k+1] - xs[k];
-    chk('ряд гнёзд и правда съедает полку', solid < g.W - 10 && solid > 1,
-        {осталось:+solid.toFixed(1), ширина:g.W});
-    /* Заказано три гнезда Ø16 — это 48 мм из 60; остаётся ЗАМЕТНО больше, потому что отбор их роняет.
-       Это и есть причина, по которой число в предупреждении не называется. */
-    chk('  и гнёзд в детали меньше заказанных: 60 − 3×16 было бы 12',
-        solid > 60 - 3*16 + 5, {осталось:+solid.toFixed(1)});
-    chk('  поэтому счёт ведётся по заднику и сказано об этом',
-        g.what === 'полка у задника' && /по сечению У ЗАДНИКА/.test(warn(ov).join(' ')), warn(ov));
-    chk('  у плоской полки этой оговорки нет', !/У ЗАДНИКА/.test(warn({woFront:'shelf'}).join(' ')));
+    /* Ряд гнёзд стоит на середине глубины; берём САМОЕ УЗКОЕ сечение вокруг него — там круги во всю
+       ширину, а не хордой. */
+    const netAt = (zRow) => { const seg = [];
+      for (const T of t){ const pts = [];
+        for (let k = 0; k < 3; k++){ const A = T[k], B = T[(k+1)%3];
+          if ((A[2] - zRow)*(B[2] - zRow) > 0) continue;
+          if (Math.abs(A[2] - B[2]) < 1e-12) continue;
+          const u = (zRow - A[2])/(B[2] - A[2]); if (u < 0 || u > 1) continue;
+          pts.push([A[0] + u*(B[0] - A[0]), A[1] + u*(B[1] - A[1])]); }
+        if (pts.length === 2) seg.push(pts); }
+      const xs = [];
+      for (const [P, Q] of seg){
+        if ((P[1] - yc)*(Q[1] - yc) > 0) continue;
+        if (Math.abs(P[1] - Q[1]) < 1e-12) continue;
+        const u = (yc - P[1])/(Q[1] - P[1]); if (u < 0 || u > 1) continue;
+        xs.push(P[0] + u*(Q[0] - P[0])); }
+      xs.sort((a, c) => a - c);
+      /* Совпавшие пересечения схлопываются: боковая грань плиты замощена сеткой, и прямая режет её
+         дважды в одной точке — с этим первый мой замер насчитал три гнезда вместо двух. */
+      const u = xs.filter((v, i) => i === 0 || v > xs[i-1] + 1e-6);
+      let solid = 0; for (let k = 0; k + 1 < u.length; k += 2) solid += u[k+1] - u[k];
+      return {solid, n: Math.max(0, u.length/2 - 1)}; };
+    let best = {solid: 1e9, n: 0};
+    for (let k = -6; k <= 6; k++){ const q = netAt(zW + g.t - 1 + sd/2 + k*0.3);
+      if (q.solid < best.solid) best = q; }
+    chk('гнёзд в детали ровно столько, сколько назвал отбор', best.n === g.extra.nSock,
+        {вдетали:best.n, спец:g.extra.nSock, заказано:g.extra.n});
+    chk('  и заказано их было больше — потеря объявлена', g.extra.lost === true && g.extra.nSock === 2 &&
+        /гнёзд встанет 2, а не 3/.test(warn(ov).join(' ')), warn(ov));
+    chk('  оставшаяся ширина меряется на детали и сходится', Math.abs(best.solid - g.extra.wNet) < 2.5,
+        {измерено:+best.solid.toFixed(1), спец:+g.extra.wNet.toFixed(1)});
+    chk('  и слабое место теперь — ряд гнёзд, а не задник',
+        g.atSockets === true && /РЯД ГНЁЗД/.test(warn(ov).join(' ')), g.what);
+    /* Мелкие гнёзда помещаются все, и тогда ни потери, ни оговорки. */
+    const ok = {woFront:'tools', woToolD:8};
+    chk('  мелкие гнёзда встают все три', spec(ok).extra.nSock === 3 && spec(ok).extra.lost === false,
+        spec(ok).extra.nSock);
+    chk('  и тогда про потерю не говорится', !/гнёзд встанет/.test(warn(ok).join(' ')), warn(ok));
+    chk('  у плоской полки гнёзд нет вовсе', spec({woFront:'shelf'}).extra === null);
   }
   /* 6. ЗАДНИК: зацеп планки и стандарт перфопанели. */
   {

@@ -838,11 +838,16 @@ console.log('=== резьба: правило корня и горла живё�
 {
   const fs = require('fs'), src = fs.readFileSync('parametric-stl-generator.html', 'utf8');
   const app = src.split('<script>').slice(2).join('<script>');   // 1-й блок — библиотека Three.js
-  const depthCopies  = (app.match(/\*\s*0\.6\s*,\s*\w+\s*\*\s*0\.55/g) || []);
+  /* С v25.21.0 коэффициент глубины стал ПАРАМЕТРОМ: у метрической он 0.55, у ходовых профилей 0.5, и
+     писать его числом внутри формулы больше нельзя. Правило от этого не размножилось — ищутся оба его
+     куска по отдельности: сама формула и умолчание коэффициента. */
+  const depthCopies  = (app.match(/\*\s*0\.6\s*,\s*\w+\s*\*\s*kk/g) || []);
+  const depthDefault = (app.match(/k\s*>\s*0\s*\?\s*k\s*:\s*0\.55/g) || []);
   const throatCopies = (app.match(/Math\.min\(\s*\w+\s*-\s*1\.0\s*,\s*\w+\s*\*\s*0\.62\s*\)/g) || []);
   const wantCopies   = (app.match(/threadDepth\s*>\s*0/g) || []);
   const askCopies    = (app.match(/\(want\s*>\s*0\)\s*\?\s*Math\.min\(want,/g) || []);
   chk('глубина профиля выведена РОВНО ОДИН раз', depthCopies.length === 1, depthCopies);
+  chk('  и умолчание её коэффициента тоже одно', depthDefault.length === 1, depthDefault);
   chk('радиус горла выведен РОВНО ОДИН раз', throatCopies.length === 1, throatCopies);
   /* Заказанную глубину не читают больше нигде: `p.threadDepth` доходит до правила ПАРАМЕТРОМ, и
      развилка «заказано или авто» существует в файле ровно одна. */
@@ -1179,6 +1184,266 @@ console.log('\n=== резьбовая пара называет свои чис�
         [spec({threadClear:0.4}).grip, spec({threadClear:0.7}).grip]);
   }
   base({});
+}
+
+/* ===============================================================================================
+   ПРОФИЛЬ И ДЮЙМ (v25.21.0). До этой сборки резьба была одна — треугольная метрическая, и задать её
+   можно было только шагом в миллиметрах. Не хватало двух вещей, и обе не косметические.
+
+   ПРОФИЛЬ РЕШАЕТ, ДЛЯ ЧЕГО РЕЗЬБА. У треугольной наклонные грани дают РАСПОР — силу поперёк оси,
+   которая создаёт трение затяжки (крепежу оно и нужно) и разрывает гайку, когда через винт передают
+   усилие. У трапецеидальной и прямоугольной грани почти отвесные, распора почти нет, и момент идёт в
+   осевое усилие: тиски, струбцины и ходовые винты делают только такими.
+
+   ДЮЙМОВАЯ ЗАДАЁТСЯ ДРУГИМ ЧИСЛОМ — витками на дюйм, а не шагом. Это второй способ задать одно и то
+   же, и потому шаг сведён в ОДНО место на весь файл: выражение `Math.max(0.5, p.threadPitch||3)`
+   стояло восемью копиями, и пока способ был один, они сходились случайно.
+
+   Проверки ниже мерят УГОЛ ГРАНИ ПО ПОСТРОЕННОЙ ДЕТАЛИ — по наклону боковой стороны витка в осевом
+   разрезе, — а не сверяют одну формулу с другой. */
+console.log('\n=== профиль резьбы и дюймовый шаг ===');
+{
+  const setP = (ov) => { logos.length=0; boxHoles.length=0; dieFaces.length=0;
+    Object.assign(paramState.box, defaultBoxParams(), {width:40,height:40,depth:40,
+      threadMode:'stud',threadD:30,threadPitch:3,threadStarts:1,threadLen:16,threadClear:0.4,
+      threadDepth:0,threadFlat:0.14,threadHand:'right',threadForm:'metric',threadTPI:0,
+      threadWall:2.5,threadTop:2.5,threadGrip:24,threadGripD:0.9,threadFlange:3,
+      sheetShape:'none',keycapMode:'none',platonic:'none',polyN:0,binRound:0,
+      scoopDir:'none',labelTab:'none',mountHoles:'none',gripWall:'none',divX:1,divZ:1,
+      stackFeet:false,gfOn:false}, ov||{});
+    return paramState.box; };
+  const warn = (ov) => collectPrintWarnings(setP(ov));
+  const line = (ws) => ws.find(x => /^резьба Ø/.test(x));
+  const lift = (ws) => ws.find(x => /^подъём витка /.test(x));
+  const spec = (ov) => threadFitSpec(setP(ov));
+  const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
+
+  /* ОДИН УГЛОВОЙ СТОЛБЕЦ: пары (высота, радиус) вдоль оси. По ним читается и профиль, и его наклон.
+
+     ДВА ОТСЕВА, без которых замер врёт. Первый — ПО РАДИУСУ: у штуцера есть ещё и фланец радиусом
+     девятнадцать, и без отсева «глубина профиля» выходила девятнадцать миллиметров вместо полутора.
+     Второй — ПО ВЫСОТЕ: заходная фаска гасит глубину витка к торцу, и её наклонные куски тянут
+     измеренный угол грани вниз (тридцать градусов читались как двадцать два). Берётся середина
+     резьбы, где виток полной высоты. */
+  const column = (ov) => { const g = spec(ov), t = mesh(ov), tol = 2*Math.PI/400, raw = [];
+    /* У ЖЕНСКОЙ поверхности те же радиусы, отодвинутые наружу на зазор: без этой поправки окно
+       срезает её гребень целиком, и столбец выходит пустым. */
+    const off = g.female ? g.clr : 0;
+    const rLo = g.majorR - g.h - 0.05 + off, rHi = g.majorR + 0.05 + off;
+    for (const T of t) for (const v of T){
+      if (Math.abs(Math.atan2(v[2], v[0])) > tol) continue;
+      const r = Math.hypot(v[0], v[2]);
+      if (r < rLo || r > rHi) continue;
+      raw.push([v[1], r]); }
+    let cLo = 1e9, cHi = -1e9;                       // где виток доходит до полной высоты
+    for (const [y, r] of raw) if (r > g.majorR - 0.02){ cLo = Math.min(cLo, y); cHi = Math.max(cHi, y); }
+    const mid = (cLo + cHi)/2, half = (cHi - cLo)*0.3;
+    const out = raw.filter(([y]) => y > mid - half && y < mid + half);
+    out.sort((a, b) => a[0] - b[0]);
+    return out.filter((q, i) => i === 0 || q[0] > out[i-1][0] + 1e-9 || Math.abs(q[1] - out[i-1][1]) > 1e-9); };
+
+  chk('профиль резьбы стал выбором', typeof threadFormOf === 'function' &&
+      ['metric','trap','acme','square'].every(k => THREAD_FORMS[k]));
+  /* 1. УГОЛ ГРАНИ — ИЗ ДЕТАЛИ. Боковая сторона витка поднимается на h по радиусу за h·tg(α) по оси,
+     значит наклон dy/dr и есть tg(α). Берутся точки строго между впадиной и гребнем. */
+  for (const form of ['metric', 'trap', 'acme']){
+    const g = spec({threadForm:form}), want = g.alpha, col = column({threadForm:form});
+    const lo = g.majorR - g.h, hi = g.majorR;
+    let sy = 0, sr = 0, n = 0;                       // средний наклон по всем восходящим кускам
+    for (let i = 1; i < col.length; i++){
+      const [y0, r0] = col[i-1], [y1, r1] = col[i];
+      if (r1 - r0 < 1e-6) continue;                  // только подъём
+      if (r0 < lo + 0.05*g.h || r1 > hi - 0.05*g.h) continue;   // без площадок
+      sy += y1 - y0; sr += r1 - r0; n++; }
+    const got = Math.atan2(sy, sr)*180/Math.PI;
+    chk('угол грани «' + g.formLabel + '» измерен по детали (' + got.toFixed(1) + '° при ' +
+        want.toFixed(1) + '°)', n > 3 && Math.abs(got - want) < 2.5,
+        {измерено:+got.toFixed(2), спец:+want.toFixed(2), кусков:n});
+  }
+  /* 1a. ОБЪЯВЛЕННЫЙ УГОЛ ОБЯЗАН ВЕРНУТЬСЯ. Замер по детали (пункт 1) сверяется со СПЕЦИФИКАЦИЕЙ, а та
+     считает угол из площадки, которая сама выведена из угла таблицы, — круг замкнут, и подмена
+     объявленного угла проходит его насквозь незамеченной. Держать таблицу должен обратный ход:
+     из объявленных α и k выводится площадка, из площадки обратно α, и вернуться обязано ТО ЖЕ.
+     Допуск тут узкий нарочно: Tr и ACME расходятся на полградуса, и именно их надо развести.
+     ПОЧЕМУ ЭТОГО НЕЛЬЗЯ СПРОСИТЬ У СЕТКИ — сказано следующей проверкой. */
+  for (const form of ['trap','acme','square']){
+    const g = spec({threadForm:form});
+    chk('объявленный угол «' + g.formLabel + '» возвращается из площадки',
+        Math.abs(g.alpha - g.alphaWant) < 0.2, {объявлено:g.alphaWant, вышло:+g.alpha.toFixed(3)});
+  }
+  /* И ЧЕСТНО О ГРАНИЦЕ ЗАМЕРА: Tr и ACME отличаются половиной градуса, а это на глубине полутора
+     миллиметров — считанные микроны по оси, меньше того, что кладёт сопло. Сетка их различить не
+     может и не должна: подсказка на панели говорит ровно это, и проверка подпирает саму подсказку. */
+  {
+    const t = spec({threadForm:'trap'}), a = spec({threadForm:'acme'});
+    const dAxial = Math.abs(t.flat - a.flat)*t.P*2;      // разбег площадки по оси, мм
+    chk('Tr и ACME расходятся меньше, чем кладёт сопло (' + dAxial.toFixed(3) + ' мм)',
+        Math.abs(t.alphaWant - a.alphaWant) === 0.5 && dAxial > 0 && dAxial < 0.4,
+        {ось:+dAxial.toFixed(4), сопло:0.4});
+  }
+  /* 2. ГЛУБИНА СЛЕДУЕТ ИЗ ПРОФИЛЯ: у метрической 0.55 шага (как было всегда), у ходовых — половина. */
+  {
+    const m = spec({threadForm:'metric'}), t = spec({threadForm:'trap'});
+    chk('метрическая осталась при своих 0.55 шага', Math.abs(m.h - 0.55*3) < 1e-9, m.h);
+    chk('  у трапецеидальной глубина ровно половина шага', Math.abs(t.h - 0.5*3) < 1e-9, t.h);
+    const col = column({threadForm:'trap'});
+    let lo = 1e9, hi = -1e9; for (const [, r] of col){ lo = Math.min(lo, r); hi = Math.max(hi, r); }
+    chk('  и деталь той же глубины', Math.abs((hi - lo) - t.h) < 0.05,
+        {измерено:+(hi - lo).toFixed(3), спец:t.h});
+  }
+  /* 3. ПРЯМОУГОЛЬНАЯ — МЕАНДР: гребень и впадина делят шаг поровну, наклонных граней нет вовсе. */
+  {
+    const g = spec({threadForm:'square'});
+    chk('у прямоугольной площадка ровно четверть (меандр)', Math.abs(g.flat - 0.25) < 1e-9, g.flat);
+    /* «Наклонный» и «отвесный» различаются не самим наличием ступеньки — сетка режет высоту с шагом
+       P/26, и отвесная грань тоже даёт один такой шаг, — а ОТНОШЕНИЕМ подъёма к разбегу. У наклонной
+       оно около двух, у отвесной больше десяти. */
+    const slopes = (ov) => { const col = column(ov), out = [];
+      for (let i = 1; i < col.length; i++){
+        const dr = Math.abs(col[i][1] - col[i-1][1]), dy = col[i][0] - col[i-1][0];
+        if (dr > 0.05 && dy > 1e-6) out.push(dr/dy); }
+      return out; };
+    chk('  у прямоугольной все переходы отвесные', slopes({threadForm:'square'}).every(q => q > 5),
+        slopes({threadForm:'square'}).map(q => +q.toFixed(1)).slice(0, 5));
+    chk('  а у трапецеидальной — наклонные', slopes({threadForm:'trap'}).some(q => q < 5),
+        slopes({threadForm:'trap'}).map(q => +q.toFixed(1)).slice(0, 5));
+    /* Гребень меандра занимает половину шага: доля высоты, где радиус наружный, ко всей полосе. */
+    const col = column({threadForm:'square'});
+    let crest = 0, span = 0;
+    for (let i = 1; i < col.length; i++){ const dy = col[i][0] - col[i-1][0]; span += dy;
+      if (col[i][1] > g.majorR - 0.02 && col[i-1][1] > g.majorR - 0.02) crest += dy; }
+    chk('  и гребень занимает около половины', Math.abs(crest/span - 0.5) < 0.12,
+        {доля:+(crest/span).toFixed(3)});
+  }
+  /* 4. ДЮЙМ. Шаг равен 25.4/TPI, и это ОДНО правило: `threadPitchOf` зовут и построитель, и проверка. */
+  {
+    for (const tpi of [13, 20, 28]){
+      const g = spec({threadTPI:tpi});
+      chk('TPI ' + tpi + ' даёт шаг 25.4/' + tpi, Math.abs(g.P - 25.4/tpi) < 1e-9, +g.P.toFixed(4));
+    }
+    chk('  ноль означает «шаг в миллиметрах»', Math.abs(spec({threadTPI:0, threadPitch:2.5}).P - 2.5) < 1e-9);
+    chk('  и TPI сильнее ползунка шага',
+        Math.abs(spec({threadTPI:20, threadPitch:8}).P - 25.4/20) < 1e-9);
+    chk('  число витков названо в строке', /\(20 витков на дюйм\)/.test(line(warn({threadTPI:20}))),
+        line(warn({threadTPI:20})));
+    /* И деталь и правда такого шага: гребни вдоль одного столбца стоят через 25.4/TPI. */
+    const g = spec({threadTPI:20}), col = column({threadTPI:20});
+    const ys = []; for (const [y, r] of col) if (Math.abs(r - g.majorR) < 0.02) ys.push(y);
+    let n = 0, prev = -1e9;
+    for (const y of ys){ if (y - prev > g.P*0.5) n++; prev = y; }
+    /* Столбец берётся серединой резьбы, поэтому гребни считаются на ЕГО полосе, а не на всей длине. */
+    const span = ys.length ? ys[ys.length-1] - ys[0] : 0;
+    chk('  и гребни в детали стоят через шаг 25.4/TPI', n > 3 && Math.abs(span/Math.max(1, n-1) - g.P) < 0.1,
+        {гребней:n, шагвдетали:+(span/Math.max(1, n-1)).toFixed(3), спец:+g.P.toFixed(3)});
+  }
+  /* 5. ХОДОВАЯ РЕЗЬБА: подъём витка, самоторможение и КПД. */
+  {
+    const g = spec({});
+    chk('подъём витка — это ход, делённый на π·средний Ø',
+        Math.abs(Math.tan(g.lam*Math.PI/180) - g.lead/(Math.PI*g.dm)) < 1e-9, +g.lam.toFixed(3));
+    chk('  средний Ø — это наружный плюс внутренний',
+        Math.abs(g.dm - (g.majorR + (g.majorR - g.h))) < 1e-9, +g.dm.toFixed(3));
+    chk('  на умолчаниях резьба самотормозящая', g.selfLock === true && g.lam < 3, +g.lam.toFixed(2));
+    chk('  и об этом сказано', /САМОТОРМОЗЯЩАЯ/.test(lift(warn({}))), lift(warn({})));
+    /* Крупный шаг в четыре захода — и винт раскручивается сам: это и есть тот случай, ради которого
+       число называется. */
+    const q = spec({threadForm:'square', threadPitch:8, threadStarts:4});
+    chk('  крупный многозаходный винт самоторможение теряет',
+        q.selfLock === false && q.lam > 15, {подъём:+q.lam.toFixed(1)});
+    chk('  и сказано об этом прямо',
+        /НЕ самотормозящая/.test(lift(warn({threadForm:'square', threadPitch:8, threadStarts:4}))));
+    chk('  КПД при этом много выше', q.eff > 3*g.eff, {было:+(100*g.eff).toFixed(0), стало:+(100*q.eff).toFixed(0)});
+    /* ТРЕНИЕ СТОИТ В ЧИСЛИТЕЛЕ КПД, И ЭТО НЕ УКРАШЕНИЕ ФОРМУЛЫ. Член μ·tg λ — то, что трение отнимает
+       у ВЫХОДА: чем круче подъём, тем большую долю осевого усилия оно съедает по дороге. Проверяется
+       не переписью формулы, а её следствием: КПД обязан быть СТРОГО ниже потолка, посчитанного без
+       этого члена, и разрыв обязан РАСТИ с ходом. У пологой резьбы он неразличим — десятые доли
+       процента, — и именно поэтому на умолчаниях подмена не видна; у крупной многозаходной это уже
+       пять процентов КПД. */
+    const ceilEff = (s) => { const cb = Math.cos(s.alpha*Math.PI/180), tl = Math.tan(s.lam*Math.PI/180);
+      return tl*cb/(cb*tl + s.mu); };
+    const gapG = ceilEff(g) - g.eff, gapQ = ceilEff(q) - q.eff;
+    chk('  и трение отнимает у КПД тем больше, чем круче подъём',
+        gapG > 0 && gapQ > gapG + 0.02,
+        {пологая:+(100*gapG).toFixed(2), крутая:+(100*gapQ).toFixed(2)});
+    /* УГОЛ ГРАНИ ВХОДИТ В САМОТОРМОЖЕНИЕ: порог у наклонной грани выше (μ/cos β), значит найдётся шаг,
+       при котором треугольная ещё держит, а прямоугольная уже раскручивается. Проверка не подставляет
+       угаданное число, а ИЩЕТ такой шаг: если бы угол в условие не входил, не нашлось бы ни одного. */
+    let found = null;
+    for (let Pk = 10; Pk <= 80 && !found; Pk++) for (const S of [1, 2, 3, 4]){
+      const ov = {threadD:12, threadPitch:Pk/10, threadStarts:S};
+      const a = spec(Object.assign({threadForm:'metric'}, ov));
+      const b = spec(Object.assign({threadForm:'square'}, ov));
+      if (a.selfLock && !b.selfLock){ found = {шаг:Pk/10, заходов:S}; break; } }
+    chk('  есть шаг, при котором наклонная грань ещё тормозит, а отвесная уже нет', found !== null, found);
+  }
+  /* 6. СОВЕТ ПО ДЕЛУ: метрический профиль на ходовом винте — это распор вместо усилия. */
+  {
+    chk('на ходовом винте метрический профиль назван неподходящим',
+        spec({threadMode:'leadscrew'}).metricDrive === true &&
+        /берите трапецеидальную Tr или ACME/.test(warn({threadMode:'leadscrew'}).join(' ')));
+    chk('  а трапецеидальный на нём не ругают',
+        spec({threadMode:'leadscrew', threadForm:'trap'}).metricDrive === false);
+    chk('  и на крышке метрический профиль тоже не ругают',
+        spec({threadMode:'cap'}).metricDrive === false);
+  }
+  /* 7. ПРЯМОУГОЛЬНАЯ ПЕЧАТАЕТСЯ МОСТАМИ, и об этом сказано вместе с ценой выгоды. */
+  {
+    chk('прямоугольный профиль назван мостовым', spec({threadForm:'square'}).squarePrint === true &&
+        /печатается МОСТАМИ/.test(warn({threadForm:'square'}).join(' ')));
+    chk('  у прочих профилей этой оговорки нет',
+        ['metric','trap','acme'].every(f => !/печатается МОСТАМИ/.test(warn({threadForm:f}).join(' '))));
+  }
+  /* 8. РУЧКА ПЛОЩАДКИ У СВОЕГО ПРОФИЛЯ НЕ УЧАСТВУЕТ — и говорится это тому, кто её тронул. */
+  {
+    chk('нетронутая ручка площадки оговорки не вызывает', spec({threadForm:'trap'}).flatIgnored === false);
+    chk('  а тронутая — вызывает', spec({threadForm:'trap', threadFlat:0.05}).flatIgnored === true &&
+        /не участвует/.test(warn({threadForm:'trap', threadFlat:0.05}).join(' ')));
+    chk('  у метрической ручка участвует по-прежнему',
+        spec({threadForm:'metric', threadFlat:0.05}).flat === 0.05 &&
+        spec({threadForm:'metric', threadFlat:0.05}).flatIgnored === false);
+  }
+  /* 9. ВСЕ ПРОФИЛИ СТРОЯТСЯ И ЗАМКНУТЫ — и пара по-прежнему сходится. */
+  for (const form of ['metric','trap','acme','square'])
+    for (const m of ['stud','cap','nut','bolt','leadscrew']){
+      const t = mesh({threadMode:m, threadForm:form});
+      chk('«' + form + '» ' + m + ': замкнута и не вывернута',
+          manifoldCheck(t, 4).watertight && vol(t) > 0);
+    }
+  for (const form of ['trap','square']){
+    const male = column({threadMode:'stud', threadForm:form});
+    const fem = column({threadMode:'cap', threadForm:form});
+    let mh = -1e9, fl = 1e9;
+    for (const [, r] of male) mh = Math.max(mh, r);
+    for (const [, r] of fem)  fl = Math.min(fl, r);
+    const g = spec({threadMode:'cap', threadForm:form});
+    chk('пара «' + form + '» сходится с тем же зацепом', Math.abs((mh - fl) - g.grip) < 0.06,
+        {измерено:+(mh - fl).toFixed(3), спец:+g.grip.toFixed(3)});
+  }
+  /* И НАЙДЕННОЕ ПО ДОРОГЕ: метрическая здесь не по ISO. Угол её грани следует из ручки площадки и
+     глубины, а не из стандарта, и на умолчаниях выходит 21.8° вместо тридцати. Замер это и показал —
+     первая запись объявляла в таблице тридцать, и деталь с объявлением разошлась. */
+  {
+    const g = spec({threadForm:'metric'});
+    chk('метрическая здесь не по ISO, и это названо', g.notIso === true &&
+        Math.abs(g.alpha - 21.8) < 0.2 &&
+        /по ISO было бы 30°/.test(warn({threadForm:'metric'}).join(' ')),
+        +g.alpha.toFixed(2));
+    /* Названо ЧИСЛОМ в той же строке, а не отдельной жалобой: угол следует из ручки площадки, и
+       отдельная строка про ISO была бы придиркой приложения к собственному умолчанию. */
+    const metricLines = warn({threadForm:'metric'});
+    chk('  и сказано это в самой строке резьбы, а не отдельной придиркой',
+        metricLines.some(l => /^резьба Ø/.test(l) && /по ISO было бы 30° — площадку задаёт ручка, а не стандарт/.test(l)) &&
+        !metricLines.some(l => !/^резьба Ø/.test(l) && /ISO/.test(l)),
+        metricLines.filter(l => /ISO/.test(l)).length);
+    /* А если эту площадку и правда поставить — угол становится тридцатью, и оговорка уходит. */
+    const isoFlat = (0.5 - (0.55*3)*Math.tan(Math.PI/6)/3)/2;
+    const iso = spec({threadForm:'metric', threadFlat:+isoFlat.toFixed(4)});
+    chk('  и она их и правда даёт', Math.abs(iso.alpha - 30) < 0.3 && iso.notIso === false,
+        {площадка:+isoFlat.toFixed(4), угол:+iso.alpha.toFixed(2)});
+    chk('  у своих профилей этой оговорки нет',
+        ['trap','acme','square'].every(f => spec({threadForm:f}).notIso === false));
+  }
+  setP({});
 }
 
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');

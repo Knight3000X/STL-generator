@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.21.0';
+const APP_VERSION = 'v25.22.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5242,6 +5242,87 @@ function keycapRowSpec(profKey, rowKey){
           dish: P.dish, dishKind: space ? 'cyl' : P.dishKind, taper: P.taper,
           sculpted: P.sculpt !== 'flat'};
 }
+/* ТАБЛИЦА СТАНДАРТНОГО РЯДА СТОИТ ЗДЕСЬ, А НЕ У СТРУБЦИНЫ (v25.22.0). Раньше она жила рядом с
+   единственным, кто её звал; теперь по ней же выбирается и сам ряд резьбы в строках панели, а
+   строки собираются раньше — значит и таблица обязана быть раньше. Переезд и есть переезд:
+   ни одного числа в ней не тронуто. */
+/* НАСТОЯЩИЕ ГАЙКИ, А НЕ ФОРМУЛА. Размер под ключ у метрической гайки — таблица (ISO 4032), и она не
+   ложится ни на какую пропорцию: у M5 это 8 мм, у M6 — 10, то есть при росте резьбы на пятую часть
+   ключ прыгает на четверть. Приложение до сих пор считало его как 1.8·Ø, и ошибка росла с размером:
+   на M8 формула даёт 14.4 против настоящих 13. Полтора миллиметра в гнезде — это гайка, которая
+   болтается и проворачивается под нагрузкой, то есть струбцина, которая не держит.
+
+   Формула при этом не выброшена, и вот почему: Ø болта у струбцины — ЛЮБОЙ от 4 до 16, а таблица
+   знает только стандартный ряд. На девять с половиной миллиметров гайки не существует, и честный
+   ответ там — оценка, а не отказ. Поэтому таблица отвечает на стандартный ряд, формула — на всё
+   остальное, и место у этого ответа ровно одно на всё приложение. */
+const NUT_HEX = {   // Ø резьбы: [размер под ключ, высота гайки, КРУПНЫЙ шаг], ISO 4032 + ISO 261
+  3:[5.5,2.4,0.5], 4:[7,3.2,0.7], 5:[8,4.7,0.8], 6:[10,5.2,1], 8:[13,6.8,1.25],
+  10:[17,8.4,1.5], 12:[19,10.8,1.75], 16:[24,14.8,2],
+};
+function nutStd(d){ for (const k in NUT_HEX) if (Math.abs(+k - d) < 0.1) return NUT_HEX[k]; return null; }
+function nutAF(d){ const n = nutStd(d); return n ? n[0] : d*1.8; }
+function nutThk(d){ const n = nutStd(d); return n ? n[1] : d*0.85; }
+/* ШАГ У НЕСТАНДАРТНОГО Ø — ШАГ БЛИЖАЙШЕГО СТАНДАРТНОГО, а не формула. Формулы для шага не существует:
+   ряд ISO 261 — опубликованный список, и на девяти с половиной миллиметрах «расчётный» шаг совпал бы с
+   тем, что бывает в природе, только случайно. Ближайший стандартный — оценка, и она названа оценкой. */
+function nutPitch(d){
+  const n = nutStd(d); if (n) return n[2];
+  let best = null, bd = 1e9;
+  for (const k in NUT_HEX){ const dd = Math.abs(+k - d); if (dd < bd){ bd = dd; best = NUT_HEX[k][2]; } }
+  return best;
+}
+/* СТАНДАРТНЫЙ РЯД РЕЗЬБЫ (v25.22.0). До этой сборки Ø и шаг у резьбы были двумя свободными
+   ползунками, и попасть ими в НАСТОЯЩУЮ резьбу — ту, что нарезана на покупном болте, — можно было
+   только зная наизусть, что у M8 шаг 1.25. А ряд опубликован, и половина его уже лежала в файле:
+   таблицей `NUT_HEX` живёт струбцина. Второй такой таблицы здесь нет и не будет — метрический ряд
+   берётся из неё же, а дюймовый добавлен рядом, потому что дюйм задаётся не шагом, а числом витков
+   на дюйм и в миллиметровую таблицу не ложится вовсе.
+
+   ЧТО ДАЁТ ВЫБОР РЯДА, кроме двух чисел: ПЛОЩАДКУ. Метрическая резьба ISO — это грань 30° от оси, а
+   у нас площадка гребня всегда бралась у ручки, и на её умолчании выходил 21.8°. Пока пара печаталась
+   сама с собой, это не мешало ничему: обе половины одинаковы. С покупной гайкой не сойдётся именно
+   это. Поэтому ряд ставит и площадку — ту, при которой грань выходит стандартной. */
+const THREAD_INCH = {   // ключ: [Ø, дюймов] [TPI крупной UNC] [TPI мелкой UNF]
+  '1/4':  [0.250,  20, 28],
+  '5/16': [0.3125, 18, 24],
+  '3/8':  [0.375,  16, 24],
+  '7/16': [0.4375, 14, 20],
+  '1/2':  [0.500,  13, 20],
+  '5/8':  [0.625,  11, 18],
+  '3/4':  [0.750,  10, 16],
+};
+const MM_PER_INCH = 25.4;
+/* Грань 30° от оси — и у метрической ISO 68, и у дюймовой Unified: угол при вершине у обеих 60°.
+   Одно число на оба ряда, а не два одинаковых в разных местах. */
+const THREAD_ISO_FLANK = 30;
+/* Список рядов собирается ИЗ ТАБЛИЦ, а не переписывается в строку панели: переписанный он разошёлся
+   бы с таблицей ровно в тот день, когда в таблицу добавят размер. */
+function threadStdList(){
+  const out = [];
+  for (const k in NUT_HEX) out.push({v:'m'+k, t:'M'+k+'×'+NUT_HEX[k][2], D:+k, P:NUT_HEX[k][2],
+                                     label:'M'+k, series:'ISO 261, крупный шаг'});
+  for (const k in THREAD_INCH){
+    const [inch, unc, unf] = THREAD_INCH[k];
+    out.push({v:'unc'+k, t:k+'″ UNC (' + unc + ' в/д)', D:inch*MM_PER_INCH, tpi:unc,
+              label:k+'″ UNC', series:'Unified, крупный шаг'});
+    out.push({v:'unf'+k, t:k+'″ UNF (' + unf + ' в/д)', D:inch*MM_PER_INCH, tpi:unf,
+              label:k+'″ UNF', series:'Unified, мелкий шаг'});
+  }
+  return out;
+}
+function threadStdOf(p){
+  const key = p && p.threadStd;
+  if (!key || key === 'none') return null;
+  for (const r of threadStdList()) if (r.v === key) return r;
+  return null;
+}
+/* НОМИНАЛЬНЫЙ Ø — ОДНО МЕСТО (v25.22.0). Выражение `p.threadD||30` стояло восемью копиями, и пока Ø
+   задавался одним ползунком, они сходились. Ряд задаёт его ВТОРЫМ способом, и восемь копий разошлись
+   бы молча — ровно как разошёлся бы шаг, если бы его не свели в `threadPitchOf` сборкой раньше.
+   Нижние зажимы у мест РАЗНЫЕ (4 у резьбы, 6 у накидной гайки, 2 у ствола шнека) и остаются на
+   местах: это их собственные правила, а не копии одного. */
+function threadDOf(p){ const st = threadStdOf(p); return st ? st.D : ((p && p.threadD) || 30); }
 const SHAPE_PARAMS = {
   box: [
     {group:'Размеры', key:'width',  label:'Ширина (X)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
@@ -5309,14 +5390,17 @@ const SHAPE_PARAMS = {
     {group:'Лист / панель', key:'sheetChamferAngle', label:'Лист: угол фаски (от горизонтали)', min:10, max:80, step:5, default:45, unit:'°'},
     {group:'Резьба (крышка / штуцер)', key:'threadMode', label:'Резьба (перекрывает всё)', type:'select', default:'none',
       options:[{v:'none',t:'нет'},{v:'cap',t:'крышка (внутренняя резьба + насечка)'},{v:'jar',t:'банка / бутыль (полая + наружная резьба горла)'},{v:'stud',t:'штуцер / горловина (наружная резьба на фланце)'},{v:'leadscrew',t:'ходовой винт (под гайку, профиль отдельной ручкой)'},{v:'auger',t:'шнек / архимедов винт (подача сыпучего)'},{v:'corkscrew',t:'штопор (спираль из прутка + ручка)'},{v:'spring',t:'пружина сжатия (витая, с расчётом жёсткости)'},{v:'barb',t:'ёлочка на шланг (конусные зубцы)'},{v:'bolt',t:'болт (шестигранная головка + резьбовой стержень)'},{v:'nut',t:'гайка (шестигранная, сквозная внутренняя резьба)'},{v:'wingnut',t:'барашковая гайка (гайка + два ушка)'},{v:'gland',t:'кабельный ввод (штуцер с цангой)'},{v:'glandcap',t:'накидная гайка ввода (с конусом)'},{v:'anchor',t:'дюбель под гипсокартон (спиральный, вкручивается)'}]},
-    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','barb','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadStd', w:['cap','jar','stud','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: стандартный ряд', type:'select', default:'none',
+      options:[{v:'none',t:'свой размер (Ø и шаг ползунками)'}].concat(threadStdList().map(r => ({v:r.v, t:r.t}))),
+      hint:'Ряд задаёт СРАЗУ ТРИ числа: диаметр, шаг и площадку гребня — ту, при которой грань выходит стандартной, 30° от оси. Первых двух мало: резьба с правильным Ø и шагом, но своим углом грани называется M8 и на покупной болт не садится. Метрический ряд — ISO 261, крупный шаг, та же таблица, которой живёт гнездо под гайку у струбцины. Дюймовый — Unified: UNC крупная, UNF мелкая, и задаётся она витками на дюйм, а не шагом. Выбрали ряд — ползунки Ø, шага и витков гаснут: отвечает за число кто-то один.'},
+    {group:'Резьба (крышка / штуцер)', key:'threadD', w:['cap','jar','stud','leadscrew','auger','barb','bolt','nut','wingnut','gland','glandcap'], mutedBy:['threadStd'], label:'Резьба: номинальный Ø (наружный)', min:6, max:200, step:0.5, default:30, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadForm', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: профиль', type:'select', default:'metric',
       options:[{v:'metric',t:'метрическая (треугольная, 60°)'},{v:'trap',t:'трапецеидальная Tr (30°) — тиски, струбцины'},
                {v:'acme',t:'ACME (29°) — дюймовый ходовой винт'},{v:'square',t:'прямоугольная (0°) — самая выгодная и самая хрупкая'}],
       hint:'Tr и ACME отличаются половиной градуса: на глубине полутора миллиметров это четырнадцать микрон — меньше того, что кладёт сопло, и деталь выйдет той же. Выбор между ними — вопрос того, с какой ПОКУПНОЙ гайкой или винтом деталь должна сойтись, а не формы витка. Профиль решает, ДЛЯ ЧЕГО резьба. Треугольная держит крепёж: её наклонные грани дают распор, который и создаёт трение затяжки, — но тот же распор разрывает гайку, когда через винт передают силу. Трапецеидальная и прямоугольная — ходовые: у них грани почти отвесные, распора почти нет, и весь момент идёт в осевое усилие. Прямоугольная выгоднее всех и слабее всех: у витка нет утолщения к корню, срезается он первым, а печатать отвесную грань нечем — верх витка ляжет мостом.'},
-    {group:'Резьба (крышка / штуцер)', key:'threadTPI', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: витков на дюйм (0 = шаг в мм)', min:0, max:40, step:1, default:0, unit:'', int:true,
+    {group:'Резьба (крышка / штуцер)', key:'threadTPI', w:['cap','jar','stud','leadscrew','bolt','nut','wingnut','gland','glandcap'], mutedBy:['threadStd'], label:'Резьба: витков на дюйм (0 = шаг в мм)', min:0, max:40, step:1, default:0, unit:'', int:true,
       hint:'Дюймовая резьба задаётся не шагом, а ЧИСЛОМ ВИТКОВ НА ДЮЙМ: шаг равен 25.4 / TPI. Ходовые ряды: UNC 1/4″ — 20, 5/16″ — 18, 3/8″ — 16, 1/2″ — 13; UNF мельче — 28, 24, 24, 20. Поставьте здесь число, и ползунок шага перестаёт участвовать: два способа задать одно и то же обязаны иметь один источник.'},
-    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], needs:{threadTPI:-1}, label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
+    {group:'Резьба (крышка / штуцер)', key:'threadPitch', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], mutedBy:['threadStd','threadTPI'], label:'Резьба: шаг', min:0.5, max:8, step:0.1, default:3, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadStarts', w:['cap','jar','stud','leadscrew','auger','bolt','nut','wingnut','gland','glandcap'], label:'Резьба: число заходов', min:1, max:6, step:1, default:1, unit:'', int:true},
     {group:'Резьба (крышка / штуцер)', key:'threadLen', w:['cap','jar','stud','leadscrew','auger','barb','bolt','gland'], label:'Резьба: длина', min:3, max:100, step:0.5, default:16, unit:'мм'},
     {group:'Резьба (крышка / штуцер)', key:'threadClear', w:['cap','nut','wingnut'], label:'Резьба: зазор посадки (крышка ↔ штуцер, на сторону)', min:0, max:1, step:0.05, default:0.4, unit:'мм'},
@@ -6597,7 +6681,7 @@ function addModel(){
 function pbLipHeight(p){ return Math.max(2, Math.min(Math.max(8, p.pbH||30)*0.5, p.pbLipH||5)); }
 // How deep buildGridfinityBaseplate cuts its sockets from the top face.
 const GF_SOCKET_DEPTH = 4.75;
-function threadHeadHeight(p){ const D=Math.max(6,p.threadD||30); return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6); }
+function threadHeadHeight(p){ const D=Math.max(6,threadDOf(p)); return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6); }
 function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3); }
 // Every screwed pair is stood off by the joint's own fit clearance rather than driven dead home. Not
 // cosmetic: at exactly full engagement the cap's rim lands ON the jar's shoulder and the nut's face ON
@@ -6643,8 +6727,13 @@ function threadEngagement(p){ return Math.max(1, (p.threadLen||16) - seatGap(p))
    числом — витками на дюйм, — и восемь копий разошлись бы молча: построитель клал бы одно, проверка
    печати считала бы другое, а на экране всё выглядело бы правильно. */
 function threadPitchOf(p){
+  /* Порядок источников: РЯД сильнее витков на дюйм, витки сильнее ползунка. Он же и порядок того,
+     насколько число известно: у ряда шаг опубликован, у дюйма выведен из витков, у ползунка выбран
+     человеком. Три способа задать одно число — но отвечает всегда ровно один. */
+  const st = threadStdOf(p);
+  if (st) return st.P != null ? st.P : Math.max(0.2, MM_PER_INCH/st.tpi);
   const tpi = Math.max(0, Math.round((p && p.threadTPI) || 0));
-  return tpi > 0 ? Math.max(0.2, 25.4/tpi) : Math.max(0.5, (p && p.threadPitch) || 3);
+  return tpi > 0 ? Math.max(0.2, MM_PER_INCH/tpi) : Math.max(0.5, (p && p.threadPitch) || 3);
 }
 /* ПРОФИЛЬ РЕЗЬБЫ. До этой сборки профиль был один — треугольный с площадками, ширину которых задавала
    ручка «плоскость гребня/впадины». Этого хватало крепежу и не хватало ХОДОВОЙ резьбе: в тисках, на
@@ -6673,12 +6762,24 @@ const THREAD_FORMS = {
 function threadFormOf(p){
   const key = (p && THREAD_FORMS[p.threadForm]) ? p.threadForm : 'metric';
   const f = THREAD_FORMS[key], P = threadPitchOf(p);
+  /* ВЫБРАННЫЙ РЯД ЗАДАЁТ ПЛОЩАДКУ у метрической — ту, при которой грань выходит стандартной. Без
+     этого выбор ряда дал бы правильные Ø и шаг при своём собственном угле грани, то есть резьбу,
+     которая называется M8 и на покупной болт не садится. Считается площадка ИЗ угла и глубины тем же
+     выражением, что у своих профилей: правило одно, применяется дважды. */
+  const std = threadStdOf(p);
+  if (std && key === 'metric'){
+    const run = f.k*P*Math.tan(THREAD_ISO_FLANK*Math.PI/180);
+    const flat = Math.max(0, Math.min(0.25, (0.5 - run/P)/2));
+    return {key, label:f.t, alphaWant:THREAD_ISO_FLANK, k:f.k, own:true, flat,
+            flatKnob:Math.max(0, Math.min(0.24, (p && p.threadFlat != null) ? p.threadFlat : 0.14)),
+            P, std};
+  }
   const flatKnob = Math.max(0, Math.min(0.24, (p && p.threadFlat != null) ? p.threadFlat : 0.14));
   /* У своего профиля площадка СЛЕДУЕТ из угла и глубины, а не берётся у ручки: два источника одного
      числа разошлись бы, и разошлись бы молча. */
   const run = f.own ? f.k*P*Math.tan(f.alpha*Math.PI/180) : 0;   // осевой разбег грани, мм
   const flat = f.own ? Math.max(0, Math.min(0.25, (0.5 - run/P)/2)) : flatKnob;
-  return {key, label:f.t, alphaWant:f.alpha, k:f.k, own:f.own, flat, flatKnob, P};
+  return {key, label:f.t, alphaWant:f.alpha, k:f.k, own:f.own, flat, flatKnob, P, std};
 }
 function threadDepthOf(majorR, P, want, k){
   const kk = k > 0 ? k : 0.55;
@@ -6690,7 +6791,7 @@ function threadMinorROf(majorR, P, want){ return Math.max(0.5, majorR - threadDe
 function throatROf(minorR){ return Math.max(1.5, Math.min(minorR - 1.0, minorR*0.62)); }
 function threadMinorR(p){
   const fm = threadFormOf(p);
-  return threadMinorROf(Math.max(4, p.threadD || 30)/2, fm.P, p.threadDepth, fm.k);
+  return threadMinorROf(Math.max(4, threadDOf(p))/2, fm.P, p.threadDepth, fm.k);
 }
 function capThroatR(p){ return throatROf(threadMinorR(p)); }
 /* РЕЗЬБОВАЯ ПАРА — ЧЕТЫРЕ ЧИСЛА, КОТОРЫХ НА ЭКРАНЕ НЕТ (v25.13.0). Резьба была самым населённым молчуном
@@ -6744,7 +6845,7 @@ const THREAD_FEMALE    = new Set(['cap','nut','wingnut','glandcap']);
 function threadFitSpec(p){
   const mode = p.threadMode || 'none';
   if (!THREAD_FASTENERS.has(mode)) return null;
-  const D = Math.max(4, p.threadD||30), majorR = D/2;
+  const D = Math.max(4, threadDOf(p)), majorR = D/2;
   const form = threadFormOf(p);
   const P = form.P;
   const S = Math.max(1, Math.round(p.threadStarts||1));
@@ -6807,6 +6908,18 @@ function threadFitSpec(p){
              наборе параметров, и сравнивать надо с ним, а не с выведенной площадкой — иначе жалоба
              сыплется на всякой трапецеидальной резьбе, которой никто ничего не крутил. */
           flatIgnored: form.own && Math.abs((p.threadFlat != null ? p.threadFlat : 0.14) - 0.14) > 1e-9,
+          /* РЯД — это обещание сойтись с покупным. Обещание держится ровно у крепёжного профиля:
+             Ø и шаг у M8 с трапецеидальной гранью верные, а гайка на неё не наворачивается. */
+          std: form.std ? form.std.v : null,
+          /* НИЖНИЙ ПРЕДЕЛ ПОСТРОИТЕЛЯ СИЛЬНЕЕ РЯДА, и молчать об этом нельзя: у резьбы Ø зажат
+             четырьмя миллиметрами, значит выбранный M3 строится как Ø4 — резьба, которая называется
+             M3 и ни на что M3 не наворачивается. Число тут не подгоняется под ряд: печатать резьбу
+             мельче четырёх миллиметров нечем, зажим настоящий. Говорится ОБА числа. */
+          stdClamped: !!form.std && form.std.D < D - 1e-9,
+          stdD: form.std ? form.std.D : 0,
+          stdLabel: form.std ? form.std.label : '',
+          stdSeries: form.std ? form.std.series : '',
+          stdOffProfile: !!form.std && form.key !== 'metric',
           notSelfLocking: !selfLock,
           squarePrint: form.key === 'square',
           metricDrive: form.key === 'metric' && mode === 'leadscrew',
@@ -6969,7 +7082,7 @@ function springSpec(p){
 }
 function augerSpec(p){
   if ((p.threadMode||'none') !== 'auger') return null;
-  const D=Math.max(4, p.threadD||30), P=threadPitchOf(p), majorR=D/2;
+  const D=Math.max(4, threadDOf(p)), P=threadPitchOf(p), majorR=D/2;
   const len=Math.max(P, p.threadLen||16);
   const rSh=Math.max(0.8, Math.min(majorR-0.8, (p.threadAugerShaft>0 ? p.threadAugerShaft : D*0.35)/2));
   const tw=Math.max(0.4, Math.min(P*0.7, p.threadAugerBlade>0 ? p.threadAugerBlade : Math.max(1.2, P*0.15)));
@@ -7075,7 +7188,7 @@ function anchorDriveR(g, t){
 // Returns null when this is not a neck adapter, or when the cap is too small to carry one.
 function threadNeckSpec(p){
   if ((p.threadMode||'none') !== 'cap' || threadTopMode(p) !== 'neck') return null;
-  const D=Math.max(4, p.threadD||30), P=threadPitchOf(p), majorR=D/2;
+  const D=Math.max(4, threadDOf(p)), P=threadPitchOf(p), majorR=D/2;
   const minorR=threadMinorROf(majorR, P, p.threadDepth);
   if (minorR-0.8 < 1.0) return null;                    // no ceiling left to open a throat in
   const P2=Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
@@ -7158,7 +7271,7 @@ function assemblyMate(p){
   if (th === 'auger') return { name:'Ствол шнека (образец)',
     frozen: (pp)=>{
       const clr = Math.max(0.1, fitTuned(pp, 0.35));
-      const rB = Math.max(2, (pp.threadD||30)/2) + clr, wall = Math.max(1.5, rB*0.12);
+      const rB = Math.max(2, threadDOf(pp)/2) + clr, wall = Math.max(1.5, rB*0.12);
       const L = Math.max(threadPitchOf(pp), pp.threadLen||16) + 2;
       return tubeYTris(0, 0, rB+wall, rB, -L/2, L/2, Math.max(48, Math.round(rB*4))); },
     seat:(A,B,S)=>({px:S.px, py:S.py, pz:S.pz}) };
@@ -8044,6 +8157,22 @@ function paramRowRelevant(param, p){
     if (param.only[k].indexOf(String(p[k])) < 0) return false;
   if (param.needs) for (const k in param.needs)
     if (!((+p[k]) > param.needs[k])) return false;
+  /* ТРЕТИЙ УРОВЕНЬ: строка ГАСНЕТ, когда за то же число отвечает другая ручка. `needs` этого не умеет
+     и уметь не может — он требует «больше порога», а здесь нужно «пока та молчит»; попытка выразить
+     это через `needs:{threadTPI:-1}` в v25.21.0 была тихим ничем: ноль тоже больше минус единицы, и
+     ползунок шага не гас никогда, хотя и подсказка, и журнал утверждали обратное. Два ползунка,
+     называющих одно число разными словами, обязаны показываться ПООДИНОЧКЕ: видеть рядом «шаг 3 мм»
+     и «20 витков на дюйм» и не знать, который из них в детали, хуже, чем не видеть второго вовсе. */
+  if (param.mutedBy) for (const k of param.mutedBy){
+    const v = p[k];
+    if (v === undefined || v === null || v === '' || v === 'none') continue;   // молчит
+    /* Ноль ловится ОДНИМ сравнением на оба вида значения: числовые ручки приходят числом (ползунки
+       проходят через `parseFloat`), из сохранённого JSON — могут прийти строкой. Разводить это на две
+       ветки значило бы завести ветку, до которой панель не достаёт: перепись мёртвых правил тут же
+       её и нашла бы. У нечисловой строки (`m8`) `+v` даёт NaN, и она говорит, как и должна. */
+    if (+v === 0) continue;                                                    // «0 = выключено»
+    return false;
+  }
   const modeKey = FAMILY_MODE[param.group];
   if (!modeKey || param.key === modeKey) return true;   // not a family, or the selector itself
   if (!param.w || param.w === '*') return true;          // shared, or not yet marked (the census scolds)
@@ -10635,7 +10764,7 @@ function buildThread(p){
   const mode  = p.threadMode;
   /* У кабельного ввода размер ПОДСТАВЛЯЕТ Ø, шаг и канал — но только когда ручка на своём умолчании.
      Тронутая ручка сильнее таблицы: PG-ряд снят не с чертежа, и поправить его должно быть можно. */
-  const D     = Math.max(4, p.threadD||30);              // male major diameter
+  const D     = Math.max(4, threadDOf(p));               // male major diameter
   const form  = threadFormOf(p);
   const P     = form.P;                                  // шаг: мм или 25.4/TPI — одно правило
   const S     = Math.max(1, Math.round(p.threadStarts||1));
@@ -18816,32 +18945,6 @@ const GC_EDGE = 4;      // материал вокруг шестигранно�
    и коэффициент его тут не выдуман, потому что честно взять его неоткуда. Номинальное напряжение
    считается, концентрация — нет, и главная работа косынки остаётся за пределами числа. */
 const GC_GUS_EDGE = 2;  // материал между косынкой и гнездом под гайку
-/* НАСТОЯЩИЕ ГАЙКИ, А НЕ ФОРМУЛА. Размер под ключ у метрической гайки — таблица (ISO 4032), и она не
-   ложится ни на какую пропорцию: у M5 это 8 мм, у M6 — 10, то есть при росте резьбы на пятую часть
-   ключ прыгает на четверть. Приложение до сих пор считало его как 1.8·Ø, и ошибка росла с размером:
-   на M8 формула даёт 14.4 против настоящих 13. Полтора миллиметра в гнезде — это гайка, которая
-   болтается и проворачивается под нагрузкой, то есть струбцина, которая не держит.
-
-   Формула при этом не выброшена, и вот почему: Ø болта у струбцины — ЛЮБОЙ от 4 до 16, а таблица
-   знает только стандартный ряд. На девять с половиной миллиметров гайки не существует, и честный
-   ответ там — оценка, а не отказ. Поэтому таблица отвечает на стандартный ряд, формула — на всё
-   остальное, и место у этого ответа ровно одно на всё приложение. */
-const NUT_HEX = {   // Ø резьбы: [размер под ключ, высота гайки, КРУПНЫЙ шаг], ISO 4032 + ISO 261
-  3:[5.5,2.4,0.5], 4:[7,3.2,0.7], 5:[8,4.7,0.8], 6:[10,5.2,1], 8:[13,6.8,1.25],
-  10:[17,8.4,1.5], 12:[19,10.8,1.75], 16:[24,14.8,2],
-};
-function nutStd(d){ for (const k in NUT_HEX) if (Math.abs(+k - d) < 0.1) return NUT_HEX[k]; return null; }
-function nutAF(d){ const n = nutStd(d); return n ? n[0] : d*1.8; }
-function nutThk(d){ const n = nutStd(d); return n ? n[1] : d*0.85; }
-/* ШАГ У НЕСТАНДАРТНОГО Ø — ШАГ БЛИЖАЙШЕГО СТАНДАРТНОГО, а не формула. Формулы для шага не существует:
-   ряд ISO 261 — опубликованный список, и на девяти с половиной миллиметрах «расчётный» шаг совпал бы с
-   тем, что бывает в природе, только случайно. Ближайший стандартный — оценка, и она названа оценкой. */
-function nutPitch(d){
-  const n = nutStd(d); if (n) return n[2];
-  let best = null, bd = 1e9;
-  for (const k in NUT_HEX){ const dd = Math.abs(+k - d); if (dd < bd){ bd = dd; best = NUT_HEX[k][2]; } }
-  return best;
-}
 /* ПЕЧАТНАЯ ВНУТРЕННЯЯ РЕЗЬБА ОТДЕЛЬНЫМ ТЕЛОМ. Вырезать спираль в протянутом контуре нечем — контур
    плоский, — а резать объёмы в этом приложении нельзя вовсе. Поэтому в губке делается ПРОСТОЕ КРУГЛОЕ
    отверстие по наружному Ø резьбы, а внутрь него утапливается втулка: снаружи цилиндр шире отверстия
@@ -29048,7 +29151,7 @@ function collectPrintWarnings(p, mesh){
      тонкой не отличается ничем, а на столе разница между «зажало» и «треснуло».
      E взят по PETG (≈1700 МПа): у PLA он вдвое выше, и там же, где PETG гнётся, PLA колется. */
   if (p.threadMode === 'gland'){
-    const D = Math.max(4, p.threadD||30), P2 = threadPitchOf(p), majorR = D/2;
+    const D = Math.max(4, threadDOf(p)), P2 = threadPitchOf(p), majorR = D/2;
     const minorR = threadMinorROf(majorR, P2, p.threadDepth);
     const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
     const cn = Math.round(p.threadColletN != null ? p.threadColletN : 4);
@@ -29077,7 +29180,7 @@ function collectPrintWarnings(p, mesh){
      под каким углом стоит конус (единственный навес в детали — он растёт внутрь) и сколько материала
      осталось у выхода под кабель. */
   if (p.threadMode === 'glandcap'){
-    const D = Math.max(6, p.threadD||30), P2 = threadPitchOf(p), majorR = D/2;
+    const D = Math.max(6, threadDOf(p)), P2 = threadPitchOf(p), majorR = D/2;
     const minorR = threadMinorROf(majorR, P2, p.threadDepth);
     const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
     const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
@@ -29698,8 +29801,10 @@ function collectPrintWarnings(p, mesh){
     if (t){
       /* Главные числа печатаются ВСЕГДА — ровно по той же причине, по которой всегда печатается
          жёсткость пружины: на экране их нет, а решают они всё. */
-      w.push('резьба Ø' + fmtNum(t.D) + '×' + fmtNum(t.P) +
-             (t.tpi > 0 ? ' (' + t.tpi + ' витков на дюйм)' : '') +
+      w.push('резьба ' + (t.std ? t.stdLabel + ' (' + t.stdSeries + '): Ø' + fmtNum(+t.D.toFixed(2)) +
+                                    '×' + fmtNum(+t.P.toFixed(2))
+                         : 'Ø' + fmtNum(t.D) + '×' + fmtNum(t.P)) +
+             (t.tpi > 0 && !t.std ? ' (' + t.tpi + ' витков на дюйм)' : '') +
              (t.S > 1 ? ' в ' + t.S + ' захода' : '') + ', ' + t.formLabel + ' (грань ' +
              fmtNum(+t.alpha.toFixed(1)) + '° от оси' +
              /* Про ISO сказано ЧИСЛОМ в той же строке, а не отдельной жалобой: угол здесь следует из
@@ -29719,6 +29824,17 @@ function collectPrintWarnings(p, mesh){
                          : 'НЕ самотормозящая — отпустите рукоятку, и груз раскрутит винт обратно') +
              ', КПД ' + (100*t.eff).toFixed(0) + ' % при трении ' + t.mu +
              ' (печатный пластик насухо; смазка уводит его к 0.1)');
+      /* Ряд выбран, а профиль ходовой — Ø и шаг стандартные, грань нет, и вся выгода ряда пропала.
+         Сказать надо ровно это: не «нельзя», а «с покупным не сойдётся». */
+      if (t.stdClamped) w.push('ряд ' + t.stdLabel + ' просит Ø' + fmtNum(+t.stdD.toFixed(2)) +
+        ', а построитель резьбы ниже Ø' + fmtNum(t.D) + ' не идёт — деталь выйдет Ø' + fmtNum(t.D) +
+        '. Это не подгонка под ряд, а настоящий предел: на таком шаге на виток приходится ' +
+        (t.P/PRINT_LAYER).toFixed(1) + ' ' + layerWord(t.P/PRINT_LAYER) + ', и виток печатается' +
+        ' лесенкой. Мелкий крепёж берите покупной, а в детали делайте гнездо под гайку');
+      if (t.stdOffProfile) w.push('ряд ' + t.stdLabel + ' выбран, а профиль «' + t.formLabel +
+        '»: Ø и шаг стандартные, грань — нет. С ПОКУПНОЙ гайкой такая резьба не свинтится, и ряд' +
+        ' здесь работает только как удобный способ задать два числа. Для покупного крепежа' +
+        ' поставьте метрический профиль, для ходового винта — свой размер вместо ряда');
       if (t.metricDrive) w.push('на ХОДОВОМ винте профиль метрический: наклонные грани дают РАСПОР,' +
         ' который разрывает гайку поперёк и на осевое усилие не идёт вовсе. Для тисков и струбцин' +
         ' берите трапецеидальную Tr или ACME — они для того и придуманы');

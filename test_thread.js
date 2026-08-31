@@ -1213,7 +1213,7 @@ console.log('\n=== профиль резьбы и дюймовый шаг ===');
       stackFeet:false,gfOn:false}, ov||{});
     return paramState.box; };
   const warn = (ov) => collectPrintWarnings(setP(ov));
-  const line = (ws) => ws.find(x => /^резьба Ø/.test(x));
+  const line = (ws) => ws.find(x => /^резьба /.test(x));
   const lift = (ws) => ws.find(x => /^подъём витка /.test(x));
   const spec = (ov) => threadFitSpec(setP(ov));
   const mesh = (ov) => { setP(ov); return buildTrisForShape('box', paramState.box); };
@@ -1418,6 +1418,113 @@ console.log('\n=== профиль резьбы и дюймовый шаг ===');
     const g = spec({threadMode:'cap', threadForm:form});
     chk('пара «' + form + '» сходится с тем же зацепом', Math.abs((mh - fl) - g.grip) < 0.06,
         {измерено:+(mh - fl).toFixed(3), спец:+g.grip.toFixed(3)});
+  }
+  /* 8. СТАНДАРТНЫЙ РЯД (v25.22.0). Он задаёт ТРИ числа, и третье — то самое, из-за которого прошлая
+     сборка объявляла расхождение с ISO: площадку гребня. Ø и шаг без неё дают резьбу, которая
+     называется M8 и на покупной болт не садится. */
+  {
+    chk('ряд собирается из таблиц, а не переписан рядом', typeof threadStdList === 'function' &&
+        threadStdList().length === Object.keys(NUT_HEX).length + 2*Object.keys(THREAD_INCH).length,
+        threadStdList().length);
+    /* ШАГ БЕРЁТСЯ ИЗ ТОЙ ЖЕ ТАБЛИЦЫ, ЧТО У ГНЕЗДА ПОД ГАЙКУ: второй список шагов разошёлся бы с этим
+       в тот день, когда в таблицу добавят размер. Спрашивается сама таблица, а не переписанные из неё
+       числа, — иначе проверка охраняла бы собственную копию. */
+    for (const d of Object.keys(NUT_HEX)){
+      const g = spec({threadStd:'m'+d});
+      /* Ø сверяется с рядом ЧЕРЕЗ нижний предел построителя: он сильнее ряда, и ниже четырёх
+         миллиметров резьбы этот движок не делает вовсе. Молчать об этом нельзя — проверка ниже. */
+      chk('M' + d + ' берёт Ø и шаг из ISO 261 (' + NUT_HEX[d][2] + ' мм)',
+          Math.abs(g.D - Math.max(4, +d)) < 1e-9 && Math.abs(g.P - NUT_HEX[d][2]) < 1e-9,
+          {Ø:g.D, шаг:g.P});
+    }
+    /* И САМ ЗАЖИМ НАЗВАН ВСЛУХ, обоими числами: ряд просит три, построитель даёт четыре. */
+    {
+      const g = spec({threadStd:'m3'});
+      chk('M3 зажат нижним пределом построителя, и это сказано',
+          g.stdClamped === true && Math.abs(g.stdD - 3) < 1e-9 && Math.abs(g.D - 4) < 1e-9 &&
+          /ряд M3 просит Ø3, а построитель резьбы ниже Ø4 не идёт/.test(warn({threadStd:'m3'}).join(' ')),
+          {просит:g.stdD, вышло:g.D});
+      chk('  а M4 и выше не зажаты ничем',
+          ['m4','m6','m8','m10','m12','m16'].every(k => spec({threadStd:k}).stdClamped === false) &&
+          !/не идёт/.test(warn({threadStd:'m8'}).join(' ')));
+    }
+    /* ДЮЙМОВЫЙ РЯД: диаметр в дюймах, шаг из витков на дюйм. Обе величины — из таблицы `THREAD_INCH`. */
+    for (const k of Object.keys(THREAD_INCH)){
+      const [inch, unc, unf] = THREAD_INCH[k];
+      const a = spec({threadStd:'unc'+k}), b = spec({threadStd:'unf'+k});
+      chk(k + '″ UNC/UNF: Ø из дюймов, шаг из витков',
+          Math.abs(a.D - inch*25.4) < 1e-9 && Math.abs(a.P - 25.4/unc) < 1e-9 &&
+          Math.abs(b.P - 25.4/unf) < 1e-9 && b.P < a.P,
+          {Ø:+a.D.toFixed(3), UNC:+a.P.toFixed(3), UNF:+b.P.toFixed(3)});
+    }
+    /* ГРАНЬ — ПО ДЕТАЛИ, А НЕ ПО ОБЕЩАНИЮ. Ради неё ряд и заводился: тридцать градусов от оси это то,
+       что нарезано на покупном болте. Меряется тем же столбцом, что и остальные профили. */
+    for (const std of ['m10', 'm12', 'unc1/2']){
+      const g = spec({threadStd:std, threadMode:'stud'}), col = column({threadStd:std, threadMode:'stud'});
+      const lo = g.majorR - g.h, hi = g.majorR;
+      let sy = 0, sr = 0, n = 0;
+      for (let i = 1; i < col.length; i++){
+        const [y0, r0] = col[i-1], [y1, r1] = col[i];
+        if (r1 - r0 < 1e-6) continue;
+        if (r0 < lo + 0.05*g.h || r1 > hi - 0.05*g.h) continue;
+        sy += y1 - y0; sr += r1 - r0; n++; }
+      const got = Math.atan2(sy, sr)*180/Math.PI;
+      chk('грань ряда «' + std + '» вышла стандартной (' + got.toFixed(1) + '° по детали)',
+          n > 3 && Math.abs(got - 30) < 2.5 && Math.abs(g.alpha - 30) < 0.2,
+          {деталь:+got.toFixed(2), спец:+g.alpha.toFixed(2)});
+    }
+    /* И РЯД ДОЕХАЛ ДО ПОСТРОЕННОГО, а не остался в спецификации: наружный радиус витка на детали
+       равен половине стандартного Ø. Ø задаётся ВТОРЫМ способом, и восемь мест, читавших ползунок,
+       разошлись бы с ним молча — это и проверяется. */
+    for (const std of ['m6', 'm12', 'unc3/8']){
+      const g = spec({threadStd:std, threadMode:'stud'}), col = column({threadStd:std, threadMode:'stud'});
+      let hi = -1e9; for (const [, r] of col) hi = Math.max(hi, r);
+      chk('Ø ряда «' + std + '» доехал до детали (' + (2*hi).toFixed(2) + ' мм)',
+          Math.abs(2*hi - g.D) < 0.05, {деталь:+(2*hi).toFixed(3), ряд:+g.D.toFixed(3)});
+    }
+    chk('у ряда расхождения с ISO нет и оговорки тоже',
+        spec({threadStd:'m8'}).notIso === false && !/по ISO было бы/.test(warn({threadStd:'m8'}).join(' ')));
+    chk('  и ряд назван в строке резьбы вместе со своим стандартом',
+        /^резьба M8 \(ISO 261, крупный шаг\): Ø8×1\.25,/.test(line(warn({threadStd:'m8'})) || ''),
+        line(warn({threadStd:'m8'})));
+    chk('  дюймовый — своим', /^резьба 1\/4″ UNC \(Unified, крупный шаг\)/.test(line(warn({threadStd:'unc1/4'})) || ''),
+        line(warn({threadStd:'unc1/4'})));
+    /* РЯД С ХОДОВЫМ ПРОФИЛЕМ — не запрет, а несбывшееся обещание: два числа стандартные, третье нет. */
+    chk('ряд с ходовым профилем назван несходящимся с покупным',
+        spec({threadStd:'m10', threadForm:'trap'}).stdOffProfile === true &&
+        /С ПОКУПНОЙ гайкой такая резьба не свинтится/.test(warn({threadStd:'m10', threadForm:'trap'}).join(' ')));
+    chk('  а с метрическим оговорки нет', spec({threadStd:'m10'}).stdOffProfile === false &&
+        !/не свинтится/.test(warn({threadStd:'m10'}).join(' ')));
+    chk('  и без ряда её нет тоже', spec({threadForm:'trap'}).stdOffProfile === false);
+    /* ДВА СПОСОБА ЗАДАТЬ ОДНО ЧИСЛО ПОКАЗЫВАЮТСЯ ПООДИНОЧКЕ. В v25.21.0 это было заявлено и не
+       работало: `needs:{threadTPI:-1}` требует «больше минус единицы», а больше её и ноль. */
+    {
+      const rows = {};
+      for (const r of SHAPE_PARAMS.box) if (r.group === 'Резьба (крышка / штуцер)') rows[r.key] = r;
+      const P0 = setP({});
+      const at = (ov) => Object.assign({}, P0, ov);
+      chk('свой размер — видны все три ручки',
+          paramRowRelevant(rows.threadD, at({threadStd:'none'})) &&
+          paramRowRelevant(rows.threadPitch, at({threadStd:'none', threadTPI:0})) &&
+          paramRowRelevant(rows.threadTPI, at({threadStd:'none'})));
+      chk('  витки на дюйм гасят ползунок шага',
+          !paramRowRelevant(rows.threadPitch, at({threadStd:'none', threadTPI:20})));
+      chk('  ряд гасит и Ø, и шаг, и витки',
+          !paramRowRelevant(rows.threadD, at({threadStd:'m8'})) &&
+          !paramRowRelevant(rows.threadPitch, at({threadStd:'m8'})) &&
+          !paramRowRelevant(rows.threadTPI, at({threadStd:'m8'})));
+      chk('  а сам ряд виден всегда', paramRowRelevant(rows.threadStd, at({threadStd:'m8'})) &&
+          paramRowRelevant(rows.threadStd, at({threadStd:'none'})));
+      /* Погасшая ручка гаснет ПО СВОЕЙ ПРИЧИНЕ, а не заодно: ряд не должен гасить длину резьбы. */
+      chk('  и не гасит того, за что не отвечает',
+          paramRowRelevant(rows.threadLen, at({threadStd:'m8', threadMode:'stud'})) &&
+          paramRowRelevant(rows.threadStarts, at({threadStd:'m8'})));
+    }
+    /* ВСЕ РЯДЫ СТРОЯТСЯ ЗАМКНУТЫМИ — иначе стандарт был бы обещанием на бумаге. */
+    for (const r of threadStdList()){
+      const t = mesh({threadStd:r.v, threadMode:'stud'});
+      chk('ряд «' + r.label + '» строится замкнутым', manifoldCheck(t, 4).watertight, r.v);
+    }
   }
   /* И НАЙДЕННОЕ ПО ДОРОГЕ: метрическая здесь не по ISO. Угол её грани следует из ручки площадки и
      глубины, а не из стандарта, и на умолчаниях выходит 21.8° вместо тридцати. Замер это и показал —

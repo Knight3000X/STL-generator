@@ -41,8 +41,18 @@ for(const nx of [1,2,3]) for(const nz of [1,2]) for(const bH of [5,12])
 console.log('=== tool holder ===');
 for(const n of [1,3,6]) for(const d of [10,20]) for(const sd of [0,4.5])
   chk('tool N'+n+' Ø'+d+' screw'+sd+' watertight (+vol)', (()=>{const t=base({mntMode:'tool',mntToolN:n,mntToolD:d,mntScrewD:sd,mntW:100});const mc=manifoldCheck(t,4);return mc.watertight&&vol(t)>0;})(), {n,d,sd});
-{ const b=computeBBox(base({mntMode:'tool',mntW:100,mntLegB:44,mntT:4}));
-  chk('tool holder width = mntW (X)', Math.abs((b.maxX-b.minX)-100)<0.3, {x:+(b.maxX-b.minX).toFixed(1)});
+/* ШИРИНА ПОЛКИ УСТУПАЕТ ГНЁЗДАМ, и с v25.28.0 это ДОГОВОР, а не случайность: заказанные гнёзда
+   важнее заказанной ширины, потому что полка без гнёзд не полка. Прежняя проверка требовала ровно
+   `mntW` и сломалась на починке — до неё полка молча теряла половину ряда, лишь бы остаться заданной
+   ширины. Требуется теперь другое: ширина берётся у спецификации, она НЕ МЕНЬШЕ заказанной, и причина
+   роста названа человеку. */
+{ const P0={mntMode:'tool',mntW:100,mntLegB:44,mntT:4};
+  const b=computeBBox(base(P0)), sp=toolRackSpec(Object.assign({}, paramState.box, P0));
+  chk('tool holder width = spec W (X)', Math.abs((b.maxX-b.minX)-sp.W)<0.3,
+      {x:+(b.maxX-b.minX).toFixed(1), spec:+sp.W.toFixed(1)});
+  chk('  and never narrower than asked', sp.W >= 100 - 1e-9, {W:sp.W, asked:100});
+  chk('  and the growth is spoken for', !sp.grew ||
+      collectPrintWarnings(Object.assign({}, paramState.box, P0)).some(x=>/ради ГНЁЗД/.test(x)));
   chk('tool holder height ≈ back (Y)', Math.abs((b.maxY-b.minY)-44)<1.0, {y:+(b.maxY-b.minY).toFixed(1)}); }
 { const few=vol(base({mntMode:'tool',mntToolN:1,mntToolD:10,mntW:120})), many=vol(base({mntMode:'tool',mntToolN:5,mntToolD:10,mntW:120}));
   chk('more tool holes remove more material', many<few, {few:+few.toFixed(0),many:+many.toFixed(0)}); }

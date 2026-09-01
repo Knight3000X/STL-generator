@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.32.0';
+const APP_VERSION = 'v25.33.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6887,6 +6887,16 @@ function throatROf(minorR){ return Math.max(1.5, Math.min(minorR - 1.0, minorR*0
 /* Заказанная стенка — ДО зажимов: она же и умолчание, если ручку не трогали. Стоит первой, потому что
    зажатая считается из неё, а не рядом с ней: два выражения одного числа — это и есть та копия, с
    которой всё началось. */
+/* СТЕНКА, ПОДНЯТАЯ СОПЛОМ — ОДНО ПРАВИЛО НА ВСЕ СТЕНКИ (v25.33.0). Пять построителей — ваза, воронка,
+   переходник, чашка, чехол ключа — зажимали стенку числом 0.8 и делали это МОЛЧА: заказал 0.5, получил
+   0.8, и ни слова. У троих из них при этом стояла жалоба «стенка 0.8 мм — тоньше ОДНОГО прохода
+   сопла», а 0.8 — это ровно ДВА прохода сопла 0.4; утверждение было попросту неверным, да ещё и порог
+   у него был свой (`< 1.0`), к соплу не привязанный вовсе.
+
+   Правило одно: тоньше двух проходов стенка не печатается, значит ниже этого её поднимает СОПЛО, и об
+   этом надо сказать. Заказанное число сохраняется рядом — без него нельзя объяснить, ЧТО подвинуло
+   толщину. */
+function wallFloored(p, asked){ return Math.max(minFeature(p), asked); }
 function colletWallAsked(p, minorR){
   return p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22));
 }
@@ -15662,7 +15672,7 @@ function vaseSpiderTris(s){
 }
 function vaseSpec(p){
   const H    = Math.max(20, p.vaseH||120);
-  const wall = Math.max(0.8, p.fnWall||1.6);
+  const wAsk = p.fnWall||1.6, wall = wallFloored(p, wAsk);
   const rB   = Math.max(4, (p.vaseBaseD||60)/2);
   const rBe  = Math.max(4, (p.vaseBellyD||95)/2);
   const rN   = Math.max(4, (p.vaseNeckD||55)/2);
@@ -15716,7 +15726,7 @@ function vaseSpec(p){
   let innerMin = Infinity;
   for (let k = 0; k < 720; k++)
     innerMin = Math.min(innerMin, vaseSectionR(Math.max(0.4, prof[0] - wall), 2*Math.PI*k/720, nFac, rel));
-  return { H, wall, pts, nS, ts, prof, nFac, facK, twist, rel, seg, rMin, rMax, leanMax, innerMin,
+  return { H, wall, wAsk, wallRaised: wall > wAsk + 1e-9, pts, nS, ts, prof, nFac, facK, twist, rel, seg, rMin, rMax, leanMax, innerMin,
            spider: vaseSpiderSpec(p, innerMin) };
 }
 /* ---- Ажурный шар / фонарь -------------------------------------------------------------------------
@@ -17447,7 +17457,7 @@ function vaseFloorTris(loop, y0, y1, drain){
 /* Поддон: мелкая чаша той же постройки, что и ваза, — прямой профиль, оболочка постоянной толщины,
    диск дна внутри неё. Отдельная функция только потому, что размеры берутся от ДРУГОЙ детали. */
 function vaseSaucerSpec(p){
-  const wall = Math.max(0.8, p.fnWall||1.6);
+  const wAsk = p.fnWall||1.6, wall = wallFloored(p, wAsk);
   const gap  = Math.max(0.2, Math.min(5, p.vaseSaucerGap == null ? 0.8 : p.vaseSaucerGap));
   const rIn  = Math.max(4, (p.vaseBaseD||60)/2) + gap;
   const H    = Math.max(3, Math.min(60, p.vaseSaucerH || 12));
@@ -17467,7 +17477,7 @@ function vaseSaucerSpec(p){
      сетка осталась бы «герметичной»), но держать две поверхности в одной плоскости значит оставить
      слайсеру нулевую толщину и ждать, что он разберётся. Поэтому условие записано в spec и проверяется
      как условие, а не как последствие. */
-  return { wall, gap, rIn, rOut: rIn + wall, H, rFloor: rIn + wall*0.5,
+  return {wAsk, wallRaised: wall > wAsk + 1e-9,  wall, gap, rIn, rOut: rIn + wall, H, rFloor: rIn + wall*0.5,
            lift: Math.min(liftWant, liftCap), liftWant, liftCap, padR, padC };
 }
 function buildSaucer(p){
@@ -17811,8 +17821,8 @@ function funnelSpec(p){
   const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
   const sL = Math.max(2, p.fnSpoutLen||25);
   const cH = Math.max(4, p.fnConeH||45);
-  const wWant = Math.max(0.8, p.fnWall||1.6);
-  const w = Math.max(0.8, Math.min(wWant, rS-0.5));       // та же строка, что у построителя
+  const wAsk = p.fnWall||1.6, wWant = wallFloored(p, wAsk);
+  const w = wallFloored(p, Math.min(wWant, rS-0.5));      // та же строка, что у построителя
   const wallCut = w < wWant - 1e-9;
   /* Наклон стенки от ВЕРТИКАЛИ — по тем же двум точкам, между которыми построитель тянет конус. */
   const lean = Math.atan2(rM - rS, cH)*180/Math.PI;
@@ -17836,7 +17846,7 @@ function funnelSpec(p){
   let lo = 1, hi = 300;
   for (let i = 0; i < 70; i++){ const mid = (lo+hi)/2; if (Vof(mid) < dose*1000) lo = mid; else hi = mid; }
   const rD = lo, R = rD + dclr + dwall, L = Lof(rD), got = Vof(rD)/1000;
-  return {mode, rM, rS, sL, cH, w, wWant, wallCut, lean, ml, grain, riS, riM,
+  return {mode, rM, rS, sL, cH, w, wWant, wallCut, wAsk, raised: wWant > wAsk + 1e-9, lean, ml, grain, riS, riM,
           steep: lean > FUNNEL_LEAN_MAX, thinWall: w < 2*0.4 - 1e-9,
           dose, got, rD, R, L, dclr, dwall,
           doseSize: {d: 2*R, l: L}};
@@ -22649,13 +22659,14 @@ function keyCoverSpec(p){
   const W    = Math.max(8, Math.min(60, p.mntKcW>0 ? p.mntKcW : 23));       // ширина головки ключа
   const H    = Math.max(8, Math.min(60, p.mntKcH>0 ? p.mntKcH : 25));       // её высота
   const T    = Math.max(1.0, Math.min(8, p.mntKcT>0 ? p.mntKcT : 2.4));     // её толщина
-  const wall = Math.max(0.8, Math.min(4, p.mntKcWall>0 ? p.mntKcWall : 1.6));
+  const wAsk = Math.min(4, p.mntKcWall>0 ? p.mntKcWall : 1.6), wall = wallFloored(p, wAsk);
   const clr  = fitTuned(p, Math.max(0, p.mntKcClr != null ? p.mntKcClr : 0.25));
   const deep = Math.max(4, Math.min(H, p.mntKcDeep>0 ? p.mntKcDeep : H*0.7));
   const cap  = !!p.mntKcCap;
   return {W, H, T, wall, clr, deep, cap,
           oW: W + 2*clr + 2*wall, oT: T + 2*clr + 2*wall, oH: deep + (cap ? wall : 0),
-          thin: wall < 1.0, tight: clr < 0.05, loose: clr > 0.6, deepAll: deep >= H - 0.5};
+          wAsk, raised: wall > wAsk + 1e-9, thin: wall < minFeature(p),
+          tight: clr < 0.05, loose: clr > 0.6, deepAll: deep >= H - 0.5};
 }
 /* Скруглённый прямоугольник в XZ. Радиус зажимается половиной меньшей стороны: при большем углы заезжают
    друг на друга и контур выворачивается наизнанку — протяжка на таком даёт вывернутую деталь, а не ошибку. */
@@ -23346,13 +23357,13 @@ function cupHolderSpec(p){
   const D    = Math.max(20, p.mntCupD>0 ? p.mntCupD : 70);
   const H    = Math.max(15, p.mntCupH>0 ? p.mntCupH : 80);
   const gap  = Math.max(1, p.mntCupGap>0 ? p.mntCupGap : 4);
-  const w    = Math.max(0.8, p.mntCupWall>0 ? p.mntCupWall : 1.6);
+  const wAsk = p.mntCupWall>0 ? p.mntCupWall : 1.6, w = wallFloored(p, wAsk);
   const bt   = Math.max(0, p.mntCupBase != null ? p.mntCupBase : 2.5);
   const clr  = 0.5, rimT = Math.max(w, Math.min(w*1.8, H/6));
   const Ri   = D/2 + clr, Ro = Ri + 2*w + gap;
   return {D, H, gap, w, bt, clr, rimT, Ri, Ro, seg: Math.max(64, Math.round(Ro*2)),
           shells: bt > 0 ? 4 : 3,
-          longBridge: gap > 6, thinWall: w < 1.0, noFloor: bt === 0,
+          longBridge: gap > 6, wAsk, raised: w > wAsk + 1e-9, thinWall: w < minFeature(p), noFloor: bt === 0,
           squat: H < bt + rimT + 4};
 }
 function buildCupHolder(p){
@@ -23436,7 +23447,7 @@ function transitionSpec(p){
   const ar = Math.max(0, Math.min(Math.min(aw,ad)/2, p.mntTrAR != null ? p.mntTrAR : 50));
   const br = Math.max(0, Math.min(Math.min(bw,bd)/2, p.mntTrBR != null ? p.mntTrBR : 5));
   const H  = Math.max(5, p.mntTrH>0 ? p.mntTrH : 60);
-  const w  = Math.max(0.8, p.mntTrWall>0 ? p.mntTrWall : 2);
+  const wAsk = p.mntTrWall>0 ? p.mntTrWall : 2, w = wallFloored(p, wAsk);
   // The steepest the wall leans anywhere, measured off the two outlines rather than off the bounding
   // boxes: a circle→rectangle of the same box still leans, and it leans most where the corner has to
   // travel outwards to meet a flat.
@@ -23449,7 +23460,7 @@ function transitionSpec(p){
   for(let i=0;i<N;i++) travel = Math.max(travel, Math.hypot(B[i][0]-A[i][0], B[i][1]-A[i][1]));
   const lean = Math.atan2(travel, H)*180/Math.PI;
   return {aw, ad, ar, bw, bd, br, H, w, N, A, B, travel, lean,
-          steep: lean > 50, thin: w < 1.0};
+          steep: lean > 50, wAsk, raised: w > wAsk + 1e-9, thin: w < minFeature(p)};
 }
 function buildTransition(p){
   const s = transitionSpec(p);
@@ -29291,6 +29302,9 @@ function collectPrintWarnings(p, mesh){
   }
   if (p.fnOn && (p.fnMode||'funnel') === 'vase' && p.vasePart === 'saucer'){
     const sc = vaseSaucerSpec(p);
+    if (sc.wallRaised) w.push('стенка поддона поднята с ' + sc.wAsk.toFixed(2) + ' до ' +
+      sc.wall.toFixed(2) + ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка' +
+      ' выходит одной ниткой');
     if (sc.liftWant > sc.lift + 0.05)
       w.push('подставки поддона: просили ' + sc.liftWant.toFixed(1) + ' мм, борт держит ' +
              sc.lift.toFixed(1) + ' — выше борта ваза встала бы на три столбика над поддоном');
@@ -29323,6 +29337,9 @@ function collectPrintWarnings(p, mesh){
       if (sd && sd.fits && sd.armNarrow < 2)
         w.push('луч крестовины у ступицы ' + sd.armNarrow.toFixed(1) +
                ' мм — тоньше двух миллиметров он ломается при затяжке кольца');
+      if (vs.wallRaised) w.push('стенка вазы поднята с ' + vs.wAsk.toFixed(2) + ' до ' +
+        vs.wall.toFixed(2) + ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка' +
+        ' выходит одной ниткой, а ваза печатается по спирали — там одна нитка и есть вся деталь');
       if (vs.leanMax > VASE_LEAN_MAX)
         w.push('стенка заваливается внутрь на ' + vs.leanMax.toFixed(0) + '° от вертикали — круче ' +
                VASE_LEAN_MAX + '° слой висит над пустотой; мягче переход между Ø или ниже шейка'); }
@@ -29761,12 +29778,18 @@ function collectPrintWarnings(p, mesh){
   if (p.mntMode === 'transition'){
     const g = transitionSpec(p);
     if (g.steep) w.push('стенка отклоняется на ' + g.lean.toFixed(0) + '° от вертикали — печатать придётся с поддержками или выше');
-    if (g.thin) w.push('стенка ' + g.w.toFixed(1) + ' мм — тоньше одного прохода сопла');
+    if (g.raised) w.push('стенка переходника поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.w.toFixed(2) +
+      ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
+    if (g.thin) w.push('стенка ' + g.w.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
+      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
   }
   if (p.mntMode === 'cupholder'){
     const g = cupHolderSpec(p);
     if (g.longBridge) w.push('зазор ' + g.gap.toFixed(1) + ' мм — обод придётся мостить над пустотой');
-    if (g.thinWall) w.push('стенка ' + g.w.toFixed(1) + ' мм — тоньше одного прохода сопла');
+    if (g.raised) w.push('стенка чашки поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.w.toFixed(2) +
+      ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
+    if (g.thinWall) w.push('стенка ' + g.w.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
+      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
     if (g.squat) w.push('высота ' + g.H.toFixed(0) + ' мм — дно и обод сойдутся, воздушной прослойки не выйдет');
     if (g.noFloor) w.push('дна нет — выйдет кольцо на стакан, а не подстаканник');
   }
@@ -29806,7 +29829,10 @@ function collectPrintWarnings(p, mesh){
   }
   if (p.mntMode === 'keycover'){
     const g = keyCoverSpec(p), sleeve = String(p.mntKcMode) === 'sleeve';
-    if (g.thin) w.push('стенка ' + g.wall.toFixed(1) + ' мм — тоньше одного прохода сопла');
+    if (g.raised) w.push('стенка чехла поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.wall.toFixed(2) +
+      ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
+    if (g.thin) w.push('стенка ' + g.wall.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
+      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
     if (sleeve && g.tight) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол держит трением, при нулевом зазоре он просто не наденется');
     if (sleeve && g.loose) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол слетит: цепляться на головке ключа не за что');
     /* Ради открытого верха вся модель и сделана: родное отверстие ключа обязано остаться доступным,
@@ -30406,6 +30432,8 @@ function collectPrintWarnings(p, mesh){
       w.push('это КРУЧЕ ' + FUNNEL_LEAN_MAX + '°: конус низкий и широкий, каждый слой висит над воздухом, ' +
              'и без поддержек он выйдет кашей. Выше конус или уже устье: наклон считается как ' +
              'atan((устье − носик)/высота)');
+    if (f.raised) w.push('стенка воронки поднята с ' + f.wAsk.toFixed(2) + ' до ' + f.wWant.toFixed(2) +
+      ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
     if (f.wallCut)
       w.push('стенка урезана с ' + f.wWant.toFixed(1) + ' до ' + f.w.toFixed(2) +
              ' мм: толще половины радиуса носика её не сделать, иначе просвет закроется');

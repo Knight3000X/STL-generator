@@ -182,8 +182,17 @@ console.log('=== имя и предупреждения ===');
   chk('оба конца в имени', /100×100 → 120×60/.test(activeShapeLabel(setp({}))), activeShapeLabel());
   const w1 = collectPrintWarnings(setp({mntTrH:12}));
   chk('крутая стенка названа', w1.some(x=>/от вертикали/.test(x)), w1);
+  // v25.33.0: жалоба на 0.8 мм была неправдой — это ровно два прохода сопла 0.4. Проверяем
+  // не текст про «тонко», а то, что пол стенки считается от СОПЛА и называет оба числа.
   const w2 = collectPrintWarnings(setp({mntTrWall:0.8}));
-  chk('тонкая стенка названа', w2.some(x=>/прохода сопла/.test(x)), w2);
+  chk('два прохода сопла 0.4 — не повод жаловаться', !w2.some(x=>/прохода сопла/.test(x)), w2);
+  const w2a = collectPrintWarnings(setp({mntTrWall:0.5}));
+  chk('поднятая стенка названа обоими числами',
+      w2a.some(x=>/стенка переходника поднята с 0\.50 до 0\.80 мм соплом 0\.4/.test(x)), w2a);
+  const w2b = collectPrintWarnings(setp({mntTrWall:0.8, printNozzle:0.6}));
+  chk('пол стенки идёт за соплом, а не за числом 0.8',
+      w2b.some(x=>/стенка переходника поднята с 0\.80 до 1\.20 мм соплом 0\.6/.test(x)), w2b);
+  chk('и подняли её именно до двух проходов', transitionSpec(setp({mntTrWall:0.8, printNozzle:0.6})).w === 1.2);
   const w3 = collectPrintWarnings(setp({mntTrH:150}));
   chk('пологий переходник — молча', !w3.some(x=>/вертикали|сопла/.test(x)), w3);
   chk('скругление зажато половиной стороны', transitionSpec(setp({mntTrAW:40, mntTrAD:40, mntTrAR:999})).ar === 20);

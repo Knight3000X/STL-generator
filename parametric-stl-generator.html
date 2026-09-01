@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.33.0';
+const APP_VERSION = 'v25.34.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6895,8 +6895,26 @@ function throatROf(minorR){ return Math.max(1.5, Math.min(minorR - 1.0, minorR*0
 
    Правило одно: тоньше двух проходов стенка не печатается, значит ниже этого её поднимает СОПЛО, и об
    этом надо сказать. Заказанное число сохраняется рядом — без него нельзя объяснить, ЧТО подвинуло
-   толщину. */
+   толщину.
+
+   И СЛЕДСТВИЕ, КОТОРОЕ СТОИЛО ТРЁХ МЁРТВЫХ ПРАВИЛ (v25.34.0). Если пол по соплу — ПОСЛЕДНЕЕ, что
+   делается со стенкой, то «стенка тоньше двух проходов» после него недостижимо тождественно. У
+   переходника, чашки и чехла ключа стояла ровно такая жалоба, и сработать она не могла ни при каком
+   наборе ручек: не осторожность, а мёртвый код, который выглядит проверкой. Убраны все три. Жалоба
+   осталась там, где она честная, — у воронки: после пола у неё идёт ПОТОЛОК по радиусу носика, и
+   потолок бьёт пол. Правило «есть пол — нет жалобы, есть потолок после пола — жалоба нужна» держится
+   проверкой с обеих сторон: пятеро не опускаются ниже пола ни при каком сопле, воронка опускается. */
 function wallFloored(p, asked){ return Math.max(minFeature(p), asked); }
+/* СТЕНКА ВОРОНКИ — ОДНО ПРАВИЛО НА ДВОИХ, и до v25.34.0 их было два разных.
+   У воронки, в отличие от остальных пяти стенок, есть НАСТОЯЩИЙ ПОТОЛОК: толще половины радиуса
+   носика стенку не сделать — просвет закроется. Порядок здесь важен и записан один раз: сперва ПОЛ
+   по соплу (тоньше двух проходов стенка выходит одной ниткой), потом ПОТОЛОК по месту. Пол второй
+   раз не накладывается: если носик не даёт даже двух проходов, стенка и правда выходит тоньше, и об
+   этом надо СКАЗАТЬ, а не подтянуть число вверх — подтянутая стенка съела бы просвет целиком.
+   Разошлись они так: спецификация уже считала пол от сопла, а построитель держал зашитое 0.8 и
+   звал ручку напрямую. На сопле 0.6 с ручкой 0.8 приложение писало «поднята до 1.20» — и строило
+   0.80. Хуже тонкой стенки только число на экране про другую деталь. */
+function funnelWall(p, rS){ return Math.min(wallFloored(p, p.fnWall||1.6), rS - 0.5); }
 function colletWallAsked(p, minorR){
   return p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22));
 }
@@ -17822,7 +17840,7 @@ function funnelSpec(p){
   const sL = Math.max(2, p.fnSpoutLen||25);
   const cH = Math.max(4, p.fnConeH||45);
   const wAsk = p.fnWall||1.6, wWant = wallFloored(p, wAsk);
-  const w = wallFloored(p, Math.min(wWant, rS-0.5));      // та же строка, что у построителя
+  const w = funnelWall(p, rS);                            // та же ФУНКЦИЯ, что у построителя
   const wallCut = w < wWant - 1e-9;
   /* Наклон стенки от ВЕРТИКАЛИ — по тем же двум точкам, между которыми построитель тянет конус. */
   const lean = Math.atan2(rM - rS, cH)*180/Math.PI;
@@ -17847,7 +17865,7 @@ function funnelSpec(p){
   for (let i = 0; i < 70; i++){ const mid = (lo+hi)/2; if (Vof(mid) < dose*1000) lo = mid; else hi = mid; }
   const rD = lo, R = rD + dclr + dwall, L = Lof(rD), got = Vof(rD)/1000;
   return {mode, rM, rS, sL, cH, w, wWant, wallCut, wAsk, raised: wWant > wAsk + 1e-9, lean, ml, grain, riS, riM,
-          steep: lean > FUNNEL_LEAN_MAX, thinWall: w < 2*0.4 - 1e-9,
+          steep: lean > FUNNEL_LEAN_MAX, thinWall: w < minFeature(p) - 1e-9,
           dose, got, rD, R, L, dclr, dwall,
           doseSize: {d: 2*R, l: L}};
 }
@@ -17861,7 +17879,7 @@ function buildFunnel(p){
   const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
   const sL = Math.max(2, p.fnSpoutLen||25);
   const cH = Math.max(4, p.fnConeH||45);
-  const w  = Math.max(0.8, Math.min(p.fnWall||1.6, rS-0.5));
+  const w  = funnelWall(p, rS);                            // та же функция, что у спецификации
   const seg= Math.max(48, Math.round(2*Math.PI*rM/1.2));
   const nC = 24, outer=[], inner=[];
   const put=(r,y)=>{ outer.push([r,y]); inner.push([Math.max(0.4, r-w), y]); };
@@ -22665,7 +22683,9 @@ function keyCoverSpec(p){
   const cap  = !!p.mntKcCap;
   return {W, H, T, wall, clr, deep, cap,
           oW: W + 2*clr + 2*wall, oT: T + 2*clr + 2*wall, oH: deep + (cap ? wall : 0),
-          wAsk, raised: wall > wAsk + 1e-9, thin: wall < minFeature(p),
+          /* Потолок 4 мм стоит ВЫШЕ пола (сопло кончается на 0.8, два прохода — 1.6), поэтому и здесь
+             стенка тоньше двух проходов недостижима, и правило про неё убрано (v25.34.0). */
+          wAsk, raised: wall > wAsk + 1e-9,
           tight: clr < 0.05, loose: clr > 0.6, deepAll: deep >= H - 0.5};
 }
 /* Скруглённый прямоугольник в XZ. Радиус зажимается половиной меньшей стороны: при большем углы заезжают
@@ -23363,7 +23383,8 @@ function cupHolderSpec(p){
   const Ri   = D/2 + clr, Ro = Ri + 2*w + gap;
   return {D, H, gap, w, bt, clr, rimT, Ri, Ro, seg: Math.max(64, Math.round(Ro*2)),
           shells: bt > 0 ? 4 : 3,
-          longBridge: gap > 6, wAsk, raised: w > wAsk + 1e-9, thinWall: w < minFeature(p), noFloor: bt === 0,
+          /* Тонкой стенке взяться неоткуда — см. переходник: пол по соплу тут последний (v25.34.0). */
+          longBridge: gap > 6, wAsk, raised: w > wAsk + 1e-9, noFloor: bt === 0,
           squat: H < bt + rimT + 4};
 }
 function buildCupHolder(p){
@@ -23460,7 +23481,11 @@ function transitionSpec(p){
   for(let i=0;i<N;i++) travel = Math.max(travel, Math.hypot(B[i][0]-A[i][0], B[i][1]-A[i][1]));
   const lean = Math.atan2(travel, H)*180/Math.PI;
   return {aw, ad, ar, bw, bd, br, H, w, N, A, B, travel, lean,
-          steep: lean > 50, wAsk, raised: w > wAsk + 1e-9, thin: w < minFeature(p)};
+          /* ЖАЛОБЫ «СТЕНКА ТОНЬШЕ ДВУХ ПРОХОДОВ» ЗДЕСЬ НЕТ И БЫТЬ НЕ МОЖЕТ. `wallFloored` — последнее,
+             что делается со стенкой переходника: потолка над ней нет ни геометрического, ни какого
+             ещё. Значит `w >= minFeature(p)` тождественно, и правило было мёртвым: оно выглядело
+             заботой, а проверить не могло ничего. Убрано в v25.34.0; о поднятии говорит `raised`. */
+          steep: lean > 50, wAsk, raised: w > wAsk + 1e-9};
 }
 function buildTransition(p){
   const s = transitionSpec(p);
@@ -29780,16 +29805,12 @@ function collectPrintWarnings(p, mesh){
     if (g.steep) w.push('стенка отклоняется на ' + g.lean.toFixed(0) + '° от вертикали — печатать придётся с поддержками или выше');
     if (g.raised) w.push('стенка переходника поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.w.toFixed(2) +
       ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
-    if (g.thin) w.push('стенка ' + g.w.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
-      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
   }
   if (p.mntMode === 'cupholder'){
     const g = cupHolderSpec(p);
     if (g.longBridge) w.push('зазор ' + g.gap.toFixed(1) + ' мм — обод придётся мостить над пустотой');
     if (g.raised) w.push('стенка чашки поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.w.toFixed(2) +
       ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
-    if (g.thinWall) w.push('стенка ' + g.w.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
-      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
     if (g.squat) w.push('высота ' + g.H.toFixed(0) + ' мм — дно и обод сойдутся, воздушной прослойки не выйдет');
     if (g.noFloor) w.push('дна нет — выйдет кольцо на стакан, а не подстаканник');
   }
@@ -29831,8 +29852,6 @@ function collectPrintWarnings(p, mesh){
     const g = keyCoverSpec(p), sleeve = String(p.mntKcMode) === 'sleeve';
     if (g.raised) w.push('стенка чехла поднята с ' + g.wAsk.toFixed(2) + ' до ' + g.wall.toFixed(2) +
       ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка выходит одной ниткой');
-    if (g.thin) w.push('стенка ' + g.wall.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
-      fmtNum(nozzleOf(p)) + ': её обрезало место, а не ручка');
     if (sleeve && g.tight) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол держит трением, при нулевом зазоре он просто не наденется');
     if (sleeve && g.loose) w.push('зазор ' + g.clr.toFixed(2) + ' мм — чехол слетит: цепляться на головке ключа не за что');
     /* Ради открытого верха вся модель и сделана: родное отверстие ключа обязано остаться доступным,
@@ -30444,9 +30463,15 @@ function collectPrintWarnings(p, mesh){
       w.push('просвет носика всего Ø' + (2*f.riS).toFixed(1) + ' при самом носике Ø' + (2*f.rS).toFixed(1) +
              ': стенка съедает его с обеих сторон. Для жидкости это капельница, для сыпучего — заглушка; ' +
              'носик толще или стенка тоньше');
+    /* ЕДИНСТВЕННАЯ ИЗ ШЕСТИ СТЕНОК, КОТОРАЯ И ПРАВДА БЫВАЕТ ТОНЬШЕ ПОЛА. У остальных пяти пол по соплу
+       последний, и «тоньше двух проходов» там недостижимо по построению — такие правила из файла
+       убраны (v25.34.0). Здесь же после пола идёт потолок по носику, и виноват в тонкой стенке НЕ
+       ползунок стенки, а Ø носика: об этом и сказано, чтобы человек крутил ту ручку, которая решает. */
     if (f.thinWall)
-      w.push('стенка ' + f.w.toFixed(2) + ' мм — это меньше двух проходов сопла 0.4: воронка выйдет ' +
-             'полупрозрачной и мягкой');
+      w.push('стенка ' + f.w.toFixed(2) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)) +
+             ' (' + fmtNum(minFeature(p)) + ' мм), и подтянуть её нельзя: носик Ø' + (2*f.rS).toFixed(1) +
+             ' не даёт больше половины своего радиуса. Воронка выйдет полупрозрачной и мягкой — ' +
+             'носик толще, и стенка встанет на своё место');
   }
   if (p.fnOn && (p.fnMode || 'funnel') === 'doser'){
     const f = funnelSpec(p);

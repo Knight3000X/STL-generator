@@ -105,5 +105,84 @@ console.log('\n=== геометрия при своём сопле не двиг
         Math.abs(get(P(base, {[knob]:0.5, printNozzle:'0.4'})) - 0.8) < 1e-9);
 }
 
+console.log('\n=== воронка: спецификация и ПОСТРОЕННОЕ — одно и то же ===');
+/* ЗАЧЕМ ЭТОТ РАЗДЕЛ. Пять стенок из шести кончаются полом по соплу, и `spec.w` для них — последнее
+   слово. У воронки после пола идёт ПОТОЛОК по носику, и до v25.34.0 потолок этот стоял в двух местах:
+   в спецификации — от `wallFloored`, у построителя — от зашитого 0.8. На сопле 0.6 приложение писало
+   «поднята до 1.20» и строило 0.80. Проверка выше этого не видела, потому что спрашивала у воронки
+   `wWant` — ЗАКАЗАННОЕ число, а не построенное. Поэтому здесь мерится СЕТКА. */
+{
+  /* Толщина трубки носика горизонтальным сечением: наружный радиус минус внутренний. Сечение берётся
+     ВНУТРИ трубки (3 мм над низом), где стенка вертикальна, а не на конусе. */
+  const spoutWall = (tris, y) => {
+    const hits = [];
+    for (const T of tris) for (let e = 0; e < 3; e++){
+      const a = T[e], b = T[(e+1)%3];
+      if ((a[1]-y)*(b[1]-y) < 0){ const t = (y-a[1])/(b[1]-a[1]);
+        hits.push(Math.hypot(a[0] + t*(b[0]-a[0]), a[2] + t*(b[2]-a[2]))); } }
+    if (!hits.length) return null;
+    hits.sort((x, z) => x - z);
+    return hits[hits.length-1] - hits[0];
+  };
+  const FN = {fnOn:true, fnMode:'funnel', fnMouthD:70, fnSpoutD:12, fnSpoutLen:25, fnConeH:45};
+  const cases = [
+    ['умолчание',              {fnWall:1.6},                                    1.6],
+    ['ровно два прохода',      {fnWall:0.8},                                    0.8],
+    ['сопло 0.6 поднимает',    {fnWall:0.8, printNozzle:'0.6'},                 1.2],
+    ['сопло 0.8 поднимает',    {fnWall:0.5, printNozzle:'0.8'},                 1.6],
+    ['носик режет потолком',   {fnWall:1.6, fnSpoutD:3},                        1.0],
+    ['носик режет НИЖЕ пола',  {fnWall:1.6, fnSpoutD:3, printNozzle:'0.8'},     1.0]];
+  for (const [name, ov, want] of cases){
+    const p = P(FN, ov), s = funnelSpec(p), tris = buildTrisForShape('box', p);
+    let lo = 1e9; for (const T of tris) for (const v of T) if (v[1] < lo) lo = v[1];
+    const built = spoutWall(tris, lo + 3);
+    chk('воронка ' + name + ': спецификация говорит ' + want, Math.abs(s.w - want) < 1e-9, s.w);
+    chk('  и построена ровно она', built !== null && Math.abs(built - want) < 1e-3, built);
+  }
+  /* ПОТОЛОК СИЛЬНЕЕ ПОЛА, И ЭТО ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ТАК. Подтянуть стенку обратно нельзя: она
+     съела бы просвет носика целиком, — поэтому воронка единственная, кому есть на что жаловаться. */
+  const thin = P(FN, {fnWall:1.6, fnSpoutD:3, printNozzle:'0.8'});
+  chk('воронка: тонкая стенка ДОСТИЖИМА — потолок бьёт пол', funnelSpec(thin).thinWall === true);
+  const said = collectPrintWarnings(thin).filter(x => /тоньше двух проходов сопла 0\.8 \(1\.6 мм\)/.test(x));
+  chk('и об этом сказано с настоящим соплом', said.length === 1, said);
+  chk('  и виноватым назван НОСИК, а не ручка стенки',
+      said.length === 1 && /носик Ø3\.0/.test(said[0]), said);
+  chk('воронка на умолчаниях жалобы не знает', funnelSpec(P(FN, {})).thinWall === false);
+}
+
+console.log('\n=== мёртвых правил про тонкую стенку не осталось ===');
+{
+  /* ПОЛ — ПОСЛЕДНЕЕ, ЧТО ДЕЛАЕТСЯ С ПЯТЬЮ СТЕНКАМИ, значит «тоньше двух проходов» у них недостижимо
+     ТОЖДЕСТВЕННО. Такое правило не осторожность, а мёртвый код: выглядит проверкой, проверить не
+     может ничего. Перебором этого не докажешь — доказывает построение, поэтому проверка спрашивает
+     исходник, а не гоняет значения. */
+  const fs = require('fs'), app = fs.readFileSync('parametric-stl-generator.html', 'utf8');
+  chk('ни одна стенка не жалуется, что её «обрезало место»',
+      app.indexOf('её обрезало место, а не ручка') < 0);
+  /* Воронка спрашивается ОТДЕЛЬНО и НАСТОЯЩИМ полем `w`: у неё пол не последний, и попади она в этот
+     цикл через `wWant`, проверка молча мерила бы заказанное число вместо построенного — ровно та
+     дыра, сквозь которую расхождение спецификации с построителем и прожило три сборки. */
+  const FLOORED = [['переходник', {mntMode:'transition'}, 'mntTrWall',  p => transitionSpec(p).w],
+                   ['чашка',      {mntMode:'cupholder'},  'mntCupWall', p => cupHolderSpec(p).w],
+                   ['чехол',      {mntMode:'keycover'},   'mntKcWall',  p => keyCoverSpec(p).wall],
+                   ['ваза',       {fnOn:true, fnMode:'vase', vaseH:120}, 'fnWall', p => vaseSpec(p).wall],
+                   ['поддон',     {fnOn:true, fnMode:'vase', vasePart:'saucer', vaseH:120}, 'fnWall',
+                                  p => vaseSaucerSpec(p).wall]];
+  for (const [name, base, knob, get] of FLOORED){
+    /* Ни на одном сопле и ни на одном значении ручки построенная стенка не выходит ниже пола. */
+    let below = null;
+    for (const nz of ['0.25','0.4','0.6','0.8']) for (const v of [0, 0.1, 0.5, 0.8, 1.2, 1.6, 4, 12]){
+      const p = P(base, {[knob]:v, printNozzle:nz});
+      if (get(p) < minFeature(p) - 1e-9) below = [nz, v, get(p)];
+    }
+    chk(name + ': ниже двух проходов стенка не опускается ни при каком сопле', below === null, below);
+  }
+  chk('и проверены этим все пятеро, у кого пол последний', FLOORED.length === WALLS.length - 1);
+  /* А у воронки — опускается, и потому правило у неё живое: одно и то же утверждение проверено с
+     обеих сторон, иначе «мёртвых нет» доказывалось бы отсутствием попытки. */
+  const fp = P({fnOn:true, fnMode:'funnel', fnSpoutD:3}, {fnWall:1.6, printNozzle:'0.8'});
+  chk('воронка — единственное исключение, и оно измерено', funnelSpec(fp).w < minFeature(fp) - 1e-9);
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if (fail) process.exitCode = 1;

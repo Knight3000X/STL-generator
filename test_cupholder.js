@@ -130,8 +130,17 @@ console.log('=== имя и предупреждения ===');
   chk('Ø в имени', /Ø70/.test(activeShapeLabel(setp({mntCupD:70}))), activeShapeLabel());
   const w1 = collectPrintWarnings(setp({mntCupGap:9}));
   chk('длинный мост обода назван', w1.some(x=>/мостить/.test(x)), w1);
+  // v25.33.0: 0.8 мм — это РОВНО два прохода сопла 0.4, и жаловаться на неё было неправдой.
+  // Теперь пол стенки идёт за соплом, и жалоба появляется там, где ручку действительно подняли.
   const w2 = collectPrintWarnings(setp({mntCupWall:0.8}));
-  chk('тонкая стенка названа', w2.some(x=>/тоньше одного прохода/.test(x)), w2);
+  chk('два прохода сопла 0.4 — не повод жаловаться', !w2.some(x=>/прохода сопла/.test(x)), w2);
+  const w2a = collectPrintWarnings(setp({mntCupWall:0.5}));
+  chk('поднятая стенка названа обоими числами',
+      w2a.some(x=>/стенка чашки поднята с 0\.50 до 0\.80 мм соплом 0\.4/.test(x)), w2a);
+  const w2b = collectPrintWarnings(setp({mntCupWall:0.8, printNozzle:0.6}));
+  chk('пол стенки идёт за соплом, а не за числом 0.8',
+      w2b.some(x=>/стенка чашки поднята с 0\.80 до 1\.20 мм соплом 0\.6/.test(x)), w2b);
+  chk('и подняли её именно до двух проходов', cupHolderSpec(setp({mntCupWall:0.8, printNozzle:0.6})).w === 1.2);
   const w3 = collectPrintWarnings(setp({mntCupH:15, mntCupBase:10}));
   chk('низкий подстаканник назван', w3.some(x=>/воздушной прослойки/.test(x)), w3);
   const w4 = collectPrintWarnings(setp({}));

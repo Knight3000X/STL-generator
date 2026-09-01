@@ -471,7 +471,7 @@ console.log('=== зуб: подрезание, остриё, сопло, люф�
   chk('модуль 0.3 объявлен непечатаемым', W_({gearModule:0.3}).some(x => /меньше двух проходов сопла/.test(x)),
       {зуб:+G({gearModule:0.3}).sPitch.toFixed(2)});
   chk('  и порог назван числом, а не словом',
-      W_({gearModule:0.3}).some(x => x.indexOf((4*GEAR_NOZZLE/Math.PI).toFixed(2)) >= 0), {});
+      W_({gearModule:0.3}).some(x => x.indexOf((2*minFeature({})/Math.PI).toFixed(2)) >= 0), {});
   chk('  на модуле 2 про сопло не говорится', !W_({}).some(x => /сопла/.test(x)), {});
   chk('тонкая вершина ловится отдельно от тонкого зуба',
       G({gearModule:0.55, gearTeeth:20}).tipThin && !G({gearModule:0.55, gearTeeth:20}).toothThin,

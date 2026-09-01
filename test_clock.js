@@ -1055,9 +1055,9 @@ console.log('\n=== циферблат называет свои числа ===')
   {
     const g = spec({});
     chk('слой смены филамента — это толщина пластины, делённая на высоту слоя',
-        Math.round(g.T/PRINT_LAYER) === 20, Math.round(g.T/PRINT_LAYER));
+        Math.round(g.T/layerOf({})) === 20, Math.round(g.T/layerOf({})));
     chk('  и он назван', /смена филамента на слое 20/.test(line(warn({}))), line(warn({})));
-    chk('  толще пластина — дальше слой', Math.round(spec({clT:6}).T/PRINT_LAYER) === 30);
+    chk('  толще пластина — дальше слой', Math.round(spec({clT:6}).T/layerOf({})) === 30);
     /* И метки в детали и правда начинаются на верхе пластины, а не где-нибудь ещё. */
     const t = mesh({}), b = computeBBox(t);
     let below = 0;

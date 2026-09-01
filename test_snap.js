@@ -177,8 +177,20 @@ console.log('=== and it says so when the beam will break ===');
   chk('та же консоль из нейлона проходит',
       collectPrintWarnings(setp({snapLen:8, snapUndercut:2, snapMat:'nylon'})).length === 0,
       collectPrintWarnings(setp({snapLen:8, snapUndercut:2, snapMat:'nylon'})));
+  /* С v25.27.0 порог тонкой консоли — не число 0.8, а ДВА ПРОХОДА ВАШЕГО СОПЛА, и проверка спрашивает
+     его у приложения, а не переписывает к себе: первая редакция держала текст «тоньше 0.8» и сломалась
+     ровно тогда, когда 0.8 перестало быть истиной для всех. */
   chk('и тонкая консоль отмечается отдельно',
-      collectPrintWarnings(setp({snapT:0.6, snapLen:60})).some(s=>/тоньше 0.8/.test(s)), {});
+      collectPrintWarnings(setp({snapT:0.6, snapLen:60}))
+        .some(s => /консоль защёлки/.test(s) && s.indexOf('сопла ' + fmtNum(nozzleOf({}))) >= 0),
+      collectPrintWarnings(setp({snapT:0.6, snapLen:60})));
+  /* И ТА ЖЕ КОНСОЛЬ НА МЕЛКОМ СОПЛЕ ПЕЧАТАЕМА — жалобы нет, потому что жаловаться не на что. */
+  chk('  а на сопле 0.25 та же консоль вопросов не вызывает',
+      !collectPrintWarnings(setp({snapT:0.6, snapLen:60, printNozzle:'0.25'}))
+        .some(s => /консоль защёлки/.test(s)));
+  chk('  на 0.8 — вызывает, и названо своё сопло',
+      collectPrintWarnings(setp({snapT:1.2, snapLen:60, printNozzle:'0.8'}))
+        .some(s => /консоль защёлки/.test(s) && /сопла 0\.8/.test(s)));
 }
 
 console.log('=== no triangle is inside-out ===');

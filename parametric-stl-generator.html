@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.26.0';
+const APP_VERSION = 'v25.27.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3554,6 +3554,29 @@ function matFitBias(p){ return FIL_MAT[matKey(p)].fit - FIL_MAT.pla.fit; }
    Ошибка идёт по ДИАМЕТРУ, а зазор задаётся НА СТОРОНУ, поэтому пополам: на Ø30 полпроцента это
    0.15 мм по диаметру и 0.075 на сторону. Знак тоже значит: ответная деталь из более усадистого
    пластика выходит МЕНЬШЕ расчёта — наружная резьба станет туже, внутренняя свободнее. */
+/* ПРИНТЕР СТАЛ ЧИСЛАМИ (v25.27.0). Сопло и высота слоя — свойства ПРИНТЕРА, а не модели, и до этой
+   сборки приложение их не знало: 0.4 стояло шестью именованными константами (`LOGO3D_NOZZLE`,
+   `THREAD_NOZZLE`, `SHEET_NOZZLE`, `HINGE_NOZZLE`, `GEAR_NOZZLE`, `LB_NOZZLE` — все одно и то же
+   число под шестью именами) и ещё десятком порогов, зашитых прямо в текстах предупреждений
+   («тоньше двух проходов сопла 0,4»). Владельцу сопла 0.6 приложение уверенно советовало то, чего
+   его принтер не умеет, а в одном месте — и вовсе рекомендовало «сопло 0.25 мм», то есть само знало,
+   что сопла бывают разные, и всё равно считало по одному.
+
+   ЧИСЛА ЭТИ ПЕЧАТНЫЕ, А НЕ ГЕОМЕТРИЧЕСКИЕ: они не двигают ни одного размера детали — только то, что
+   приложение о ней ГОВОРИТ. Поэтому нижние зажимы построителей (`Math.max(0.8, …)` внутри геометрии)
+   остаются на местах: это структурные минимумы формы, а не утверждения о принтере, и менять их
+   значило бы поменять деталь под видом свода правил. */
+function nozzleOf(p){
+  const v = p && parseFloat(p.printNozzle);
+  return (isFinite(v) && v > 0) ? v : 0.4;
+}
+/* МИНИМАЛЬНЫЙ ЭЛЕМЕНТ — ДВА ПРОХОДА: одна нитка держится только на соседях, а сама по себе рвётся и
+   на печати, и в руках. Правило одно, место у него одно. */
+function minFeature(p){ return 2*nozzleOf(p); }
+function layerOf(p){
+  const v = p && parseFloat(p.printLayerH);
+  return (isFinite(v) && v > 0) ? v : 0.2;
+}
 function matMateKey(p){
   const k = p && p.matMate;
   return (k && k !== 'same' && FIL_MAT[k]) ? k : null;
@@ -4578,7 +4601,7 @@ function buildLogoSilhouetteMask(logo, N) {
    СКОЛЬКО ТЕЛ. Силуэт из букв — это НЕСКОЛЬКО отдельных тел: подложки у этой формы нет, буквы ничем не
    связаны. Печатать так можно (каждая встанет на стол сама), но знать об этом надо заранее: три буквы
    это три детали, а не одна. */
-const LOGO3D_NOZZLE = 0.4;
+/* Прежнее имя убрано: сопло спрашивается у `nozzleOf(p)` — см. v25.27.0. */
 function logo3dSpec(p){
   const lg = (typeof logos !== 'undefined' && logos.length) ? logos.find(l => l.heightmap) : null;
   const N = (typeof logoResolution !== 'undefined') ? Math.max(48, Math.min(256, logoResolution*3)) : 160;
@@ -4638,7 +4661,7 @@ function logo3dSpec(p){
           /* Порог со ЗНАКОМ РАВЕНСТВА: число квантовано клеткой сетки, и настоящая перемычка 0.6 мм
              приходит сюда как 0.8. Строгое «меньше» пропустило бы ровно тот случай, ради которого всё
              и меряется. */
-          need: 2*LOGO3D_NOZZLE, thin: minStroke <= 2*LOGO3D_NOZZLE + 1e-9,
+          need: minFeature(p), thin: minStroke <= minFeature(p) + 1e-9, nozzle: nozzleOf(p),
           layers: t/0.2};
 }
 function buildLogoExtrudeTris(logo, sizeX, sizeZ, thickness, N) {
@@ -6529,6 +6552,12 @@ const SHAPE_PARAMS = {
       options:[{v:'pla',t:'PLA'},{v:'plaplus',t:'PLA+ / Tough PLA'},{v:'petg',t:'PETG'},{v:'abs',t:'ABS / ASA'},
                {v:'tpu',t:'TPU (гибкий)'},{v:'tpe',t:'TPE / TPC'},{v:'nylon',t:'PA (нейлон)'},
                {v:'pacf',t:'PA-CF (нейлон с углем)'},{v:'pc',t:'PC (поликарбонат)'},{v:'cf',t:'PLA-CF / PETG-CF'}]},
+    {group:'Допуски печати', key:'printNozzle', label:'Сопло', type:'select', default:'0.4',
+      options:[{v:'0.25',t:'0.25 мм (мелкое)'},{v:'0.4',t:'0.4 мм (стандартное)'},
+               {v:'0.6',t:'0.6 мм'},{v:'0.8',t:'0.8 мм (крупное)'}],
+      hint:'Приложение считает минимальным печатаемым элементом ДВА прохода сопла: тоньше этого стенка выходит одной ниткой, а часто и ничем. До v25.27.0 сопло было зашито числом 0.4 в шестнадцати местах, и владельцу 0.6 приложение уверенно советовало то, чего его принтер не умеет. Число это ПЕЧАТНОЕ, а не геометрическое: оно не меняет ни одного размера детали, только то, что приложение о ней говорит.'},
+    {group:'Допуски печати', key:'printLayerH', label:'Высота слоя', min:0.05, max:0.4, step:0.01, default:0.2, unit:'мм',
+      hint:'Высота слоя решает, сколько слоёв придётся на виток резьбы, на цветной карман подстаканника и на любую наклонную грань — то есть выйдет она гладкой или лесенкой. Как и сопло, размеров детали она не меняет: это свойство ПЕЧАТИ, а не модели.'},
     {group:'Допуски печати', key:'matShrink', label:'Компенсировать усадку материала (выключить, если её компенсирует слайсер)', type:'bool', default:true},
     {group:'Допуски печати', key:'matMate', label:'Ответная деталь печатается из ДРУГОГО материала', type:'select', default:'same',
       options:[{v:'same',t:'из того же'},{v:'pla',t:'PLA'},{v:'plaplus',t:'PLA+ / Tough PLA'},{v:'petg',t:'PETG'},
@@ -6884,7 +6913,7 @@ function capThroatR(p){ return throatROf(threadMinorR(p)); }
    всё приложение: заводить его по второму разу для каждой формы значило бы позволить двум ответам на один
    вопрос разойтись молча. Живой шарнир держит свою ручку `lhLayer` нарочно — там высота слоя это ЗАКАЗ
    человека, а не допущение, — а здесь именно допущение, и оно названо. */
-const PRINT_LAYER = 0.2;
+/* Высота слоя спрашивается у `layerOf(p)` — свойство ПРИНТЕРА, а не файла; см. v25.27.0. */
 /* «2 слоёв» и «5 слоя» — мелочь, которая читается как небрежность ровно там, где число важно. Правило
    русского счёта одно на всё приложение: 1 — слой, 2–4 — слоя, дальше слоёв, кроме одиннадцати-четырнадцати. */
 /* СЧЁТ ПО-РУССКИ ЖИВЁТ В ОДНОМ МЕСТЕ. Своё `plural` я тут завёл и через полчаса нашёл ЧУЖОЕ — оно
@@ -6893,7 +6922,7 @@ const PRINT_LAYER = 0.2;
    Дубль убран, а к оставшемуся добавлено ОКРУГЛЕНИЕ: слои приходят дробными, и «1 слоёв» на 0.5
    получалось ровно из-за его отсутствия. */
 function layerWord(n){ return plural(n, 'слой', 'слоя', 'слоёв'); }
-const THREAD_LAYER = PRINT_LAYER;   // прежнее имя: витки резьбы считаются той же высотой слоя
+
 /* Трение резьбы — не своя константа, а трение ВЫБРАННОГО материала: см. `FIL_MAT`. Держать здесь
    собственное число значило бы иметь два ответа на вопрос «насколько скользкий этот пластик», и один
    из них не знал бы, что человек выбрал нейлон. */
@@ -6925,7 +6954,7 @@ const THREAD_VM = 1/Math.sqrt(3);   // срез из растяжения, кр�
 const THREAD_WORK_TURNS = 5;        // дальние витки почти не работают
 const THREAD_HANDLE = 100;          // мм — рукоятка, на которой момент становится усилием руки
 const THREAD_HAND_N = 100;          // Н — сколько рука на неё кладёт, не упираясь ногами
-const THREAD_NOZZLE = 0.4;
+/* Сопло у резьбы — общее: `nozzleOf(p)`. */
 /* Крепёж — это те разновидности, у которых есть НАСТОЯЩАЯ винтовая резьба с шагом и профилем. Шнек,
    штопор, пружина, ёлочка и дюбель живут по своим правилам и говорят своими числами. */
 const THREAD_FASTENERS = new Set(['cap','jar','stud','bolt','nut','wingnut','gland','glandcap','leadscrew']);
@@ -6980,7 +7009,7 @@ function threadFitSpec(p){
   const eff = tanL*(cb - tmu*tanL)/Math.max(1e-9, cb*tanL + tmu);
   const turns = len/lead;
   const grip = h - clr;                                 // радиальное перекрытие витков пары
-  const layers = P/THREAD_LAYER;
+  const layers = P/layerOf(p);
   const crest = 2*flat*P;                               // площадка гребня по оси
   /* Насечка крышки режется В НАРУЖНЫЙ радиус (`rOut` в построителе), а он отсчитан от женской впадины
      плюс стенка. Значит глубина насечки СЪЕДАЕТ стенку, и глубже стенки она прорезает крышку насквозь —
@@ -7064,11 +7093,11 @@ function threadFitSpec(p){
           drive: mode === 'leadscrew' || form.own,
           wall, gripD, wallLeft, nFlute,
           loose:   female && grip <= 0.05,
-          weakGrip:female && grip > 0.05 && grip < THREAD_NOZZLE,
+          weakGrip:female && grip > 0.05 && grip < nozzleOf(p),
           fewTurns:turns < 2,
           steppy:  layers < 4,
           sharp:   flat <= 0,
-          thinCrest: flat > 0 && crest < THREAD_NOZZLE,
+          thinCrest: flat > 0 && crest < nozzleOf(p), nozzle: nozzleOf(p),
           depthCut: want > 0 && want > majorR*0.7 + 1e-9,
           /* Автоматическая глубина — меньшее из двух: 0.55 шага и 0.6 радиуса. Когда побеждает ВТОРОЕ,
              шаг крупнее, чем диаметр в состоянии унести, и виток выходит пологой волной. */
@@ -11548,7 +11577,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
    ровно поэтому у неё всё выведенное: шаг узора, перемычка и подъём фаски берутся АВТОМАТИЧЕСКИ, а ручки
    их показывают нулём. Ноль на панели — это «как было», и человек видит ноль там, где в детали полтора
    миллиметра. Толщина же — единственное, что он задаёт прямо, и она же решает, лист это или плёнка. */
-const SHEET_NOZZLE = 0.4;
+/* Сопло у листа — общее: `nozzleOf(p)`. */
 function sheetSpec(p){
   const shape = p.sheetShape || 'none';
   if (shape === 'none') return null;
@@ -11570,11 +11599,11 @@ function sheetSpec(p){
   const rise = chW > 0.1 ? Math.min(t - 0.4, riseWant) : 0;
   const angGot = (chW > 0.1 && chW > 0) ? Math.atan(rise/chW)*180/Math.PI : chAng;
   return {shape, W, D, t, cut, pattern, cell, rib, texH, through, textured,
-          layers: t/PRINT_LAYER, texLayers: texH/PRINT_LAYER,
+          layers: t/layerOf(p), texLayers: texH/layerOf(p), layerH: layerOf(p),
           chW, chAng, rise, riseWant, angGot,
-          film:     t < 3*PRINT_LAYER,
-          thinRib:  through && rib < 2*SHEET_NOZZLE,
-          flatTex:  textured && texH < PRINT_LAYER,
+          film:     t < 3*layerOf(p),
+          thinRib:  through && rib < minFeature(p),
+          flatTex:  textured && texH < layerOf(p),
           chamferCut: chW > 0.1 && riseWant > rise + 1e-9,
           rimH: Math.max(0, p.sheetRim || 0), rimW: Math.max(1, p.sheetRimW || 2)};
 }
@@ -14743,7 +14772,7 @@ function buildTelescope(p){
 
    ЗАЗОР ПРОХОДИТ ЧЕРЕЗ ПОПРАВКУ ПОСАДКИ, как все посадки приложения. Значит на экране одно число, а в
    детали другое, и сказать об этом надо. */
-const HINGE_NOZZLE = 0.4;
+/* Сопло у петли — общее: `nozzleOf(p)`. */
 function hingeSpec(p){
   if ((p.pipMode || 'none') !== 'flat') return null;
   const L = Math.max(10, p.pipLen||60);
@@ -14768,7 +14797,7 @@ function hingeSpec(p){
              есть Ø прутка — но чтобы ею воспользоваться, надо сперва узнать число. */
           rodBlind: p.pipPin === 'removable' && auto,
           inverted: tubeWall <= 0,
-          thinTube: tubeWall > 0 && tubeWall < 2*HINGE_NOZZLE,
+          thinTube: tubeWall > 0 && tubeWall < minFeature(p),
           pinFloored: auto && zEdge - wall < 0.8,
           fused:   wf > w + 1e-9,
           tight:   gap < 0.25,
@@ -18731,7 +18760,7 @@ function buildRoots(p){
    ПЛАНЕТАРНАЯ ВДОБАВОК МОЛЧА МЕНЯЛА ЗАКАЗ: число сателлитов опускается, пока (Zs+Zr) не разделится на
    него нацело, — иначе сателлиты не расставить симметрично. Заказал человек четыре, получил три, и
    узнать об этом было неоткуда. */
-const GEAR_NOZZLE = 0.4;        // сопло, из которого приложение считает и стенки: 0.4 мм
+/* Сопло у шестерни — общее: `nozzleOf(p)`; см. v25.27.0. */
 function gearToothSpec(p){
   const mode = p.gearMode;
   const m = Math.max(0.3, p.gearModule || 2);
@@ -18751,7 +18780,7 @@ function gearToothSpec(p){
   const tipLand = 2*ra*tipAng;                                        // дуга площадки вершины, мм
   const sPitch = Math.PI*m/2;                                         // толщина зуба по делительной
   const Zmin = 2/(Math.sin(a)*Math.sin(a));
-  const need = 2*GEAR_NOZZLE;                                         // два прохода сопла — меньше нет смысла
+  const need = minFeature(p);                                         // два прохода сопла — меньше нет смысла
   /* КОСОЗУБАЯ. Наклон даёт плавность только если зуб успевает уйти вбок хотя бы на один шаг: осевое
      перекрытие εβ = b·tgβ/(πm). Меньше единицы — наклон есть, а толку нет. */
   const beta = Math.max(0, Math.min(45, p.gearHelix != null ? p.gearHelix : 15))*Math.PI/180;
@@ -18933,7 +18962,7 @@ function lbracketHoleGrid(nH, r, hR, spanP, spanQ, box){
    звено в этой цепочке, и обещать по нему всю сборку было бы враньём. */
 const LB_LAYER_BOND = LAYER_BOND;      // та же половина за слои, что у крючка
 const LB_G = G_MS2;
-const LB_NOZZLE = 0.4;
+/* Сопло у уголка — общее: `nozzleOf(p)`. */
 function lbracketSpec(p){
   if ((p.mntMode || 'none') !== 'lbracket') return null;
   const W = Math.max(10, p.mntW||40), t = Math.max(2, p.mntT||4);
@@ -19008,7 +19037,7 @@ function lbracketSpec(p){
           atTip: gOn && atZ > zTip - gl*0.2,
           screwsLost: sd > 0.5 && Math.min(nBase, nBack) < nAsk,
           holeTooBig: sd > 0.5 && sd >= W - 2,
-          thinUnderSink: sd > 0.5 && underSink < 2*LB_NOZZLE,
+          thinUnderSink: sd > 0.5 && underSink < minFeature(p),
           glCut: gOn && glWant > gl + 1e-9, gwCut: gOn && gwWant > gw + 1e-9,
           weak: kg < 5};
 }
@@ -28401,7 +28430,7 @@ function collectPrintWarnings(p, mesh){
     const t = clampWallThickness(p.width, p.height, p.depth, p.wallThickness || 2);
     if (t < 1.2) w.push('стенка ' + t.toFixed(1) + ' мм — тоньше 1.2 мм');
   }
-  if (p.latticeFloor && (p.latticeRib || 1.6) < 0.8) w.push('ребро сетки тоньше 0.8 мм');
+  if (p.latticeFloor && (p.latticeRib || 1.6) < minFeature(p)) w.push('ребро сетки тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ' — ' + fmtNum(minFeature(p)) + ' мм');
   /* СРЕЗАННАЯ ГЛУБИНА РЕЛЬЕФА. Ограничение здесь настоящее — рельеф вычитается и изнутри, и глубже
      стенки резать нечего, — но подрезать введённое число молча значит показать человеку не ту вазу,
      которую он заказал, и не сказать об этом ни слова. Считается тем же `vaseSpec`, что и строит. */
@@ -28723,8 +28752,8 @@ function collectPrintWarnings(p, mesh){
            + 'а не дождём. Отверстия крупнее или просвет между ними меньше');
     /* ПЕРЕМЫЧКА ТОНЬШЕ ДВУХ ПЕРИМЕТРОВ не печатается сплошной: слайсер положит там одну нитку или
        не положит ничего, и сито расползётся в одну большую дыру. */
-    if (g.gap < 0.8)
-      w.push('просвет ' + g.gap + ' мм между отверстиями тоньше двух периметров: перемычки не '
+    if (g.gap < minFeature(p))
+      w.push('просвет ' + g.gap + ' мм между отверстиями тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ': перемычки не '
            + 'напечатаются сплошными, и сито расползётся в одну дыру');
     if (g.holes.length < 5)
       w.push('отверстий всего ' + g.holes.length + ': на таком горле ситу негде разойтись. '
@@ -29088,8 +29117,8 @@ function collectPrintWarnings(p, mesh){
            (cs.marks !== 'none' && cs.marksFit
              ? '; метка ' + cs.hourL.toFixed(0) + '×' + cs.hourW.toFixed(1) + ' мм на высоте ' +
                cs.markH.toFixed(1) + ' мм' : '; меток нет') +
-           '; смена филамента на слое ' + Math.round(cs.T/PRINT_LAYER) + ' (высота ' + cs.T.toFixed(1) +
-           ' мм при слое ' + PRINT_LAYER + ')');
+           '; смена филамента на слое ' + Math.round(cs.T/layerOf(p)) + ' (высота ' + cs.T.toFixed(1) +
+           ' мм при слое ' + fmtNum(layerOf(p)) + ')');
     if (cs.T > CLOCK_SHAFT_LEN)
       w.push('пластина ' + cs.T.toFixed(1) + ' мм: у кварцевого механизма резьба вала обычно 6–8 мм, и гайка ' +
              'со стрелками садится на неё ПОВЕРХ циферблата — промерьте свой вал или возьмите механизм с длинным');
@@ -29303,7 +29332,7 @@ function collectPrintWarnings(p, mesh){
       /* ШИРИНА ЛЕПЕСТКА — второе, что ограничивает их число, и на глаз оно не видно вовсе: венец делится
          на n секторов, из каждого прорезь съедает свою долю, и на мелком вводе двадцать четыре лепестка
          выходят уже двух проходов сопла. Потолок в самом поле этого не знает — он один на все диаметры. */
-      if (b < 0.8) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — уже двух проходов сопла 0,4; ' +
+      if (b < minFeature(p)) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — уже двух проходов сопла ' + fmtNum(nozzleOf(p)) + '; ' +
         cn + ' лепестков на этот Ø не режется, возьмите ' + Math.max(2, Math.floor(cn*b/0.9)) + ' или меньше');
       else if (b < 1.2) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — на пределе (три прохода сопла)');
       if (F > 250) w.push('цанга: чтобы прогнуть лепесток на 1 мм, нужно ' + Math.round(F/9.8) +
@@ -29357,7 +29386,7 @@ function collectPrintWarnings(p, mesh){
       const g = gs[0];
       if (g.bar < (p.pbVentBar || 1.6) - 1e-6)
         w.push('вентрешётка: перемычка ужата до ' + g.bar.toFixed(1) + ' мм — столько щелей в это окно иначе не помещается');
-      if (g.bar < 0.8) w.push('вентрешётка: перемычка ' + g.bar.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4');
+      if (g.bar < minFeature(p)) w.push('вентрешётка: перемычка ' + g.bar.toFixed(1) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)));
       if (!g.vert) w.push('вентрешётка: горизонтальные щели печатаются мостами — вертикальные надёжнее');
       /* Одна решётка — не вентиляция. Тёплый воздух упирается в глухие стенки и остаётся внутри:
          нужен и приток, и отток. Молчать об этом нельзя — деталь выйдет исправной и бесполезной. */
@@ -29372,7 +29401,7 @@ function collectPrintWarnings(p, mesh){
     if (sh){
       /* Главные числа печатаются ВСЕГДА: у листа почти всё выведенное, а ручки показывают ноль. */
       w.push('лист ' + sh.W.toFixed(0) + '×' + sh.D.toFixed(0) + ' мм, толщина ' + sh.t.toFixed(1) +
-             ' мм — это ' + sh.layers.toFixed(0) + ' ' + layerWord(sh.layers) + ' по ' + PRINT_LAYER +
+             ' мм — это ' + sh.layers.toFixed(0) + ' ' + layerWord(sh.layers) + ' по ' + fmtNum(sh.layerH) +
              (sh.pattern ? '; узор шагом ' + sh.cell.toFixed(1) + ' мм, перемычка ' + sh.rib.toFixed(2) + ' мм' +
                 (sh.textured ? ', высота ' + sh.texH.toFixed(1) + ' мм = ' + sh.texLayers.toFixed(0) +
                    ' ' + layerWord(sh.texLayers) : '')
@@ -29384,7 +29413,7 @@ function collectPrintWarnings(p, mesh){
         ' мм — тоньше двух проходов сопла, а держит решётку именно она: крупнее шаг узора или задайте' +
         ' перемычку числом');
       if (sh.flatTex) w.push('высота текстуры ' + sh.texH.toFixed(2) + ' мм — меньше одного слоя (' +
-        PRINT_LAYER + ' мм): рисунка на детали не будет вовсе');
+        fmtNum(sh.layerH) + ' мм): рисунка на детали не будет вовсе');
       if (sh.chamferCut) w.push('фаска легла под ' + sh.angGot.toFixed(0) + '°, а не под ' +
         sh.chAng.toFixed(0) + ': на ширине ' + sh.chW.toFixed(1) + ' мм заказанный угол поднял бы её на ' +
         sh.riseWant.toFixed(1) + ' мм при толщине листа ' + sh.t.toFixed(1));
@@ -29516,13 +29545,13 @@ function collectPrintWarnings(p, mesh){
     const g = lithoSpec(p);
     // Тонкое место — это стенка, и мерить её надо в проходах сопла: при 0,8 мм это ровно два прохода
     // 0,4, а при меньшем между периметрами остаётся щель, и на просвет видно её, а не картинку.
-    if (g.tMin < 0.8) w.push('литофания: в светлом ' + g.tMin.toFixed(2) + ' мм — меньше двух проходов сопла 0,4, свет пойдёт через щель между периметрами');
+    if (g.tMin < minFeature(p)) w.push('литофания: в светлом ' + g.tMin.toFixed(2) + ' мм — меньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ', свет пойдёт через щель между периметрами');
     if (g.tMax - g.tMin < 1.2) w.push('литофания: разница толщин ' + (g.tMax - g.tMin).toFixed(1) + ' мм — на просвет картинка выйдет блёклой');
     if (g.N*g.M > 120000) w.push('литофания: сетка ' + g.N + '×' + g.M + ' — предпросмотр будет медленным');
     if (typeof logos === 'undefined' || !logos.some(l => l.heightmap))
       w.push('литофания: картинка не загружена — панель выйдет ровной плитой');
   }
-  if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < 0.8) w.push('перегородка тоньше 0.8 мм');
+  if (((p.divX||1) > 1 || (p.divZ||1) > 1) && (p.divT || 1.2) < minFeature(p)) w.push('перегородка тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ' — ' + fmtNum(minFeature(p)) + ' мм');
   if (typeof logos !== 'undefined')
     for (const l of logos) if (l.depth > 0 && l.depth < 0.3) { w.push('рельеф мельче 0.3 мм (не пропечатается)'); break; }
   // A stepped relief divides its depth between the levels, so the number that has to clear a layer is the
@@ -29561,15 +29590,27 @@ function collectPrintWarnings(p, mesh){
       const ml = (g.shape === 'round' ? Math.PI*inner*inner : 4*inner*inner)*g.rim/1000;
       w.push('подстаканник ' + (g.shape === 'round' ? 'Ø' : '') + g.size.toFixed(0) +
              (g.shape === 'round' ? '' : ' мм') + '×' + g.t.toFixed(1) + ' мм; карман под рисунок ' +
-             g.inlay.toFixed(1) + ' мм — это ' + (g.inlay/PRINT_LAYER).toFixed(0) + ' ' +
-             layerWord(g.inlay/PRINT_LAYER) + ' цвета по ' + PRINT_LAYER + ', печать рисунком ВНИЗ' +
+             g.inlay.toFixed(1) + ' мм — это ' + (g.inlay/layerOf(p)).toFixed(0) + ' ' +
+             layerWord(g.inlay/layerOf(p)) + ' цвета по ' + fmtNum(layerOf(p)) + ', печать рисунком ВНИЗ' +
              (g.rim > 0.05 ? '; борт ' + g.rim.toFixed(1) + ' мм удержит около ' + ml.toFixed(0) + ' мл'
                            : '; борта нет'));
-      if (g.inlay/PRINT_LAYER < 2.5) w.push('в кармане ' + (g.inlay/PRINT_LAYER).toFixed(0) + ' ' +
-        layerWord(g.inlay/PRINT_LAYER) +
+      if (g.inlay/layerOf(p) < 2.5) w.push('в кармане ' + (g.inlay/layerOf(p)).toFixed(0) + ' ' +
+        layerWord(g.inlay/layerOf(p)) +
         ' цвета — тонкий цвет просвечивает телом подстаканника; глубже карман или тоньше слой');
       if (inWant > g.inlay + 1e-6) w.push('карман урезан с ' + inWant.toFixed(1) + ' до ' +
         g.inlay.toFixed(1) + ' мм — глубже половины толщины он съел бы саму деталь');
+      /* КАРМАН, НЕ КРАТНЫЙ СЛОЮ (v25.27.0). Правило стало возможным только теперь, когда высота слоя
+         известна приложению: смена филамента происходит НА ГРАНИЦЕ слоёв, и если дно кармана лежит
+         между границами, слайсер округлит его вверх или вниз — цвет вылезет на лишний слой или не
+         доберётся до дна. Справка подстаканника советовала «брать высоту слоя кратной глубине
+         кармана» с незапамятных времён; проверить это приложение не могло, потому что высоты слоя не
+         знало. Теперь может — и говорит, на сколько промахнулось. */
+      { const n = g.inlay/layerOf(p), off = Math.abs(n - Math.round(n))*layerOf(p);
+        if (off > 0.02) w.push('карман ' + g.inlay.toFixed(2) + ' мм не кратен слою ' +
+          fmtNum(layerOf(p)) + ': это ' + n.toFixed(2) + ' слоя, и дно ляжет на ' + off.toFixed(2) +
+          ' мм мимо границы. Смена филамента идёт ПО границе слоя, значит цвет выйдет на слой толще' +
+          ' или тоньше заказанного. Возьмите карман ' + (Math.round(n)*layerOf(p)).toFixed(2) +
+          ' мм — это ровно ' + Math.round(n) + ' ' + layerWord(Math.round(n)) + ', — или слой другой'); }
       if (rimWant > g.rim + 1e-6) w.push('борт урезан с ' + rimWant.toFixed(1) + ' до ' + g.rim.toFixed(1) +
         ' мм: под ним должны остаться карман (' + g.inlay.toFixed(1) + ') и дно' +
         (g.rim < 0.4 ? ', и от борта не осталось даже прохода сопла' : ''));
@@ -29921,12 +29962,12 @@ function collectPrintWarnings(p, mesh){
     const sp = snapSpec(p);
     if (sp.over) w.push('защёлка: деформация ' + sp.eps.toFixed(1) + ' % при допустимых ' +
                         sp.mat.eps + ' % для ' + sp.mat.t + ' — консоль сломается');
-    if (sp.t < 0.8) w.push('консоль защёлки ' + sp.t.toFixed(1) + ' мм — тоньше 0.8 мм');
+    if (sp.t < minFeature(p)) w.push('консоль защёлки ' + sp.t.toFixed(1) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)));
   }
   { const a = augerSpec(p);
     // Both ends of the blade, because they are different numbers: the root is what was asked for, and the
     // tip is what the taper and the row cap left of it. A long screw thins its own flight.
-    if (a && a.blade < 0.8) w.push('виток шнека ' + a.blade.toFixed(1) + ' мм — тоньше 0.8 мм');
+    if (a && a.blade < minFeature(p)) w.push('виток шнека ' + a.blade.toFixed(1) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)));
     else if (a && a.tip < 0.6) w.push('кромка витка ' + a.tip.toFixed(1) + ' мм — шнек слишком длинный для такого витка'); }
   if ((p.threadMode || 'none') === 'corkscrew'){
     const k = corkscrewSpec(p);
@@ -29953,7 +29994,7 @@ function collectPrintWarnings(p, mesh){
              ': ' + (t.female ? 'зацеп ' + t.grip.toFixed(2) + ' мм (профиль ' + t.h.toFixed(2) +
              ' − зазор ' + t.clr.toFixed(2) + '), ' : 'профиль ' + t.h.toFixed(2) + ' мм, ') +
              t.turns.toFixed(1) + (t.female ? ' об. зацепления' : ' об. резьбы') +
-             ', слоёв на виток ' + t.layers.toFixed(1) + ' при слое ' + THREAD_LAYER + ' мм');
+             ', слоёв на виток ' + t.layers.toFixed(1) + ' при слое ' + fmtNum(layerOf(p)) + ' мм');
       /* ВТОРАЯ СТРОКА — ДЛЯ ХОДОВОЙ. Угол подъёма, самоторможение и КПД не нужны крышке от банки и
          решают всё у винта тисков; печатаются они всегда по той же причине, по которой печатается
          жёсткость пружины: на экране их нет, а деталь ими и живёт. */
@@ -30031,7 +30072,7 @@ function collectPrintWarnings(p, mesh){
       if (t.stdClamped) w.push('ряд ' + t.stdLabel + ' просит Ø' + fmtNum(+t.stdD.toFixed(2)) +
         ', а построитель резьбы ниже Ø' + fmtNum(t.D) + ' не идёт — деталь выйдет Ø' + fmtNum(t.D) +
         '. Это не подгонка под ряд, а настоящий предел: на таком шаге на виток приходится ' +
-        (t.P/PRINT_LAYER).toFixed(1) + ' ' + layerWord(t.P/PRINT_LAYER) + ', и виток печатается' +
+        (t.P/layerOf(p)).toFixed(1) + ' ' + layerWord(t.P/layerOf(p)) + ', и виток печатается' +
         ' лесенкой. Мелкий крепёж берите покупной, а в детали делайте гнездо под гайку');
       if (t.stdOffProfile) w.push('ряд ' + t.stdLabel + ' выбран, а профиль «' + t.formLabel +
         '»: Ø и шаг стандартные, грань — нет. С ПОКУПНОЙ гайкой такая резьба не свинтится, и ряд' +
@@ -30056,7 +30097,7 @@ function collectPrintWarnings(p, mesh){
         (t.S > 1 ? ' (за оборот резьба уходит на ' + t.lead.toFixed(1) + ' мм — заходов ' + t.S + ')' : '') +
         ': держит фактически первый виток, а он и срывается первым');
       if (t.steppy) w.push('шаг ' + fmtNum(t.P) + ' мм — слоёв на виток всего ' + t.layers.toFixed(1) +
-        ' при слое ' + THREAD_LAYER + ' мм: фланки не разрешаются, вместо резьбы получится накатка');
+        ' при слое ' + fmtNum(layerOf(p)) + ' мм: фланки не разрешаются, вместо резьбы получится накатка');
       if (t.sharp) w.push('площадка гребня 0: профиль сходится в ребро и по гребню, и по впадине — сопло' +
         ' такое ребро не кладёт, а мате упрётся в скруглённую макушку');
       else if (t.thinCrest) w.push('площадка гребня ' + t.crest.toFixed(2) + ' мм — тоньше прохода сопла:' +
@@ -30105,7 +30146,7 @@ function collectPrintWarnings(p, mesh){
   if ((p.threadMode || 'none') === 'cap' && threadTopMode(p) === 'neck'){
     const ns = threadNeckSpec(p);
     if (!ns) w.push('переходник: под такой резьбой не остаётся потолка, чтобы открыть в нём канал — крышка вышла глухой');
-    else if (ns.wall < 0.8) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше 0.8 мм');
+    else if (ns.wall < minFeature(p)) w.push('стенка горловины ' + ns.wall.toFixed(1) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)));
   }
   if (p.chMode && p.chMode !== 'none'){
     const g = cardSpec(p);
@@ -30226,7 +30267,7 @@ function collectPrintWarnings(p, mesh){
              ' мм) это число не бывает');
       if (g.thin)
         w.push('перемычка ' + g.minStroke.toFixed(2) + ' мм — это не толще двух проходов сопла ' +
-               LOGO3D_NOZZLE.toFixed(1) + ': тонкие места выйдут кашей или пропадут вовсе. Крупнее ' +
+               fmtNum(g.nozzle) + ': тонкие места выйдут кашей или пропадут вовсе. Крупнее ' +
                'модель, жирнее рисунок или сопло 0.25 мм');
       if (g.bodies > 1)
         w.push('силуэт распадается на ' + g.bodies + ' отдельных ' +
@@ -30354,12 +30395,12 @@ function collectPrintWarnings(p, mesh){
              'угле полный профиль не строится — уменьшите угол зацепления или добавьте зубьев');
     else if (g.tipThin)
       w.push('площадка вершины ' + g.tipLand.toFixed(2) + ' мм — тоньше двух проходов сопла ' +
-             GEAR_NOZZLE.toFixed(1) + ': кончик зуба пропечатается кашей. Крупнее модуль или сопло ' +
-             '0.25 мм');
+             fmtNum(nozzleOf(p)) + ': кончик зуба пропечатается кашей. Крупнее модуль или сопло ' +
+             'мельче');
     if (g.toothThin)
       w.push('зуб по делительной ' + g.sPitch.toFixed(2) + ' мм при модуле ' + g.m.toFixed(2) +
-             ' — это меньше двух проходов сопла ' + GEAR_NOZZLE.toFixed(1) + ' мм. Модуль ниже ' +
-             (4*GEAR_NOZZLE/Math.PI).toFixed(2) + ' печатать нечем');
+             ' — это меньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ' мм. Модуль ниже ' +
+             (2*minFeature(p)/Math.PI).toFixed(2) + ' печатать нечем');
     if (g.mode === 'helical')
       w.push('косозубая: наклон ' + g.betaDeg.toFixed(0) + '° при толщине ' + g.th.toFixed(1) +
              ' мм даёт осевое перекрытие ' + g.epsB.toFixed(2) +
@@ -30436,7 +30477,7 @@ function collectPrintWarnings(p, mesh){
     const a = anchorSpec(p);
     // Стенка вокруг самореза — единственное место, где дюбель рвётся при затяжке.
     if (a.wall < 0.9) w.push('дюбель: вокруг самореза остаётся ' + a.wall.toFixed(1) + ' мм — саморез разорвёт дюбель при затяжке; уменьшите его Ø или возьмите сердечник потолще');
-    if (a.flight < 0.8) w.push('дюбель: виток ' + a.flight.toFixed(1) + ' мм — тоньше двух проходов сопла 0,4, в гипсе он смнётся');
+    if (a.flight < minFeature(p)) w.push('дюбель: виток ' + a.flight.toFixed(1) + ' мм — тоньше двух проходов сопла ' + fmtNum(nozzleOf(p)) + ', в гипсе он смнётся');
     // Дюбель держится площадью витка В ЛИСТЕ. Тело короче листа — и держать нечем.
     if (a.grip < 6) w.push('дюбель: в листе ' + a.board.toFixed(1) + ' мм сидит всего ' + a.grip.toFixed(1) + ' мм витка — удлините тело');
     if (a.turns < 2) w.push('дюбель: витков всего ' + a.turns.toFixed(1) + ' — меньше двух, держать почти нечем; уменьшите шаг или удлините тело');

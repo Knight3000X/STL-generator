@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.29.0';
+const APP_VERSION = 'v25.30.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -13744,6 +13744,17 @@ const ART_CLIP_FLOOR = 2.5;   // дно паза — в него упирает�
 const ART_POST_CH    = 0.8;   // заходная фаска хвостовика: без неё он не попадает в гнездо
 const ART_BOARD_MU   = 0.3;   // трение пластика о стеклотекстолит — величина справочная, не выведенная
 const ART_CLIP_SINK  = 0.6;   // насколько подошва держателя утоплена в тело звена — телами, а не гранями
+/* ГДЕ У ЗВЕНА НАЧИНАЕТСЯ ТЕЛО — ОДНО ПРАВИЛО НА ФАЙЛ (v25.30.0). Цилиндр тела не может начаться у
+   самого центра шара: там ещё чашка, и её наружная сфера радиуса Ri+wall шире. Тело начинается там,
+   где эта сфера сходится к радиусу тела, плюс треть миллиметра на срастание. Число это жило внутри
+   построителя звена, и снаружи его никто не знал — а знать надо: ХВОСТОВИК проходит снизу ровно до
+   него, значит узкая часть руки длиннее объявленной длины хвостовика на эту величину. Из-за этого
+   глухое гнездо струбцины точилось мельче, чем нужно (см. ниже). */
+function articBodyStartY(j, rB){
+  return rB < j.Ri + j.wall
+    ? Math.sqrt((j.Ri + j.wall)*(j.Ri + j.wall) - rB*rB) + 0.3
+    : j.R*0.75;
+}
 function articEndSpec(p, j, bodyR){
   const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
   const endA = (p.artEndA === 'post') ? 'post' : 'ball';
@@ -13846,7 +13857,11 @@ function articEndSpec(p, j, bodyR){
   const lNeck = Math.max(3, lOutR*0.35);            // шейка от тела звена до обода
   const lRatio = lAperture/lensD;
   const headH = endB === 'clip' ? hZ : endB === 'board' ? bH : endB === 'lens' ? lNeck + 2*lOutR : 0;
-  return { endA, endB, postD, postLen, shoulder, clipT, clipW, clipHole, clipDepth,
+  /* ПОЛНАЯ УЗКАЯ ДЛИНА — то, что на самом деле должно поместиться в гнездо. Хвостовик идёт снизу
+     от −postLen вверх до начала тела звена, и до уступа он узкий ВСЮ эту длину. Объявленный
+     `postLen` — только его часть НИЖЕ звена; гнездо, точённое по нему, коротко ровно на остаток. */
+  const postFree = postLen + articBodyStartY(j, Math.max(j.ds/2 + 0.4, bodyR));
+  return { endA, endB, postD, postLen, postFree, shoulder, clipT, clipW, clipHole, clipDepth,
            slotT, slotW, hX, hZ, cx, cz0, cz1, holeR, holeZ, holeFits, headH,
            lensD, lensT, lensLip, lensBead, lensWall, lSeatR, lLipR, lBeadR, lOutR, lBeadH,
            lSeat0, lSeat1, lH, lStrain, lOver, lAperture, lNeck, lRatio, lAllow: lMat.eps,
@@ -13928,9 +13943,7 @@ function articSegTris(s, k){
   const first = (k === 0) && e.endA === 'post';
   const last  = (k === s.N - 1) && e.endB !== 'cup';
   const rB = Math.max(j.ds/2 + 0.4, s.bodyR*scale);
-  const yB0 = rB < j.Ri + j.wall
-    ? Math.sqrt((j.Ri + j.wall)*(j.Ri + j.wall) - rB*rB) + 0.3
-    : j.R*0.75;
+  const yB0 = articBodyStartY(j, rB);
   if (!last){
     // чашка наверху, устье вверх — как у одиночного шарнира
     const inner = [], outer = [];
@@ -14403,8 +14416,14 @@ function artClampSpec(p){
   const rS = e.postD/2 + a.j.gap/2;
   const rB = rS + ART_CLAMP_WALL;
   const hWant = cl(p.artClampH, 0, 120, 0);
-  const H = hWant > 0 ? Math.max(2, hWant) : e.postLen + 1.5;
-  const shallow = H < e.postLen - 1e-9;          // хвостовик упрётся торцом в дно раньше уступа
+  /* ГЛУБИНА ГЛУХОГО ГНЕЗДА СЧИТАЕТСЯ ОТ ПОЛНОЙ УЗКОЙ ДЛИНЫ, а не от объявленной (v25.30.0). Замысел
+     записан прямо здесь же строкой ниже: «хвостовик упрётся торцом в дно раньше уступа» — то есть
+     держать обязан УСТУП, а торец обязан не доставать до дна. Пока гнездо точилось по `postLen`, всё
+     выходило наоборот: узкая часть руки на восемь миллиметров длиннее, рука садилась на дно, а уступ
+     оставался висеть над плитой и не касался её вовсе. У плиты этой беды нет — там гнездо СКВОЗНОЕ,
+     остаток просто выходит снизу. */
+  const H = hWant > 0 ? Math.max(2, hWant) : e.postFree + 1.5;
+  const shallow = H < e.postFree - 1e-9;         // хвостовик упрётся торцом в дно раньше уступа
   /* БОБЫШКА СТАВИТСЯ У САМОЙ СПИНКИ: там она сидит над хребтом скобы, а не на конце губки, и момент
      идёт в стол коротким путём. Дальше к краю губки — длиннее рычаг на саму губку. */
   const xB = GC_OFF + rB + 0.5;
@@ -28574,8 +28593,10 @@ function collectPrintWarnings(p, mesh){
              cm.L.allow.toFixed(0) + ' МПа) — он и сломается первым. Толще хвостовик: напряжение падает ' +
              'как КУБ диаметра');
     if (cm.shallow)
-      w.push('гнездо (' + cm.H.toFixed(0) + ' мм) мельче хвостовика (' + cm.e.postLen.toFixed(0) +
-             ' мм): рука упрётся торцом в дно раньше, чем уступом в бобышку, и сядет криво');
+      w.push('гнездо (' + cm.H.toFixed(0) + ' мм) мельче узкой части руки (' + cm.e.postFree.toFixed(0) +
+             ' мм — это хвостовик ' + cm.e.postLen.toFixed(0) + ' плюс ' +
+             (cm.e.postFree - cm.e.postLen).toFixed(0) + ' мм под телом звена): рука упрётся торцом в ' +
+             'дно раньше, чем уступом в бобышку, и сядет криво');
     if (!cm.fitsY)
       w.push('бобышка Ø' + (2*cm.rB).toFixed(1) + ' шире скобы (' + cm.g.W.toFixed(1) +
              ' мм) и свисает по бокам. Шире скоба или тоньше хвостовик');
@@ -28646,10 +28667,16 @@ function collectPrintWarnings(p, mesh){
        что «крокодил» с винтом — покупные. */
     const e = a.e;
     if (e.endA === 'post'){
+      /* НАЗЫВАЮТСЯ ОБА ЧИСЛА, и это не педантизм: под уступ точат гнездо, а узкая часть руки длиннее
+         объявленного хвостовика на кусок под телом звена. Пока говорилось одно, глухое гнездо
+         выходило коротким — см. v25.30.0. */
       w.push('нижний конец — ХВОСТОВИК Ø' + e.postD.toFixed(1) + '×' + e.postLen.toFixed(0) +
-             ' мм ВМЕСТО шара: гнездо основания точить под него, ' +
-             (e.shoulder > 0 ? 'уступ ' + e.shoulder.toFixed(1) + ' мм и есть упор глубины'
-                             : 'уступа нет — хвостовик толще тела звена') +
+             ' мм ВМЕСТО шара, а УЗКАЯ ЧАСТЬ руки до уступа — ' + e.postFree.toFixed(0) +
+             ' мм: под телом звена она идёт ещё ' + (e.postFree - e.postLen).toFixed(0) +
+             ' мм тем же диаметром. Глухое гнездо точить по ВТОРОМУ числу, иначе ' +
+             (e.shoulder > 0 ? 'уступ ' + e.shoulder.toFixed(1) + ' мм — а он и есть упор глубины — ' +
+                               'повиснет над плитой и рука сядет на дно'
+                             : 'сядет как придётся: уступа нет, хвостовик толще тела звена') +
              '. Шар внизу держать было нечему и незачем');
       if (e.shoulderThin)
         w.push(e.shoulder > 0

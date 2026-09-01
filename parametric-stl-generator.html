@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.31.0';
+const APP_VERSION = 'v25.32.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6876,6 +6876,23 @@ function threadMinorROf(majorR, P, want){ return Math.max(0.5, majorR - threadDe
 /* ГОРЛО КРЫШКИ — тоже одно правило: расточка под воронку, носик или сито не может подойти к самой
    резьбе ближе миллиметра, иначе потолка под ней не остаётся. */
 function throatROf(minorR){ return Math.max(1.5, Math.min(minorR - 1.0, minorR*0.62)); }
+/* СТЕНКА ЦАНГИ — ОДНО ПРАВИЛО (v25.32.0). Выражение стояло ДВУМЯ копиями, слово в слово: у
+   построителя лепестков и в самих предупреждениях, которые по нему же считают жёсткость лепестка.
+   Пока обе копии совпадали, беды не было видно; разойтись им ничего не мешало.
+
+   НИЖНИЙ ЗАЖИМ ТЕПЕРЬ ИДЁТ ЗА СОПЛОМ. Раньше здесь стояло число 0.8 — два прохода сопла 0.4, — и
+   владельцу сопла 0.6 приложение молча строило стенку, которую его принтер не кладёт: одна нитка
+   вместо двух. Молча — потому что предупреждение у цанги есть, но оно про ШИРИНУ лепестка, а не про
+   его толщину. На умолчаниях ничего не двигается: два прохода сопла 0.4 — это те же 0.8. */
+/* Заказанная стенка — ДО зажимов: она же и умолчание, если ручку не трогали. Стоит первой, потому что
+   зажатая считается из неё, а не рядом с ней: два выражения одного числа — это и есть та копия, с
+   которой всё началось. */
+function colletWallAsked(p, minorR){
+  return p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22));
+}
+function colletWallOf(p, minorR, rBore){
+  return Math.max(minFeature(p), Math.min(minorR - rBore - 0.4, colletWallAsked(p, minorR)));
+}
 function threadMinorR(p){
   const fm = threadFormOf(p);
   return threadMinorROf(Math.max(4, threadDOf(p))/2, fm.P, p.threadDepth, fm.k);
@@ -11043,8 +11060,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
 
            Стенка постоянной толщины, а лепесток РАСКРЫТ: и наружная, и внутренняя поверхности расходятся
            к кончику. Так и работает настоящая цанга — в покое она шире кабеля, и обжимает его гайка. */
-        const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
-                    p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
+        const cw = colletWallOf(p, minorR, rBore);
         for(const T of colletFingersTris(y1 - 0.6, y1 + cl, minorR - cw, minorR + grow - cw,
                                          minorR, minorR + grow, cn, COLLET_GAP_FRAC, Nth)) tris.push(T);
       } }
@@ -29373,13 +29389,25 @@ function collectPrintWarnings(p, mesh){
     const cn = Math.round(p.threadColletN != null ? p.threadColletN : 4);
     const cl = p.threadColletLen != null ? p.threadColletLen : Math.max(5, (p.threadLen||16)*0.5);
     if (cn >= 2 && cl > 1){
-      const cw = Math.max(0.8, Math.min(minorR - rBore - 0.4,
-                  p.threadColletWall > 0 ? p.threadColletWall : Math.max(1.2, Math.min(2.5, minorR*0.22))));
+      const cw = colletWallOf(p, minorR, rBore);
       const b = colletFingerWidth(minorR, cw, Math.min(cn, COLLET_N_MAX)), I = b*Math.pow(cw,3)/12;
       const F = 3*1700*I/Math.pow(cl,3);
       /* ШИРИНА ЛЕПЕСТКА — второе, что ограничивает их число, и на глаз оно не видно вовсе: венец делится
          на n секторов, из каждого прорезь съедает свою долю, и на мелком вводе двадцать четыре лепестка
          выходят уже двух проходов сопла. Потолок в самом поле этого не знает — он один на все диаметры. */
+      /* СТЕНКА ЦАНГИ МОГЛА УЕХАТЬ ОТ ЗАКАЗАННОЙ ДВУМЯ ПУТЯМИ, и они разные (v25.32.0). Снизу её
+         поднимает СОПЛО: тоньше двух проходов стенка не печатается, и раньше это делалось молча
+         числом 0.8 — владельцу сопла 0.6 приложение строило одну нитку вместо двух. Сверху её режет
+         РАСТОЧКА: между кабелем и впадиной резьбы больше просто нет материала. Пути называются
+         порознь, потому что чинятся они разным. */
+      { const asked = colletWallAsked(p, minorR);
+        if (cw > asked + 1e-9) w.push('стенка цанги поднята с ' + asked.toFixed(2) + ' до ' +
+          cw.toFixed(2) + ' мм соплом ' + fmtNum(nozzleOf(p)) + ': тоньше двух его проходов стенка' +
+          ' выйдет одной ниткой и лепесток сломается при первой затяжке. Нужна тоньше — ставьте сопло' +
+          ' мельче');
+        if (cw < asked - 1e-9) w.push('стенка цанги урезана с ' + asked.toFixed(2) + ' до ' +
+          cw.toFixed(2) + ' мм расточкой под кабель: между ней и впадиной резьбы больше материала' +
+          ' нет. Уже кабель или крупнее резьба'); }
       if (b < minFeature(p)) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — уже двух проходов сопла ' + fmtNum(nozzleOf(p)) + '; ' +
         cn + ' лепестков на этот Ø не режется, возьмите ' + Math.max(2, Math.floor(cn*b/0.9)) + ' или меньше');
       else if (b < 1.2) w.push('цанга: лепесток шириной ' + b.toFixed(1) + ' мм — на пределе (три прохода сопла)');

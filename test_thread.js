@@ -1929,6 +1929,65 @@ console.log('\n=== профиль резьбы и дюймовый шаг ===');
       chk('  и высота слоя тоже', [0.08, 0.3].every(lh => sig({threadMode:'cap', printLayerH:lh}) === base0));
     }
   }
+  /* 13. СТЕНКА ЦАНГИ (v25.32.0). Правило её толщины стояло ДВУМЯ копиями — у построителя лепестков и
+     в предупреждениях, которые по нему же считают жёсткость, — и нижний зажим в обеих был числом 0.8.
+     Владельцу сопла 0.6 приложение молча строило стенку в одну нитку вместо двух. */
+  {
+    const minorOf = (ov) => { const q = setP(ov); return threadMinorR(q); };
+    const boreOf = (ov) => { const q = setP(ov), mr = threadMinorR(q);
+      return Math.max(0.6, Math.min(q.threadBore > 0 ? q.threadBore/2 : mr*0.5, mr - 0.8)); };
+    const wallOf = (ov) => { const q = setP(ov); return colletWallOf(q, threadMinorR(q), boreOf(ov)); };
+    chk('правило стенки цанги живёт в одном месте',
+        typeof colletWallOf === 'function' && typeof colletWallAsked === 'function');
+    {
+      const fs = require('fs'), app4 = fs.readFileSync('parametric-stl-generator.html', 'utf8')
+        .split('<script>').slice(2).join('<script>');
+      /* Копия формулы узнаётся по её характерной середине; в файле она обязана быть ровно одна. */
+      const copies = (app4.match(/Math\.min\(2\.5,\s*minorR\*0\.22\)/g) || []).length;
+      chk('  и написано оно в файле ровно один раз', copies === 1, copies);
+    }
+    /* ЗАЖИМ ИДЁТ ЗА СОПЛОМ. Тонкая заказанная стенка поднимается до двух проходов — и ровно до них. */
+    for (const [nz, want] of [['0.25', 0.5], ['0.4', 0.8], ['0.6', 1.2], ['0.8', 1.6]]){
+      const got = wallOf({threadMode:'gland', threadColletWall:0.5, printNozzle:nz});
+      chk('сопло ' + nz + ': заказанные 0.5 мм стали ' + got.toFixed(2),
+          Math.abs(got - want) < 1e-9, {деталь:+got.toFixed(3), ждём:want});
+    }
+    chk('  мелкое сопло тонкую стенку УВАЖАЕТ, а не утолщает',
+        Math.abs(wallOf({threadMode:'gland', threadColletWall:0.5, printNozzle:'0.25'}) - 0.5) < 1e-9);
+    chk('  а толстую стенку сопло не трогает вовсе',
+        Math.abs(wallOf({threadMode:'gland', threadColletWall:2, printNozzle:'0.8'}) - 2) < 1e-9);
+    /* И ЭТО ДОХОДИТ ДО ДЕТАЛИ, а не остаётся в спецификации: стенка цанги — это разница наружного
+       радиуса лепестка и внутреннего, и читается она по построенной сетке. */
+    {
+      const meshWall = (ov) => { const t = mesh(ov), q = setP(ov), mr = threadMinorR(q);
+        /* Лепестки стоят кольцом ниже резьбы; берём вершины в их поясе и читаем два радиуса. */
+        let lo = 1e9, hi = 0;
+        for (const T of t) for (const v of T){
+          const r = Math.hypot(v[0], v[2]);
+          if (r > mr + 0.05 || r < mr - 4) continue;
+          lo = Math.min(lo, r); hi = Math.max(hi, r); }
+        return hi - lo; };
+      const a = meshWall({threadMode:'gland', threadColletWall:0.5, printNozzle:'0.4'});
+      const b = meshWall({threadMode:'gland', threadColletWall:0.5, printNozzle:'0.8'});
+      chk('на детали стенка при сопле 0.8 толще, чем при 0.4', b > a + 0.5,
+          {'сопло 0.4':+a.toFixed(2), 'сопло 0.8':+b.toFixed(2)});
+    }
+    /* И ЗАЖИМ БОЛЬШЕ НЕ МОЛЧИТ — а раньше молчал, и это была вся беда. */
+    chk('поднятая соплом стенка названа обоими числами',
+        /стенка цанги поднята с 0\.50 до 1\.20 мм соплом 0\.6/.test(
+          warn({threadMode:'gland', threadColletWall:0.5, printNozzle:'0.6'}).join(' ')),
+        warn({threadMode:'gland', threadColletWall:0.5, printNozzle:'0.6'}).filter(x => /цанг/.test(x)));
+    chk('  на умолчаниях стенка ничем не двигана и приложение молчит',
+        !/стенка цанги (поднята|урезана)/.test(warn({threadMode:'gland'}).join(' ')),
+        warn({threadMode:'gland'}).filter(x => /стенка цанги/.test(x)));
+    /* ВТОРОЙ ПУТЬ — РАСТОЧКА, и он назван ОТДЕЛЬНО: чинится он не соплом, а кабелем или резьбой. */
+    chk('урезанная расточкой стенка названа своей строкой',
+        /стенка цанги урезана с 4\.00 до .* расточкой под кабель/.test(
+          warn({threadMode:'gland', threadColletWall:4, threadBore:20}).join(' ')),
+        warn({threadMode:'gland', threadColletWall:4, threadBore:20}).filter(x => /цанг/.test(x)));
+    chk('  и это НЕ та же строка, что про сопло',
+        !/поднята/.test(warn({threadMode:'gland', threadColletWall:4, threadBore:20}).join(' ')));
+  }
   /* И НАЙДЕННОЕ ПО ДОРОГЕ: метрическая здесь не по ISO. Угол её грани следует из ручки площадки и
      глубины, а не из стандарта, и на умолчаниях выходит 21.8° вместо тридцати. Замер это и показал —
      первая запись объявляла в таблице тридцать, и деталь с объявлением разошлась. */

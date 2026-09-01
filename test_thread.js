@@ -1790,6 +1790,93 @@ console.log('\n=== профиль резьбы и дюймовый шаг ===');
           /const ART_BOARD_MU\s*=\s*0\.3;/.test(app2) && !/ART_BOARD_MU\s*=\s*matMu/.test(app2));
     }
   }
+  /* 11. ПАРА ИЗ ДВУХ РАЗНЫХ ПЛАСТИКОВ (v25.26.0). Компенсация усадки считается под ОДИН материал и
+     одна на оба файла пары; печатают половины из разного — и разница усадок ложится прямо в зазор. */
+  {
+    chk('пара из другого материала стала ручкой', typeof matMateKey === 'function' &&
+        typeof matMateShrinkDelta === 'function' &&
+        SHAPE_PARAMS.box.some(r => r.key === 'matMate' && r.default === 'same'));
+    chk('  умолчание «из того же» ничего не объявляет',
+        spec({}).mate === null && Math.abs(spec({}).mateDelta) < 1e-12 &&
+        !/ответная деталь из/.test(warn({}).join(' ')));
+    /* РАЗНИЦА БЕРЁТСЯ ИЗ ТАБЛИЦЫ, а не переписана: спрашивается сама `FIL_MAT`. */
+    for (const [a, b] of [['pla','abs'], ['nylon','pla'], ['petg','pc'], ['tpu','cf']]){
+      const g = spec({printMat:a, matMate:b});
+      chk('усадки «' + a + '»→«' + b + '» вычтены из таблицы',
+          Math.abs(g.mateDelta - (FIL_MAT[b].shrink - FIL_MAT[a].shrink)) < 1e-12, g.mateDelta);
+      /* И ЛОЖИТСЯ ОНА НА СТОРОНУ, а не на диаметр: зазор задан на сторону, ошибка идёт по диаметру. */
+      chk('  и переведены в сдвиг НА СТОРОНУ',
+          Math.abs(g.mateSide - g.mateDelta/100*g.D/2) < 1e-12, +g.mateSide.toFixed(4));
+    }
+    /* КОМПЕНСАЦИЯ ЗДЕСЬ НИ ПРИ ЧЁМ — и это ошибка, которую первая редакция правила и сделала: при
+       выключенной компенсации разница усадок не исчезает, обе половины просто уезжают от номинала
+       каждая на своё, а ДРУГ ОТ ДРУГА — ровно на ту же величину. */
+    chk('выключенная компенсация разницу усадок не отменяет',
+        Math.abs(spec({matMate:'abs', matShrink:false}).mateDelta -
+                 spec({matMate:'abs'}).mateDelta) < 1e-12 &&
+        Math.abs(spec({matMate:'abs', matShrink:false}).mateDelta) > 0.4,
+        spec({matMate:'abs', matShrink:false}).mateDelta);
+    chk('  и об этом сказано в самой строке',
+        /выключить её нельзя: разница усадок от этого не исчезает/.test(warn({matMate:'abs'}).join(' ')));
+    /* ДВЕ РАЗНЫЕ БЕДЫ, И ЗНАК РЕШАЕТ, КОТОРАЯ. Проверка ищет оба исхода перебором: если бы знак в
+       условие не входил, второго не нашлось бы никогда. */
+    {
+      let loose = null, tight = null;
+      for (const m of ['cap','stud']) for (const a of Object.keys(FIL_MAT))
+        for (const b of Object.keys(FIL_MAT)){
+          if (a === b) continue;
+          const g = spec({threadMode:m, printMat:a, matMate:b, threadD:80});
+          if (!g.mateEats) continue;
+          if (g.mateLoose && !loose) loose = {m, a, b};
+          if (!g.mateLoose && !tight) tight = {m, a, b};
+        }
+      chk('есть пара, которая после усадок будет болтаться', loose !== null, loose);
+      chk('  и есть пара, которая не свинтится', tight !== null, tight);
+      chk('  и сказано про каждую своё',
+          loose && tight &&
+          /БУДЕТ БОЛТАТЬСЯ/.test(warn({threadMode:loose.m, printMat:loose.a, matMate:loose.b, threadD:80}).join(' ')) &&
+          /НЕ СВИНТИТСЯ/.test(warn({threadMode:tight.m, printMat:tight.a, matMate:tight.b, threadD:80}).join(' ')));
+      /* ОДНА И ТА ЖЕ ПАРА ПЛАСТИКОВ ДАЁТ КРЫШКЕ И ШТУЦЕРУ ПРОТИВОПОЛОЖНЫЕ БЕДЫ, и это не оттенок
+         формулировки, а физика: у крышки ответная деталь мужская, у штуцера женская, и «ответная
+         вышла меньше» в одном случае разводит витки, а в другом сводит. Проверка «нашлись оба исхода»
+         этого не ловит — при подмене, которая роль половины не смотрит, оба исхода всё равно где-то
+         найдутся. Ловит только СРАВНЕНИЕ ДВУХ ПОЛОВИН НА ОДНОЙ паре материалов. */
+      {
+        const ov = {printMat:'pla', matMate:'nylon', threadD:80};
+        const f = spec(Object.assign({threadMode:'cap'}, ov));
+        const m = spec(Object.assign({threadMode:'stud'}, ov));
+        chk('крышка и штуцер на одной паре пластиков получают ПРОТИВОПОЛОЖНЫЕ беды',
+            f.mateEats && m.mateEats && f.mateLoose !== m.mateLoose,
+            {крышка:f.mateLoose ? 'болтается' : 'не свинтится',
+             штуцер:m.mateLoose ? 'болтается' : 'не свинтится'});
+        /* «Противоположные» мало: перевёрнутый знак тоже даёт противоположные. Направление
+           закрепляется ЗАЦЕПОМ — той самой величиной, которую отдельная проверка выше меряет по двум
+           построенным деталям как разницу наибольшего мужского и наименьшего женского радиуса.
+           Ответная половина, севшая сильнее, выходит МЕНЬШЕ: у крышки это уводит мужской гребень от
+           женской впадины и зацеп УМЕНЬШАЕТ, у штуцера — наоборот, женская впадина подходит ближе и
+           зацеп РАСТЁТ. Болтается там, где зацеп уменьшается; это физика пары, а не запись условия. */
+        for (const [mode, fem] of [['cap', true], ['stud', false]])
+          for (const mate of ['nylon', 'pacf']){
+            const g = spec({threadMode:mode, printMat:'pla', matMate:mate, threadD:80});
+            const dGrip = (fem ? -1 : 1)*g.mateSide;   // насколько меняется перекрытие витков
+            chk('  «' + mode + '» + «' + mate + '»: болтается ровно тогда, когда зацеп уменьшается',
+                g.mateLoose === (dGrip < 0),
+                {знак:g.mateDelta, сдвигЗацепа:+dGrip.toFixed(3), болтается:g.mateLoose});
+          }
+      }
+      /* И БЕДА ОБЪЯВЛЯЕТСЯ ТОЛЬКО ТОГДА, КОГДА СДВИГ И ПРАВДА СЪЕЛ ЗАЗОР: на мелком Ø та же пара
+         пластиков живёт спокойно, потому что ошибка растёт с диаметром, а зазор — нет. */
+      chk('  а на мелком Ø та же пара беды не даёт',
+          loose && spec({threadMode:loose.m, printMat:loose.a, matMate:loose.b, threadD:12}).mateEats === false);
+    }
+    /* СДВИГ РАСТЁТ С ДИАМЕТРОМ ЛИНЕЙНО — это и есть причина, по которой мелкая пара прощает то, чего
+       не прощает крупная. */
+    {
+      const a = spec({matMate:'abs', threadD:20}), b = spec({matMate:'abs', threadD:80});
+      chk('сдвиг растёт с диаметром линейно',
+          Math.abs(b.mateSide/a.mateSide - 4) < 1e-9, {'Ø20':+a.mateSide.toFixed(3), 'Ø80':+b.mateSide.toFixed(3)});
+    }
+  }
   /* И НАЙДЕННОЕ ПО ДОРОГЕ: метрическая здесь не по ISO. Угол её грани следует из ручки площадки и
      глубины, а не из стандарта, и на умолчаниях выходит 21.8° вместо тридцати. Замер это и показал —
      первая запись объявляла в таблице тридцать, и деталь с объявлением разошлась. */

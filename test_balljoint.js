@@ -1104,5 +1104,75 @@ function coplanarPairs(tris){
   /* И УМОЛЧАНИЕ ЦЕПОЧКИ ПО-ПРЕЖНЕМУ ЦЕПОЧКА: голова — выбор, а не подмена. */
   chk('умолчание не стало держателем платы', E({}).endB === 'cup', {верх:E({}).endB});
 }
+/* КОНЦЕВИКИ РУКИ (`articEndSpec`) — третий из четырёх расчётов, которых не касалась ни одна проверка.
+   Первый такой (полка под инструмент) оказался сломан; этот меряется здесь же, в файле своей семьи.
+   Числа его доходят до человека строкой про хвостовик: «Ø3.0×18 мм ВМЕСТО шара, уступ 6.0 мм и есть
+   упор глубины» — и до этой сборки ни диаметр, ни длина, ни уступ ни разу не сверялись с деталью. */
+console.log('\n=== концевики руки: хвостовик и держатели ===');
+{
+  const P2 = ov => Object.assign(defaultBoxParams(), {pipMode:'artic'}, ov);
+  const A2 = ov => articSpec(P2(ov));
+  const B2 = ov => { logos.length = 0; boxHoles.length = 0;
+    Object.assign(paramState.box, defaultBoxParams(), {pipMode:'artic'}, ov);
+    return buildTrisForShape('box', paramState.box); };
+  const W2 = ov => collectPrintWarnings(P2(ov)) || [];
+  /* Профиль наибольшего радиуса по высоте: у тела вращения он и есть силуэт. */
+  const rAt = (t, y0, y1) => { let lo = 1e9;
+    for (const T of t) for (const v of T) lo = Math.min(lo, v[1]);
+    let r = 0;
+    for (const T of t) for (const v of T){ const h = v[1] - lo;
+      if (h >= y0 && h <= y1) r = Math.max(r, Math.hypot(v[0], v[2])); }
+    return r; };
+  for (const d of [0, 6, 12]){
+    const ov = {artEndA:'post', artPostD:d}, a = A2(ov), e = a.e, t = B2(ov);
+    const rPost = rAt(t, 0.5, e.postLen - 0.5);
+    chk('хвостовик Ø' + (2*rPost).toFixed(2) + ' — то, что посчитано',
+        Math.abs(2*rPost - e.postD) < 0.05, {деталь:+(2*rPost).toFixed(3), спец:+e.postD.toFixed(3)});
+    /* УСТУП — РАЗНИЦА ДВУХ ИЗМЕРЕННЫХ РАДИУСОВ, а не объявленное число: узкий хвостовик и самое
+       широкое место первого звена. Меряется он ТАМ, ГДЕ СТУПЕНЬКА И ЕСТЬ, — по первой высоте, на
+       которой деталь становится шире хвостовика, а не по полосе наугад: барабан звена шире своего
+       начала, и полоса «от postLen и выше» ловила его пузо, давая уступ вдвое больше настоящего. */
+    let hStep = 1e9, rStep = 0, lo0 = 1e9;
+    for (const T of t) for (const v of T) lo0 = Math.min(lo0, v[1]);
+    for (const T of t) for (const v of T){ const h = v[1] - lo0, r = Math.hypot(v[0], v[2]);
+      if (r > e.postD/2 + 0.3 && h < hStep){ hStep = h; rStep = r; } }
+    chk('  и уступ ' + (rStep - rPost).toFixed(2) + ' мм — разница измеренных радиусов',
+        Math.abs((rStep - rPost) - e.shoulder) < 0.05,
+        {деталь:+(rStep - rPost).toFixed(3), спец:+e.shoulder.toFixed(3)});
+    /* А ВОТ ГДЕ ЭТА СТУПЕНЬКА СТОИТ — ОТДЕЛЬНЫЙ РАЗГОВОР, и замер его и открыл. Приложение объявляет
+       хвостовик длиной `postLen` и говорит, что «уступ и есть упор глубины». В детали узкая часть
+       ДЛИННЕЕ объявленного ровно на восемь миллиметров при любой длине: хвостовик идёт вверх в тело
+       звена, а барабан звена начинается выше. Гнездо в плите при этом точится на `postLen + 1.5`,
+       значит рука упирается в ДНО ГНЕЗДА, а уступ остаётся на восемь миллиметров выше плиты и не
+       касается её вовсе. Число закреплено замером, а не выведено из кода: поменяется поведение —
+       проверка это заметит. Разбор записан в BUGS.md. */
+    chk('  узкая часть длиннее объявленной ровно на 8 мм (закреплено замером)',
+        Math.abs((hStep - e.postLen) - 7.98) < 0.06,
+        {'узкая до':+hStep.toFixed(2), объявлено:e.postLen, разница:+(hStep - e.postLen).toFixed(2)});
+  }
+  /* ЗАХОДНАЯ ФАСКА: у самой подошвы хвостовик уже своего диаметра — ею он и находит гнездо. */
+  { const ov = {artEndA:'post'}, e = A2(ov).e, t = B2(ov);
+    chk('у подошвы хвостовик срезан фаской',
+        rAt(t, 0, 0.05) < e.postD/2 - 0.2, {подошва:+rAt(t, 0, 0.05).toFixed(2), полный:+(e.postD/2).toFixed(2)}); }
+  /* ЧЕТЫРЕ ВЕРХНИХ КОНЦА — четыре РАЗНЫЕ детали, и каждая замкнута сама по себе. */
+  { const seen = new Set();
+    for (const k of ['cup', 'clip', 'board', 'lens']){
+      const t = B2({artEndB:k});
+      chk('верхний конец «' + k + '» замкнут', manifoldCheck(t, 4).watertight, k);
+      seen.add(Math.round(vol(t)));
+    }
+    chk('  и все четыре — разные детали', seen.size === 4, [...seen]); }
+  /* ПАЗ ДЕРЖАТЕЛЯ ШИРЕ ХВОСТА НА ПЕЧАТНЫЙ ЗАЗОР — тот же, которым живёт вся печать в сборе. */
+  { const a = A2({artEndB:'clip'}), e = a.e;
+    chk('паз держателя шире хвоста ровно на зазор посадки',
+        Math.abs(e.slotW - (e.clipW + a.j.gap)) < 1e-9 &&
+        Math.abs(e.slotT - (e.clipT + a.j.gap)) < 1e-9,
+        {паз:+e.slotW.toFixed(2), хвост:+e.clipW.toFixed(2), зазор:+a.j.gap.toFixed(2)}); }
+  /* И ТОНКИЙ ХВОСТОВИК НАЗВАН: это то самое число, ради которого расчёт и существует. */
+  chk('тонкий хвостовик объявлен', A2({artEndA:'post', artPostD:2.5}).e.postThin === true &&
+      W2({artEndA:'post', artPostD:2.5}).some(x => /ХВОСТОВИК/.test(x)));
+  chk('  а нормальный — нет', A2({artEndA:'post'}).e.postThin === false);
+}
+
 console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
 if(fail) process.exitCode = 1;

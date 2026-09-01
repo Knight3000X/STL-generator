@@ -23,7 +23,7 @@
    Статика (иконки, манифест) — кэш-вперёд с фоновым обновлением.
    Bump CACHE_VERSION вместе с APP_VERSION в parametric-stl-generator.html и version.json. Работает только
    по http(s); на file:// воркер не регистрируется вовсе. */
-const CACHE_VERSION = 'stl-gen-v25.28.0';   // bump together with APP_VERSION and version.json
+const CACHE_VERSION = 'stl-gen-v25.29.0';   // bump together with APP_VERSION and version.json
 const SHELL = [
   './',
   'index.html',

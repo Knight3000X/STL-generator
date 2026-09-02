@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.35.0';
+const APP_VERSION = 'v25.36.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -5399,6 +5399,19 @@ function threadStdOf(p){
    Нижние зажимы у мест РАЗНЫЕ (4 у резьбы, 6 у накидной гайки, 2 у ствола шнека) и остаются на
    местах: это их собственные правила, а не копии одного. */
 function threadDOf(p){ const st = threadStdOf(p); return st ? st.D : ((p && p.threadD) || 30); }
+/* ЗАЗОР ПОДВИЖНОСТИ — ОДНА РУЧКА, ОДНО УМОЛЧАНИЕ, ДВА ПОТОЛКА (v25.36.0). `p.pipGap` читался ЧЕТЫРЬМЯ
+   отдельными выражениями, и они не сходились: у трёх умолчание 0.35, у четвёртого 0.30, а потолка два —
+   0.8 и 1.2. Расхождению умолчаний защиты нет вовсе: ручка ОДНА, значит и число одно, и стоит оно здесь —
+   тем же `PIP_GAP_DEF`, который берёт строка панели, чтобы копий снова не стало две.
+
+   ПОТОЛОК ЖЕ ПРИНАДЛЕЖИТ СОЕДИНЕНИЮ, А НЕ РУЧКЕ, и это следует из самого файла, а не из общих слов: у
+   собственной ручки шарнира (`ballGap`) строка панели даёт ровно 0.15…1.2 — чашка шара терпит люфт,
+   которого печатная петля не терпит. Поэтому 0.8 — потолок ПЕТЛИ (её же панельный предел), а 1.2 —
+   потолок скользящей и шаровой посадки: карман картодержателя и устье пятака струбцины. Ручка при этом
+   остаётся одна: потолок задаёт ВЫЗЫВАЮЩИЙ, а не второе выражение рядом. Оба потолка выше панельного
+   предела достижимы только поправкой посадки (`fitTune` до +0.5 и сдвиг материала) — она и упирается. */
+const PIP_GAP_LO = 0.15, PIP_GAP_HI = 0.8, PIP_GAP_DEF = 0.35;
+const JOINT_GAP_HI = 1.2;   // скользящая и шаровая посадка — тот же потолок, что стоит в строке `ballGap`
 const SHAPE_PARAMS = {
   box: [
     {group:'Размеры', key:'width',  label:'Ширина (X)', min:0.1, max:1000000, step:0.5, default:40, unit:'мм'},
@@ -5708,7 +5721,7 @@ const SHAPE_PARAMS = {
     {group:'Петля (печать в сборе)', key:'pipPinD', w:['flat','box'], label:'Петля: Ø штифта (0 = авто)', min:0, max:10, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipPin', w:['flat','box'], label:'Петля: штифт', type:'select', default:'inplace',
       options:[{v:'inplace',t:'печать в сборе (штифт вплавлен)'},{v:'removable',t:'разборная (штифт вставляется)'}]},
-    {group:'Петля (печать в сборе)', key:'pipGap', w:['flat','box'], label:'Петля: зазор подвижности (печать в сборе)', min:0.15, max:0.8, step:0.05, default:0.35, unit:'мм'},
+    {group:'Петля (печать в сборе)', key:'pipGap', w:['flat','box'], label:'Петля: зазор подвижности (печать в сборе)', min:PIP_GAP_LO, max:PIP_GAP_HI, step:0.05, default:PIP_GAP_DEF, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewD', w:['flat','clip'], label:'Петля/клипса: Ø монтажных отверстий (0 = без)', min:0, max:8, step:0.5, default:0, unit:'мм'},
     {group:'Петля (печать в сборе)', key:'pipScrewN', w:['flat'], needs:{pipScrewD:0.5}, label:'Петля: отверстий на каждый лист', min:1, max:8, step:1, default:2, unit:'', int:true},
     {group:'Петля (печать в сборе)', key:'pipBoxPart', w:['box'], label:'Футляр: какую деталь строить', type:'select', default:'both',
@@ -6810,7 +6823,8 @@ function woHookBarR(p){ return Math.max(2, (p.woHookBar||8)/2); }
 function standWOf(p){ return Math.max(30, p.psW||80); }
 function standTOf(p){ return Math.max(2, p.psT||4); }
 function standAngleDeg(p){ return Math.max(30, Math.min(80, p.psAngle||62)); }
-function pipGapOf(p){ return Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35))); }
+function pipGapAsked(p){ return p.pipGap != null ? p.pipGap : PIP_GAP_DEF; }   // заказанное ручкой, до поправки посадки
+function pipGapOf(p, hi){ return Math.max(PIP_GAP_LO, Math.min(hi > 0 ? hi : PIP_GAP_HI, fitTuned(p, pipGapAsked(p)))); }
 function pipKnucklesAsked(p){ return Math.max(3, Math.round(p.pipKnuckles||5)); }
 function dieBeadR(p){ return Math.max(0, Math.min(3, p.dieBead||0)); }
 function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3); }
@@ -13549,7 +13563,7 @@ function bagClipSpec(p){
   const T = Math.max(1.2, Math.min(10, p.bagT > 0 ? p.bagT : 5));      // толщина губки У ПЕТЛИ
   const open = Math.max(0.2, Math.min(40, p.bagOpen > 0 ? p.bagOpen : 3));
   const mat = snapMatOf(p, 'bagMat', 'petg');
-  const cl = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap != null ? p.pipGap : 0.35)));
+  const cl = pipGapOf(p);                                            // петля зажима — та же печатная петля
   /* ГУБКА СУЖАЕТСЯ К КОНЧИКУ, и это не украшение. Момент на консоли растёт от нуля у застёжки к
      максимуму у петли, поэтому у кончика толщина не работает вовсе, а у петли решает всё. Ровная губка
      либо тяжела на конце, либо слаба у корня; сужение убирает и то, и другое. */
@@ -14140,7 +14154,7 @@ const CARD_END   = 2.4;    // задняя стенка
 function cardSpec(p){
   const cl_ = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
   const n = Math.round(cl_(p.chCards, 1, 20, 6));
-  const gap = Math.max(0.15, Math.min(1.2, fitTuned(p, p.pipGap != null ? p.pipGap : 0.3)));
+  const gap = pipGapOf(p, JOINT_GAP_HI);             // карман скользящий — потолок тот же, что у шарового
   const travel = cl_(p.chTravel, 5, 60, 20);
   const cardT = cl_(p.chCardT, 0.4, 3, CARD_ISO.t);
   const stack = n*cardT + gap;                       // карман по высоте
@@ -14884,8 +14898,8 @@ function hingeSpec(p){
   if ((p.pipMode || 'none') !== 'flat') return null;
   const L = Math.max(10, p.pipLen||60);
   const leafT = Math.max(2, p.pipLeafT||6), zEdge = leafT/2;
-  const gapWant = (p.pipGap!=null) ? p.pipGap : 0.35;
-  const gap = Math.max(0.15, Math.min(0.8, fitTuned(p, gapWant)));
+  const gapWant = pipGapAsked(p);
+  const gap = pipGapOf(p);
   const wall = Math.max(1.0, gap + 0.9);
   const auto = !(p.pipPinD > 0);
   const pinR = Math.max(0.8, auto ? zEdge - wall : p.pipPinD/2);
@@ -19379,7 +19393,7 @@ const WOOD_CRUSH = 5;        // МПа, смятие мягкой древеси
 function gclampPadSpec(p){
   const g = gclampSpec(p);
   const cl = (v, lo, hi, d) => { const x = (v == null || !isFinite(+v)) ? d : +v; return Math.max(lo, Math.min(hi, x)); };
-  const gap = Math.max(0.15, Math.min(1.2, fitTuned(p, p.pipGap != null ? p.pipGap : 0.35)));
+  const gap = pipGapOf(p, JOINT_GAP_HI);   // устье пятака — шаровая посадка, потолок её же
   /* ШТОК ОБЯЗАН БЫТЬ ТОЛЩЕ БОЛТА НА ДВЕ СТЕНКИ: внутри у него резьба, и стенка тоньше двух миллиметров
      на печатной резьбе срывается вместе с витками, а не держит их. */
   const stemD = g.bolt + 2*Math.max(2, g.bolt*0.28);
@@ -31505,6 +31519,18 @@ function migrateLegacyParams(mp){
   }
   return mp;
 }
+/* NULL В ФАЙЛЕ — ЭТО ДЫРА, А НЕ ЗНАЧЕНИЕ (v25.36.0). Ключа в файле НЕТ — `Object.assign` оставляет
+   умолчание панели, и это правильно. А `"pipGap": null` она аккуратно КОПИРУЕТ поверх умолчания, и
+   дальше построитель уходит в зашитую в код запаску (`p.pipGap != null ? … : …`) — второе написание
+   того же умолчания. Пока две записи совпадают, беды не видно; там, где они разошлись, приложение
+   строило бы не то, что показывает панель, и молча. Дыра лечится тем же, чем и отсутствующий ключ:
+   панельным умолчанием. Это ЕДИНСТВЕННАЯ дверь к запаскам — все остальные пути кладут параметры
+   поверх уже полного набора, — и после этой правки они недостижимы вовсе. */
+function paramsWithoutHoles(mp){ if (mp) for (const k in mp) if (mp[k] == null) delete mp[k]; return mp; }
+/* ПАРАМЕТРЫ ИЗ ФАЙЛА — ОДНИМ ПРАВИЛОМ, а не выражением внутри обработчика: иначе проверка вынуждена
+   переписать это же выражение у себя, и тогда она проверяет СВОЮ копию. Ровно на этом мутация и
+   выжила: `paramsWithoutHoles` убирали из импорта, а проверка сходилась, потому что звала его сама. */
+function paramsFromFile(raw){ return Object.assign(defaultBoxParams(), paramsWithoutHoles(migrateLegacyParams(raw || {}))); }
 function importAssemblyJSON(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -31522,7 +31548,7 @@ function importAssemblyJSON(file) {
         if (mm) { if (typeof scene !== 'undefined' && scene) scene.remove(mm); mm.geometry && mm.geometry.dispose(); mm.material && mm.material.dispose(); modelMeshes.delete(m.id); } }
       models.length = 0; activeModelId = null; nextModelId = 1; pendingChanges = false; updateApplyButton();
       data.models.forEach((md, i) => {
-        const mp = Object.assign(defaultBoxParams(), migrateLegacyParams(md.params || {}));
+        const mp = paramsFromFile(md.params);
         const rec = makeModelRecord(md.name || ('Модель ' + nextModelId), mp);
         rec.rx=md.rx||0; rec.ry=md.ry||0; rec.rz=md.rz||0; rec.px=md.px||0; rec.py=md.py||0; rec.pz=md.pz||0;
         rec.visible = md.visible !== false; rec.color = md.color || '#b9c5cd';

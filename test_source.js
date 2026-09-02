@@ -41,5 +41,23 @@ const dups = [...decl.entries()].filter(([, ls]) => ls.length > 1);
 chk('ни одно имя не объявлено дважды', dups.length === 0,
     dups.map(([n, ls]) => n + ' @ строки ' + ls.join(', ')));
 
+console.log('\n=== README не врёт про размер файла ===');
+/* РАЗМЕР — ЕДИНСТВЕННОЕ ЧИСЛО README, КОТОРОЕ РАСТЁТ САМО, и молча: в README стояло «~2.0 МБ» при
+   3.5 МБ на диске, и ещё дважды тот же файл назван «2.5 МБ» в разделе про PWA — там на нём держится
+   целое рассуждение о секундах заставки по мобильной сети. Проверять такое на глаз нельзя, поэтому
+   сверяется со СТАТОМ файла.
+   ОГОВОРКА, которую надо помнить, если README пополнится: под правило попадают ВСЕ числа «N МБ» в
+   README — сегодня их три, и все три про этот файл. Появится размер чего-то другого — проверку
+   придётся научить их различать, а не ослаблять допуск. */
+{
+  const readme = fs.readFileSync('README.md', 'utf8');
+  const real = fs.statSync('parametric-stl-generator.html').size / (1024*1024);
+  const said = [...readme.matchAll(/([\d]+[.,]?[\d]*)\s*МБ/g)].map(m => parseFloat(m[1].replace(',', '.')));
+  chk('размер в README назван', said.length >= 1, said);
+  const off = said.map(v => Math.abs(v - real) / real);
+  chk('и он сходится с файлом (' + real.toFixed(2) + ' МБ, названо ' + said.join(', ') + ')',
+      off.every(d => d <= 0.10), said.filter((v, i) => off[i] > 0.10));
+}
+
 console.log('\n=== TOTAL: ' + pass + ' passed, ' + fail + ' failed ===');
 process.exit(fail ? 1 : 0);

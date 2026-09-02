@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.37.0';
+const APP_VERSION = 'v25.38.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -4605,7 +4605,7 @@ function buildLogoSilhouetteMask(logo, N) {
 function logo3dSpec(p){
   const lg = (typeof logos !== 'undefined' && logos.length) ? logos.find(l => l.heightmap) : null;
   const N = (typeof logoResolution !== 'undefined') ? Math.max(48, Math.min(256, logoResolution*3)) : 160;
-  const sizeX = Math.max(1, p.width||60), sizeZ = Math.max(1, p.depth||60), t = Math.max(0.2, p.height||3);
+  const sizeX = Math.max(1, p.width||PANEL_DEF.width), sizeZ = Math.max(1, p.depth||PANEL_DEF.depth), t = Math.max(0.2, p.height||PANEL_DEF.height);
   const mask = lg ? buildLogoSilhouetteMask(lg, N) : null;
   if (!mask) return {lg, N, sizeX, sizeZ, t, empty: true, bodies: 0, minStroke: Infinity,
                      thin: false, cellX: sizeX/N, cellZ: sizeZ/N};
@@ -6607,6 +6607,22 @@ const SHAPE_PARAMS = {
     {group:'Gridfinity', key:'gfBaseThk', label:'Базплейт: толщина основания под гнёздами', min:0.8, max:1000000, step:0.2, default:1.2, unit:'мм'},
   ],
 };
+/* УМОЛЧАНИЕ — ОДНО ЧИСЛО, И ЛЕЖИТ ОНО В СТРОКЕ ПАНЕЛИ (v25.38.0). До этой сборки у каждой ручки
+   умолчание было записано ДВАЖДЫ: строкой панели (`default:`) и запаской в коде (`p.knob || N`).
+   Панельное всегда сильнее — `defaultBoxParams()` раскладывает его по всем ключам ещё до первой
+   сборки, — поэтому расхождение двух записей не видно НИ НА ОДНОМ наборе настроек. Перепись v25.36.0
+   нашла 60 таких расхождений на 19 ручках: шаг ромба читался с запаской 8 при панельных 10, ширина
+   плиты крепежа — 60, 90 и 16 при панельных 40, число зубьев 16 при 20.
+
+   Построить по ним ничего нельзя, а прочитать — можно, и читающий получал неверное число. Теперь
+   запаска ссылается СЮДА, и число остаётся одно — то, что видит человек в панели.
+
+   ЧЕГО ЭТО НЕ ОТМЕНЯЕТ: нижние зажимы у построителей СВОИ и остаются на местах (у стойки плита не
+   тоньше двух миллиметров, у полки не уже пятнадцати) — это их собственные правила, а не копии
+   одного. И запаска, равная ПЕРВОМУ ПОДРЕЖИМУ семьи (`p.woBack || 'cleat'`), тоже остаётся: панельное
+   умолчание там — «семьи нет вовсе», и подставлять его внутрь построителя этой самой семьи бессмыслица. */
+const PANEL_DEF = {};
+for (const r of SHAPE_PARAMS.box) PANEL_DEF[r.key] = r.default;
 
 const paramState = {};
 for (const shape in SHAPE_PARAMS) {
@@ -6670,6 +6686,11 @@ function glandSizeRow(p){
 }
 const MAX_MODELS = 32;
 function deepCopyParams(o){ return JSON.parse(JSON.stringify(o)); }
+/* НАБОР ПО УМОЛЧАНИЮ СОБИРАЕТСЯ ЦИКЛОМ ПО СТРОКАМ, А НЕ `Object.assign({}, PANEL_DEF)`, и это не
+   вкусовщина, а замер: 54 мкс против 289 (и 115 у `for..in`). Разница в пять с лишним раз ничего не
+   значила бы, зови его кто-нибудь изредка, — но перепись молчунов зовёт его 2.7 миллиона раз за
+   прогон, и «красивое» написание стоило батарее 671 секунды: `test_warnings.js` вырос с 227 до 898.
+   Число при этом одно и то же: и здесь, и в `PANEL_DEF` оно читается из строки панели. */
 function defaultBoxParams(){ const o = {}; for (const p of SHAPE_PARAMS.box) o[p.key] = p.default; return o; }
 function getModel(id){ return models.find(m => m.id === id) || null; }
 function getActiveModel(){ return getModel(activeModelId); }
@@ -9411,15 +9432,25 @@ function splitHollowLogoDispFns() {
 // emitLatticeFloor groups that fine grid into ~cell-sized diamond blocks. So changing the cell
 // size no longer coarsens the walls / logo relief. rib = axial gap between holes;
 // borderCells = solid fine cells kept as a rim so holes never reach the walls.
+/* НАБОР РУЧЕК СЕТКИ — ОДНО ПРАВИЛО (v25.38.0). Этот объект собирался ШЕСТЬ раз: здесь, дважды на
+   полигональном пути, дважды на squircle, ещё раз на плоском — и седьмой раз в листе. Копии успели
+   разойтись, причём каждая по-своему: шаг ромба с запаской 8 при панельных 10, ребро 2 при 1.6,
+   детализация 60 здесь и 80 в листе при панельных 50, а кант — то 0, то 2. Ни одно из этих чисел не
+   достижимо (панель всегда сильнее), поэтому расхождение было невидимо; читателю кода они врали.
+   `extra` — то, что у места СВОЁ: `enabled` спрашивает только плоский путь, `walls` только стенки. */
+function latticeOptsOf(p, extra){
+  const o = { rib: Math.max(0.1, p.latticeRib || PANEL_DEF.latticeRib),
+              cell: Math.max(1, p.latticeCell || PANEL_DEF.latticeCell),
+              borderCells: Math.max(0, Math.round(p.latticeBorder || PANEL_DEF.latticeBorder)),
+              pattern: p.latticePattern || PANEL_DEF.latticePattern,
+              res: latticeResOf(p) };
+  return extra ? Object.assign(o, extra) : o;
+}
+/* Детализация сетки — тоже одно правило, и с ЗАЖИМОМ: он стоял только на плоском пути, а панельные
+   пределы у ручки те же (10…500), поэтому на всех путях это одно и то же число. */
+function latticeResOf(p){ return Math.max(10, Math.min(500, Math.round(p.latticeRes || PANEL_DEF.latticeRes))); }
 function makeLatticeOpts(p) {
-  return {
-    enabled: true,
-    rib: Math.max(0.1, p.latticeRib||2),
-    cell: Math.max(1, p.latticeCell||8),
-    borderCells: Math.max(0, Math.round(p.latticeBorder||0)),
-    rounded: !!p.latticeRound,
-    pattern: p.latticePattern || 'diamond',
-  };
+  return latticeOptsOf(p, { enabled: true, rounded: !!p.latticeRound });
 }
 
 /* =========================================================
@@ -11719,7 +11750,7 @@ function buildSheet(p){
      значения, что читались раньше, чтобы ни один уже напечатанный лист не поменялся молча. */
   const cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : sheetAutoCell(p.sheetPattern, p.latticeCell)),
         rib=Math.max(0.1, p.sheetPatRib>0 ? p.sheetPatRib : sheetAutoRib(cell, p.latticeRib)),
-        border=Math.max(1,Math.round(p.latticeBorder||2)), res=p.latticeRes||80;
+        border=latticeOptsOf(p).borderCells, res=latticeResOf(p);
   // Back (bottom) chamfer: bevel the bottom outer edge. The bottom face insets to botRing@yb, a bevel band
   // rises to the full ring at chY, and the vertical edge runs chY..yt. Works with every cut / outline / rim.
   const chW = Math.max(0, Math.min(p.sheetChamfer||0, Math.min(hw,hd)*0.4));
@@ -13226,7 +13257,7 @@ function clamshellSpec(p){
                : battOn ? 2*bw + nCell*pocket + (nCell-1)*bw : Math.max(10, p.pipLen||60);
   const dep    = stand ? rows*gpitch + bw
                : battOn ? cellL + 2*bclr + 2*bw : Math.max(12, p.pipLeafW||22);
-  const wh     = stand ? cellL + bclr : battOn ? pocket : Math.max(2, p.pipBoxH||10);
+  const wh     = stand ? cellL + bclr : battOn ? pocket : Math.max(2, p.pipBoxH||PANEL_DEF.pipBoxH);
   const rimY   = floorT + wh;
   // ПЕТЛЯ НА ПРУТКЕ. Пруток филамента продевается сквозь чередующиеся узлы; печатного штифта нет вовсе.
   const rod    = Math.max(1.0, Math.min(6, p.pipRodD>0 ? p.pipRodD : 1.75));
@@ -14768,7 +14799,7 @@ function energyChainSpec(p){
   const arm  = pitch/2;
   const mat  = SNAP_MATERIALS[p.ecMat] || SNAP_MATERIALS.petg;
   const eps  = 100*1.5*hPin*wall/(arm*arm);
-  const N    = Math.max(1, Math.min(40, Math.round(p.ecLinks>0 ? p.ecLinks : 8)));
+  const N    = Math.max(1, Math.min(40, Math.round(p.ecLinks>0 ? p.ecLinks : PANEL_DEF.ecLinks)));
   /* Ход. Цепь укладывается вдвое: половина лежит, половина едет, между ними полукруг радиуса R. Два звена
      оставлены на заделку — это не запас «на всякий случай», а те звенья, что стоят в кронштейнах. */
   const need = k => Math.ceil((k/2 + Math.PI*R)/pitch) + 2;
@@ -17967,7 +17998,7 @@ function buildFunnel(p){
 // Belt pulley (шкив): a rim with a circumferential groove — V (клиновой ремень) or round (круглый
 // ремень). Built as a lathe of the axial silhouette + a plain bore. Watertight by construction.
 function buildPulley(p){
-  const th=Math.max(3, p.gearThick||10), rO=Math.max(5,(p.gearPulleyOD||30)/2);
+  const th=Math.max(3, p.gearThick||PANEL_DEF.gearThick), rO=Math.max(5,(p.gearPulleyOD||30)/2);
   const rB=Math.max(0.8, Math.min(p.gearBore>0?p.gearBore/2:rO*0.28, rO-2));
   const seg=Math.max(48, Math.round(2*Math.PI*rO/1.0)), yG=th/2;
   const beltW=Math.max(1.5, Math.min(p.gearBeltW||6, th-1.2)), hw=beltW/2;
@@ -18621,8 +18652,8 @@ function buildPlanetary(p){
   const m  = Math.max(0.3, p.gearModule||2);
   const th = Math.max(1, p.gearThick||6);
   const alpha = Math.max(14, Math.min(30, p.gearPA||20));
-  const Zs = Math.max(8, Math.round(p.gearTeeth||16));
-  const Zp = Math.max(6, Math.round(p.planetTeeth||16));
+  const Zs = Math.max(8, Math.round(p.gearTeeth||PANEL_DEF.gearTeeth));
+  const Zp = Math.max(6, Math.round(p.planetTeeth||PANEL_DEF.planetTeeth));
   const Zr = Zs + 2*Zp;
   let N = Math.max(2, Math.min(6, Math.round(p.planetN||3)));
   while(N>2 && (Zs+Zr)%N !== 0) N--;               // drop to a count that keeps the planets in phase
@@ -18908,8 +18939,8 @@ function gearToothSpec(p){
   const inv = x => Math.tan(x) - x;
   /* Числа берутся у КРИТИЧЕСКОГО колеса — самого малозубого в этой модели: подрезание и остриё приходят
      именно к нему, а у планетарной в одной детали живут сразу солнце и сателлит. */
-  const Zs = Math.max(8, Math.round(p.gearTeeth || 16));
-  const Zp = Math.max(6, Math.round(p.planetTeeth || 16));
+  const Zs = Math.max(8, Math.round(p.gearTeeth || PANEL_DEF.gearTeeth));
+  const Zp = Math.max(6, Math.round(p.planetTeeth || PANEL_DEF.planetTeeth));
   const Z1 = mode === 'planetary' ? Zs : Math.max(6, Math.round(p.gearTeeth || 20));
   const Z = mode === 'planetary' ? Math.min(Zs, Zp) : Z1;
   const rp = m*Z/2, ra = rp + m, rb = rp*Math.cos(a), rf = Math.max(0.3, rp - 1.25*m);
@@ -19764,19 +19795,26 @@ function buildDrillJig(p){
   const dy = -(lo + hi)/2;
   return out.map(T => T.map(v => [v[0], v[1] + dy, v[2]]));
 }
+/* ГЛУБИНА ПОЛКИ КРЕПЕЖА — ОДНО ПРАВИЛО НА ДВА ПОДРЕЖИМА (v25.38.0). Ручка `mntLegA` так и названа —
+   «полка A / стойки: глубина», — и читают её с одним и тем же полом 15 двое: плита стоек и полка под
+   инструмент. Пока у них стояли РАЗНЫЕ запаски (45 и 35), выражения выглядели разными и перепись копий
+   их не видела; свод запасок к панели сделал их тождественными, и перепись `test_saidbuilt.js` тут же
+   назвала пару — правильно назвала: это одно число, прочитанное дважды.
+   Пол 3 у хомута трубы сюда НЕ входит: там та же ручка означает вылет от стены, а не глубину полки. */
+function mntShelfDepth(p){ return Math.max(15, p.mntLegA || PANEL_DEF.mntLegA); }
 function buildVesa(p){
   const spacing = ({['75']:75,['100']:100,['200']:200})[p.mntVesa] || 100;
   // The plate has to clear the bolt circle by a margin, and beyond that the user's width wins. The old
   // expression `spacing + Math.max(16, mntW>spacing?0:16)` was max(16, 16 or 0) — 16 either way, so the
   // width control did nothing at any value.
-  const t=Math.max(2.5,p.mntT||4), plate=Math.max(spacing+16, p.mntW||0), sd=Math.max(2,p.mntScrewD||5);
+  const t=Math.max(2.5,p.mntT||PANEL_DEF.mntT), plate=Math.max(spacing+16, p.mntW||PANEL_DEF.mntW), sd=Math.max(2,p.mntScrewD||5);
   const r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), h=spacing/2, holes=[];
   for(const sx of [-1,1]) for(const sz of [-1,1]) holes.push({axis:1,cp:sx*h,cq:sz*h,r,head:'sink',headR:hR,headDepth:hD,headSide:1});
   const cd=Math.max(0,p.mntCenterD||0); if(cd>1) holes.push({axis:1,cp:0,cq:0,ap:cd/2,aq:cd/2,rc:cd/2});
   return buildBoxWithHoles(plate,t,plate,holes);   // already centred at origin
 }
 function buildBoss(p){
-  const W=Math.max(15,p.mntW||60), D=Math.max(15,p.mntLegA||45), t=Math.max(2,p.mntT||3);
+  const W=Math.max(15,p.mntW||PANEL_DEF.mntW), D=mntShelfDepth(p), t=Math.max(2,p.mntT||PANEL_DEF.mntT);
   const nX=Math.max(1,Math.round(p.mntBossNX||2)), nZ=Math.max(1,Math.round(p.mntBossNZ||2));
   const bD=Math.max(4,p.mntBossD||8), bH=Math.max(3,p.mntBossH||7), bore=Math.max(1,(p.mntScrewD||3.5)*0.82);
   const rO=bD/2, rI=bore/2, seg=Math.max(16,Math.round(bD*3)), tris=[];
@@ -19802,12 +19840,12 @@ function buildBoss(p){
    for four Ø16 slots would silently give one.) The widening is reported. */
 function toolRackSpec(p){
   const t=Math.max(2,p.mntT||4);
-  const shelfD=Math.max(15,p.mntLegA||35), backH=Math.max(15,p.mntLegB||42);
+  const shelfD=mntShelfDepth(p), backH=Math.max(15,p.mntLegB||PANEL_DEF.mntLegB);
   const tr=Math.max(1.5,(p.mntToolD||16)/2);
   const r=Math.min(tr, shelfD/2-1.5);                    // a slot cannot be wider than the shelf is deep
   const n=Math.max(1,Math.round(p.mntToolN||4));
   const m=r+3, pitch=2*r+3;                              // 3 mm of shelf outside, 3 mm of web between
-  const wAsked=Math.max(20,p.mntW||90);
+  const wAsked=Math.max(20,p.mntW||PANEL_DEF.mntW);
   const wNeed=2*m + (n-1)*pitch;
   const lay=(Wi)=>{ const sp=Wi-2*m, out=[];
     for(let k=0;k<n;k++) out.push(n===1 ? 0 : -sp/2 + sp*k/(n-1)); return out; };
@@ -19854,7 +19892,7 @@ function buildTool(p){
 // wall. Pipe axis = Y (runs vertically down the wall). Plain plate + box stalk + Y-tube ring → watertight.
 function buildPipe(p){
   const rP=Math.max(3,(p.mntPipeD||25)/2), sw=Math.max(2,p.mntPipeWall||3), rO=rP+sw;
-  const W=Math.max(6,p.mntW||16), t=Math.max(2.5,p.mntT||4), standoff=Math.max(3,p.mntLegA||18);
+  const W=Math.max(6,p.mntW||PANEL_DEF.mntW), t=Math.max(2.5,p.mntT||PANEL_DEF.mntT), standoff=Math.max(3,p.mntLegA||PANEL_DEF.mntLegA);
   const zc=t+standoff+rO, seg=Math.max(28,Math.round(2*Math.PI*rO/1.1)), tris=[];
   const plateW=Math.max(2*rO, W+12), plateH=Math.max(W, 2*rP+6), sd=mntScrewDOf(p), holes=[];
   if(sd>0.5){ const r=sd/2, m=Math.max(sd+3, plateW*0.18);
@@ -20374,7 +20412,7 @@ function wallOrgSpec(p){
     const sd = Math.max(10, p.woShelfD||35), st = Math.max(2, p.woShelfT||4), sw = W - 2;
     I = sw*Math.pow(st, 3)/12; c = st/2; arm = sd; reach = sd; what = 'полка у задника';
   } else if (front === 'tools'){
-    const sd = Math.max(15, p.woShelfD||34), st = Math.max(3, p.woShelfT||4);
+    const sd = Math.max(15, p.woShelfD||PANEL_DEF.woShelfD), st = Math.max(3, p.woShelfT||4);
     const n = Math.max(1, Math.round(p.woToolN||3)), tr = Math.min(Math.max(1.5,(p.woToolD||16)/2), sd/2 - 1.5);
     /* ГНЁЗДА СЪЕДАЮТ ПОЛКУ РОВНО ПОСЕРЕДИНЕ её глубины, и сечение там уже, чем у задника. Момент там
        вдвое меньше — сравниваются оба места, и слабейшее становится ответом.
@@ -20537,7 +20575,7 @@ function buildWallOrg(p){
     for(const gx of [-bw/2, bw/2-gt])
       for(const T of prismXTris([[yc-st, t-0.5],[yc-st, t+gh],[yc-st-gh, t-0.5]], gx, gx+gt)) tris.push(T);
   } else if(front==='tools'){
-    const sd=Math.max(15,p.woShelfD||34), st=Math.max(3,p.woShelfT||4), n=Math.max(1,Math.round(p.woToolN||3)), tr=Math.max(1.5,(p.woToolD||16)/2);
+    const sd=Math.max(15,p.woShelfD||PANEL_DEF.woShelfD), st=Math.max(3,p.woShelfT||4), n=Math.max(1,Math.round(p.woToolN||3)), tr=Math.max(1.5,(p.woToolD||16)/2);
     const yc=H*0.4, m=Math.max(tr+3, W*0.5/n), holes=[]; for(let k=0;k<n;k++){ const cp=n===1?0:-W/2+m+(W-2*m)*k/(n-1); holes.push({axis:1,cp,cq:0,r:Math.min(tr,sd/2-1.5)}); }
     for(const T of buildBoxWithHoles(W, st, sd, holes)) tris.push(T.map(v=>[v[0], v[1]+yc+st/2, v[2]+t-1+sd/2]));
   }
@@ -21562,7 +21600,7 @@ function discYTris(cx,cz,r,y0,y1,seg){ const out=[], R=k=>{const a=2*Math.PI*k/s
 function buildFoot(p){
   const round = (p.mntFootShape||'square') === 'round';
   const leg  = Math.max(6, p.mntFootLeg||25);
-  const wall = Math.max(1.2, p.mntT||3);
+  const wall = Math.max(1.2, p.mntT||PANEL_DEF.mntT);
   const depth= Math.max(4, p.mntFootH||22);
   const padT = Math.max(1.2, p.mntFootPad||3);
   const clr  = fitTuned(p, Math.max(0, p.mntFootClear!=null ? p.mntFootClear : 0.3));
@@ -22834,7 +22872,7 @@ function buildDovetail(p){
   const ang  = Math.max(5, Math.min(30, p.mntDtAngle||12)) * Math.PI/180;
   const hD   = Math.max(3, p.mntDtH||8);
   const wT   = wB + hD*Math.tan(ang);                    // half width at the top — the undercut
-  const t    = Math.max(1.5, p.mntT||3);
+  const t    = Math.max(1.5, p.mntT||PANEL_DEF.mntT);
   const clr  = fitTuned(p, Math.max(0, p.mntDtClear!=null ? p.mntDtClear : 0.25));
   const flank= Math.max(2.5, t), tris=[], emb=Math.min(t*0.6, 0.8);
   const push = T => { for(const q of T) tris.push(q); };
@@ -26532,12 +26570,10 @@ function buildTrisForShapeCore(shape, p) {
         const tW = clampWallThickness(p.width, p.height, p.depth, p.wallThickness||2), floorY = -hh + tW;
         const hasHoles = !isBin && typeof boxHoles !== 'undefined' && boxHoles && boxHoles.length > 0;
         const port = (hasHoles) ? portsForBuilder(p).filter(pt=>pt.axis!==1).map(squirclePortParams) : null;
-        const latOpts = p.latticeFloor ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
-          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
-        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
-          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
+        const latOpts = p.latticeFloor ? latticeOptsOf(p) : null;
+        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? latticeOptsOf(p) : null;
         if (wallLat) {  // perforated side wall (overrides logos/ports on the wall)
-          const fineW = Math.max(0.4, 2*Math.max(hw,hh,hd)/Math.max(12,(wallLat.res||60)));
+          const fineW = Math.max(0.4, 2*Math.max(hw,hh,hd)/Math.max(12, wallLat.res));
           const ringDense = isBin ? ringRoundedRectDense(hw, hd, binR, seg, fineW) : null;
           tris = buildPolyHollowWallLattice(hw, hd, hh, N, rr, seg, tW, floorY, wallLat, latOpts, ringDense);
         }
@@ -26589,10 +26625,8 @@ function buildTrisForShapeCore(shape, p) {
         // machinery with a dense superellipse ring — a convex simple ring, so it insets/perforates cleanly
         // (no bin-corner self-intersections → no slicer errors). Straight walls (flat bottom); the net
         // overrides squircleVBot rounding. Works for every horizontal variation (squircle % + W≠D ellipse).
-        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
-          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
-        const sqLat = p.latticeFloor ? { rib:Math.max(0.1,p.latticeRib||2), cell:Math.max(1,p.latticeCell||8),
-          borderCells:Math.max(1,Math.round(p.latticeBorder||2)), pattern:p.latticePattern||'diamond', res:p.latticeRes||60 } : null;
+        const wallLat = (p.latticeWalls && p.latticeWalls !== 'none') ? latticeOptsOf(p) : null;
+        const sqLat = p.latticeFloor ? latticeOptsOf(p) : null;
         if (wallLat || sqLat) {
           const hw=p.width/2, hh=p.height/2, hd=p.depth/2, floorY=-hh+tW;
           const fineW = netGridStep(2*Math.max(hw,hh,hd), (wallLat||sqLat).cell, (wallLat||sqLat).rib, (wallLat||sqLat).res);
@@ -26673,12 +26707,11 @@ function buildTrisForShapeCore(shape, p) {
       // Lattice on the side walls: plain flat container only (no logos / bulge / chamfer — a flat wall keeps
       // the outer + cavity cutouts congruent). Reuses the same rib/cell/border/pattern controls as the net floor.
       const wallLat = (p.latticeWalls && p.latticeWalls !== 'none' && logos.length === 0 && !hasWallBulge(p) && !chamferOpts)
-        ? { walls: p.latticeWalls, rib: Math.max(0.1, p.latticeRib||2), cell: Math.max(1, p.latticeCell||8),
-            borderCells: Math.max(1, Math.round(p.latticeBorder||0)), pattern: p.latticePattern||'diamond' }
+        ? latticeOptsOf(p, { walls: p.latticeWalls })
         : null;
       // The lattice net rides the hollow build's uniform grid, so its own detail slider (up to 500,
       // как у логотипов) drives the resolution while a net (floor or walls) is on; otherwise logoResolution.
-      const hollowRes = (lat || wallLat) ? Math.max(10, Math.min(500, Math.round(p.latticeRes || 50))) : logoResolution;
+      const hollowRes = (lat || wallLat) ? latticeResOf(p) : logoResolution;
       return buildHollowBox(p.width, p.height, p.depth, p.wallThickness||2, hollowRes, dispFns, taperFn, lat, bAmts||undefined, zones, hollowRes, chamferOpts, wallLat);
     }
 
@@ -29630,7 +29663,7 @@ function collectPrintWarnings(p, mesh){
     if (rib > cell*0.42) w.push('перемычка узора ' + rib.toFixed(1) + ' мм при клетке ' + cell.toFixed(1) +
       ' мм — просвета почти не остаётся, рисунок выродится в точки; перемычку до ' + (cell*0.3).toFixed(1) +
       ' мм или шаг покрупнее');
-    else if (!(p.sheetPatRib > 0) && auto < (p.latticeRib || 1.5) - 1e-9)
+    else if (!(p.sheetPatRib > 0) && auto < (p.latticeRib || PANEL_DEF.latticeRib) - 1e-9)
       w.push('перемычка узора ужата до ' + auto.toFixed(1) + ' мм по шагу ' + cell.toFixed(1) +
              ' мм — иначе она съела бы клетку целиком');
   }
@@ -29661,7 +29694,7 @@ function collectPrintWarnings(p, mesh){
      кольцом и той же обрезкой, что у построителя, — иначе предупреждение говорило бы про свою границу. */
   if ((p.sheetShape && p.sheetShape !== 'none') && (p.sheetCut || 'texture') === 'texture' &&
       p.sheetPattern && p.sheetPattern !== 'none' && typeof logos !== 'undefined' && logos.length){
-    const hw = (p.width||0)/2, hd = (p.depth||0)/2;
+    const hw = (p.width||PANEL_DEF.width)/2, hd = (p.depth||PANEL_DEF.depth)/2;
     const ring = sheetOutlineRing(p, hw, hd);
     const clip = (ring && ring.length > 2) ? polyInsetRing(ring, Math.max(SHEET_TEX_MIN_INSET, sheetTexEdgeGap(p))) : null;
     if (clip && clip.length > 2){
@@ -29690,7 +29723,7 @@ function collectPrintWarnings(p, mesh){
      предупреждения. */
   if ((p.sheetShape && p.sheetShape !== 'none') && p.sheetCut === 'texture' && SHEET_SMOOTH.has(p.sheetPattern)){
     const cell = Math.max(1, p.sheetPatCell > 0 ? p.sheetPatCell : sheetAutoCell(p.sheetPattern, p.latticeCell));
-    const wx = Math.max(1, p.width||0), wz = Math.max(1, p.depth||0);
+    const wx = Math.max(1, p.width||PANEL_DEF.width), wz = Math.max(1, p.depth||PANEL_DEF.depth);
     const step = sheetSmoothStep(wx, wz, cell, p.sheetPatRes);
     const got = cell/step, want = sheetSmoothDivs(p.sheetPatRes);
     if (got < want - 0.5) w.push('детализация узора упёрлась в размер листа: заказано ' + want +
@@ -29708,7 +29741,7 @@ function collectPrintWarnings(p, mesh){
     const opt = row && row.options.find(o => o.v === p.sheetPattern);
     w.push('узор «' + ((opt && opt.t.replace(/ \(.*\)$/, '')) || p.sheetPattern) + '»: шаг ' +
            SHEET_SMOOTH_CELL + ' мм (авто у плавных узоров — свой, не от сетчатого дна); ' +
-           'на лист ' + (p.width||0) + ' мм это ' + Math.max(1, Math.round((p.width||0)/SHEET_SMOOTH_CELL)) +
+           'на лист ' + (p.width||PANEL_DEF.width) + ' мм это ' + Math.max(1, Math.round((p.width||PANEL_DEF.width)/SHEET_SMOOTH_CELL)) +
            ' щитков в ряд — «шаг узора» перебивает');
   }
   /* Шаг узора крупнее, чем лист способен унести: решётке нужен хотя бы один целый шаг в каждую сторону от
@@ -29716,13 +29749,13 @@ function collectPrintWarnings(p, mesh){
      построителя, — включая обрезку тыльной фаской, которая это кольцо ужимает. */
   if ((p.sheetShape && p.sheetShape !== 'none') && (p.sheetCut === 'through') &&
       p.sheetPattern && p.sheetPattern !== 'none' && !SHEET_TEXTURE_ONLY.has(p.sheetPattern)){
-    const hw=(p.width||0)/2, hd=(p.depth||0)/2;
+    const hw=(p.width||PANEL_DEF.width)/2, hd=(p.depth||PANEL_DEF.depth)/2;
     const ring=sheetOutlineRing(p, hw, hd);
     const cell=Math.max(1, p.sheetPatCell>0 ? p.sheetPatCell : sheetAutoCell(p.sheetPattern, p.latticeCell));
     const chW=Math.max(0, Math.min(p.sheetChamfer||0, Math.min(hw,hd)*0.4));
     const bot=(chW>0.1 && ring && ring.length>2) ? polyInsetRing(ring, chW) : ring;
     if(ring && ring.length>2 && bot && bot.length>2 && !sheetNetFitsRing(bot, cell))
-      w.push('шаг узора ' + cell.toFixed(1) + ' мм — на лист ' + (p.width||0) + '×' + (p.depth||0) +
+      w.push('шаг узора ' + cell.toFixed(1) + ' мм — на лист ' + (p.width||PANEL_DEF.width) + '×' + (p.depth||PANEL_DEF.depth) +
              ' мм решётка с таким шагом не ложится, плита построена гладкой: возьмите шаг мельче');
   }
   /* Узор, который не бывает решёткой, выбран вместе со сквозным рисунком. Раньше это молча давало ромб —

@@ -109,9 +109,12 @@ const isLit = (T, k) => T[k] && (T[k].t === 'num' || T[k].t === 'str' || (T[k].t
 const litVal = (T, k) => T[k].t === 'num' ? T[k].v : T[k].t === 'str' ? T[k].v
                   : T[k].v === 'true' ? true : T[k].v === 'false' ? false : null;
 /* ИМЕНОВАННАЯ КОНСТАНТА — ТОЖЕ ОТВЕТ, и притом правильный: `PIP_GAP_DEF` не копия умолчания, а
-   ссылка на то же самое число. Значение берётся у живого кода, а не выводится из текста. */
+   ссылка на то же самое число. Значение берётся у живого кода, а не выводится из текста.
+   ЧИТАЕТСЯ И `PANEL_DEF.knob` (v25.38.0) — та самая ссылка на строку панели, которой заменены
+   шестьдесят разошедшихся запасок. Не читай замер этой формы, свод выглядел бы как ИСЧЕЗНОВЕНИЕ мест:
+   было 953 запаски, стало бы 900, и перепись перестала бы подтверждать, что они читают панель. */
 function constVal(name){
-  if (!/^[A-Z][A-Z0-9_]*$/.test(name)) return undefined;
+  if (!/^[A-Z][A-Z0-9_]*(\.[A-Za-z_$][A-Za-z0-9_$]*)?$/.test(name)) return undefined;
   try { const v = eval(name); return (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') ? v : undefined; }
   catch (e) { return undefined; }
 }
@@ -120,6 +123,10 @@ function readVal(T, k){                       // литерал (можно со
   if (T[j] && T[j].t === 'punct' && (T[j].v === '-' || T[j].v === '+')){ if (T[j].v === '-') sign = -1; j++; }
   if (isLit(T, j)){ const v = litVal(T, j); return {v: typeof v === 'number' ? sign*v : v, next: j+1, named: false}; }
   if (T[j] && T[j].t === 'name'){
+    if (T[j+1] && T[j+1].v === '.' && T[j+2] && T[j+2].t === 'name'){      // `PANEL_DEF.knob`
+      const v = constVal(T[j].v + '.' + T[j+2].v);
+      if (v !== undefined) return {v: typeof v === 'number' ? sign*v : v, next: j+3, named: true};
+    }
     const v = constVal(T[j].v);
     if (v !== undefined) return {v: typeof v === 'number' ? sign*v : v, next: j+1, named: true};
   }
@@ -194,10 +201,23 @@ function panelCanFire(guard, row){
   if (guard && guard.op) return guard.op === '>' ? lo <= guard.n : lo < guard.n;
   return true;
 }
-const auto = [], copies = [], bad = [];
+/* ЗАПАСКА, РАВНАЯ ПЕРВОМУ ПОДРЕЖИМУ СЕМЬИ, — НЕ КОПИЯ УМОЛЧАНИЯ, и это единственное законное
+   исключение (v25.38.0). У ручки-переключателя семьи панельное умолчание значит «семьи нет вовсе»
+   ('none'), а места с такой запаской работают только когда семья УЖЕ включена: подставить туда 'none'
+   значило бы сказать «строим то, чего нет». Значение берётся НЕ С МОИХ СЛОВ, а из реестра семей —
+   `FAMILIES[].act` — того самого, чем семья включается. Скажи я «cleat законен», проверка молчала бы
+   и о любом другом слове на его месте. */
+const FAMILY_ACT = {};
+for (const f of FAMILIES) for (const k in (f.act || {})) FAMILY_ACT[k] = f.act[k];
+const auto = [], copies = [], bad = [], famAct = [];
 for (const f of found){
   const row = panel.get(f.key), d = row.default;
   if (panelCanFire(f.guard, row)){ auto.push(f); continue; }
+  /* ТОЛЬКО ВКЛЮЧЕНИЕ СЕМЬИ, И НИЧЕГО КРОМЕ. `p.pipMode || 'none'` — это ВОПРОС «включена ли семья»,
+     и там 'none' совпадает с панелью, то есть расхождения нет вовсе (таких мест 23). А `|| 'cleat'` —
+     это ОТВЕТ подрежимом внутри уже включённой семьи. Первое проходит общим правилом, второе —
+     этим исключением; всё остальное на этих ручках остаётся расхождением. */
+  if (FAMILY_ACT[f.key] !== undefined && FAMILY_ACT[f.key] === f.def && d !== f.def){ famAct.push(f); continue; }
   copies.push(f);
   const same = (typeof d === typeof f.def)
     ? (typeof d === 'number' ? Math.abs(d - f.def) < 1e-9 : d === f.def)
@@ -236,10 +256,11 @@ console.log('=== машинка переписи видит то, что дол�
 
 console.log('\n=== перепись: сколько умолчаний написано дважды ===');
 {
-  /* ЧИСЛА ЗАКРЕПЛЕНЫ, А НЕ ОБЪЯВЛЕНЫ ОКОНЧАТЕЛЬНЫМИ. Расхождений на v25.36.0 — 60, и это ПЕРВЫЙ
-     честный замер: прежние «61» получены негодным регулярным выражением и в `BUGS.md` объявлены
-     неподтверждёнными. Двигаться число может только вниз. */
-  const MAX_BAD = 60;
+  /* ЧИСЛА ЗАКРЕПЛЕНЫ, А НЕ ОБЪЯВЛЕНЫ ОКОНЧАТЕЛЬНЫМИ. Было 60 на v25.36.0 (первый честный замер;
+     прежние «61» получены негодным регулярным выражением и объявлены неподтверждёнными), стало НОЛЬ
+     на v25.38.0: разобраны все девятнадцать ручек, и запаска каждой ссылается на строку панели.
+     Двигаться число может только вниз, а ноль — только остаться нулём. */
+  const MAX_BAD = 0;
   chk('расхождений не прибыло (' + bad.length + ' ≤ ' + MAX_BAD + ')', bad.length <= MAX_BAD,
       bad.slice(0, 8).map(f => f.key + ': панель ' + JSON.stringify(panel.get(f.key).default) +
                                ' против ' + JSON.stringify(f.def) + ' в ' + f.fn));
@@ -253,6 +274,71 @@ console.log('\n=== перепись: сколько умолчаний напи�
       gapForms.length === 1 && gapForms[0].named === true && gapForms[0].def === panel.get('pipGap').default,
       gapForms.map(f => ({где:f.fn, что:f.def, ссылка:f.named})));
   chk('именованных ссылок вместо чисел — не меньше одной', named.length >= 1, named.length);
+  /* ССЫЛКА НА ПАНЕЛЬ — ЭТО НЕ ИСЧЕЗНОВЕНИЕ МЕСТА. Свод шестидесяти расхождений заменил числа на
+     `PANEL_DEF.knob`; не умей замер читать эту форму, места просто выпали бы из переписи, и ноль выше
+     означал бы «перестали видеть», а не «сошлось». */
+  const viaPanel = copies.filter(f => f.named && panel.get(f.key).default === f.def);
+  chk('запаски, ссылающиеся на строку панели, перепись ВИДИТ (' + viaPanel.length + ')',
+      viaPanel.length >= 40, viaPanel.length);
+  chk('  и каждая отдаёт ровно панельное число',
+      viaPanel.every(f => f.def === panel.get(f.key).default));
+}
+
+console.log('\n=== единственное исключение: запаска = первый подрежим семьи ===');
+{
+  /* Восемь мест на двух ручках — переключатели семей органайзера и корпуса. Проверяется не то, что их
+     восемь, а то, ЧЕМ они оправданы: значение обязано совпасть с `act` своей семьи и НЕ совпасть с
+     панельным умолчанием — иначе исключение стало бы дырой, через которую пройдёт любое число. */
+  chk('реестр семей прочитан', Object.keys(FAMILY_ACT).length > 10, Object.keys(FAMILY_ACT).length);
+  chk('и в нём есть обе ручки-переключателя',
+      FAMILY_ACT.woBack === 'cleat' && FAMILY_ACT.pbPart === 'tray',
+      {woBack:FAMILY_ACT.woBack, pbPart:FAMILY_ACT.pbPart});
+  chk('исключений ровно столько, сколько мест (' + famAct.length + ')', famAct.length === 8, famAct.length);
+  chk('  и каждое — включение своей семьи, а не умолчание панели',
+      famAct.every(f => f.def === FAMILY_ACT[f.key] && f.def !== panel.get(f.key).default),
+      famAct.map(f => f.key + '=' + JSON.stringify(f.def) + ' в ' + f.fn));
+  chk('  панель при этом говорит «семьи нет»',
+      famAct.every(f => panel.get(f.key).default === 'none'),
+      [...new Set(famAct.map(f => f.key + ':' + panel.get(f.key).default))]);
+  /* И ЧТО ИСКЛЮЧЕНИЕ НЕ ПУСКАЕТ ЧУЖОГО: слово, которого нет в реестре семей, обязано остаться
+     расхождением. Проверяется на подложенном месте, а не рассуждением. */
+  const probe = scan(tokenize("function buildX(p){ const q = p.woBack || 'hexshelf'; }"), () => 'проба');
+  chk('чужое слово на месте включения семьи исключением не станет',
+      probe.length === 1 && probe[0].def === 'hexshelf' && FAMILY_ACT.woBack !== 'hexshelf', probe);
+}
+
+console.log('\n=== умолчание живёт в одном месте, и оно — строка панели ===');
+{
+  chk('`PANEL_DEF` собран из строк панели и полон',
+      Object.keys(PANEL_DEF).length === SHAPE_PARAMS.box.length &&
+      SHAPE_PARAMS.box.every(r => PANEL_DEF[r.key] === r.default),
+      Object.keys(PANEL_DEF).length);
+  /* Набор по умолчанию обязан быть КОПИЕЙ, а не самой таблицей: его потом правят ручками. */
+  const a = defaultBoxParams(), b = defaultBoxParams();
+  a.width = 1234;
+  chk('`defaultBoxParams()` отдаёт свежую копию', b.width !== 1234 && PANEL_DEF.width !== 1234,
+      {b:b.width, def:PANEL_DEF.width});
+  chk('  и она равна панели ключ в ключ',
+      Object.keys(b).length === Object.keys(PANEL_DEF).length &&
+      Object.keys(b).every(k => b[k] === PANEL_DEF[k]));
+  /* НАБОР РУЧЕК СЕТКИ — ОДНО ПРАВИЛО. Проверяется в исходнике: собранный вручную объект из бандла не
+     виден, а именно он и был шестью копиями. */
+  const inline = (src.match(/rib\s*:\s*Math\.max\(0\.1\s*,\s*p\.latticeRib/g) || []);
+  chk('сетка собирается одним правилом, а не шестью копиями (' + inline.length + ')',
+      inline.length === 1, inline);
+  chk('  и правило это зовут все её пути',
+      (src.match(/latticeOptsOf\(p/g) || []).length >= 6, (src.match(/latticeOptsOf\(p/g) || []).length);
+  chk('  а детализация — второе правило, с панельным зажимом',
+      typeof latticeResOf === 'function' &&
+      latticeResOf({latticeRes:1}) === 10 && latticeResOf({latticeRes:9999}) === 500 &&
+      latticeResOf({}) === PANEL_DEF.latticeRes,
+      [latticeResOf({latticeRes:1}), latticeResOf({latticeRes:9999}), latticeResOf({})]);
+  /* И ЧТО ОДНО ПРАВИЛО ОТДАЁТ ТО ЖЕ, ЧТО ОТДАВАЛИ ШЕСТЬ: числа панели, а не свои. */
+  const o = latticeOptsOf(defaultBoxParams());
+  chk('  и отдаёт панельные числа',
+      o.rib === PANEL_DEF.latticeRib && o.cell === PANEL_DEF.latticeCell &&
+      o.borderCells === PANEL_DEF.latticeBorder && o.pattern === PANEL_DEF.latticePattern &&
+      o.res === PANEL_DEF.latticeRes, o);
 }
 
 console.log('\n=== запаска и панель: кто из них отвечает ===');

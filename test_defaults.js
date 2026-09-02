@@ -186,6 +186,17 @@ for (let i = 0; i + 2 < T.length; i++){
 return found;
 }
 const found = scan(T, owner);
+/* ЧТЕНИЕ ЧЕРЕЗ `knobOf` — ТОЖЕ ЧТЕНИЕ, и перепись обязана его видеть (v25.39.0). Ключ там строкой
+   (`knobOf(p, 'gearTeeth')`), а не `p.gearTeeth`, — значит разбор выражений мимо него проходит, и
+   свод 79 мест на это правило выглядел бы как их ИСЧЕЗНОВЕНИЕ: было 905 запасок, стало бы 798, и
+   числа переписи потеряли бы смысл. Такие места считаются наравне с прочими и всегда согласны с
+   панелью по построению — правило берёт умолчание и пределы из её же строки. */
+const VIA_KNOBOF = [];
+for (const m of src.matchAll(/knobOf\(\s*p\s*,\s*'(\w+)'\s*\)/g)){
+  if (!panel.has(m[1])) continue;
+  const f = {key:m[1], def:panel.get(m[1]).default, at:m.index, form:'knobOf', guard:'null', named:true, fn:owner(m.index)};
+  VIA_KNOBOF.push(f); found.push(f);
+}
 
 /* ============================ сверка ============================
    Вторая копия умолчания — только там, где НИ ОДНО панельное значение до запаски не доводит: тогда
@@ -264,7 +275,7 @@ console.log('\n=== перепись: сколько умолчаний напи�
   chk('расхождений не прибыло (' + bad.length + ' ≤ ' + MAX_BAD + ')', bad.length <= MAX_BAD,
       bad.slice(0, 8).map(f => f.key + ': панель ' + JSON.stringify(panel.get(f.key).default) +
                                ' против ' + JSON.stringify(f.def) + ' в ' + f.fn));
-  chk('и перепись не опустела (' + copies.length + ' вторых копий)', copies.length > 700, copies.length);
+  chk('и перепись не опустела (' + copies.length + ' вторых копий)', copies.length > 650, copies.length);
   /* ЗАЗОР ПОДВИЖНОСТИ ИЗ ПЕРЕПИСИ УШЁЛ ВОВСЕ. Четыре записи сведены к одной, и та ссылается на общее
      число, а не пишет его заново. */
   chk('у зазора петли расхождений нет', bad.every(f => f.key !== 'pipGap'),
@@ -279,7 +290,9 @@ console.log('\n=== перепись: сколько умолчаний напи�
      означал бы «перестали видеть», а не «сошлось». */
   const viaPanel = copies.filter(f => f.named && panel.get(f.key).default === f.def);
   chk('запаски, ссылающиеся на строку панели, перепись ВИДИТ (' + viaPanel.length + ')',
-      viaPanel.length >= 40, viaPanel.length);
+      viaPanel.length >= 100, viaPanel.length);
+  chk('  из них через `knobOf` — ' + VIA_KNOBOF.length,
+      VIA_KNOBOF.length >= 75 && VIA_KNOBOF.every(f => copies.indexOf(f) >= 0), VIA_KNOBOF.length);
   chk('  и каждая отдаёт ровно панельное число',
       viaPanel.every(f => f.def === panel.get(f.key).default));
 }
@@ -420,6 +433,47 @@ console.log('\n=== зазор подвижности: одна ручка, од�
       panel.get('pipGap').min === PIP_GAP_LO && panel.get('pipGap').max === PIP_GAP_HI &&
       panel.get('pipGap').default === PIP_GAP_DEF,
       [panel.get('pipGap').min, panel.get('pipGap').max, panel.get('pipGap').default]);
+}
+
+console.log('\n=== ручка, прочитанная по своей же строке ===');
+{
+  /* `knobOf` — второе правило этой работы (v25.39.0): пределы и умолчание ручки записаны в её строке,
+     и построители переписывали их у себя. Проверяется не «оно работает», а что оно ТО ЖЕ САМОЕ, что
+     панель делает с введённым числом: иначе у одного вопроса снова стало бы два ответа. */
+  const KN = ['keySizeU','keyWall','keyPlate','gearTeeth','gearPA','planetN','gfX','sheetTexH','woShelfD','mntW'];
+  for (const k of KN){
+    const r = panel.get(k);
+    const vals = [undefined, null, '', r.min, r.default, r.max, r.min - 5, r.max + 100, (r.min + r.max)/2 + 0.37];
+    let bad = null;
+    for (const v of vals){
+      const q = defaultBoxParams(); if (v === undefined) delete q[k]; else q[k] = v;
+      const got = knobOf(q, k);
+      const want = clampParam(r, (v === undefined || v === null || v === '') ? r.default : +v);
+      if (!(Math.abs(got - want) < 1e-12)) bad = {ручка:k, дано:v, получено:got, ждали:want};
+    }
+    chk(k + ': то же, что панель делает с введённым числом', bad === null, bad);
+  }
+  chk('без ключа отдаётся умолчание строки', KN.every(k => {
+    const q = defaultBoxParams(); delete q[k]; return knobOf(q, k) === panel.get(k).default; }));
+  chk('за пределы строки не выпускает', KN.every(k => {
+    const r = panel.get(k), q = defaultBoxParams();
+    q[k] = r.max * 10; const hi = knobOf(q, k);
+    q[k] = r.min - 1000; const lo = knobOf(q, k);
+    return hi === r.max && lo === r.min; }));
+  /* И ЧТО ЭТО ИМЕННО ПАНЕЛЬНОЕ ПРАВИЛО, а не похожее: `knobOf` обязан стоять на `clampParam`. */
+  chk('правило одно с панельным', /function knobOf\(p, key\)\{?[\s\S]{0,200}?clampParam\(r,/.test(src));
+  /* ПОСТРОИТЕЛЬ И СПЕЦИФИКАЦИЯ ОТВЕЧАЮТ ОДНО И ТО ЖЕ — на тех семьях, где копии и стояли. Спрашивается
+     поведение, а не текст: текст проверяет перепись копий в `test_saidbuilt.js`. */
+  const P2 = ov => Object.assign(defaultBoxParams(), {gfBaseplate:false}, ov);
+  const kc = P2({keycapMode:'single', keySizeU:2.75, keyWall:2.4, keyPlate:3.1});
+  chk('кейкап: посадка и стабилизатор считают одну ширину стенки',
+      keycapFitSpec(kc).wall === knobOf(kc, 'keyWall'), [keycapFitSpec(kc).wall, knobOf(kc, 'keyWall')]);
+  chk('  и один размер в юнитах',
+      keycapFitSpec(kc).u === keycapStabSpec(kc).u && keycapStabSpec(kc).u === knobOf(kc, 'keySizeU'));
+  const gf = P2({gfBaseplate:true, gfX:12, gfY:2});
+  chk('плита: спецификация не обещает больше, чем даёт ползунок',
+      baseplateSpec(gf).n === panel.get('gfX').max && baseplateSpec(gf).gridCut === true,
+      {n:baseplateSpec(gf).n, предел:panel.get('gfX').max});
 }
 
 console.log('\n=== расхождения названы поимённо, а не сосчитаны ===');

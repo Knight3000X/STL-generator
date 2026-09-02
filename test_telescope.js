@@ -192,13 +192,77 @@ console.log('=== collapsed as printed, and the travel is what it says ===');
 
 console.log('=== and it says when it had to change what was asked ===');
 { chk('тесный зазор отмечается', collectPrintWarnings(setp({telGap:0.15})).some(x=>/спечься/.test(x)), {});
-  chk('тонкая стенка тоже', collectPrintWarnings(setp({telWall:0.8})).some(x=>/тоньше 1 мм/.test(x)), {});
+  /* СТЕНКА — v25.37.0. Прежняя жалоба говорила «стенка секции 0.8 мм — тоньше 1 мм» и была неправа
+     дважды: порог `1.0` взят числом, к соплу не привязанным (на сопле 0.6 стенка 1.0 это меньше двух
+     проходов, и молчали), а число 0.8 приложение ставило САМО вместо заказанных 0.5 — то есть жалоба
+     шла на собственную подстановку, не назвав её. Теперь говорится ровно то, что произошло. */
+  chk('поднятая соплом стенка названа обоими числами',
+      collectPrintWarnings(setp({telWall:0.5})).some(x=>/стенка секции поднята с 0\.50 до 0\.80 мм соплом 0\.4/.test(x)),
+      collectPrintWarnings(setp({telWall:0.5})));
+  chk('  и на сопле 0.6 порог идёт за соплом, а не за единицей',
+      collectPrintWarnings(setp({telWall:1.0, printNozzle:'0.6'})).some(x=>/поднята с 1\.00 до 1\.20/.test(x)),
+      collectPrintWarnings(setp({telWall:1.0, printNozzle:'0.6'})));
+  chk('  а ровно два прохода жалобы не вызывают', !collectPrintWarnings(setp({telWall:0.8})).some(x=>/стенка секции/.test(x)),
+      collectPrintWarnings(setp({telWall:0.8})));
+  chk('  и прежнего порога числом в файле не осталось',
+      require('fs').readFileSync('parametric-stl-generator.html','utf8').indexOf('стенка секции \' + t.w.toFixed(1)') < 0);
   // N sections need N·step of radius; rather than let the innermost vanish, the outer Ø is raised — and
   // silently growing a part someone dimensioned would be worse than saying so.
   chk('и то, что Ø пришлось увеличить', collectPrintWarnings(setp({telN:6, telD:26})).some(x=>/увеличен/.test(x)),
       collectPrintWarnings(setp({telN:6, telD:26})));
   chk('а нормальный телескоп ни о чём не предупреждает', collectPrintWarnings(setp({})).length === 0,
       collectPrintWarnings(setp({})));
+}
+
+console.log('=== чего стоил подъём стенки: две ветки, и обе измерены по СЕТКЕ ===');
+/* ЗАЧЕМ ОТДЕЛЬНЫЙ РАЗДЕЛ. У шести остальных стенок подъём соплом кончается на самой стенке. У
+   телескопа стенка входит в ШАГ СЕКЦИЙ, и потому у подъёма есть цена — но она не одна, а две, и
+   какая именно, решают числа: пока наружный Ø задан с запасом, лишняя толщина уходит в ПРОСВЕТ (на
+   каждой из N секций), а когда запаса нет, растёт САМ наружный Ø. Спрашивать про это спецификацию
+   бессмысленно — она сама себе источник, — поэтому меряется построенное. */
+{
+  const bore = (t, s) => {                      // просвет: щель вокруг оси на высоте между кольцами
+    const B = computeBBox(t), runs = solidRuns(t, 0, B.maxY - s.hf/2, 0.11);
+    let open = 0;
+    for (let k = 0; k+1 < runs.length; k++) if (runs[k][1] <= 0 && runs[k+1][0] >= 0) open = runs[k+1][0] - runs[k][1];
+    return open;
+  };
+  const wallOuter = (t, s) => {                 // толщина стенки самой широкой секции, на середине высоты
+    const runs = solidRuns(t, 0, 0, 0.11);
+    return runs.length ? runs[0][1] - runs[0][0] : null;
+  };
+  /* ВЕТКА ПЕРВАЯ: Ø с запасом — просвет сужается ровно на то, что обещано, и обещание это в тексте. */
+  for (const [nz, ask, wantW] of [['0.4', 0.5, 0.8], ['0.6', 0.8, 1.2], ['0.8', 0.5, 1.6]]){
+    const p = setp({telWall:ask, printNozzle:nz, telD:40}), s = telescopeSpec(p), t = mk({telWall:ask, printNozzle:nz, telD:40});
+    chk('сопло ' + nz + ': построена стенка ' + wantW, Math.abs(wallOuter(t, s) - wantW) < 1e-3,
+        {построено:+wallOuter(t, s).toFixed(3), правило:s.w});
+    chk('  и просвет — тот, что назван', Math.abs(bore(t, s) - s.bore) < 0.3,
+        {построено:+bore(t, s).toFixed(2), сказано:+s.bore.toFixed(2)});
+    chk('  а сужение названо в тексте', collectPrintWarnings(p).some(x => x.indexOf('просвет от этого сузился с ' +
+        s.boreAsk.toFixed(1) + ' до ' + s.bore.toFixed(1)) >= 0), collectPrintWarnings(p));
+    chk('  и оно не выдумано: с заказанной стенкой просвет был бы шире',
+        s.boreAsk > s.bore + 0.05 && Math.abs(s.boreLost - (s.boreAsk - s.bore)) < 1e-9,
+        {сузился:+s.boreLost.toFixed(2)});
+  }
+  /* ВЕТКА ВТОРАЯ: Ø не хватает самому — тогда просвет НЕ трогается, растёт наружный Ø, и говорит об
+     этом другая строка. Без этой половины «сужение» объявлялось бы всегда, а это неправда. */
+  {
+    const ov = {telWall:0.8, printNozzle:'0.6', telN:6, telD:26};
+    const p = setp(ov), s = telescopeSpec(p), t = mk(ov);
+    chk('когда Ø растёт сам, просвет не меняется', Math.abs(s.boreLost) < 1e-9,
+        {потеряно:+s.boreLost.toFixed(3), bore:+s.bore.toFixed(2)});
+    chk('  про сужение тогда не говорится', !collectPrintWarnings(p).some(x => /сузился/.test(x)),
+        collectPrintWarnings(p));
+    chk('  а про рост Ø — говорится', collectPrintWarnings(p).some(x => /увеличен до/.test(x)));
+    chk('  и построенный Ø — тот, что назван',
+        Math.abs((computeBBox(t).maxX - computeBBox(t).minX) - 2*s.rOut) < 0.3,
+        {построено:+(computeBBox(t).maxX - computeBBox(t).minX).toFixed(2), сказано:+(2*s.rOut).toFixed(2)});
+  }
+  /* И ПРИ СВОЁМ СОПЛЕ НЕ ДВИНУЛОСЬ НИЧЕГО: 0.4 даёт ровно прежний зажим числом 0.8. */
+  for (const wall of [0.4, 0.5, 0.8, 1.6, 3])
+    chk('сопло 0.4, стенка ' + wall + ': зажим тот же, что был числом',
+        Math.abs(telescopeSpec(setp({telWall:wall, printNozzle:'0.4'})).w - Math.max(0.8, wall)) < 1e-9,
+        telescopeSpec(setp({telWall:wall, printNozzle:'0.4'})).w);
 }
 
 console.log('=== no triangle is inside-out ===');

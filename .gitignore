@@ -6,4 +6,11 @@
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/session-start.sh
+# Разбор отката контейнера и СПРАВОЧНЫЕ копии хуков, живущих вне репозитория (/root/.claude).
+# Копии эти не работают — работают те, что в /root; здесь они лежат, чтобы их можно было прочесть,
+# обсудить и переустановить. Сам разбор в README.md: без него следующий будет чинить починенное.
+!.claude/hooks/README.md
+!.claude/hooks/stl-heal.sh
+!.claude/hooks/stl-guard.sh
+!.claude/hooks/user-settings.reference.json
 *.stl

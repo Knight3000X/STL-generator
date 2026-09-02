@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup|resume",
+        "hooks": [ { "type": "command", "command": "bash /root/.claude/hooks/stl-heal.sh" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash",
+        "hooks": [ { "type": "command", "command": "bash /root/.claude/hooks/stl-guard.sh", "timeout": 5 } ] }
+    ]
+  }
+}

@@ -1246,7 +1246,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.34.0';
+const APP_VERSION = 'v25.35.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6768,7 +6768,51 @@ function addModel(){
 function pbLipHeight(p){ return Math.max(2, Math.min(Math.max(8, p.pbH||30)*0.5, p.pbLipH||5)); }
 // How deep buildGridfinityBaseplate cuts its sockets from the top face.
 const GF_SOCKET_DEPTH = 4.75;
-function threadHeadHeight(p){ const D=Math.max(6,threadDOf(p)); return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6); }
+/* ВЫСОТЫ ГОЛОВОК — ОДНО ПРАВИЛО НА ТРОИХ: спецификацию, построитель и сборку. Их было по две-три
+   копии на каждую, слово в слово, и файл сам объявлял это гарантией — «берётся ТЕМ ЖЕ выражением,
+   что в построителе». Гарантия эта держится на честном слове, и однажды уже не удержалась (стенка
+   воронки, v25.34.0). Здесь она НЕ УДЕРЖАЛАСЬ ТОЖЕ, и нашлось это замером: у головки болта пол Ø
+   стоял ШЕСТЬ, а у построителя ЧЕТЫРЕ, и на болтах тоньше М6 сборка сажала гайку по 3.60 мм там,
+   где головка построена 2.41. Гайка висела над головкой на миллиметр с лишним. Пол берётся
+   построительский: печатается то, что строит построитель, а не то, что о нём говорят. */
+/* Ø РЕЗЬБЫ, КАК ЕГО ВИДИТ ПОСТРОИТЕЛЬ — семь копий одного выражения, и одна из них была ДРУГОЙ.
+   Пол здесь ЧЕТЫРЕ: тоньше М4 приложение резьбу не строит. Два места писали ШЕСТЬ — высота головки
+   и весь блок предупреждений накидной гайки, — и на всём, что тоньше М6, они считали от Ø, которого
+   в детали нет: гайка ввода объявлялась 5.40 мм при построенных 3.60 (в полтора раза), а сборка
+   сажала гайку на 3.60 там, где головка болта 2.41. Ни то, ни другое не видно глазом — оба числа
+   правдоподобны. Теперь правило одно, и звать его обязаны все. */
+function threadBuiltD(p){ return Math.max(4, threadDOf(p)); }
+function threadHeadD(p){ return threadBuiltD(p); }
+function threadHeadHeight(p){ return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : threadHeadD(p)*0.6); }
+function threadNutHeight(p){ return Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : threadHeadD(p)*0.8); }
+function threadGlandNutHeight(p){ return Math.max(3, p.threadHeadH>0 ? p.threadHeadH : threadHeadD(p)*0.9); }
+function threadStartsOf(p){ return Math.max(1, Math.round(p.threadStarts||1)); }
+function threadClearOf(p){ return Math.max(0, fitTuned(p, p.threadClear!=null ? p.threadClear : 0.4)); }
+function threadFluteN(p){ return Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24)); }
+function threadFluteD(p){ return threadFluteN(p) > 0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0; }
+/* ГОРЛОВИНА И КРЫШКА — те же числа, что у построителя, и до v25.35.0 их было по две копии. */
+function threadNeckPitchOf(p, P){ return Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P); }
+function threadNeckMajorR(p, D){ return Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2); }
+function threadNeckLen(p, P2){ return Math.max(P2*2, Math.min(200, p.threadNeckH>0 ? p.threadNeckH : 12)); }
+function threadTopOf(p){ return Math.max(1.0, (typeof p.threadTop==='number' && p.threadTop>0) ? p.threadTop : 2.5); }
+/* ОСТАЛЬНЫЕ РАЗМЕРЫ, ЖИВШИЕ ДВУМЯ И БОЛЕЕ КОПИЯМИ, — по одному правилу на число (v25.35.0).
+   Копии эти НЕ РАСХОДИЛИСЬ (кроме высоты головки, см. выше), и в том и дело: пока они совпадают
+   слово в слово, беды не видно, а стоит одной из них уехать — приложение начинает говорить про
+   одну деталь и печатать другую, молча. Ø самореза жил ВОСЕМЬЮ копиями. */
+function mntScrewDOf(p){ return Math.max(0, p.mntScrewD != null ? p.mntScrewD : 4.5); }
+function funnelMouthR(p){ return Math.max(6, (p.fnMouthD||70)/2); }
+function funnelSpoutR(p, rM){ return Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2)); }
+function doserClearOf(p){ return Math.max(0.15, Math.min(1, fitTuned(p, p.fnDoseClear!=null ? p.fnDoseClear : 0.4))); }
+function doserDoseMl(p){ return Math.max(0.5, Math.min(100, p.fnDose||10)); }
+function hookCradleROf(p){ return Math.max(8, p.hookCradleR||22); }
+function hookCradleWOf(p){ return Math.max(10, p.hookCradleW||45); }
+function woHookBarR(p){ return Math.max(2, (p.woHookBar||8)/2); }
+function standWOf(p){ return Math.max(30, p.psW||80); }
+function standTOf(p){ return Math.max(2, p.psT||4); }
+function standAngleDeg(p){ return Math.max(30, Math.min(80, p.psAngle||62)); }
+function pipGapOf(p){ return Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35))); }
+function pipKnucklesAsked(p){ return Math.max(3, Math.round(p.pipKnuckles||5)); }
+function dieBeadR(p){ return Math.max(0, Math.min(3, p.dieBead||0)); }
 function threadFlangeThickness(p){ return Math.max(1.5, p.threadFlange>0 ? p.threadFlange : 3); }
 // Every screwed pair is stood off by the joint's own fit clearance rather than driven dead home. Not
 // cosmetic: at exactly full engagement the cap's rim lands ON the jar's shoulder and the nut's face ON
@@ -6923,7 +6967,7 @@ function colletWallOf(p, minorR, rBore){
 }
 function threadMinorR(p){
   const fm = threadFormOf(p);
-  return threadMinorROf(Math.max(4, threadDOf(p))/2, fm.P, p.threadDepth, fm.k);
+  return threadMinorROf(threadBuiltD(p)/2, fm.P, p.threadDepth, fm.k);
 }
 function capThroatR(p){ return throatROf(threadMinorR(p)); }
 /* РЕЗЬБОВАЯ ПАРА — ЧЕТЫРЕ ЧИСЛА, КОТОРЫХ НА ЭКРАНЕ НЕТ (v25.13.0). Резьба была самым населённым молчуном
@@ -7007,23 +7051,23 @@ const THREAD_FEMALE    = new Set(['cap','nut','wingnut','glandcap']);
 function threadFitSpec(p){
   const mode = p.threadMode || 'none';
   if (!THREAD_FASTENERS.has(mode)) return null;
-  const D = Math.max(4, threadDOf(p)), majorR = D/2;
+  const D = threadBuiltD(p), majorR = D/2;
   const form = threadFormOf(p);
   const P = form.P;
-  const S = Math.max(1, Math.round(p.threadStarts||1));
+  const S = threadStartsOf(p);
   const flat = form.flat;
   const want = p.threadDepth;
   const h = threadDepthOf(majorR, P, want, form.k);
   /* Длина резьбы у каждой разновидности своя, и берётся она ТЕМ ЖЕ выражением, что в построителе:
      у гайки это её высота, у накидной — отдельная ручка, у остальных ручка «длина резьбы». */
-  const nutH  = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.8);
-  const gcNutH= Math.max(3,   p.threadHeadH>0 ? p.threadHeadH : D*0.9);
+  const nutH  = threadNutHeight(p);
+  const gcNutH= threadGlandNutHeight(p);
   const len = (mode==='nut' || mode==='wingnut') ? nutH
             : (mode==='glandcap') ? Math.max(1.5, Math.min(gcNutH - 2.4,
                 p.threadCapThread>0 ? p.threadCapThread : Math.max(5, 2.5*P)))
             : Math.max(P, p.threadLen||16);
   const female = THREAD_FEMALE.has(mode);
-  const clr = female ? Math.max(0, fitTuned(p, p.threadClear!=null ? p.threadClear : 0.4)) : 0;
+  const clr = female ? threadClearOf(p) : 0;
   const lead = P*S;                                     // осевой ход за оборот
   /* ХОДОВАЯ РЕЗЬБА МЕРЯЕТСЯ ДРУГИМ. Крепёжной довольно зацепа и витков; винту тисков важны два числа,
      которых у крепежа нет вовсе.
@@ -7080,8 +7124,8 @@ function threadFitSpec(p){
   const torque = holdMin*(dm/2)*(tanL + muEff)/Math.max(1e-6, 1 - muEff*tanL)/1000;   // Н·м
   const handTorque = THREAD_HAND_N*THREAD_HANDLE/1000;
   const wall = (mode==='cap') ? Math.max(1.2, p.threadWall>0?p.threadWall:2.5) : 0;
-  const nFlute = Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24));
-  const gripD  = nFlute>0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0;
+  const nFlute = threadFluteN(p);
+  const gripD  = threadFluteD(p);
   const wallLeft = wall - gripD;
   return {mode, D, P, S, majorR, h, len, female, clr, lead, turns, grip, layers, crest, flat,
           form: form.key, formLabel: form.label, alpha, alphaWant: form.alphaWant, ownFlat: form.own,
@@ -7295,7 +7339,7 @@ function springSpec(p){
 }
 function augerSpec(p){
   if ((p.threadMode||'none') !== 'auger') return null;
-  const D=Math.max(4, threadDOf(p)), P=threadPitchOf(p), majorR=D/2;
+  const D=threadBuiltD(p), P=threadPitchOf(p), majorR=D/2;
   const len=Math.max(P, p.threadLen||16);
   const rSh=Math.max(0.8, Math.min(majorR-0.8, (p.threadAugerShaft>0 ? p.threadAugerShaft : D*0.35)/2));
   const tw=Math.max(0.4, Math.min(P*0.7, p.threadAugerBlade>0 ? p.threadAugerBlade : Math.max(1.2, P*0.15)));
@@ -7401,11 +7445,11 @@ function anchorDriveR(g, t){
 // Returns null when this is not a neck adapter, or when the cap is too small to carry one.
 function threadNeckSpec(p){
   if ((p.threadMode||'none') !== 'cap' || threadTopMode(p) !== 'neck') return null;
-  const D=Math.max(4, threadDOf(p)), P=threadPitchOf(p), majorR=D/2;
+  const D=threadBuiltD(p), P=threadPitchOf(p), majorR=D/2;
   const minorR=threadMinorROf(majorR, P, p.threadDepth);
   if (minorR-0.8 < 1.0) return null;                    // no ceiling left to open a throat in
-  const P2=Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
-  const majorR2=Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
+  const P2=threadNeckPitchOf(p, P);
+  const majorR2=threadNeckMajorR(p, D);
   /* Заказанная глубина профиля СЮДА НЕ ИДЁТ, и это не забывчивость: ручка одна на деталь, а резьба
      на носике другая — своего Ø и своего шага. Абсолютная глубина, годная для Ø30, на носике Ø8
      съела бы его до оси. Носик считает глубину сам, от собственного шага. */
@@ -7416,9 +7460,9 @@ function threadNeckSpec(p){
   // `base` is how far the spigot's helix origin sits above the part's own minY — the cap's full height.
   // The pair needs it: the phase snap measures from where each helix STARTS, and this one does not start
   // at the bottom of the part the way every other thread in the app does.
-  const top=Math.max(1.0, (typeof p.threadTop==='number' && p.threadTop>0) ? p.threadTop : 2.5);
+  const top=threadTopOf(p);
   return { D:2*majorR2, pitch:P2, bore:2*rNB, wall:minorR2-rNB, base:Math.max(P, p.threadLen||16) + top,
-           len:Math.max(P2*2, Math.min(200, p.threadNeckH>0 ? p.threadNeckH : 12)) };
+           len:threadNeckLen(p, P2) };
 }
 // The mate for a set of parameters, or null when the part has no counterpart in this list.
 // `seat(A, B, p)` places B — A and B are the two ROTATED bounding boxes, A already carrying the active
@@ -10264,7 +10308,7 @@ function dieSpec(p){
      какими её строит диспетчер. */
   const asgList = (asg && asg.length) ? asg : null;
   const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
-  const beadR = Math.max(0, Math.min(3, p.dieBead||0));
+  const beadR = dieBeadR(p);
   const built = buildDie(kind, hw, hh, hd, asgList, dieRes, beadR);
   const mcB = meshCentroid(built);
   const offMeas = Math.hypot(mcB.c[0], mcB.c[1], mcB.c[2]);
@@ -10977,13 +11021,13 @@ function buildThread(p){
   const mode  = p.threadMode;
   /* У кабельного ввода размер ПОДСТАВЛЯЕТ Ø, шаг и канал — но только когда ручка на своём умолчании.
      Тронутая ручка сильнее таблицы: PG-ряд снят не с чертежа, и поправить его должно быть можно. */
-  const D     = Math.max(4, threadDOf(p));               // male major diameter
+  const D     = threadBuiltD(p);                         // male major diameter
   const form  = threadFormOf(p);
   const P     = form.P;                                  // шаг: мм или 25.4/TPI — одно правило
-  const S     = Math.max(1, Math.round(p.threadStarts||1));
+  const S     = threadStartsOf(p);
   const hand  = (p.threadHand==='left') ? -1 : 1;
   const flat  = form.flat;                               // площадка: у своего профиля выведена из угла
-  const clr   = Math.max(0, fitTuned(p, p.threadClear!=null ? p.threadClear : 0.4));
+  const clr   = threadClearOf(p);
   const majorR= D/2;
   const h     = threadDepthOf(majorR, P, p.threadDepth, form.k);
   const minorR= Math.max(0.5, majorR - h);               // male root — то же, что threadMinorR(p)
@@ -11302,7 +11346,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       }
     }
   } else if (mode === 'bolt'){  // hex head + external-threaded shaft (interpenetrating closed solids)
-    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.6);
+    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.6)/2, headH = threadHeadHeight(p);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
     for(let i=0;i<Nth;i++){ const i2=(i+1)%Nth, a=th(i), a2=th(i2), r=hexR(a), r2=hexR(a2);
       const P0=[r*Math.cos(a),0,r*Math.sin(a)], P1=[r2*Math.cos(a2),0,r2*Math.sin(a2)], P2=[r2*Math.cos(a2),headH,r2*Math.sin(a2)], P3=[r*Math.cos(a),headH,r*Math.sin(a)], ref=[P0[0]+P1[0],0,P0[2]+P1[2]];
@@ -11336,7 +11380,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
        Высота шестигранника не задаётся отдельной ручкой, а РАВНА длине резьбы (плюс 0.6 мм на кромку): под
        ключ имеет смысл держать ровно то, что нагружено. Одна ручка вместо двух, и она уже есть. */
     const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2;
-    const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
+    const nutH = threadGlandNutHeight(p);
     const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
     /* Авто-длина резьбы — 2.5 шага (но не меньше 5 мм): столько принято закладывать на зацепление в
        пластике. Прежнее «0.6 высоты гайки» давало на М30×3 шестнадцать миллиметров резьбы — пять с
@@ -11380,7 +11424,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       tris.push(orient([Bo(0,i),Hx(0,i2),Hx(0,i)],[0,-1,0]));                           // нижнее кольцо
       tris.push(orient([Bo(0,i),Bo(0,i2),Hx(0,i2)],[0,-1,0])); }
   } else if (mode === 'nut' || mode === 'wingnut'){  // hex prism with a through internal thread (+ wings)
-    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2, nutH = Math.max(1.5, p.threadHeadH>0 ? p.threadHeadH : D*0.8);
+    const afR = (p.threadHeadAF>0 ? p.threadHeadAF : D*1.8)/2, nutH = threadNutHeight(p);
     const hexR = a => afR/Math.cos(((a+Math.PI/6)%(Math.PI/3))-Math.PI/6);
     const Hx=(y,i)=>{ const a=th(i), r=hexR(a); return [r*Math.cos(a),y,r*Math.sin(a)]; };
     // Female bore: radius rides the SAME helical profile as the male, opened by the fit clearance, so a bolt of
@@ -11443,7 +11487,7 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       tris.push(orient([[0,floor,0],FI(floor,i),FI(floor,i2)],[0,1,0])); }                        // floor top (fan)
   } else {  // 'cap' — internal thread inside a knurled cup
     const wall = Math.max(1.2, p.threadWall>0?p.threadWall:2.5);
-    const top  = Math.max(1.0, (typeof p.threadTop==='number' && p.threadTop>0) ? p.threadTop : 2.5);
+    const top  = threadTopOf(p);
     const femMajorR = majorR + clr;                      // female root  (outermost of bore)
     // Something other than a solid top. FUNNEL and SPOUT are the same cone — the cap's top is bored to a
     // throat and a separate closed shell stands on it, lower rim buried 0.8 mm inside, interpenetrating
@@ -11479,8 +11523,8 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
          десятых: два тела пересекаются объёмом, а не встречаются гранями. */
       rose = true; funnel = true;
     } else if(topMode==='neck'){
-      P2 = Math.max(0.5, p.threadNeckPitch>0 ? p.threadNeckPitch : P);
-      majorR2 = Math.max(2, (p.threadNeckD>0 ? p.threadNeckD : D*0.7)/2);
+      P2 = threadNeckPitchOf(p, P);
+      majorR2 = threadNeckMajorR(p, D);
       h2 = threadDepthOf(majorR2, P2, 0);               // своего шага, не ручки — см. threadNeckSpec
       minorR2 = Math.max(0.5, majorR2 - h2);
       const twN = Math.max(0.8, Math.min(wall, majorR2*0.35));
@@ -11489,11 +11533,11 @@ function colletFingersTris(y0, y1, rIn0, rIn1, rOut0, rOut1, n, gapFrac, seg){
       rNB = Math.max(0.8, Math.min(minorR-0.8, minorR2-twN));
       neck = (minorR-0.8) >= 1.0 && rNB < minorR2-0.4;
       funnel = neck;                                          // the top is open either way
-      neckH = Math.max(P2*2, Math.min(200, p.threadNeckH>0 ? p.threadNeckH : 12));
+      neckH = threadNeckLen(p, P2);
     }
     const rThroat = neck ? rNB : (funnel ? rThroat0 : 0);
-    const nFlute = Math.max(0, Math.round(p.threadGrip!=null ? p.threadGrip : 24));
-    const gripD  = nFlute>0 ? Math.max(0.3, Math.min(2, p.threadGripD>0?p.threadGripD:0.9)) : 0;
+    const nFlute = threadFluteN(p);
+    const gripD  = threadFluteD(p);
     // A spigot wider than the cap widens the CAP, so its root always lands on solid top rather than
     // overhanging thin air. The flutes cut INTO the outer radius, so they are counted here too —
     // otherwise a deep knurl on a wide spigot lets the thread crest out past the cap's own wall.
@@ -13145,7 +13189,7 @@ function buildHingeKnuckles(p) {
 const CLAM_LATCH_MIN_ARM = 3.5;
 function clamshellSpec(p){
   const bw     = Math.max(1.2, p.pipWall||2);
-  const gap    = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
+  const gap    = pipGapOf(p);
   const battOn = p.pipBoxKind === 'batt';
   const cell   = BATT_CELLS[p.pipBattType] || null;
   const D      = Math.max(3, cell ? cell[0] : (p.pipBattD>0 ? p.pipBattD : 14.5));
@@ -14845,7 +14889,7 @@ function hingeSpec(p){
   const wall = Math.max(1.0, gap + 0.9);
   const auto = !(p.pipPinD > 0);
   const pinR = Math.max(0.8, auto ? zEdge - wall : p.pipPinD/2);
-  const nAsked = Math.max(3, Math.round(p.pipKnuckles||5));
+  const nAsked = pipKnucklesAsked(p);
   const N = (nAsked % 2 === 0) ? nAsked + 1 : nAsked;
   const w = L/N, wf = Math.max(2, w - gap);
   const fingerLen = zEdge + Math.max(1.5, leafT*0.35);
@@ -14883,12 +14927,12 @@ function buildHinge(p){
   const L     = Math.max(10, p.pipLen||60);
   const leafT = Math.max(2, p.pipLeafT||6);
   const zEdge = leafT/2;                                  // knuckle radius = half the leaf thickness (folds flat)
-  const gap   = Math.max(0.15, Math.min(0.8, fitTuned(p, p.pipGap!=null?p.pipGap:0.35)));
+  const gap   = pipGapOf(p);
   const wall  = Math.max(1.0, gap+0.9);                   // knuckle wall thickness
   const pinR  = Math.max(0.8, (p.pipPinD>0 ? p.pipPinD/2 : zEdge - wall));
   const fingerLen = zEdge + Math.max(1.5, leafT*0.35);    // z where the flat leaf plate begins
   const leafW = Math.max(fingerLen+3, p.pipLeafW||22);    // leaf depth measured from the pin line
-  let N = Math.max(3, Math.round(p.pipKnuckles||5)); if(N%2===0) N++;   // odd → both ends fused to the pin
+  let N = pipKnucklesAsked(p); if(N%2===0) N++;   // odd → both ends fused to the pin
   const w = L/N, wf = Math.max(2, w - gap);               // band pitch, finger width (axial gap between knuckles)
   const seg = Math.max(20, Math.min(64, Math.round(zEdge*8)));
   const emb = 0.6, cyMid = leafT/2;                       // weld overlap; pin/knuckle height
@@ -17725,8 +17769,8 @@ function buildVase(p){
        chamber, which no one could remove. */
 function buildDoser(p){
   const wall  = Math.max(2, p.fnWall||1.6);
-  const clr   = Math.max(0.15, Math.min(1, fitTuned(p, p.fnDoseClear!=null ? p.fnDoseClear : 0.4)));
-  const dose  = Math.max(0.5, Math.min(100, p.fnDose||10)) * 1000;      // ml → mm³
+  const clr   = doserClearOf(p);
+  const dose  = doserDoseMl(p) * 1000;      // ml → mm³
   const BETA=Math.PI/6, WHALF=Math.PI/6, GAMMA=130*Math.PI/180, kP=0.45;
   const lip=0.8;
   // The pocket is only as long as the ROTOR, which is shorter than the chamber by the end-plate lips and
@@ -17835,8 +17879,8 @@ function buildDoser(p){
 const FUNNEL_LEAN_MAX = 45;     // терпимый навес: стенка круче этого от вертикали просит поддержек
 function funnelSpec(p){
   const mode = p.fnMode || 'funnel';
-  const rM = Math.max(6, (p.fnMouthD||70)/2);
-  const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
+  const rM = funnelMouthR(p);
+  const rS = funnelSpoutR(p, rM);
   const sL = Math.max(2, p.fnSpoutLen||25);
   const cH = Math.max(4, p.fnConeH||45);
   const wAsk = p.fnWall||1.6, wWant = wallFloored(p, wAsk);
@@ -17855,9 +17899,9 @@ function funnelSpec(p){
   const grain = 2*riS/3;
   /* ДОЗАТОР. Барабан подбирается под дозу тем же делением отрезка, что и в построителе, и теми же
      формулами объёма кармана: расходиться им нельзя, иначе число на экране будет про другую деталь. */
-  const dclr = Math.max(0.15, Math.min(1, fitTuned(p, p.fnDoseClear!=null ? p.fnDoseClear : 0.4)));
+  const dclr = doserClearOf(p);
   const dwall = Math.max(2, p.fnWall||1.6);
-  const dose = Math.max(0.5, Math.min(100, p.fnDose||10));
+  const dose = doserDoseMl(p);
   const BETA = Math.PI/6, WHALF = Math.PI/6, kP = 0.45, lip = 0.8;
   const Lof = r => 1.25*2*(r + dclr + dwall)*Math.sin(WHALF);
   const Vof = r => BETA*(1-kP*kP)*r*r*Math.max(0.5, Lof(r) - 2*(lip + dclr));
@@ -17875,8 +17919,8 @@ function buildFunnel(p){
     return (p.vasePart==='saucer') ? buildSaucer(p)
          : (p.vasePart==='inner')  ? buildVaseInner(p)
          : buildVase(p);
-  const rM = Math.max(6, (p.fnMouthD||70)/2);
-  const rS = Math.max(1.5, Math.min((p.fnSpoutD||12)/2, rM-2));
+  const rM = funnelMouthR(p);
+  const rS = funnelSpoutR(p, rM);
   const sL = Math.max(2, p.fnSpoutLen||25);
   const cH = Math.max(4, p.fnConeH||45);
   const w  = funnelWall(p, rS);                            // та же функция, что у спецификации
@@ -19030,7 +19074,7 @@ function lbracketSpec(p){
   if ((p.mntMode || 'none') !== 'lbracket') return null;
   const W = Math.max(10, p.mntW||40), t = Math.max(2, p.mntT||4);
   const legA = Math.max(t+8, p.mntLegA||45), legB = Math.max(t+8, p.mntLegB||45);
-  const sd = Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5), r = sd/2;
+  const sd = mntScrewDOf(p), r = sd/2;
   const hR = sd*0.95, hD = Math.min(t*0.7, sd*0.55);
   const nAsk = Math.max(1, Math.min(4, Math.round(p.mntHoleN||1)));
   /* Раскладка — ТА ЖЕ функция, что у построителя, а не её копия. И РАЗМЕЩЁННОЕ — ещё не поставленное:
@@ -19107,7 +19151,7 @@ function lbracketSpec(p){
 function buildLBracket(p){
   const W=Math.max(10,p.mntW||40), t=Math.max(2,p.mntT||4);
   const legA=Math.max(t+8,p.mntLegA||45), legB=Math.max(t+8,p.mntLegB||45);
-  const sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), tris=[];
+  const sd=mntScrewDOf(p), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55), tris=[];
   // Both legs' countersinks open on the INSIDE of the L — the base's upward (+Y) and the back's forward (+Z).
   // That is the reachable side for a driver; the outer faces bear against the shelf and the wall and stay flat.
   // N screws per leg, spread across the width with the end margin kept clear of the hole itself.
@@ -19763,7 +19807,7 @@ function toolRackSpec(p){
 function buildTool(p){
   const s=toolRackSpec(p);
   const W=s.W, t=s.t, shelfD=s.shelfD, backH=s.backH;
-  const sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
+  const sd=mntScrewDOf(p), r=sd/2, hR=sd*0.95, hD=Math.min(t*0.7,sd*0.55);
   const tris=[], holes=[];                                                  // a row of tool holes through the shelf (Y)
   for(const cp of s.cps) holes.push({axis:1,cp,cq:0,r:s.r});
   for(const T of buildBoxWithHoles(W,t,shelfD,holes)) tris.push(T.map(v=>[v[0],v[1]+t/2,v[2]+shelfD/2]));       // shelf z∈[0,shelfD]
@@ -19781,7 +19825,7 @@ function buildPipe(p){
   const rP=Math.max(3,(p.mntPipeD||25)/2), sw=Math.max(2,p.mntPipeWall||3), rO=rP+sw;
   const W=Math.max(6,p.mntW||16), t=Math.max(2.5,p.mntT||4), standoff=Math.max(3,p.mntLegA||18);
   const zc=t+standoff+rO, seg=Math.max(28,Math.round(2*Math.PI*rO/1.1)), tris=[];
-  const plateW=Math.max(2*rO, W+12), plateH=Math.max(W, 2*rP+6), sd=Math.max(0,p.mntScrewD!=null?p.mntScrewD:4.5), holes=[];
+  const plateW=Math.max(2*rO, W+12), plateH=Math.max(W, 2*rP+6), sd=mntScrewDOf(p), holes=[];
   if(sd>0.5){ const r=sd/2, m=Math.max(sd+3, plateW*0.18);
     for(const s of [-1,1]) holes.push({axis:2,cp:s*(plateW/2-m),cq:0,r,head:'sink',headR:sd*0.95,headDepth:Math.min(t*0.7,sd*0.55),headSide:-1}); }
   for(const T of buildBoxWithHoles(plateW,plateH,t,holes)) tris.push(T.map(v=>[v[0],v[1],v[2]+t/2]));  // wall plate z∈[0,t]
@@ -19902,7 +19946,7 @@ function hookSpec(p){
   const sigma = allow*HOOK_LAYER_BOND;               // …и та же половина за слои
   let I, c, arm, what, note = '';
   if (style === 'headphone'){
-    const R = Math.max(8, p.hookCradleR||22), Wd = Math.max(10, p.hookCradleW||45);
+    const R = hookCradleROf(p), Wd = hookCradleWOf(p);
     const wall = Math.max(2, rBar*0.7), armW = Math.max(rBar*1.6, Wd*0.22);
     const h = R + wall + 0.4 - R*0.35;                // высота косынки у пластины — её же числа
     I = armW*Math.pow(h, 3)/12; c = h/2;
@@ -19966,7 +20010,7 @@ function hookFrontTris(p, style, rBar, embed){
   if(style==='headphone'){
     // A wide saddle, not a bar: a headband parked on a thin rod takes a crease in the padding, so the
     // cradle is an annular sector whose radius is the band's, and it opens upward.
-    const R=Math.max(8, p.hookCradleR||22), W=Math.max(10, p.hookCradleW||45);
+    const R=hookCradleROf(p), W=hookCradleWOf(p);
     const wall=Math.max(2, rBar*0.7), seg=Math.max(48, Math.round(2*Math.PI*(R+wall)/1.1));
     const reach=Math.max(6, p.hookReach||28), cz=reach+R*0.15;
     push(sectorShellTris(0, cz, R, R+wall, 2*Math.PI/3, 4*Math.PI/3, -W/2, W/2, seg));   // saddle, mouth up
@@ -20238,7 +20282,7 @@ function buildHexPanel(p){
   }
   // Frame: closes the ragged cells at the border and carries the wall screws. Four boxes overlapping at
   // the corners, the side pair drilled — one hole per box, so no two can be judged to clash.
-  const fr=Math.max(rib, 4), sd=Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5);
+  const fr=Math.max(rib, 4), sd=mntScrewDOf(p);
   const x0=lo[0]-fr, x1=hi[0]+fr, y0=lo[1]-fr, y1=hi[1]+fr;
   for(const Tq of boxSpanTris(x0, x1, y0, lo[1]+rib*0.5, 0, PT)) tris.push(Tq);
   for(const Tq of boxSpanTris(x0, x1, hi[1]-rib*0.5, y1, 0, PT)) tris.push(Tq);
@@ -20285,7 +20329,7 @@ function wallOrgSpec(p){
      построитель кладёт max(12, round(R·4)) граней, и считать пруток кругом значило бы обещать
      прочность, которой в детали нет (найдено срезом сетки ещё в v25.4.0). */
   let I = 0, c = 1, arm = 1, what = '', reach = 0, extra = null;
-  const rBar = Math.max(2,(p.woHookBar||8)/2), drop = Math.max(rBar+2, p.woHookDrop||14);
+  const rBar = woHookBarR(p), drop = Math.max(rBar+2, p.woHookDrop||14);
   const hookY = Math.max(drop + rBar + 2, H*0.5);        // высота оси стержня — то же выражение, что в построителе
   if (front === 'hook'){
     reach = Math.max(6, p.woHookReach||24);
@@ -20414,7 +20458,7 @@ function buildWallOrg(p){
   }
   // FRONT holder (extends +Z) — `front` объявлен выше: у вставки от него зависит и сама спинка.
   if(front==='hook'){
-    const rBar=Math.max(2,(p.woHookBar||8)/2), reach=Math.max(6,p.woHookReach||24), drop=Math.max(rBar+2,p.woHookDrop||14);
+    const rBar=woHookBarR(p), reach=Math.max(6,p.woHookReach||24), drop=Math.max(rBar+2,p.woHookDrop||14);
     const sweep=(p.woHookSweep||230)*Math.PI/180, hy=Math.max(drop+rBar+2, H*0.5), nStem=5; let path=[];
     for(let i=0;i<=nStem;i++) path.push([0, hy, t-3 + (reach+3)*i/nStem]);
     const Cy=hy-drop, Cz=t-3+reach, nArc=16; for(let i=1;i<=nArc;i++){ const f=Math.PI/2 - sweep*i/nArc; path.push([0, Cy+drop*Math.sin(f), Cz+drop*Math.cos(f)]); }
@@ -21084,9 +21128,9 @@ function coasterGridSlab(mask, want, nG, at, y0, y1, warp){
    relief there is a rocking device and an invisible logo. */
 const STAND_LOGO_SURFACES = ['floor', 'back', 'lip'];
 function standLogoFrame(p, which){
-  const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
+  const W    = standWOf(p), t = standTOf(p);
   const D    = Math.max(30, p.psDepth||85);
-  const ang  = Math.max(30, Math.min(80, p.psAngle||62)) * Math.PI/180;
+  const ang  = standAngleDeg(p) * Math.PI/180;
   const lipH = Math.max(4, p.psLip||14);
   const restL= Math.max(20, p.psRest||70);
   const zF = -D/2, zB = D/2;
@@ -21380,9 +21424,9 @@ function surfaceLogoPatchTris(lg, fr, dented, plateParam, res, inkWant){
 const STAND_PHONE = {L: 160, g: 200, t: 8, name: 'телефон 160 мм, 200 г'};
 const STAND_G = G_MS2;
 function standSpec(p){
-  const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
+  const W    = standWOf(p), t = standTOf(p);
   const D    = Math.max(30, p.psDepth||85);
-  const ang  = Math.max(30, Math.min(80, p.psAngle||62)), a = ang*Math.PI/180;
+  const ang  = standAngleDeg(p), a = ang*Math.PI/180;
   const lipH = Math.max(4, p.psLip||14);
   const slot = Math.max(0, p.psSlot != null ? p.psSlot : 18);
   /* Плита строится в своих координатах и в конце центрируется по габариту; поэтому и кромки, и центр
@@ -21426,9 +21470,9 @@ function standSpec(p){
           tippy: Lmax < 200, screenHog: screen > 20, noSlot: !(slot > 1), weak: Ftip < 0.5};
 }
 function buildPhoneStand(p){
-  const W    = Math.max(30, p.psW||80), t = Math.max(2, p.psT||4);
+  const W    = standWOf(p), t = standTOf(p);
   const D    = Math.max(30, p.psDepth||85);
-  const ang  = Math.max(30, Math.min(80, p.psAngle||62)) * Math.PI/180;   // rake, measured from the desk
+  const ang  = standAngleDeg(p) * Math.PI/180;   // rake, measured from the desk
   const lipH = Math.max(4, p.psLip||14);
   const restL= Math.max(20, p.psRest||70);
   // `|| 18` would have turned the "0 = none" the label promises back into the default width.
@@ -21593,7 +21637,7 @@ function buildBatteryHolder(p){
     for(const T of buildBoxWithHoles(wall, 2*rO, Math.min(pitch+0.8, 2*rO), hole))
       tris.push(T.map(v=>[v[0]+sgn*(L/2+wall/2), v[1]+rO, v[2]+zAt(k)]));
   }
-  const sd = Math.max(0, p.mntScrewD!=null ? p.mntScrewD : 4.5);
+  const sd = mntScrewDOf(p);
   if(sd>0.5 && n>=1){                                            // one mounting tab at each end of the base
     const tab = Math.max(sd*2.4, 8);
     for(const sgn of [-1,1]){
@@ -23650,7 +23694,7 @@ function hubSpec(p){
   const OD = Math.max(odAsked, odMin), rO = OD/2, wall = rO - rMax;
   // Стяжной винт: его диаметр задаёт размеры проушин, поэтому он же и зажимается по высоте ступицы —
   // проушина обязана быть НИЖЕ кольца, иначе её торец лёг бы в одну плоскость с торцом кольца.
-  const sdAsked = Math.max(0, p.mntScrewD != null ? p.mntScrewD : 4.5);
+  const sdAsked = mntScrewDOf(p);
   const screwD = Math.min(sdAsked, Math.max(1.5, H*0.5));
   const hasScrew = screwD > 0.5;
   const slitAsked = Math.max(0.3, p.hubSlit > 0 ? p.hubSlit : 1);
@@ -23788,7 +23832,7 @@ function dinClipSpec(p){
      либо в шляпу, либо в лапку, а зенковать не на чем — плита толщиной три миллиметра. За лапкой же с
      обеих сторон пустота, и обычный винт с любой головкой проходит насквозь. Под упругим язычком сверлить
      нечего вовсе: там прорези. */
-  const screwD = Math.max(0, p.mntScrewD != null ? p.mntScrewD : 4.5);
+  const screwD = mntScrewDOf(p);
   const hasScrew = screwD > 0.5 && L > 4*screwD + 8;
   const wing = hasScrew ? screwD + 3 : 1.2;
   const halfR = xt0 + bw + slitOut + DIN_RIM, halfL = xi + jf + wing;
@@ -26436,7 +26480,7 @@ function buildTrisForShapeCore(shape, p) {
       // (numbers / logos / text) from the dieFaces submenu, displaced into the actual face surface.
       const dieAsg = (typeof dieFaces !== 'undefined' && dieFaces.length) ? dieFaces : null;
       const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
-      const beadR = Math.max(0, Math.min(3, p.dieBead||0));
+      const beadR = dieBeadR(p);
       // A colour part of a die is ONLY its numbers — that filament must not print a second die under them.
       if (logoAmsIndex(p.logoAms))
         return applyTaper(snapWeldTris(buildDieInkTris(p.platonic, p.width/2, p.height/2, p.depth/2, dieAsg, dieRes)));
@@ -29425,7 +29469,7 @@ function collectPrintWarnings(p, mesh){
      тонкой не отличается ничем, а на столе разница между «зажало» и «треснуло».
      E взят по PETG (≈1700 МПа): у PLA он вдвое выше, и там же, где PETG гнётся, PLA колется. */
   if (p.threadMode === 'gland'){
-    const D = Math.max(4, threadDOf(p)), P2 = threadPitchOf(p), majorR = D/2;
+    const D = threadBuiltD(p), P2 = threadPitchOf(p), majorR = D/2;
     const minorR = threadMinorROf(majorR, P2, p.threadDepth);
     const rBore = Math.max(0.6, Math.min(p.threadBore>0 ? p.threadBore/2 : minorR*0.5, minorR-0.8));
     const cn = Math.round(p.threadColletN != null ? p.threadColletN : 4);
@@ -29466,9 +29510,9 @@ function collectPrintWarnings(p, mesh){
      под каким углом стоит конус (единственный навес в детали — он растёт внутрь) и сколько материала
      осталось у выхода под кабель. */
   if (p.threadMode === 'glandcap'){
-    const D = Math.max(6, threadDOf(p)), P2 = threadPitchOf(p), majorR = D/2;
+    const D = threadBuiltD(p), P2 = threadPitchOf(p), majorR = D/2;
     const minorR = threadMinorROf(majorR, P2, p.threadDepth);
-    const nutH = Math.max(3, p.threadHeadH>0 ? p.threadHeadH : D*0.9);
+    const nutH = threadGlandNutHeight(p);
     const rOut = Math.max(0.8, (p.threadCapOut>0 ? p.threadCapOut/2 : (p.threadBore>0 ? p.threadBore/2 : minorR*0.5)));
     const thH = Math.max(1.5, Math.min(nutH - 2.4, p.threadCapThread>0 ? p.threadCapThread : Math.max(5, 2.5*P2)));
     const turns = thH/P2, cone = Math.atan2(minorR - rOut, nutH - thH)*180/Math.PI;

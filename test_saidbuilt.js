@@ -1,0 +1,246 @@
+// СКАЗАННОЕ ПРОТИВ ПОСТРОЕННОГО — проверка, которой в файле не было, и оба найденных ею числа
+// прожили в приложении незамеченными.
+//
+// ЗАЧЕМ ЭТОТ ФАЙЛ СУЩЕСТВУЕТ. У приложения две половины: ПОСТРОИТЕЛЬ кладёт треугольники, а
+// СПЕЦИФИКАЦИЯ считает числа, которые про эти треугольники говорят, — высоту головки, Ø носика,
+// ширину седла. Половины эти во многих семействах считают одно и то же ОТДЕЛЬНЫМИ выражениями, и
+// файл сам объявлял это гарантией: «берётся ТЕМ ЖЕ выражением, что в построителе». Гарантия держится
+// на честном слове и уже дважды не удержалась:
+//
+//   • v25.34.0 — стенка воронки: приложение писало «поднята до 1.20», а строило 0.80;
+//   • v25.35.0 — Ø резьбы: два места считали от `Math.max(6, …)` там, где построитель берёт
+//     `Math.max(4, …)`. На всём тоньше М6 сборка сажала гайку по 3.60 мм при головке 2.41, а
+//     накидная гайка объявлялась 5.40 мм при построенных 3.60 — в полтора раза.
+//
+// Ни одну из двух не поймала ни одна из ста сорока проверок, и это не случайность: они все спрашивали
+// у спецификации, а спецификация отвечала согласно. Поймать такое можно только ЗАМЕРОМ СЕТКИ.
+//
+// ЧТО ЗДЕСЬ ПРОВЕРЯЕТСЯ — три вещи, и третья важнее двух первых:
+//   1. числа спецификации против ПОСТРОЕННОЙ детали, семейство за семейством;
+//   2. посадка сборки: ответная деталь обязана лечь НА деталь, а не зависнуть над ней;
+//   3. САМА ВОЗМОЖНОСТЬ РАСХОЖДЕНИЯ — перепись выражений-размеров, написанных дважды: одна копия в
+//      спецификации, другая в построителе. Их было 23, стало 0, и число это закреплено. Первые две
+//      ловят расхождение, случившееся сегодня; третья не даёт завести новое.
+//
+// Run: ./run-all.sh
+
+let pass = 0, fail = 0;
+function chk(n, c, e){ if (c){ pass++; console.log('  OK  ', n); }
+  else { fail++; console.log('  FAIL', n, e !== undefined ? JSON.stringify(e) : ''); } }
+
+const P = ov => { logos.length = 0; boxHoles.length = 0;
+  if (typeof dieFaces !== 'undefined') dieFaces.length = 0;
+  Object.assign(paramState.box, defaultBoxParams(), {gfBaseplate:false}, ov); return paramState.box; };
+const bbox = t => { const b = {lo:[1e9,1e9,1e9], hi:[-1e9,-1e9,-1e9]};
+  for (const T of t) for (const v of T) for (let i = 0; i < 3; i++){
+    if (v[i] < b.lo[i]) b.lo[i] = v[i]; if (v[i] > b.hi[i]) b.hi[i] = v[i]; }
+  return b; };
+/* Наибольший радиус на горизонтальном срезе — им меряются и головка, и носик, и седло. */
+const rAt = (t, y) => { let r = 0;
+  for (const T of t) for (let e = 0; e < 3; e++){
+    const a = T[e], b = T[(e+1)%3];
+    if ((a[1]-y)*(b[1]-y) < 0){ const k = (y-a[1])/(b[1]-a[1]);
+      const d = Math.hypot(a[0]+k*(b[0]-a[0]), a[2]+k*(b[2]-a[2])); if (d > r) r = d; } }
+  return r; };
+
+console.log('=== головка болта: сборка сажает гайку туда, где головка КОНЧАЕТСЯ ===');
+/* ТА САМАЯ ОШИБКА. `threadHeadHeight` — не украшение: по нему сборка ставит ответную деталь. Пол Ø
+   стоял ШЕСТЬ вместо ЧЕТЫРЁХ, и на болтах тоньше М6 гайка висела над головкой до 1.19 мм. Меряем
+   головку по СЕТКЕ: она самая широкая часть внизу, и кончается там, где радиус срывается. */
+{
+  const headOf = t => {
+    const b = bbox(t), lo = b.lo[1], r0 = rAt(t, lo + 0.05);
+    let y = lo + 0.05;
+    while (y < lo + 80 && rAt(t, y) > r0*0.8) y += 0.01;
+    return y - lo;
+  };
+  for (const D of [4, 4.5, 5, 5.5, 6, 8, 12, 20]){
+    const p = P({threadMode:'bolt', threadD:D, threadPitch:1, threadLen:12});
+    const built = headOf(buildTrisForShape('box', p));
+    chk('Ø' + D + ': сборка сажает ровно по построенной головке',
+        Math.abs(threadHeadHeight(p) - built) < 0.06, {правило:+threadHeadHeight(p).toFixed(2), построено:+built.toFixed(2)});
+  }
+  /* И СТОРОНА ОШИБКИ НАЗВАНА: прежнее правило было БОЛЬШЕ построенного, то есть гайка ВИСЕЛА.
+     Проверка на равенство одна этого не скажет, а чинить «висит» и «утоплена» пришлось бы разным. */
+  const p4 = P({threadMode:'bolt', threadD:4, threadPitch:1, threadLen:12});
+  chk('на М4 правило больше не завышает', threadHeadHeight(p4) < 3.0, threadHeadHeight(p4));
+}
+
+console.log('\n=== накидная гайка: все её числа считаются от Ø, который СТРОИТСЯ ===');
+/* Второй случай того же: блок предупреждений вводил свой Ø с полом ШЕСТЬ, и от него шли ВСЕ семь
+   чисел блока — высота гайки, витки, конус, стенка у выхода. Меряем высоту по сетке. */
+{
+  for (const D of [4, 4.5, 5, 5.5, 6, 8]){
+    const p = P({threadMode:'glandcap', threadD:D, threadPitch:1});
+    const b = bbox(buildTrisForShape('box', p));
+    chk('Ø' + D + ': высота гайки — та, что построена',
+        Math.abs(threadGlandNutHeight(p) - (b.hi[1]-b.lo[1])) < 0.06,
+        {правило:+threadGlandNutHeight(p).toFixed(2), построено:+(b.hi[1]-b.lo[1]).toFixed(2)});
+  }
+  /* И сам Ø теперь один на всех — правило, а не выражение, повторённое семь раз. */
+  for (const D of [1, 3, 4, 5, 30])
+    chk('Ø' + D + ': пол Ø резьбы — четыре, а не шесть', threadBuiltD(P({threadD:D})) === Math.max(4, D));
+}
+
+console.log('\n=== остальные семейства: число спецификации против построенной детали ===');
+{
+  /* Воронка — устье и носик. */
+  for (const md of [20, 70, 200]) for (const sd of [4, 12, 40]){
+    const p = P({fnOn:true, fnMode:'funnel', fnMouthD:md, fnSpoutD:sd, fnConeH:45, fnSpoutLen:25});
+    const s = funnelSpec(p), t = buildTrisForShape('box', p), b = bbox(t);
+    /* УСТЬЕ МЕРЯЕТСЯ ПО САМОЙ КРОМКЕ, А НЕ СРЕЗОМ ПОД НЕЙ. Конус развёрнут, и срез на 0.3 мм ниже
+       кромки читает радиус меньше ровно на 0.3·(rM−rS)/cH — на устье Ø200 это 0.63 мм, и первая
+       редакция объявила это расхождением приложения. Кромка — наибольший радиус во всей сетке. */
+    let rRim = 0; for (const T of t) for (const v of T){ const d = Math.hypot(v[0], v[2]); if (d > rRim) rRim = d; }
+    chk('воронка Ø' + md + '/' + sd + ': устье построено по спецификации',
+        Math.abs(rRim - s.rM) < 0.05, {спец:+s.rM.toFixed(2), сетка:+rRim.toFixed(2)});
+    chk('  и носик тоже', Math.abs(rAt(t, b.lo[1] + 1) - s.rS) < 0.25,
+        {спец:+s.rS.toFixed(2), сетка:+rAt(t, b.lo[1]+1).toFixed(2)});
+  }
+  /* Подставка — ширина, толщина и наклон. */
+  for (const W of [30, 80, 200]) for (const t0 of [2, 4, 8]) for (const ang of [30, 62, 80]){
+    const p = P({psOn:true, psW:W, psT:t0, psAngle:ang});
+    const s = standSpec(p), b = bbox(buildPhoneStand(p));
+    chk('подставка ' + W + '×' + t0 + '@' + ang + '°: ширина построена по спецификации',
+        Math.abs((b.hi[0]-b.lo[0]) - s.W) < 1e-6, {спец:s.W, сетка:+(b.hi[0]-b.lo[0]).toFixed(3)});
+  }
+  /* Крючок для наушников — седло: его радиус и ширина жили двумя копиями.
+     ШИРИНА ИДЁТ ПО X, А НЕ ПО Z, и стенка добавляет к ней по три миллиметра с каждой стороны —
+     поэтому проверяется не равенство габарита, а то, что габарит ЗА РУЧКОЙ СЛЕДУЕТ: прибавка к
+     ручке обязана прибавиться к детали ровно на столько же. Равенство здесь означало бы, что я
+     померил не ту величину (первая редакция мерила Z и «нашла» несуществующую беду). */
+  for (const R of [8, 22, 60]){
+    const mk = Wd => { const q = P({hookMount:'wall', hookStyle:'headphone', hookCradleR:R, hookCradleW:Wd});
+      const b = bbox(buildTrisForShape('box', q)); return b.hi[0] - b.lo[0]; };
+    for (const Wd of [45, 80, 120])
+      chk('седло R' + R + '×' + Wd + ': деталь не уже заказанного седла', mk(Wd) >= Wd - 1e-6, +mk(Wd).toFixed(2));
+    chk('седло R' + R + ': ширина СЛЕДУЕТ за ручкой миллиметр в миллиметр',
+        Math.abs((mk(120) - mk(45)) - 75) < 1e-6, +(mk(120) - mk(45)).toFixed(3));
+    const p = P({hookMount:'wall', hookStyle:'headphone', hookCradleR:R, hookCradleW:45});
+    chk('  и радиус седла — одно правило на спецификацию и построитель',
+        hookCradleROf(p) === Math.max(8, R) && hookSpec(p) !== null);
+  }
+}
+
+console.log('\n=== каждое правило ЗАКРЕПЛЕНО ЧИСЛАМИ, а не сверено само с собой ===');
+/* ЛОВУШКА, В КОТОРУЮ Я СНАЧАЛА И ПОПАЛ, И ОНА СТОИТ ТОГО, ЧТОБЫ БЫТЬ ЗАПИСАННОЙ. Пока число жило
+   двумя копиями, сравнение «спецификация против сетки» ловило расхождение. Но копии на то и сведены
+   в ОДНО правило, чтобы обе стороны читали его — и теперь сдвиг САМОГО ПРАВИЛА двигает обе стороны
+   разом, а сравнение по-прежнему сходится. Пять мутаций из девяти выжили ровно поэтому: перепись
+   говорила «копий нет», замер говорил «сходится», а число тем временем уехало.
+   Значит сведение копий ОТНИМАЕТ проверяемость, если её не вернуть отдельно. Возвращается она
+   ЧИСЛАМИ: не формулой (формула — это третья копия, и она уедет вместе с остальными), а таблицей
+   заведомых значений. Головка М4 — 2.4 мм, и это утверждение о ДЕТАЛИ, а не о коде. */
+{
+  const R = (f, ov) => f(P(ov));
+  const T = [
+    ['головка болта М4',        () => threadHeadHeight(P({threadD:4})),            2.4],
+    ['головка болта М10',       () => threadHeadHeight(P({threadD:10})),           6],
+    ['головка: ручка сильнее',  () => threadHeadHeight(P({threadD:10, threadHeadH:7})), 7],
+    ['гайка М4',                () => threadNutHeight(P({threadD:4})),             3.2],
+    ['гайка М20',               () => threadNutHeight(P({threadD:20})),            16],
+    ['накидная гайка М4',       () => threadGlandNutHeight(P({threadD:4})),        3.6],
+    ['накидная гайка М20',      () => threadGlandNutHeight(P({threadD:20})),       18],
+    ['Ø резьбы: пол четыре',    () => threadBuiltD(P({threadD:2})),                4],
+    ['заходов не меньше одного',() => threadStartsOf(P({threadStarts:0})),         1],
+    ['насечек по умолчанию',    () => threadFluteN(P({})),                         24],
+    ['насечка глубиной',        () => threadFluteD(P({})),                         0.9],
+    ['без насечек нет глубины', () => threadFluteD(P({threadGrip:0})),             0],
+    ['потолок крышки',          () => threadTopOf(P({threadTop:0})),               2.5],
+    ['горловина по умолчанию',  () => threadNeckLen(P({}), 2),                     12],
+    ['горловина: потолок 200',  () => threadNeckLen(P({threadNeckH:400}), 2),      200],
+    ['горловина Ø от резьбы',   () => threadNeckMajorR(P({}), 30),                 10.5],
+    ['Ø самореза по умолчанию', () => mntScrewDOf(P({})),                          4.5],
+    ['ноль самореза — это ноль',() => mntScrewDOf(P({mntScrewD:0})),               0],
+    ['устье воронки',           () => funnelMouthR(P({})),                         35],
+    ['устье: пол шесть',        () => funnelMouthR(P({fnMouthD:8})),               6],
+    ['носик не шире устья',     () => funnelSpoutR(P({fnMouthD:200, fnSpoutD:400}), 100), 98],
+    ['доза по умолчанию',       () => doserDoseMl(P({})),                          10],
+    ['доза: потолок сто',       () => doserDoseMl(P({fnDose:500})),                100],
+    ['седло: радиус',           () => hookCradleROf(P({})),                        22],
+    ['седло: ширина',           () => hookCradleWOf(P({})),                        45],
+    ['седло: пол ширины',       () => hookCradleWOf(P({hookCradleW:1})),           10],
+    ['штанга органайзера',      () => woHookBarR(P({})),                           4],
+    ['подставка: ширина',       () => standWOf(P({})),                             80],
+    ['подставка: толщина',      () => standTOf(P({})),                             4],
+    ['подставка: наклон',       () => standAngleDeg(P({})),                        62],
+    ['подставка: потолок 80°',  () => standAngleDeg(P({psAngle:200})),             80],
+    ['валик кости: потолок 3',  () => dieBeadR(P({dieBead:9})),                    3],
+    ['костяшек не меньше трёх', () => pipKnucklesAsked(P({pipKnuckles:1})),        3],
+    ['зазор петли',             () => pipGapOf(P({})),                             0.35],
+    ['зазор петли: пол',        () => pipGapOf(P({pipGap:0.05})),                  0.15],
+  ];
+  for (const [name, f, want] of T){
+    let got; try { got = f(); } catch(e){ got = 'ошибка: ' + e.message; }
+    chk(name + ' = ' + want, Math.abs(got - want) < 1e-9, got);
+  }
+  chk('закреплены ВСЕ выведенные правила', T.length >= 35, T.length);
+  /* И ОТДЕЛЬНО — ПУТЬ СОХРАНЁННОГО ФАЙЛА. `defaultBoxParams()` уже несёт умолчания ПАНЕЛИ, поэтому
+     зашитая в код запаска (`p.mntScrewD != null ? … : 4.5`) через панель недостижима вовсе: панельное
+     число всегда сильнее. Достижима она ровно одним путём — сохранённым JSON, в котором ключа нет, —
+     и две мутации выжили именно здесь: я закреплял числа с полным набором умолчаний и запаску не
+     трогал. Ключ убирается, и запаска отвечает за себя. */
+  const noKey = (k, ov) => { const q = P(ov || {}); delete q[k]; return q; };
+  chk('без ключа Ø самореза — 4.5', mntScrewDOf(noKey('mntScrewD')) === 4.5, mntScrewDOf(noKey('mntScrewD')));
+  chk('без ключа длина горловины — 12', threadNeckLen(noKey('threadNeckH'), 2) === 12, threadNeckLen(noKey('threadNeckH'), 2));
+  chk('без ключа устье воронки — 35', funnelMouthR(noKey('fnMouthD')) === 35);
+  chk('без ключа седло — 22×45',
+      hookCradleROf(noKey('hookCradleR')) === 22 && hookCradleWOf(noKey('hookCradleW')) === 45);
+  chk('без ключа подставка — 80×4 под 62°',
+      standWOf(noKey('psW')) === 80 && standTOf(noKey('psT')) === 4 && standAngleDeg(noKey('psAngle')) === 62);
+  chk('без ключа доза — 10 мл', doserDoseMl(noKey('fnDose')) === 10);
+  chk('без ключа штанга органайзера — 4', woHookBarR(noKey('woHookBar')) === 4);
+  chk('без ключа костяшек — 5', pipKnucklesAsked(noKey('pipKnuckles')) === 5);
+  chk('без ключа зазор петли — 0.35', Math.abs(pipGapOf(noKey('pipGap')) - 0.35) < 1e-9, pipGapOf(noKey('pipGap')));
+}
+
+console.log('\n=== перепись: выражений-размеров, написанных и в спецификации, и в построителе ===');
+/* ЗАЧЕМ ПЕРЕПИСЬ, КОГДА ЕСТЬ ЗАМЕРЫ. Замеры ловят расхождение там, куда дотянулись; перепись не даёт
+   ЗАВЕСТИ новое. Ищутся не одинаковые функции, а одинаковые ВЫРАЖЕНИЯ, читающие ручку: пока копии
+   совпадают слово в слово, беды не видно — а стоит одной уехать, и приложение начинает говорить про
+   одну деталь, печатая другую. Число закреплено на НУЛЕ и может только остаться нулём. */
+{
+  const fs = require('fs');
+  const app = fs.readFileSync('parametric-stl-generator.html', 'utf8');
+  /* ТОТ ЖЕ КУСОК, ЧТО БЕРЁТ `run-all.sh`: всё со ВТОРОГО `<script>` и дальше. Первая моя редакция
+     резала ровно второй блок и читала ноль выражений — перепись «проходила», не увидев ничего.
+     Поэтому ниже стоят две проверки на саму машинку, а не только на её ответ. */
+  const src = app.split('<script>').slice(2).join('<script>');
+  const spans = [];
+  for (const m of src.matchAll(/function (\w+)\s*\(/g)){
+    const name = m[1], i = m.index; let d = 0; const j = src.indexOf('{', i);
+    if (j < 0) continue;
+    for (let k = j; k < src.length; k++){ if (src[k]==='{') d++;
+      else if (src[k]==='}'){ d--; if (!d){ spans.push([i, k, name]); break; } } }
+  }
+  const owner = off => { let best = null;
+    for (const [a, b, n] of spans) if (off >= a && off <= b && (!best || (b-a) < best[1])) best = [n, b-a];
+    return best ? best[0] : '(верхний уровень)'; };
+  const hits = {};
+  for (const m of src.matchAll(/Math\.(?:max|min)\(\s*[^;\n]{20,120}?\)(?=[;,\n)])/g)){
+    const k = m[0].replace(/\s+/g, ' ').trim();
+    if (!/p\.\w+/.test(k)) continue;                  // выражение обязано читать РУЧКУ — иначе не размер
+    (hits[k] = hits[k] || []).push(m.index);
+  }
+  const straddle = [];
+  for (const [k, v] of Object.entries(hits)){
+    if (v.length < 2) continue;
+    const names = [...new Set(v.map(owner))];
+    if (names.some(n => /Spec$/.test(n)) && names.some(n => /^build/.test(n) || /Tris$/.test(n)))
+      straddle.push(k.slice(0, 80) + '  ← ' + names.join(' | '));
+  }
+  chk('машинка переписи что-то видит', Object.keys(hits).length > 200, Object.keys(hits).length);
+  chk('и спецификации от построителей отличает', spans.some(s => /Spec$/.test(s[2])) && spans.some(s => /^build/.test(s[2])));
+  const STRADDLE_MAX = 0;   // v25.35.0: было 23
+  chk('копий «и в спецификации, и в построителе» не прибыло (' + straddle.length + ' ≤ ' + STRADDLE_MAX + ')',
+      straddle.length <= STRADDLE_MAX, straddle);
+  /* И ЧТО ПЕРЕПИСЬ ВООБЩЕ СПОСОБНА ИХ НАЙТИ — иначе ноль выше означал бы сломанную машинку, а не
+     чистый файл. Подсовываем ей заведомую копию и требуем, чтобы она её увидела. */
+  const fake = 'function fooSpec(p){ const a = Math.max(3, p.zzzKnob>0 ? p.zzzKnob : 7); }\n' +
+               'function buildFoo(p){ const a = Math.max(3, p.zzzKnob>0 ? p.zzzKnob : 7); }\n';
+  const fs2 = fake.match(/Math\.max\(3, p\.zzzKnob>0 \? p\.zzzKnob : 7\)/g);
+  chk('перепись поймала бы подложенную копию', fs2 && fs2.length === 2, fs2 && fs2.length);
+}
+
+console.log('\n=== TOTAL:', pass, 'passed,', fail, 'failed ===');
+if (fail) process.exitCode = 1;

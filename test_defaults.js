@@ -461,7 +461,32 @@ console.log('\n=== ручка, прочитанная по своей же ст�
     q[k] = r.min - 1000; const lo = knobOf(q, k);
     return hi === r.max && lo === r.min; }));
   /* И ЧТО ЭТО ИМЕННО ПАНЕЛЬНОЕ ПРАВИЛО, а не похожее: `knobOf` обязан стоять на `clampParam`. */
-  chk('правило одно с панельным', /function knobOf\(p, key\)\{?[\s\S]{0,200}?clampParam\(r,/.test(src));
+  /* Ищется `clampParam` ВНУТРИ самого `knobOf` — до начала следующей функции, а не в пределах
+     скольких-то знаков: счёт знаков ломался от одного добавленного примечания. */
+  chk('правило одно с панельным',
+      /function knobOf\(p, key\)\{(?:(?!\nfunction )[\s\S])*?clampParam\(r,/.test(src));
+  /* СПИСОК И ФЛАЖОК — ТОЖЕ СТРОКИ ПАНЕЛИ (v25.41.0). До этой сборки `knobOf` умел только числовые:
+     у списка нет ни `min`, ни `max`, а `clampParam` на такой строке вернул бы NaN — то есть правило
+     МОЛЧА ломалось бы, а не отказывалось. Умолчания списков были поэтому выписаны руками
+     (`p.woFront || 'hook'`), и каждое такое написание — второй адрес одного числа. Теперь строка
+     отвечает сама; проверяется это на всех списках и флажках панели разом, а не на выбранных. */
+  const PICKS = SHAPE_PARAMS.box.filter(r => r.type === 'select' || r.type === 'bool');
+  chk('списков и флажков в панели больше сотни', PICKS.length > 100, PICKS.length);
+  chk('пустое значение списка и флажка — умолчание СТРОКИ, а не NaN',
+      PICKS.every(r => [undefined, null, ''].every(v => {
+        const q = {}; if (v !== undefined) q[r.key] = v;
+        return knobOf(q, r.key) === r.default; })),
+      PICKS.filter(r => knobOf({}, r.key) !== r.default).map(r => r.key).slice(0, 5));
+  chk('заданное значение списка отдаётся как есть',
+      PICKS.filter(r => r.type === 'select').every(r => {
+        const v = (r.options || []).length ? r.options[r.options.length - 1].v : r.default;
+        const q = {}; q[r.key] = v; return knobOf(q, r.key) === v; }));
+  /* ФЛАЖОК — ОТДЕЛЬНО, и это не придирка: `p.flag || false` при ЛЮБОМ написании сводит `false` к
+     умолчанию, и флажок, снятый пользователем, читался бы как «умолчание». У `knobOf` `false` — ответ. */
+  chk('снятый флажок остаётся снятым даже при умолчании «включено»',
+      PICKS.filter(r => r.type === 'bool').every(r => knobOf({[r.key]: false}, r.key) === false));
+  chk('и поднятый — поднятым',
+      PICKS.filter(r => r.type === 'bool').every(r => knobOf({[r.key]: true}, r.key) === true));
   /* ПОСТРОИТЕЛЬ И СПЕЦИФИКАЦИЯ ОТВЕЧАЮТ ОДНО И ТО ЖЕ — на тех семьях, где копии и стояли. Спрашивается
      поведение, а не текст: текст проверяет перепись копий в `test_saidbuilt.js`. */
   const P2 = ov => Object.assign(defaultBoxParams(), {gfBaseplate:false}, ov);

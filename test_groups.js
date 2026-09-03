@@ -28,7 +28,8 @@ const modesOf = g => MODES.filter(m => sectionRelevant(g, m, true));
 
 // Groups that are deliberately not tied to one shape. Anything else landing here is an oversight, which
 // is the entire point: the list is short and adding to it has to be a conscious act.
-const UNIVERSAL = new Set(['Допуски печати']);
+const UNIVERSAL = new Set(['Допуски печати', 'Расход и время']);   // «Расход и время» — v25.44.0:
+// периметры, сплошные слои и заполнение считают вес, филамент и время у ЛЮБОЙ формы, а не у какой-то одной.
 const SHARED = {                                    // visible in several shapes, on purpose
   'Размеры':                     ['box','die','sheet','keycap','logo3d'],
   'Многогранник':                ['box','die'],

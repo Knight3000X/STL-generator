@@ -88,7 +88,7 @@ for t in test_paramrows.js test_wormwheel.js test_vase.js test_keycap.js test_sl
           test_scoop.js test_honeycomb.js test_mount.js test_dividers.js test_shell_resolution.js test_holes.js test_grip.js \
           test_stack.js test_rounded_fillet.js test_chamfer.js test_labeltab.js test_qr.js test_textures.js test_pbox.js \
           test_gridfinity.js test_hook.js test_hexshelf.js test_clips.js test_hole_patterns.js test_hinge.js test_print_check.js test_wallorg.js test_toolrack.js test_vasespider.js test_asymedges.js test_walls.js test_saidbuilt.js test_defaults.js \
-          test_svg_hole.js test_baseplate.js test_import.js test_3mf.js test_palette.js test_arrange.js test_gclamp.js test_material.js test_seal.js test_cardholder.js test_registry.js test_warnings.js; do
+          test_budget.js test_svg_hole.js test_baseplate.js test_import.js test_3mf.js test_palette.js test_arrange.js test_gclamp.js test_material.js test_seal.js test_cardholder.js test_registry.js test_warnings.js; do
   add "$t" stub_preamble.js "$LIB" "$t"
 done
 
@@ -153,6 +153,23 @@ if [ "${#failed_files[@]}" -gt 0 ]; then
   echo "failed files: ${failed_files[*]}"
   exit 1
 fi
+
+# ---- НИ ОДИН ТЕСТ НЕ ЗАБЫТ ----------------------------------------------------------------------
+# Список файлов выше — РУЧНОЙ, и это ловушка ровно того сорта, за которыми следит сам проект: файл,
+# который лежит в каталоге и НЕ гоняется, хуже отсутствующего — он выглядит написанным. Так и вышло
+# с `test_budget.js` в v25.44.0: семьдесят пять проверок пролежали мимо батареи один прогон.
+# Сверка стоит здесь по той же причине, что и сверка README: только здесь известно, что именно
+# прогнано. Файл, который добавлять в список не надо, называется в списке-исключении — вслух.
+skipped=""
+for f in test_*.js test-*.js; do
+  [ -e "$f" ] || continue
+  case " ${labels[*]} " in *" $f "*) continue;; esac
+  skipped="$skipped $f"
+done
+if [ -n "$skipped" ]; then
+  echo "ТЕСТЫ МИМО БАТАРЕИ:$skipped — добавьте в список выше или объясните здесь, почему нет"; exit 1
+fi
+echo "все файлы тестов в каталоге прогнаны: $n"
 
 # ---- README о самом себе -----------------------------------------------------------------------
 # Единственное место, где известны ОБА числа сразу — сколько файлов и сколько в них проверок, — это

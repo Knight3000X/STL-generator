@@ -1187,7 +1187,9 @@
       <div class="stats-row"><span class="k">Габариты (Ш×В×Г)</span><span class="v mono" id="stat-size">—</span></div>
       <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
       <div class="stats-row"><span class="k">Объём детали</span><span class="v mono" id="stat-volume">—</span></div>
+      <div class="stats-row"><span class="k">Печатается материала</span><span class="v mono" id="stat-fill">—</span></div>
       <div class="stats-row"><span class="k" id="stat-weight-k">Вес (PLA)</span><span class="v mono" id="stat-weight">—</span></div>
+      <div class="stats-row"><span class="k">Филамент Ø1.75</span><span class="v mono" id="stat-filament">—</span></div>
       <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
       <div class="stats-row"><span class="k">Нависания &gt;45°</span><span class="v mono" id="stat-overhang">—</span></div>
       <div class="stats-row"><span class="k">Печатаемость</span><span class="v mono" id="stat-printable">—</span></div>
@@ -1246,7 +1248,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.43.0';
+const APP_VERSION = 'v25.44.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -6608,6 +6610,12 @@ const SHAPE_PARAMS = {
                {v:'abs',t:'ABS / ASA'},{v:'tpu',t:'TPU (гибкий)'},{v:'tpe',t:'TPE / TPC'},{v:'nylon',t:'PA (нейлон)'},
                {v:'pacf',t:'PA-CF (нейлон с углем)'},{v:'pc',t:'PC (поликарбонат)'},{v:'cf',t:'PLA-CF / PETG-CF'}],
       hint:'Компенсация усадки считается под ОДИН материал — тот, что выбран выше. Пока обе половины пары печатают из него, они друг к другу подходят: усадка тянет обе одинаково. Напечатайте крышку из PLA, а горло из ABS — и разница усадок ляжет прямо в посадочный зазор, потому что компенсация была одна на оба файла. На Ø30 полпроцента это 0.15 мм, а зазор резьбы по умолчанию 0.4. Здесь называется второй материал, и приложение считает, что от зазора останется.'},
+    {group:'Расход и время', key:'prtWalls', label:'Периметров (стенок)', min:1, max:8, step:1, default:3, unit:'', int:true,
+      hint:'Сколько проходов сопла кладётся по контуру. Отсюда толщина оболочки: периметры × ширина прохода. Число не влияет на геометрию — оно влияет на ВЕС, длину филамента и время: деталь печатается не сплошной, и оценка, считающая её сплошной, завышает расход в разы.'},
+    {group:'Расход и время', key:'prtSolid', label:'Сплошных слоёв сверху и снизу', min:0, max:12, step:1, default:4, unit:'', int:true,
+      hint:'Крышка и дно кладутся сплошняком: их толщина — слои × высота слоя. На плоской широкой детали это и есть основной расход, а вовсе не периметры.'},
+    {group:'Расход и время', key:'prtInfill', label:'Заполнение', min:0, max:100, step:5, default:15, unit:'%', int:true,
+      hint:'Доля материала внутри оболочки. Ноль — пустая деталь (только стенки и крышки), сто — сплошная. Прочность растёт не линейно: между 15 % и 40 % разница по жёсткости заметно меньше, чем по времени печати.'},
     {group:'Допуски печати', key:'fitTune', label:'Общий допуск посадки (+ ко всем зазорам)', min:-0.3, max:0.5, step:0.05, default:0, unit:'мм'},
     {group:'Штабелируемость', key:'stackClear', label:'Зазор ножки до стенки полости', min:0.2, max:2, step:0.1, default:0.6, unit:'мм'},
     {group:'Перегородки (полый)', key:'divX', label:'Секций по X', min:1, max:8, step:1, default:1, unit:'', int:true},
@@ -8589,7 +8597,8 @@ function sectionRelevant(key, mode, hollow){
     case 'Грани кости (номера / логотипы)': return mode==='die';
     case 'Отверстия (сквозные)': return mode==='box';
     case 'Позиция модели (в сборке)': case 'Поворот (для печати)': case 'Отображение':
-    case 'Сводка': case 'Экспорт': case 'Конфигурация сборки': case 'Приложение': case 'Допуски печати': return true;
+    case 'Сводка': case 'Экспорт': case 'Конфигурация сборки': case 'Приложение': case 'Допуски печати':
+    case 'Расход и время': return true;
   }
   if (mode==='baseplate') return key==='Gridfinity';
   if (mode==='logo3d')    return key==='Размеры';
@@ -27119,7 +27128,7 @@ const GROUP_TAB = {
   'Фаска рёбер (любая форма)':'form',
   'Полый контейнер':'cavity','Сетчатое дно':'cavity','Перегородки (полый)':'cavity','Скат (полый)':'cavity',
   'Полка под ярлык (полый)':'cavity','Крепёжные уши':'cavity','Грип-насечка':'cavity','Штабелируемость':'cavity',
-  'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Логотипы (рельеф на гранях)':'finish',
+  'Gridfinity':'cavity','Разрезка на фрагменты':'export','Допуски печати':'finish','Расход и время':'export','Логотипы (рельеф на гранях)':'finish',
   'Держатель катушки':'form','Уплотнение':'form','Картодержатель':'form',
 };
 for (const g of PIP_GROUPS) GROUP_TAB[g] = 'form';   // the print-in-place family lives under «Форма»
@@ -31006,25 +31015,97 @@ function meshVolume(tris){
     v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; }
   return Math.abs(v);
 }
-// Rough print estimates from the SOLID volume: the mesh already models the walls/cavities, so its
-// volume ≈ extruded material at 100% infill; weight = volume × density (PLA 1.24, PETG 1.27 г/см³),
-// time from a typical 0.4mm-nozzle throughput ≈ 12 г/ч at 0.2mm layers. Order-of-magnitude only.
+/* РАСХОД СЧИТАЕТСЯ ПО ОБОЛОЧКЕ И ЗАПОЛНЕНИЮ, А НЕ ПО СПЛОШНОМУ ОБЪЁМУ (v25.44.0).
+
+   ЧТО БЫЛО НЕ ТАК. Вес и время брались из ОБЪЁМА СЕТКИ — то есть считали деталь литой. Для стенки
+   1.6 мм это верно (её и печатают сплошной), а для куба 40×40×40 — нет: при 15 % заполнения он
+   весит не 79 граммов, а около двадцати. Приложение при этом знает и сопло, и высоту слоя, и
+   материал: врало оно не от незнания, а оттого, что никто не спросил про периметры и заполнение.
+   Число, которое не отзывается на ручку, — самое опасное: его читают как измеренное.
+
+   КАК СЧИТАЕТСЯ. У сетки берётся площадь по НАПРАВЛЕНИЮ ГРАНИ: горизонтальные (пол и потолок)
+   получают толщину «сплошные слои × высота слоя», наклонные и вертикальные — «периметры × ширину
+   прохода». Это оболочка. Что осталось внутри — умножается на долю заполнения.
+
+   ЧЕГО ЭТА ОЦЕНКА НЕ ДЕЛАЕТ. Она не режет деталь на слои и потому не знает ни про поддержки, ни про
+   юбку, ни про то, что тонкая стенка бывает уже двух периметров и слайсер кладёт её одной ниткой.
+   Оболочка не может быть больше самой детали — на этом стоит зажим, — но там, где стенка тоньше
+   оболочки, оценка считает её сплошной, и это ровно то, что делает слайсер.
+
+   ВРЕМЯ — ИЗ ПРОИЗВОДИТЕЛЬНОСТИ ПО ОБЪЁМУ, а не из веса: сопло 0.8 кладёт вчетверо больше кубов в
+   секунду, чем 0.4, и «граммы в час» этого не видят вовсе. Двенадцать кубов в секунду — обычный
+   потолок для 0.4 на PLA; для другого сопла он масштабируется по площади сечения прохода. Накладные
+   (перемещения, разгон, смена слоя) взяты множителем 1.4 — это оценка, и названа она оценкой. */
+const FLOW_MM3_S = 12;          // потолок подачи для сопла 0.4 на PLA — с него считается время
+const PRINT_OVERHEAD = 1.4;     // перемещения, разгон, смена слоя: чистая экструзия столько не занимает
+const FILAMENT_D = 1.75;
+function printWallsOf(p){ return knobOf(p, 'prtWalls'); }
+function printSolidOf(p){ return knobOf(p, 'prtSolid'); }
+function printInfillOf(p){ return knobOf(p, 'prtInfill'); }
+/* Ширина прохода у слайсеров чуть больше сопла, но «чуть» здесь означает разные проценты у разных
+   слайсеров; берётся само сопло — и это названо, а не спрятано. */
+function lineWidthOf(p){ return nozzleOf(p); }
+/* ПЛОЩАДЬ СЕТКИ ПО НАПРАВЛЕНИЮ ГРАНИ. Порог тот же, что у переписи нависаний: 45°. */
+function meshAreaSplit(tris){
+  let flat = 0, side = 0;
+  for (const t of tris){
+    const n = cross(sub(t[1], t[0]), sub(t[2], t[0])), L = vlength(n);
+    if (L < 1e-12) continue;
+    if (Math.abs(n[1]/L) > 0.7072) flat += L/2; else side += L/2;
+  }
+  return {flat, side, total: flat + side};
+}
+function printBudget(tris, p){
+  if (!tris || !tris.length) return null;
+  const solid = meshVolume(tris);
+  if (!(solid > 0)) return null;
+  const A = meshAreaSplit(tris);
+  const capT = printSolidOf(p) * layerOf(p);          // толщина сплошной крышки и дна
+  const wallT = printWallsOf(p) * lineWidthOf(p);     // толщина оболочки по стенке
+  const skin = Math.min(solid, A.flat * capT + A.side * wallT);
+  const infill = Math.max(0, solid - skin) * printInfillOf(p) / 100;
+  const mat = skin + infill;
+  const g = matDensity(p);
+  const flow = FLOW_MM3_S * Math.pow(nozzleOf(p) / 0.4, 2);
+  return {solid, skin, infill, mat,
+          fill: mat / solid,                          // какая доля литой детали печатается на самом деле
+          mass: mat / 1000 * g,
+          massSolid: solid / 1000 * g,
+          filamentMm: mat / (Math.PI * Math.pow(FILAMENT_D / 2, 2)),
+          hours: mat / flow * PRINT_OVERHEAD / 3600};
+}
+// Веc и время считает `printBudget` (см. выше). Здесь остаётся показ.
 function updatePrintStats(tris){
-  const cc = meshVolume(tris)/1000; // см³
-  /* Вес считается по ВЫБРАННОМУ материалу. Жёсткая пара «PLA / PETG» была понятна ровно до тех пор,
-     пока материал ни на что не влиял: выбрав нейлон, человек всё равно читал вес в PLA. Второй
-     цифрой остаётся PLA как привычная точка отсчёта — но только когда выбран не он. */
-  const mk = matKey(paramState.box), gSel = cc*FIL_MAT[mk].g, gPLA = cc*FIL_G_CM3.pla, hours = gPLA/12;
+  const p = paramState.box, b = printBudget(tris, p);
+  const cc = meshVolume(tris)/1000; // см³ — ЛИТОГО объёма, то есть самой детали
   const volEl = document.getElementById('stat-volume');
   if (!volEl) return;
   volEl.textContent = cc >= 100 ? cc.toFixed(0)+' см³' : cc.toFixed(2)+' см³';
+  /* Вес считается по ВЫБРАННОМУ материалу. Жёсткая пара «PLA / PETG» была понятна ровно до тех пор,
+     пока материал ни на что не влиял: выбрав нейлон, человек всё равно читал вес в PLA. Второй
+     цифрой остаётся PLA как привычная точка отсчёта — но только когда выбран не он. */
+  const mk = matKey(p);
   const wRow = document.getElementById('stat-weight-k');
   if (wRow) wRow.textContent = mk === 'pla' ? 'Вес (PLA)' : 'Вес ('+FIL_MAT[mk].t+' / PLA)';
-  document.getElementById('stat-weight').textContent = mk === 'pla'
-    ? '≈ '+gSel.toFixed(gSel<10?1:0)+' г'
-    : '≈ '+gSel.toFixed(gSel<10?1:0)+' / '+gPLA.toFixed(gPLA<10?1:0)+' г';
-  const hh = Math.floor(hours), mm = Math.round((hours-hh)*60);
-  document.getElementById('stat-time').textContent = hours < 1/60 ? '<1 мин' : '≈ '+(hh>0? hh+' ч ':'')+mm+' мин';
+  const fillEl = document.getElementById('stat-fill'), filEl = document.getElementById('stat-filament');
+  if (!b){
+    if (fillEl) fillEl.textContent = '—';
+    if (filEl) filEl.textContent = '—';
+    document.getElementById('stat-weight').textContent = '—';
+    document.getElementById('stat-time').textContent = '—';
+  } else {
+    /* ДОЛЯ НАЗВАНА ВСЛУХ. Вес детали, напечатанной с 15 % заполнения, вчетверо меньше литого — и
+       пока доля не показана, число выглядит просто «каким-то другим». */
+    if (fillEl) fillEl.textContent = (b.mat/1000).toFixed(b.mat >= 1e5 ? 0 : 2)+' см³ ('+
+      Math.round(b.fill*100)+'% от литого, '+printWallsOf(p)+' пер., '+printInfillOf(p)+'%)';
+    const gPLA = b.mat/1000*FIL_G_CM3.pla;
+    document.getElementById('stat-weight').textContent = mk === 'pla'
+      ? '≈ '+b.mass.toFixed(b.mass<10?1:0)+' г'
+      : '≈ '+b.mass.toFixed(b.mass<10?1:0)+' / '+gPLA.toFixed(gPLA<10?1:0)+' г';
+    if (filEl) filEl.textContent = '≈ '+(b.filamentMm/1000).toFixed(b.filamentMm < 10000 ? 2 : 1)+' м';
+    const hours = b.hours, hh = Math.floor(hours), mm = Math.round((hours-hh)*60);
+    document.getElementById('stat-time').textContent = hours < 1/60 ? '<1 мин' : '≈ '+(hh>0? hh+' ч ':'')+mm+' мин';
+  }
   // overhangs (of the CURRENT on-screen orientation) + thin-feature warnings
   const ovEl = document.getElementById('stat-overhang');
   if (ovEl) {

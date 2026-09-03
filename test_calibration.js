@@ -684,6 +684,15 @@ console.log('=== набор корки: те же правила, что у за
 {
   const plan = surfaceSwatchPlan(defaultBoxParams());
   chk('площадок столько же, сколько рисунков', plan.length === ORCA_SURFACE.length, plan.length);
+  /* И ЧТО ПРЕДЕЛ ПОЛЗУНКА — ЭТО ДЛИНА СПИСКА (v25.42.0). Номер рисунка зажимался длиной массива
+     прямо в построителе; теперь его зажимает строка панели, и число живёт в двух местах. Разойдись
+     они — ползунок предложит рисунок, которого нет, либо спрячет существующий. */
+  chk('предел ползунка «номер рисунка» — длина списка рисунков',
+      SHAPE_PARAMS.box.find(r => r.key === 'tstSrfNo').max === ORCA_SURFACE.length,
+      {строка: SHAPE_PARAMS.box.find(r => r.key === 'tstSrfNo').max, список: ORCA_SURFACE.length});
+  chk('предел ползунка «номер узора» — длина списка узоров',
+      SHAPE_PARAMS.box.find(r => r.key === 'tstInfNo').max === ORCA_INFILL.length,
+      {строка: SHAPE_PARAMS.box.find(r => r.key === 'tstInfNo').max, список: ORCA_INFILL.length});
   chk('и все влезают в сборку', plan.length <= MAX_MODELS, {надо:plan.length, мест:MAX_MODELS});
   chk('имена не повторяются', new Set(plan.map(c => c.name)).size === plan.length);
   for(const ov of [{}, {tstJoin:true}, {tstSrfSide:50}]){

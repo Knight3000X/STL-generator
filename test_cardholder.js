@@ -393,9 +393,17 @@ console.log('=== перемычки в пазу и ширина лопасти =
   chk('  и он действительно меняет деталь',
       Math.abs(S({chPad:5}).outer.y - S({chPad:1.2}).outer.y - 3.8) < 1e-9,
       {толстая:S({chPad:5}).outer.y, тонкая:S({chPad:1.2}).outer.y});
+  /* ЧИТАЕТСЯ — ЭТО И `p.chCards`, И `knobOf(p, 'chCards')` (v25.42.0). Ручка, ушедшая в правило
+     панели, из текста `p.<ключ>` пропадает, и проверка объявила бы живую ручку мёртвой. Форма
+     спрашивается ОДНИМ местом, и обе её ветви проверены ниже: без этого «читает» снова стало бы
+     означать «написано так, как я привык». */
+  const readsKnob = (fn, k) => new RegExp("p\\." + k + "\\b|knobOf\\(\\s*p\\s*,\\s*'" + k + "'").test(String(fn));
+  chk('  «читает» — это оба написания, и прямое, и через строку панели',
+      readsKnob(p => p.zzKnob, 'zzKnob') && readsKnob(p => knobOf(p, 'zzKnob'), 'zzKnob') &&
+      !readsKnob(p => p.other, 'zzKnob'));
   chk('  и каждую ручку картодержателя кто-то читает',
-      rows.every(k => k === 'chMode' || new RegExp('p\\.' + k + '\\b').test(String(cardSpec))),
-      rows.filter(k => k !== 'chMode' && !new RegExp('p\\.' + k + '\\b').test(String(cardSpec))));
+      rows.every(k => k === 'chMode' || readsKnob(cardSpec, k)),
+      rows.filter(k => k !== 'chMode' && !readsKnob(cardSpec, k)));
 }
 
 console.log('=== наклейка: на тыльной оболочке, БЕЗ ПЛОЩАДКИ ===');

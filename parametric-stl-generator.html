@@ -1192,6 +1192,7 @@
       <div class="stats-row"><span class="k">Филамент Ø1.75</span><span class="v mono" id="stat-filament">—</span></div>
       <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
       <div class="stats-row"><span class="k">Нависания &gt;45°</span><span class="v mono" id="stat-overhang">—</span></div>
+      <div class="stats-row"><span class="k">Самый длинный мост</span><span class="v mono" id="stat-bridge">—</span></div>
       <div class="stats-row"><span class="k">Ориентация</span><span class="v mono" id="stat-orient">—</span></div>
       <div class="stats-row"><span class="k">Держится за стол</span><span class="v mono" id="stat-grip">—</span></div>
       <div class="stats-row"><span class="k">Печатаемость</span><span class="v mono" id="stat-printable">—</span></div>
@@ -1250,7 +1251,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.45.0';
+const APP_VERSION = 'v25.46.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -9123,10 +9124,71 @@ const KIND_PRINT = {
   seal:'detail',
 };
 // The two lines that depend on what was typed rather than on what kind of part it is.
-function printSettingsFor(p){
+/* НАСТРОЙКИ ПОД ЭТУ ДЕТАЛЬ, А НЕ ПОД ЕЁ СЕМЕЙСТВО (v25.46.0).
+
+   Совет «для крючков ставьте три периметра» верен для крючков вообще и бесполезен для крючка,
+   который сейчас на экране: у него своя толщина стенки, свой мост и своё пятно. Приложение к этой
+   сборке измеряет ВСЁ, что нужно для честного совета, — расход, нависания, мост, опору, — и не
+   говорило из этого ни слова.
+
+   СРЕДНЯЯ ТОЛЩИНА СЧИТАЕТСЯ КАК 2V/A. Для оболочки постоянной толщины `t` объём равен половине
+   площади на толщину, откуда `t = 2V/A`; для сплошного куба та же формула даёт треть стороны. Это
+   не «толщина стенки» в смысле панели — это ОДНО ЧИСЛО ПРО ВСЮ ДЕТАЛЬ, и по нему видно главное:
+   решают ли в ней периметры (тонкостенная) или заполнение (мясистая). Названо оно поэтому именно
+   средней толщиной, а не толщиной стенки.
+
+   ПЕРИМЕТРОВ БОЛЬШЕ, ЧЕМ ВЛЕЗАЕТ, СТАВИТЬ НЕЗАЧЕМ: слайсер их всё равно сожмёт. Потолок — сколько
+   проходов укладывается в среднюю толщину; пол — два, одним периметром деталь не держится. */
+function meanThickness(tris){
+  if (!tris || !tris.length) return 0;
+  const A = meshAreaSplit(tris).total;
+  return A > 1e-9 ? 2*meshVolume(tris)/A : 0;
+}
+function partProfileRows(p, tris){
+  if (!tris || !tris.length) return [];
+  const rows = [], nz = lineWidthOf(p), lay = layerOf(p);
+  const th = meanThickness(tris), passes = nz > 0 ? th/nz : 0;
+  /* ПЕРИМЕТРЫ РЕШАЮТ НЕ ВЕЗДЕ. У тонкостенной детали вопрос один: сколько проходов нужно, чтобы
+     стенка сомкнулась сплошняком, — столько и ставить. У мясистой периметры лишь подменяют собой
+     заполнение, и совет «шесть периметров на сплошной куб» был бы не советом, а нелепостью:
+     первая редакция этой строки его и выдавала. */
+  if (passes >= 8)
+    rows.push(['Периметров: 3',
+               'деталь мясистая — средняя толщина ' + th.toFixed(1) + ' мм, это ' + passes.toFixed(0) +
+               ' проходов соплом ' + fmtNum(nz) + '. Её держит заполнение, а не периметры']);
+  else
+    rows.push(['Периметров: ' + Math.max(2, Math.ceil(passes)),
+               'средняя толщина детали ' + th.toFixed(1) + ' мм — это ' + passes.toFixed(1) +
+               ' прохода соплом ' + fmtNum(nz) + '; столько и нужно, чтобы стенка сомкнулась сплошняком']);
+  const solid = Math.max(3, Math.ceil(0.8/lay));
+  rows.push(['Сплошных слоёв: ' + solid,
+             'на герметичную крышку нужно около 0.8 мм — при слое ' + fmtNum(lay) + ' это ' + solid + ' слоя']);
+  /* ЗАПОЛНЕНИЕ РЕШАЕТ НЕ ВЕЗДЕ. У тонкостенной детали оболочка смыкается сама, и крутить заполнение
+     бесполезно — это видно из расхода: доля материала там и так близка к единице. */
+  const b = printBudget(tris, p);
+  if (b && b.fill > 0.95)
+    rows.push(['Заполнение: не решает', 'оболочка смыкается сама — деталь печатается сплошной при любом ' +
+               'заполнении, и крутить его тут не на что']);
+  const br = bridgeSpec(tris, p);
+  if (br && br.span > 15)
+    rows.push(['Обдув на мостах: 100 %', 'самый длинный неподпёртый пролёт ' + br.span.toFixed(0) + ' мм' +
+               (br.span > 40 ? ' — столько не мостится даже с обдувом, нужны поддержки' : '')]);
+  const g = bedGripSpec(tris, p);
+  if (g && (g.area < 100 && g.height > 20 || g.slender > 4 || g.margin < 0))
+    rows.push(['Кайма (brim)', g.area < 1e-9
+               ? 'на столе нет ни одной плоской грани — деталь не за что держать, поверните её или ставьте поддержки'
+               : 'пятно первого слоя ' + (g.area/100).toFixed(2) + ' см² при высоте ' + g.height.toFixed(0) +
+                 ' мм' + (g.margin < 0 ? ' — и центр масс вне опоры' : '')]);
+  const o = orientationAdvice(tris);
+  if (o && o.worth)
+    rows.push(['Повернуть: ' + o.best.t, 'нависаний станет ' + (o.best.overhang/100).toFixed(1) +
+               ' см² вместо ' + (o.cur.overhang/100).toFixed(1) + ' — кнопка «Авто-ориентация»']);
+  return rows;
+}
+function printSettingsFor(p, tris){
   const mode = dominantMode(p || {});
   const prof = PRINT_PROFILES[KIND_PRINT[mode] || 'general'];
-  const rows = prof.rows.slice();
+  const rows = prof.rows.slice().concat(partProfileRows(p, tris));
   if ((p || {}).hollow || (p || {}).rim){
     const t = boxWallT(p);
     const n = Math.max(1, Math.round(t / 0.4));
@@ -9147,7 +9209,7 @@ function printSettingsFor(p){
   }
   return {profile: prof.n, rows};
 }
-function modelHelp(p){
+function modelHelp(p, tris){
   const mode = dominantMode(p || {}), mk = subModelKey(mode);
   const sub = mk ? String((p || {})[mk]) : null;
   const key = (sub && sub !== 'none' && MODEL_HELP[mode + ':' + sub]) ? mode + ':' + sub : mode;
@@ -9159,12 +9221,12 @@ function modelHelp(p){
     mats.push({key:m, name:M.n, desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && PRINT_MATERIALS[s].n).filter(Boolean)});
   }
   return {key, title: t ? (KIND_LABEL[mode] + ' — ' + t.label) : (KIND_LABEL[mode] || mode),
-          what:h.what, how:h.how, mats, print: printSettingsFor(p || {}),
+          what:h.what, how:h.how, mats, print: printSettingsFor(p || {}, tris),
           stepsTitle: h.stepsTitle || '', steps: (h.steps || []).slice()};
 }
 function updateModelHelp(){
   const box = document.getElementById('model-help'); if (!box || !paramState || !paramState.box) return;
-  const h = modelHelp(paramState.box);
+  const h = modelHelp(paramState.box, (typeof currentTris !== 'undefined' && currentTris) ? currentTris : null);
   if (!h){ box.style.display = 'none'; return; }
   // The print rows carry typed numbers (wall thickness, pocket depth), so the key has to include them —
   // keyed on the model alone the table would freeze at whatever it said when the model was chosen.
@@ -31109,6 +31171,134 @@ function meshVolume(tris){
     v += (a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]))/6; }
   return Math.abs(v);
 }
+/* САМЫЙ ДЛИННЫЙ НЕПОДПЁРТЫЙ ПРОЛЁТ (v25.46.0).
+
+   «Нависаний 12 см²» — это площадь, а печатника мучает ДЛИНА: сорок миллиметров через пустоту
+   провиснут, а восемь пройдут ниткой и не заметятся. Площадь на этот вопрос не отвечает в принципе:
+   у щели 8×200 она больше, чем у окна 30×30, а печатается щель легко, окно — плохо.
+
+   КАК СЧИТАЕТСЯ. Над деталью строится сетка КОЛОНН по горизонтали, и в каждую собираются высоты, на
+   которых её протыкает вертикальный луч. У замкнутой сетки эти высоты идут парами: вошли в материал
+   — вышли. Начало каждой пары, кроме самой нижней, и есть ПОТОЛОК: над ним материал, под ним пусто.
+
+   Дальше потолки одной высоты собираются вместе, и в каждом ряду ищется самая длинная непрерывная
+   череда колонн — вдоль X и вдоль Z. Пролётом объявляется МЕНЬШАЯ из двух: слайсер мостит поперёк
+   узкой стороны, а не вдоль длинной. У окна 20×60 это двадцать, и это правильный ответ.
+
+   ЧЕГО ЭТА МЕРА НЕ ДЕЛАЕТ. Она не знает про поддержки (их ставит слайсер, а не деталь) и меряет по
+   СЕТКЕ КОЛОНН, то есть с точностью до её шага — шаг называется в ответе. Область сложной формы
+   (буквой Г) она меряет по рядам, а не по связным кускам: для буквы Г это даёт длину плеча, а не
+   диагональ. И потолок, лежащий ровно на столе, потолком не считается — под ним стол. */
+const BRIDGE_GRID_MAX = 160;      // колонн по стороне: дальше растёт время, а не точность
+const BRIDGE_CELL_MIN = 0.5;      // мельче полумиллиметра мерить нечего — это уже ширина прохода
+function bridgeSpec(tris, p){
+  if (!tris || !tris.length) return null;
+  const b = bboxOfTris(tris);
+  const W = b.hi[0] - b.lo[0], D = b.hi[2] - b.lo[2];
+  if (!(W > 0) || !(D > 0)) return null;
+  const cell = Math.max(BRIDGE_CELL_MIN, Math.min(1, Math.max(W, D)/BRIDGE_GRID_MAX));
+  const nx = Math.max(1, Math.min(BRIDGE_GRID_MAX, Math.ceil(W/cell)));
+  const nz = Math.max(1, Math.min(BRIDGE_GRID_MAX, Math.ceil(D/cell)));
+  const cw = W/nx, cd = D/nz;
+  const col = new Array(nx*nz);                       // высоты пересечений в каждой колонне
+  /* ЛУЧ ПУСКАЕТСЯ ИЗ ЦЕНТРА КЛЕТКИ, а треугольник растеризуется по своей же тени: так каждая клетка
+     обходит только те треугольники, что над ней, и вся сетка стоит один проход по детали. */
+  for (const t of tris){
+    const x0 = Math.min(t[0][0], t[1][0], t[2][0]), x1 = Math.max(t[0][0], t[1][0], t[2][0]);
+    const z0 = Math.min(t[0][2], t[1][2], t[2][2]), z1 = Math.max(t[0][2], t[1][2], t[2][2]);
+    const i0 = Math.max(0, Math.floor((x0 - b.lo[0])/cw - 0.5)), i1 = Math.min(nx-1, Math.ceil((x1 - b.lo[0])/cw));
+    const j0 = Math.max(0, Math.floor((z0 - b.lo[2])/cd - 0.5)), j1 = Math.min(nz-1, Math.ceil((z1 - b.lo[2])/cd));
+    if (i1 < i0 || j1 < j0) continue;
+    const ax = t[0][0], az = t[0][2], bx = t[1][0], bz = t[1][2], cx2 = t[2][0], cz = t[2][2];
+    const det = (bz - cz)*(ax - cx2) + (cx2 - bx)*(az - cz);
+    if (Math.abs(det) < 1e-12) continue;               // вертикальный треугольник тени не даёт
+    for (let j = j0; j <= j1; j++){
+      const pz = b.lo[2] + (j + 0.5)*cd;
+      for (let i = i0; i <= i1; i++){
+        const px = b.lo[0] + (i + 0.5)*cw;
+        const l1 = ((bz - cz)*(px - cx2) + (cx2 - bx)*(pz - cz))/det;
+        if (l1 < 0 || l1 > 1) continue;
+        const l2 = ((cz - az)*(px - cx2) + (ax - cx2)*(pz - cz))/det;
+        if (l2 < 0 || l2 > 1) continue;
+        const l3 = 1 - l1 - l2;
+        if (l3 < 0 || l3 > 1) continue;
+        const y = l1*t[0][1] + l2*t[1][1] + l3*t[2][1];
+        const k = j*nx + i; (col[k] = col[k] || []).push(y);
+      }
+    }
+  }
+  /* ПОТОЛКИ. Луч, прошедший ровно по общему ребру двух треугольников, протыкает деталь ДВАЖДЫ в
+     одной точке — и без этой оговорки сплошной куб получал «потолок» по всему краю: у крайних
+     колонн выходило четыре пересечения вместо двух. Совпавшие высоты поэтому сначала схлопываются
+     парами: касание — это вход и выход в одной точке, толщины оно не даёт.
+
+     ПОТОЛОК — начало каждой пары «вошли — вышли», И САМОЙ НИЖНЕЙ ТОЖЕ, если она начинается выше
+     стола: перемычка арки висит над пустотой до самого стола, и это ровно тот пролёт, ради которого
+     мера и заведена. Первая редакция такие колонны пропускала (в них всего одна пара), и арка с
+     просветом сорок миллиметров получала пролёт ноль. */
+  const lay = layerOf(p), ceil = [], EPS = 1e-6, spans = new Array(col.length);
+  for (let k = 0; k < col.length; k++){
+    let ys = col[k]; if (!ys || ys.length < 2) continue;
+    ys.sort((u, v) => u - v);
+    const clean = [];
+    for (let m = 0; m < ys.length; ){
+      let e = m + 1; while (e < ys.length && ys[e] - ys[m] < EPS) e++;
+      if ((e - m) % 2) clean.push(ys[m]);              // чётное число совпавших — касание, не проход
+      m = e;
+    }
+    if (clean.length < 2 || clean.length % 2) continue;
+    spans[k] = clean;
+    for (let m = 0; m < clean.length; m += 2){
+      const below = m === 0 ? b.lo[1] : clean[m-1];
+      if (clean[m] - below > lay) ceil.push({i: k % nx, j: (k/nx)|0, y: clean[m]});
+    }
+  }
+  /* ЕСТЬ ЛИ МАТЕРИАЛ НА ЭТОЙ ВЫСОТЕ — вопрос к тем же парам «вошли — вышли». По нему опознаётся
+     ОПОРА: клетка, где на высоте потолка материал есть, а сама она потолком не является. */
+  const solidAt = (k, y) => { const cl = spans[k]; if (!cl) return false;
+    for (let m = 0; m < cl.length; m += 2) if (y >= cl[m] - EPS && y <= cl[m+1] + EPS) return true;
+    return false; };
+  if (!ceil.length) return {span: 0, cell: Math.max(cw, cd), height: null, area: 0};
+  /* Потолки одной высоты — с точностью до слоя: ступенька в один слой это тот же потолок. */
+  const byH = new Map();
+  for (const c of ceil){ const key = Math.round(c.y/lay);
+    if (!byH.has(key)) byH.set(key, []); byH.get(key).push(c); }
+  /* ПРОЛЁТ МЕРЯЕТСЯ МЕЖДУ ОПОРАМИ, А НЕ ПО ВСЕЙ ШИРИНЕ ПОТОЛКА. Первая редакция брала просто
+     МЕНЬШУЮ из длин по X и по Z — и у арки шириной сорок, но глубиной десять, объявляла пролёт
+     десять: поперёк арки материала под кромкой нет вовсе, «мостить» там не между чем. Череда
+     потолочных клеток считается мостом, только если С ОБЕИХ СТОРОН от неё на той же высоте есть
+     материал. Череда, упирающаяся в пустоту, — это не мост, а свободная кромка: её ловит замер
+     нависаний, и удваивать его здесь незачем. */
+  let span = 0, at = null, area = 0;
+  for (const [, cs] of byH){
+    const y = cs[0].y;
+    const runIn = (rowOf, posOf, step, idxOf) => {
+      const rows = new Map();
+      for (const c of cs){ const r = rowOf(c); if (!rows.has(r)) rows.set(r, []); rows.get(r).push(posOf(c)); }
+      let best = 0;
+      for (const [r, list] of rows){
+        list.sort((u, v) => u - v);
+        for (let m = 0; m < list.length; ){
+          let e = m; while (e + 1 < list.length && list[e+1] === list[e] + 1) e++;
+          const a = idxOf(r, list[m] - 1), z = idxOf(r, list[e] + 1);
+          if (a >= 0 && z >= 0 && solidAt(a, y) && solidAt(z, y)){
+            const L = (list[e] - list[m] + 1)*step;
+            if (L > best) best = L;
+          }
+          m = e + 1;
+        }
+      }
+      return best;
+    };
+    const lx = runIn(c => c.j, c => c.i, cw, (j, i) => (i < 0 || i >= nx) ? -1 : j*nx + i);
+    const lz = runIn(c => c.i, c => c.j, cd, (i, j) => (j < 0 || j >= nz) ? -1 : j*nx + i);
+    /* Опёртой может оказаться только одна из осей: тогда мостят по ней, а не по меньшей. */
+    const s = (lx > 0 && lz > 0) ? Math.min(lx, lz) : Math.max(lx, lz);
+    if (s > span){ span = s; at = y; area = cs.length*cw*cd; }
+  }
+  return {span, cell: Math.max(cw, cd), height: at, area};
+}
+
 /* ПЕРВЫЙ СЛОЙ: ЧЕМ ДЕТАЛЬ ДЕРЖИТСЯ ЗА СТОЛ И НЕ ОПРОКИНЕТСЯ ЛИ (v25.45.0).
 
    ВТОРОЙ ВОПРОС ПОСЛЕ ПОДДЕРЖЕК — «прилипнет ли». Приложение мерило нависания и молчало про то,
@@ -31271,6 +31461,21 @@ function updatePrintStats(tris){
            tall  ? ' — высокая и узкая (' + g.slender.toFixed(1) + ':1), кайма не помешает'
                  : ', запас до края ' + g.margin.toFixed(1) + ' мм');
       grEl.className = 'v mono' + ((tippy || thin || tall || g.area < 1e-9) ? ' warn' : ' ok');
+    }
+  }
+  /* МОСТ — рядом с нависаниями, и с шагом сетки вслух: число без своей точности читается как точное.
+     Пороги взяты у практики: до пятнадцати миллиметров мостит любой принтер, до сорока — с обдувом,
+     дальше провисает даже он. */
+  const brEl = document.getElementById('stat-bridge');
+  if (brEl) {
+    const br = bridgeSpec(tris, paramState.box);
+    if (!br) { brEl.textContent = '—'; brEl.className = 'v mono'; }
+    else if (br.span < 1e-9) { brEl.textContent = 'нет'; brEl.className = 'v mono ok'; }
+    else {
+      brEl.textContent = '≈ ' + br.span.toFixed(0) + ' мм (±' + br.cell.toFixed(1) + ')' +
+        (br.span > 40 ? ' — провиснет даже с обдувом, нужны поддержки'
+       : br.span > 15 ? ' — мостится, но обдув обязателен' : '');
+      brEl.className = 'v mono' + (br.span > 15 ? ' warn' : ' ok');
     }
   }
   const orEl = document.getElementById('stat-orient');

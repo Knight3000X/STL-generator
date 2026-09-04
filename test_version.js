@@ -163,7 +163,7 @@ console.log('=== реестр не разошёлся с историей реп
      трогают ни строкой (весь их след — в `.claude/hooks/`), пользователю не видны никак, а значит и
      выпуском не являются. */
   const EXCEPT = ['2b0b1e9', '798f027', '0aa7a39', 'f658c57', 'af9a014', '5de9a4a', '5d6fc1b', '4c07a44',
-                  '611e975', '436efa9', '0aaf2c1', 'dcdec9b', '0d68ec2', '7c3f8f3', '4e8a830'];
+                  '611e975', '436efa9', '0aaf2c1', 'dcdec9b', '0d68ec2', '7c3f8f3', '4e8a830', '3be3574'];
   let hist = null;
   try {
     hist = require('child_process')

@@ -67,6 +67,11 @@ add() {  # add <label> <file...>   — concatenate the parts into this job's own
 add test_logo_zone.js test_logo_zone.js
 # Service worker: гоняется в поддельной среде воркера, страницы приложения ему не нужно.
 add test_sw.js test_sw.js
+# Перебор слепка: к проверке подшивается САМ сценарий слепка, а не его копия — иначе проверялась бы
+# копия, а сузиться молча мог бы оригинал. Хвост сценария (тот, что снимает слепок и пишет файл)
+# отрезается: здесь проверяется перебор, а не съёмка.
+sed '/^const sets = (MODE/,$d' snapshot.js > "$TMP/snapshot_sets.js"
+add test_snapshot.js stub_preamble.js "$LIB" "$TMP/snapshot_sets.js" test_snapshot.js
 
 # Extraction tests: real <script> + DOM stubs, then the test appended. Ordered LONGEST FIRST, by measured
 # time: with a fixed pool, total wall time is bounded below by the single longest file, so starting it last

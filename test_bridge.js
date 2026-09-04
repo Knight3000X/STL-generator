@@ -174,6 +174,25 @@ console.log('\n=== настройки под ЭТУ деталь, а не под
       {с_сеткой:modelHelp(p, t).print.rows.length, без:modelHelp(p).print.rows.length});
   chk('  и среди них есть строка про периметры этой детали',
       modelHelp(p, t).print.rows.some(r => r[0].indexOf('Периметров: ') === 0));
+  /* ТОНКОСТЕННАЯ ВЕТКА ЗАЖАТА СВЕРХУ ШЕСТЬЮ. Без зажима совет на самой границе прыгал с ВОСЬМИ
+     периметров на ТРИ: при 7.9 прохода — восемь, при 8.1 — три. Восемь периметров не ставит никто, а
+     прыжок втрое от восьми сотых прохода — не совет, а подножка. Нашлось это не рассуждением:
+     поправка объёма сдвинула среднюю толщину подстаканника с 8.11 прохода на 7.92, он перешёл
+     границу, и расширенный слепок показал «Периметров: 3» → 8. */
+  const perim = ov => { const q = P(ov); Object.assign(paramState.box, q);
+    const tt = buildTrisForShape('box', paramState.box);
+    const r = partProfileRows(q, tt).find(x => x[0].indexOf('Периметров: ') === 0);
+    return r ? +r[0].slice(12) : null; };
+  chk('подстаканник у самой границы получает шесть периметров, а не восемь',
+      perim({csMode:'round'}) === 6, perim({csMode:'round'}));
+  chk('  а мясистая деталь — по-прежнему три', perim({}) === 3, perim({}));
+  chk('  и тонкая стенка — свои проходы', perim({hollow:true, wallThickness:2}) === 5,
+      perim({hollow:true, wallThickness:2}));
+  chk('ни одна семья не получает больше шести периметров', (() => {
+    for (const f of FAMILIES){ const act = f.act || {};
+      let n; try { n = perim(act); } catch(e){ continue; }
+      if (n !== null && n > 6) return false; }
+    return true; })());
 }
 
 console.log('\n=== перекрывающиеся оболочки — не пустота между ними ===');

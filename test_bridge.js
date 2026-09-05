@@ -135,17 +135,18 @@ console.log('\n=== настройки под ЭТУ деталь, а не под
   /* МЯСИСТОЙ ДЕТАЛИ СОВЕТУЮТ ТРИ ПЕРИМЕТРА, А НЕ ТРИДЦАТЬ ТРИ. Первая редакция считала «сколько
      проходов влезает» и на сплошном кубе выдавала шесть — это не совет, а нелепость. */
   chk('сплошному кубу — три периметра', rowsOf({}).some(t => t === 'Периметров: 3'), rowsOf({}));
-  /* А ТОНКОСТЕННОЙ — СТОЛЬКО, СКОЛЬКО НУЖНО, ЧТОБЫ СТЕНКА СОМКНУЛАСЬ. Стенка 2 мм соплом 0.4 — это
-     пять проходов, и совет обязан назвать пять, а не три. */
-  chk('полому ящику со стенкой 2 мм — пять периметров',
-      rowsOf({hollow:true, wallThickness:2}).some(t => t === 'Периметров: 5'),
+  /* А ТОНКОСТЕННОЙ — СТОЛЬКО, СКОЛЬКО СМЫКАЕТ СТЕНКУ, И ЭТО ВДВОЕ МЕНЬШЕ ЧИСЛА ПРОХОДОВ: петли идут
+     внутрь от ОБЕИХ поверхностей стенки. Стенка 2 мм соплом 0.4 — это 4.9 прохода и ТРИ периметра,
+     а не пять; проверяется это не записанным числом, а замером ниже. */
+  chk('полому ящику со стенкой 2 мм — три периметра',
+      rowsOf({hollow:true, wallThickness:2}).some(t => t === 'Периметров: 3'),
       rowsOf({hollow:true, wallThickness:2}));
   chk('  и сказано, что заполнение там не решает',
       rowsOf({hollow:true, wallThickness:2}).some(t => t === 'Заполнение: не решает'));
   chk('  а у сплошного куба такой строки нет', !rowsOf({}).some(t => t === 'Заполнение: не решает'));
   /* СОВЕТ ОТЗЫВАЕТСЯ НА СОПЛО И НА СЛОЙ — иначе он был бы не про эту деталь, а про вообще. */
-  chk('сопло 0.8: периметров вдвое меньше',
-      rowsOf({hollow:true, wallThickness:2, printNozzle:'0.8'}).some(t => t === 'Периметров: 3'),
+  chk('сопло 0.8: периметров меньше — той же стенке хватает двух',
+      rowsOf({hollow:true, wallThickness:2, printNozzle:'0.8'}).some(t => t === 'Периметров: 2'),
       rowsOf({hollow:true, wallThickness:2, printNozzle:'0.8'}));
   chk('слой 0.1: сплошных слоёв вдвое больше',
       rowsOf({printLayerH:0.1}).some(t => t === 'Сплошных слоёв: 8'), rowsOf({printLayerH:0.1}));
@@ -174,24 +175,62 @@ console.log('\n=== настройки под ЭТУ деталь, а не под
       {с_сеткой:modelHelp(p, t).print.rows.length, без:modelHelp(p).print.rows.length});
   chk('  и среди них есть строка про периметры этой детали',
       modelHelp(p, t).print.rows.some(r => r[0].indexOf('Периметров: ') === 0));
-  /* ТОНКОСТЕННАЯ ВЕТКА ЗАЖАТА СВЕРХУ ШЕСТЬЮ. Без зажима совет на самой границе прыгал с ВОСЬМИ
-     периметров на ТРИ: при 7.9 прохода — восемь, при 8.1 — три. Восемь периметров не ставит никто, а
-     прыжок втрое от восьми сотых прохода — не совет, а подножка. Нашлось это не рассуждением:
-     поправка объёма сдвинула среднюю толщину подстаканника с 8.11 прохода на 7.92, он перешёл
-     границу, и расширенный слепок показал «Периметров: 3» → 8. */
   const perim = ov => { const q = P(ov); Object.assign(paramState.box, q);
     const tt = buildTrisForShape('box', paramState.box);
     const r = partProfileRows(q, tt).find(x => x[0].indexOf('Периметров: ') === 0);
     return r ? +r[0].slice(12) : null; };
-  chk('подстаканник у самой границы получает шесть периметров, а не восемь',
-      perim({csMode:'round'}) === 6, perim({csMode:'round'}));
+  /* СОВЕТ СВЕРЯЕТСЯ С СОБСТВЕННЫМ РАСХОДОМ, А НЕ С ЗАПИСАННЫМ ЧИСЛОМ. Оболочка смыкает деталь там,
+     где доля литого выходит на единицу, и `printBudget` знает это число сам: `A.side` у стенки — обе
+     её поверхности. Правило обязано называть ровно его, зажатое в [2, 3]. На этой сверке и вскрылось,
+     что совет просил ВДВОЕ больше: расход смыкал стенку 2 мм тремя периметрами, совет говорил пять. */
+  const closesAt = ov => { const q = P(ov), tt = buildTrisForShape('box', q);
+    for (let k = 1; k <= 16; k++){ q.prtWalls = k; if (printBudget(tt, q).fill >= 0.999) return k; }
+    return null; };
+  for (const [nm, ov] of [['стенка 2', {hollow:true, wallThickness:2}],
+                          ['стенка 1.2', {hollow:true, wallThickness:1.2}],
+                          ['стенка 2 соплом 0.8', {hollow:true, wallThickness:2, printNozzle:'0.8'}],
+                          ['стенка 0.8', {hollow:true, wallThickness:0.8}]]){
+    const c = closesAt(ov);
+    chk('совет равен замеру расхода — ' + nm, c !== null && perim(ov) === Math.min(3, Math.max(2, c)),
+        {совет:perim(ov), 'смыкается при':c});
+  }
+  /* А ГДЕ РАСХОД ТРЕБУЕТ БОЛЬШЕ ТРЁХ, СОВЕТ УПИРАЕТСЯ В ТРИ И ГОВОРИТ ПОЧЕМУ. */
+  chk('стенка 3 мм: расход требует больше трёх, совет упёрся в три',
+      closesAt({hollow:true, wallThickness:3}) > 3 && perim({hollow:true, wallThickness:3}) === 3,
+      {'смыкается при':closesAt({hollow:true, wallThickness:3})});
+  chk('  и сказано, что остаток держит заполнение',
+      rowsOf({hollow:true, wallThickness:3}).length > 0 &&
+      partProfileRows(P({hollow:true, wallThickness:3}), buildTrisForShape('box', paramState.box))
+        .find(x => x[0].indexOf('Периметров') === 0)[1].indexOf('держит заполнение') > 0);
+  /* ПРАВИЛО МОНОТОННО — ЭТО И БЫЛО ЦЕЛЬЮ ПЕРЕПИСКИ. Прежнее прыгало ВТРОЕ на границе в восемь
+     проходов: с ростом толщины совет сперва рос до шести, потом падал до трёх. Проверяется не
+     формулой, а прогоном по растущей стенке: совет обязан только расти. */
+  {
+    let prev = 0, seen = {}, ok = true, bad = null;
+    for (let t = 0.4; t <= 12.01; t += 0.2){
+      const n = perim({hollow:true, wallThickness:Math.round(t*10)/10});
+      if (n < prev){ ok = false; bad = {стенка:t, было:prev, стало:n}; break; }
+      seen[n] = (seen[n] || 0) + 1; prev = n;
+    }
+    chk('с ростом стенки совет только растёт', ok, bad);
+    chk('  и он не выродился в одно число', Object.keys(seen).length >= 2, seen);
+    chk('  и выше трёх не поднимается', Object.keys(seen).every(k => +k <= 3), seen);
+  }
+  /* ДВЕ ПАРЫ, НА КОТОРЫХ РАЗРЫВ БЫЛ ВИДЕН ГЛАЗОМ: одна ручка, два соседних набора по разные стороны
+     прежней границы. Часы Ø60 (7.86 прохода) получали ШЕСТЬ, те же часы Ø250 (9.41) — ТРИ; крест
+     мальтийского механизма (7.93) — шесть, косозубая шестерня (8.14) — три. */
+  const famAct = k => Object.assign({}, (FAMILIES.find(f => f.key === k) || {}).act);
+  chk('часы Ø60 и Ø250 получают один совет',
+      perim(Object.assign(famAct('clock'), {clD:60})) === perim(Object.assign(famAct('clock'), {clD:250})),
+      {'Ø60':perim(Object.assign(famAct('clock'), {clD:60})), 'Ø250':perim(Object.assign(famAct('clock'), {clD:250}))});
+  chk('мальтийский механизм и косозубая шестерня — тоже',
+      perim({gearMode:'geneva'}) === perim({gearMode:'helical'}),
+      {мальтийский:perim({gearMode:'geneva'}), косозубая:perim({gearMode:'helical'})});
   chk('  а мясистая деталь — по-прежнему три', perim({}) === 3, perim({}));
-  chk('  и тонкая стенка — свои проходы', perim({hollow:true, wallThickness:2}) === 5,
-      perim({hollow:true, wallThickness:2}));
-  chk('ни одна семья не получает больше шести периметров', (() => {
+  chk('ни одна семья не получает больше трёх периметров', (() => {
     for (const f of FAMILIES){ const act = f.act || {};
       let n; try { n = perim(act); } catch(e){ continue; }
-      if (n !== null && n > 6) return false; }
+      if (n !== null && n > 3) return false; }
     return true; })());
 }
 

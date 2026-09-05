@@ -1251,7 +1251,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.49.0';
+const APP_VERSION = 'v25.50.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -10560,7 +10560,7 @@ function dieSpec(p){
   const dieRes = (typeof dieResolution !== 'undefined' ? dieResolution : 200);
   const beadR = dieBeadR(p);
   const built = buildDie(kind, hw, hh, hd, asgList, dieRes, beadR);
-  const mcB = meshCentroid(built);
+  const mcB = meshSolidCentroid(built);
   const offMeas = Math.hypot(mcB.c[0], mcB.c[1], mcB.c[2]);
   const items = [];
   let dV = 0, mx = 0, my = 0, mz = 0, capped = false, clipped = false;
@@ -22127,7 +22127,7 @@ function standSpec(p){
   /* Плита строится в своих координатах и в конце центрируется по габариту; поэтому и кромки, и центр
      тяжести берутся у ГОТОВОЙ детали — одной системой координат для всего расчёта. */
   const tris = buildPhoneStand(p);
-  const mc = meshCentroid(tris);
+  const mc = meshSolidCentroid(tris);
   let zB = -1e9, zF = 1e9, yB = 1e9;
   for (const T of tris) for (const v of T){
     if (v[2] > zB) zB = v[2];
@@ -31790,16 +31790,19 @@ function columnRuns(raw){
     m = e;
   }
   const clean = [];
-  let w = 0, prev = null, over = 0;
+  let w = 0, prev = null, over = 0, overY = 0;
   for (let m = 0; m < net.length; m++){
-    const was = w;
-    if (was > 1 && prev !== null) over += (was - 1)*(net[m][0] - prev);   // лишнее, со своей кратностью
-    w += net[m][1]; prev = net[m][0];
-    if (was < 1 && w >= 1) clean.push(net[m][0]);        // вошли в материал
-    else if (was >= 1 && w < 1) clean.push(net[m][0]);   // вышли
+    const was = w, y = net[m][0];
+    if (was > 1 && prev !== null){
+      over  += (was - 1)*(y - prev);                     // лишнее, со своей кратностью
+      overY += (was - 1)*(y*y - prev*prev)/2;            // и его момент по высоте — для центра масс
+    }
+    w += net[m][1]; prev = y;
+    if (was < 1 && w >= 1) clean.push(y);        // вошли в материал
+    else if (was >= 1 && w < 1) clean.push(y);   // вышли
   }
-  if (clean.length < 2 || clean.length % 2) return {clean: null, over};
-  return {clean, over};
+  if (clean.length < 2 || clean.length % 2) return {clean: null, over, overY};
+  return {clean, over, overY};
 }
 /* ОБЪЁМ ТЕЛА, А НЕ СУММА ОБОЛОЧЕК (v25.48.0).
 
@@ -31835,6 +31838,39 @@ function meshOverlapVolume(tris){
    делает — тем же доводом снят зажим у кольца. */
 function meshSolidVolume(tris){
   return meshVolume(tris) - meshOverlapVolume(tris);
+}
+/* ЦЕНТР МАСС БОЛЕН ТЕМ ЖЕ, ЧЕМ БЫЛ БОЛЕН ОБЪЁМ. `meshCentroid` интегрирует по числу оборотов — это
+   ∫w·x dV, — и в перекрытии материал тянет центр к себе дважды. Лечится тем же вычитанием: у лишнего
+   объёма есть свой центр, и настоящий центр выходит из двух моментов.
+
+   ЛИШНЕЕ КРЕДИТУЕТСЯ СЕРЕДИНЕ КЛЕТКИ, А НЕ ТОЧКЕ ВЫБОРКИ. Точка выборки сдвинута с середины (иначе луч
+   по диагонали грани подделывает перекрытие), и для ОБЪЁМА это безразлично — там складываются одни
+   длины. Для МОМЕНТА не безразлично: сдвиг ушёл бы прямо в ответ систематической ошибкой в треть
+   клетки. Луч решает, ЧТО он видит; клетка решает, ГДЕ это лежит.
+
+   ЧЕГО ЭТА ПОПРАВКА СТОИТ. Она мала: на запас до опрокидывания идут горизонтальные оси, и там
+   расхождение меньше полумиллиметра. Заведена не ради спасения, а потому что тот же дефект в объёме
+   стоил вранья на четверть, и оставлять его половину непочиненной — значит держать в коде мину с
+   известным номером. */
+function meshOverlapMoment(tris){
+  const g = meshColumns(tris, true); if (!g) return null;
+  const a = g.cw*g.cd;
+  let V = 0, mx = 0, my = 0, mz = 0;
+  for (let k = 0; k < g.runs.length; k++){
+    const r = g.runs[k]; if (!r || !r.over) continue;
+    const x = g.b.lo[0] + ((k % g.nx) + 0.5)*g.cw;      // СЕРЕДИНА клетки, а не точка выборки
+    const z = g.b.lo[2] + (((k/g.nx)|0) + 0.5)*g.cd;
+    V += r.over*a; mx += r.over*a*x; my += r.overY*a; mz += r.over*a*z;
+  }
+  return V > 0 ? {V, c: [mx/V, my/V, mz/V]} : null;
+}
+function meshSolidCentroid(tris){
+  const m = meshCentroid(tris), o = meshOverlapMoment(tris);
+  if (!o || !(m.V - o.V > 0)) return m;
+  const V = m.V - o.V;
+  return {V, c: [(m.c[0]*m.V - o.c[0]*o.V)/V,
+                 (m.c[1]*m.V - o.c[1]*o.V)/V,
+                 (m.c[2]*m.V - o.c[2]*o.V)/V]};
 }
 function bridgeSpec(tris, p){
   const g = meshColumns(tris, false); if (!g) return null;   // середина клетки: пролёт мерится ею
@@ -31931,7 +31967,7 @@ function bedGripSpec(tris, p){
   }
   const b = bboxOfTris(tris), height = b.hi[1] - b.lo[1];
   if (!(area > 0)) return {area: 0, height, margin: -1, slender: Infinity, com: null};
-  const cm = meshCentroid(tris);
+  const cm = meshSolidCentroid(tris);
   const margin = Math.min(cm.c[0] - lo[0], hi[0] - cm.c[0], cm.c[2] - lo[1], hi[1] - cm.c[2]);
   const side = Math.min(hi[0] - lo[0], hi[1] - lo[1]);
   return {area, height, margin, com: cm.c, foot: {lo, hi},

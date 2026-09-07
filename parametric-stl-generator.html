@@ -452,6 +452,7 @@
   .stats-row .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--ink); }
   .stats-row .v.ok{ color:var(--ok); }
   .stats-row .v.warn{ color:var(--redline-dark); }
+  .stats-row select{ font-family:inherit; font-size:12px; max-width:62%; }
 
   #filename{
     width:100%;
@@ -1188,6 +1189,7 @@
       <div class="stats-row"><span class="k">Меш</span><span class="v mono" id="stat-watertight">—</span></div>
       <div class="stats-row"><span class="k">Объём детали</span><span class="v mono" id="stat-volume">—</span></div>
       <div class="stats-row"><span class="k">Печатается материала</span><span class="v mono" id="stat-fill">—</span></div>
+      <div class="stats-row"><span class="k">Пластик</span><span class="v"><select id="stat-mat" class="param-select" data-shape="box" data-key="printMat" title="Тот же выбор, что в «Допусках печати»: материал у детали ОДИН. Он решает не только вес — от него зависят компенсация усадки и посадочные зазоры, поэтому смена пластика двигает и саму модель, а не только цифру."></select></span></div>
       <div class="stats-row"><span class="k" id="stat-weight-k">Вес (PLA)</span><span class="v mono" id="stat-weight">—</span></div>
       <div class="stats-row"><span class="k">Филамент Ø1.75</span><span class="v mono" id="stat-filament">—</span></div>
       <div class="stats-row"><span class="k">Печать (оценка)</span><span class="v mono" id="stat-time">—</span></div>
@@ -1251,7 +1253,7 @@
      патч     — доработки и исправления.
    Мажорный разряд поэтому равен числу базовых форм, то есть числу строк в KIND_LABEL, и test_version.js
    сверяет одно с другим: номер, который можно набрать любым, ничего не сообщает. */
-const APP_VERSION = 'v25.51.0';
+const APP_VERSION = 'v25.52.0';
 /* =========================================================
    GEOMETRY CORE (vector helpers + generators)
    ========================================================= */
@@ -3543,6 +3545,16 @@ const FIL_MAT = {
 /* Старое имя оставлено и СЧИТАЕТСЯ из таблицы, а не пишется рядом. Две таблицы плотностей разошлись бы
    ровно так же, как расходятся два места с одной константой, — только тише. */
 const FIL_G_CM3 = Object.fromEntries(Object.entries(FIL_MAT).map(([k, v]) => [k, v.g]));
+/* СПИСОК МАТЕРИАЛОВ ДЛЯ ВЫБОРА — ИЗ ТОЙ ЖЕ ТАБЛИЦЫ. Он стоял двумя копиями (строка «Материал печати»
+   и строка «ответная деталь»), и выпадайка в сводке стала бы третьей. Копии сходились, но сходились
+   СЛУЧАЙНО, и расхождение вышло бы тихим: новый пластик в `FIL_MAT` попал бы в расчёт и не попал бы в
+   выбор — приложение умеет его считать, а выбрать его нельзя. Названия берутся отсюда же (`t`). */
+const MAT_OPTS = Object.entries(FIL_MAT).map(([v, m]) => ({v: v, t: m.t}));
+/* И ИМЯ ПЛАСТИКА ОДНО. Оно стояло дважды — `FIL_MAT.t` и `PRINT_MATERIALS.n`, — и все десять пар
+   совпадали СЛУЧАЙНО: переименуй пластик в одной таблице, и справка назовёт его иначе, чем выпадайка,
+   а увидеть расхождение можно только сличив два экрана. Теперь имя берётся здесь, а таблица справки
+   отвечает только за описание. */
+function matName(k){ return (FIL_MAT[k] || {}).t || k; }
 function matKey(p){ return (p && FIL_MAT[p.printMat]) ? p.printMat : 'pla'; }
 function matDensity(p){ return FIL_MAT[matKey(p)].g; }
 /* Трение спрашивается ОДНИМ выражением на весь файл — ровно как плотность и усадка. */
@@ -6639,9 +6651,7 @@ const SHAPE_PARAMS = {
        допустимая деформация). Два выбора материала на одну деталь разошлись бы обязательно, поэтому
        здесь он один, а расчёт защёлки берёт свой материал отсюда, если тот ему известен. */
     {group:'Допуски печати', key:'printMat', label:'Материал печати (плотность, усадка, посадка)', type:'select', default:'pla',
-      options:[{v:'pla',t:'PLA'},{v:'plaplus',t:'PLA+ / Tough PLA'},{v:'petg',t:'PETG'},{v:'abs',t:'ABS / ASA'},
-               {v:'tpu',t:'TPU (гибкий)'},{v:'tpe',t:'TPE / TPC'},{v:'nylon',t:'PA (нейлон)'},
-               {v:'pacf',t:'PA-CF (нейлон с углем)'},{v:'pc',t:'PC (поликарбонат)'},{v:'cf',t:'PLA-CF / PETG-CF'}]},
+      options:MAT_OPTS},
     {group:'Допуски печати', key:'printNozzle', label:'Сопло', type:'select', default:'0.4',
       options:[{v:'0.25',t:'0.25 мм (мелкое)'},{v:'0.4',t:'0.4 мм (стандартное)'},
                {v:'0.6',t:'0.6 мм'},{v:'0.8',t:'0.8 мм (крупное)'}],
@@ -6650,9 +6660,7 @@ const SHAPE_PARAMS = {
       hint:'Высота слоя решает, сколько слоёв придётся на виток резьбы, на цветной карман подстаканника и на любую наклонную грань — то есть выйдет она гладкой или лесенкой. Как и сопло, размеров детали она не меняет: это свойство ПЕЧАТИ, а не модели.'},
     {group:'Допуски печати', key:'matShrink', label:'Компенсировать усадку материала (выключить, если её компенсирует слайсер)', type:'bool', default:true},
     {group:'Допуски печати', key:'matMate', label:'Ответная деталь печатается из ДРУГОГО материала', type:'select', default:'same',
-      options:[{v:'same',t:'из того же'},{v:'pla',t:'PLA'},{v:'plaplus',t:'PLA+ / Tough PLA'},{v:'petg',t:'PETG'},
-               {v:'abs',t:'ABS / ASA'},{v:'tpu',t:'TPU (гибкий)'},{v:'tpe',t:'TPE / TPC'},{v:'nylon',t:'PA (нейлон)'},
-               {v:'pacf',t:'PA-CF (нейлон с углем)'},{v:'pc',t:'PC (поликарбонат)'},{v:'cf',t:'PLA-CF / PETG-CF'}],
+      options:[{v:'same', t:'из того же'}].concat(MAT_OPTS),
       hint:'Компенсация усадки считается под ОДИН материал — тот, что выбран выше. Пока обе половины пары печатают из него, они друг к другу подходят: усадка тянет обе одинаково. Напечатайте крышку из PLA, а горло из ABS — и разница усадок ляжет прямо в посадочный зазор, потому что компенсация была одна на оба файла. На Ø30 полпроцента это 0.15 мм, а зазор резьбы по умолчанию 0.4. Здесь называется второй материал, и приложение считает, что от зазора останется.'},
     {group:'Расход и время', key:'prtWalls', label:'Периметров (стенок)', min:1, max:8, step:1, default:3, unit:'', int:true,
       hint:'Сколько проходов сопла кладётся по контуру. Отсюда толщина оболочки: периметры × ширина прохода. Число не влияет на геометрию — оно влияет на ВЕС, длину филамента и время: деталь печатается не сплошной, и оценка, считающая её сплошной, завышает расход в разы.'},
@@ -8409,6 +8417,19 @@ function updateExportTotal(){
   renderPaletteSection();
 }
 // Push the ACTIVE globals back into the panel inputs (after a model switch).
+/* ОДНА РУЧКА МОЖЕТ СТОЯТЬ ДВУМЯ ЭЛЕМЕНТАМИ. Материал выбирается и в панели, и в сводке: значение у
+   него одно (`paramState`), а показывают его двое — и разойтись они обязаны молча, потому что
+   обработчик правит только тот элемент, по которому кликнули. Замерено в headless: без этой строки
+   выбор PETG в сводке пересчитывал вес, а панель продолжала показывать PLA, и человек читал два
+   разных ответа на один вопрос. Синхронизация стоит здесь, в единственном обработчике, а не своим
+   слушателем у сводки: второй слушатель на один ключ — это второй способ его менять. */
+function syncParamTwins(el){
+  const shape = el.dataset.shape || 'box', key = el.dataset.key;
+  if (!key) return;
+  document.querySelectorAll('select.param-select[data-key="' + key + '"]').forEach(o => {
+    if (o !== el && (o.dataset.shape || 'box') === shape) o.value = el.value;
+  });
+}
 function refreshActiveModelUI(){
   document.querySelectorAll('input[data-key]').forEach(inp => {
     const shape = inp.dataset.shape || 'box', key = inp.dataset.key;
@@ -8935,19 +8956,20 @@ function familySplitVisible(groupName, p){
    fold right under the tile row, where the choice was just made.
 
    Materials are named, not described inline: one table says what PLA is and what to reach for instead,
-   and every model points at it. Otherwise «PETG, можно PLA» drifts into thirty slightly different
+   and every model points at it. The NAME is not here — it comes from `FIL_MAT` (`matName`), so a
+   material cannot be called one thing in the picker and another in the help. Otherwise «PETG, можно PLA» drifts into thirty slightly different
    sentences and the one you happen to read is the one that is out of date. */
 const PRINT_MATERIALS = {
-  pla:    {n:'PLA',            d:'самый простой в печати и самый точный по размеру; жёсткий, но хрупкий на удар и садится уже при 55–60 °C — в закрытой машине летом деталь ведёт.', sub:['plaplus','petg']},
-  plaplus:{n:'PLA+ / Tough PLA',d:'тот же PLA с добавками на ударную вязкость: печатается так же, ломается заметно неохотнее. Теплостойкость прежняя.', sub:['pla','petg']},
-  petg:   {n:'PETG',           d:'держит ~75 °C, не боится влаги и ультрафиолета, вязкий на удар. Взамен — тянет паутину и хуже держит мелкий рельеф; зазоры под подвижные части закладывайте на 0,05–0,1 мм больше, чем для PLA.', sub:['pla','abs']},
-  abs:    {n:'ABS / ASA',      d:'~95 °C и настоящая ударная вязкость; ABS склеивается и шпаклюется ацетоном, ASA не желтеет на солнце и идёт на улицу. Нужна закрытая камера — иначе отрыв углов от стола.', sub:['petg','pc']},
-  tpu:    {n:'TPU (гибкий)',   d:'резина: 95A — упругий и ещё печатается на боуден-подаче, 85A — мягкий, но только с директ-экструдером. Не ломается вовсе, стоек к истиранию.', sub:['tpe']},
-  tpe:    {n:'TPE / TPC',      d:'мягче и эластичнее TPU, печатается медленнее и капризнее. Брать, когда 85A всё ещё жёстко.', sub:['tpu']},
-  nylon:  {n:'PA (нейлон)',    d:'скользкий и очень вязкий — лучший материал для зубьев и осей: трётся сам о себя без задиров. Гигроскопичен, перед печатью сушить, иначе пузыри и рыхлый шов.', sub:['pacf','petg']},
-  pacf:   {n:'PA-CF (нейлон с углем)', d:'нейлон, который не ведёт: углеволокно снимает усадку и добавляет жёсткости. Абразивен — только закалённое сопло.', sub:['nylon','pc']},
-  pc:     {n:'PC (поликарбонат)', d:'самый прочный из доступных: ~110 °C и вязкость, которой нет ни у чего выше. Сильно коробится, нужна камера и сухой пруток.', sub:['abs','pacf']},
-  cf:     {n:'PLA-CF / PETG-CF', d:'наполненные углем версии обычных пластиков: жёстче, стабильнее по размеру, матовая поверхность. Абразивны — закалённое сопло обязательно; на подвижных парах хуже, чем чистый пластик.', sub:['pla','petg']},
+  pla:    {d:'самый простой в печати и самый точный по размеру; жёсткий, но хрупкий на удар и садится уже при 55–60 °C — в закрытой машине летом деталь ведёт.', sub:['plaplus','petg']},
+  plaplus:{d:'тот же PLA с добавками на ударную вязкость: печатается так же, ломается заметно неохотнее. Теплостойкость прежняя.', sub:['pla','petg']},
+  petg:   {d:'держит ~75 °C, не боится влаги и ультрафиолета, вязкий на удар. Взамен — тянет паутину и хуже держит мелкий рельеф; зазоры под подвижные части закладывайте на 0,05–0,1 мм больше, чем для PLA.', sub:['pla','abs']},
+  abs:    {d:'~95 °C и настоящая ударная вязкость; ABS склеивается и шпаклюется ацетоном, ASA не желтеет на солнце и идёт на улицу. Нужна закрытая камера — иначе отрыв углов от стола.', sub:['petg','pc']},
+  tpu:    {d:'резина: 95A — упругий и ещё печатается на боуден-подаче, 85A — мягкий, но только с директ-экструдером. Не ломается вовсе, стоек к истиранию.', sub:['tpe']},
+  tpe:    {d:'мягче и эластичнее TPU, печатается медленнее и капризнее. Брать, когда 85A всё ещё жёстко.', sub:['tpu']},
+  nylon:  {d:'скользкий и очень вязкий — лучший материал для зубьев и осей: трётся сам о себя без задиров. Гигроскопичен, перед печатью сушить, иначе пузыри и рыхлый шов.', sub:['pacf','petg']},
+  pacf:   {d:'нейлон, который не ведёт: углеволокно снимает усадку и добавляет жёсткости. Абразивен — только закалённое сопло.', sub:['nylon','pc']},
+  pc:     {d:'самый прочный из доступных: ~110 °C и вязкость, которой нет ни у чего выше. Сильно коробится, нужна камера и сухой пруток.', sub:['abs','pacf']},
+  cf:     {d:'наполненные углем версии обычных пластиков: жёстче, стабильнее по размеру, матовая поверхность. Абразивны — закалённое сопло обязательно; на подвижных парах хуже, чем чистый пластик.', sub:['pla','petg']},
 };
 // what — что это и зачем; how — как класть и чего ждать при печати; mat — первый в списке рекомендуемый;
 // steps — порядок действий, если модель печатается не в один заход (пока это только двухцветный кейкап).
@@ -9279,7 +9301,7 @@ function modelHelp(p, tris){
   const seen = new Set(), mats = [];
   for (const m of (h.mat || [])){
     const M = PRINT_MATERIALS[m]; if (!M || seen.has(m)) continue; seen.add(m);
-    mats.push({key:m, name:M.n, desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && PRINT_MATERIALS[s].n).filter(Boolean)});
+    mats.push({key:m, name:matName(m), desc:M.d, sub:(M.sub||[]).map(s => PRINT_MATERIALS[s] && matName(s)).filter(Boolean)});
   }
   return {key, title: t ? (KIND_LABEL[mode] + ' — ' + t.label) : (KIND_LABEL[mode] || mode),
           what:h.what, how:h.how, mats, print: printSettingsFor(p || {}, tris),
@@ -27715,6 +27737,7 @@ function attachEventListeners() {
       if (shape === currentShape) markPending();
     } else if (t.matches('select.param-select') && t.dataset.shape) {
       paramState[t.dataset.shape][t.dataset.key] = t.value;
+      syncParamTwins(t);                                          // одна ручка — два элемента (панель и сводка)
       if (t.dataset.shape === 'box') updateSectionVisibility();   // sheet/keycap/die mode may have changed
       if (t.dataset.shape === currentShape) markPending();
     } else if (t.matches('[type=checkbox]') && t.dataset.shape) {
@@ -32044,6 +32067,16 @@ function printBudget(tris, p){
           filamentMm: mat / (Math.PI * Math.pow(FILAMENT_D / 2, 2)),
           hours: mat / flow * PRINT_OVERHEAD / 3600};
 }
+/* Список в выпадайке сводки строится из `MAT_OPTS` — той же таблицы, что кормит обе строки панели, и
+   потому третьей копии списка в файле нет. */
+function buildStatMatSelect(){
+  const sel = document.getElementById('stat-mat');
+  if (!sel || sel.children.length) return;      // `children`, а не `options`: так же читается и в заглушке батареи
+  for (const o of MAT_OPTS){
+    const el = document.createElement('option');
+    el.value = o.v; el.textContent = o.t; sel.appendChild(el);
+  }
+}
 // Веc и время считает `printBudget` (см. выше). Здесь остаётся показ.
 function updatePrintStats(tris){
   const p = paramState.box, b = printBudget(tris, p);
@@ -32057,6 +32090,13 @@ function updatePrintStats(tris){
   const mk = matKey(p);
   const wRow = document.getElementById('stat-weight-k');
   if (wRow) wRow.textContent = mk === 'pla' ? 'Вес (PLA)' : 'Вес ('+FIL_MAT[mk].t+' / PLA)';
+  /* ВЫПАДАЙКА СВОДКИ — ТОТ ЖЕ ЭЛЕМЕНТ УПРАВЛЕНИЯ, ЧТО В ПАНЕЛИ: класс `param-select` и ключ
+     `printMat`, поэтому её слушает существующий обработчик панели, а `refreshActiveModelUI` держит
+     обе в согласии. Своего обработчика ей не дано намеренно — второй обработчик на один ключ это
+     второй способ его менять, и однажды они разошлись бы. Здесь только показ: переключить могли в
+     панели, и сводка обязана это отразить. */
+  const mSel = document.getElementById('stat-mat');
+  if (mSel && mSel.value !== mk) mSel.value = mk;
   const fillEl = document.getElementById('stat-fill'), filEl = document.getElementById('stat-filament');
   if (!b){
     if (fillEl) fillEl.textContent = '—';
@@ -33301,6 +33341,7 @@ function init() {
   // UI + geometry math have no WebGL dependency — always set these up first,
   // so parameter editing and STL export keep working even if the 3D preview can't start.
   buildAllParamUI();
+  buildStatMatSelect();      // до switchShape: тот уже показывает сводку, а показывать надо в готовый список
   { const v = document.getElementById('app-version'); if (v) v.textContent = APP_VERSION; }
   loadLightState();          // before the listeners, so the sliders start where they were left
   attachEventListeners();

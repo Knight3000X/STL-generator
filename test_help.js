@@ -38,9 +38,16 @@ console.log('=== материалы: таблица цела ===');
 {
   const keys = Object.keys(PRINT_MATERIALS);
   chk('материалов достаточно', keys.length >= 8, keys.length);
+  /* ИМЯ ПЛАСТИКА ОДНО НА ДВЕ ТАБЛИЦЫ. Оно стояло и здесь (`n`), и в `FIL_MAT` (`t`), и все десять пар
+     совпадали случайно: переименуй пластик в одной, и справка назовёт его иначе, чем выпадайка
+     сводки. Теперь имя выдаёт `matName`, а эта таблица отвечает только за описание — и проверяется,
+     что своё имя сюда не вернулось. */
+  chk('таблица справки описывает ровно те же пластики, что знает FIL_MAT',
+      keys.join() === Object.keys(FIL_MAT).join(), {справка:keys, числа:Object.keys(FIL_MAT)});
   for(const k of keys){
     const m = PRINT_MATERIALS[k];
-    chk(k+': есть название', !!m.n && m.n.length > 1, m.n);
+    chk(k+': имя берётся из таблицы чисел', matName(k) === FIL_MAT[k].t && matName(k).length > 1, matName(k));
+    chk(k+': своего имени в справке больше нет', m.n === undefined, m.n);
     chk(k+': есть описание', !!m.d && m.d.length > 40, m.d && m.d.length);
     chk(k+': описание — законченная фраза', /[.!?]$/.test((m.d||'').trim()), m.d);
     chk(k+': заменители перечислены', Array.isArray(m.sub) && m.sub.length > 0, m.sub);
@@ -49,7 +56,7 @@ console.log('=== материалы: таблица цела ===');
       chk(k+' → '+s+': заменитель не он же сам', s !== k);
     }
   }
-  const names = keys.map(k => PRINT_MATERIALS[k].n);
+  const names = keys.map(matName);
   chk('названия материалов не повторяются', new Set(names).size === names.length, names);
 }
 

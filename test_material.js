@@ -174,5 +174,87 @@ console.log('=== ни один материал не ломает построе
   chk('все десять материалов × пять моделей строятся герметично', bad.length===0, bad.slice(0,3));
 }
 
+console.log('\n=== выбор пластика стоит в сводке, и список у него один ===');
+{
+  const HTML = require('fs').readFileSync('parametric-stl-generator.html', 'utf8');
+  /* СПИСОК МАТЕРИАЛОВ ОДИН НА ВЕСЬ ФАЙЛ. Он стоял двумя копиями — строка «Материал печати» и строка
+     «ответная деталь», — и выпадайка сводки стала бы третьей. Копии сходились СЛУЧАЙНО, а разошлись
+     бы тихо: новый пластик в `FIL_MAT` попал бы в расчёт и не попал бы в выбор — приложение умеет его
+     считать, а выбрать его нельзя. */
+  chk('MAT_OPTS перечисляет ровно материалы FIL_MAT, в том же порядке',
+      MAT_OPTS.map(o => o.v).join() === Object.keys(FIL_MAT).join(), MAT_OPTS.map(o => o.v));
+  chk('  и подписи взяты из той же таблицы', MAT_OPTS.every(o => o.t === FIL_MAT[o.v].t));
+  const rowOf = k => SHAPE_PARAMS.box.find(r => r.key === k);
+  chk('строка «Материал печати» берёт список оттуда же', rowOf('printMat').options === MAT_OPTS);
+  chk('строка ответной детали — оттуда же плюс «из того же»',
+      rowOf('matMate').options.length === MAT_OPTS.length + 1 &&
+      rowOf('matMate').options[0].v === 'same' &&
+      rowOf('matMate').options.slice(1).every((o, i) => o.v === MAT_OPTS[i].v),
+      rowOf('matMate').options.map(o => o.v));
+  /* И НИ ОДНОЙ КОПИИ СПИСКА В ИСХОДНИКЕ: имя последнего пластика встречается ровно один раз — в самой
+     таблице чисел. Выписанный руками список проявился бы здесь вторым вхождением; так и было до
+     этой правки — второе жило в таблице справки. */
+  chk('в исходнике нет второго списка материалов',
+      (HTML.match(/PLA-CF \/ PETG-CF/g) || []).length === 1,
+      (HTML.match(/PLA-CF \/ PETG-CF/g) || []).length);
+  /* ВЫПАДАЙКА В СВОДКЕ — ТОТ ЖЕ ЭЛЕМЕНТ УПРАВЛЕНИЯ, ЧТО В ПАНЕЛИ. Класс и ключ — то, чем её
+     подхватывает единственный обработчик панели; свой обработчик означал бы второй способ менять один
+     ключ. И список в разметке не выписан: `<select>` пуст, его наполняет `MAT_OPTS`. */
+  const tag = (HTML.match(/<select id="stat-mat"[^>]*>/) || [''])[0];
+  chk('в сводке есть выпадайка пластика', tag.length > 0);
+  chk('  она помечена как ручка панели',
+      tag.indexOf('class="param-select"') > 0 && tag.indexOf('data-shape="box"') > 0 &&
+      tag.indexOf('data-key="printMat"') > 0, tag);
+  chk('  и список в ней не выписан руками', HTML.indexOf(tag + '</select>') > 0);
+  /* И ЧТО СПИСОК ПРАВДА ДОХОДИТ ДО ЭЛЕМЕНТА. Разметка пуста намеренно, наполняет её `MAT_OPTS`, —
+     значит между таблицей и экраном есть шаг, и он тоже обязан проверяться: посчитать в коде и не
+     показать посчитанное — то же самое, что не посчитать. */
+  {
+    const sel = document.getElementById('stat-mat');
+    sel.children.length = 0;
+    buildStatMatSelect();
+    chk('выпадайка наполняется из MAT_OPTS',
+        sel.children.length === MAT_OPTS.length &&
+        sel.children.every((o, i) => o.value === MAT_OPTS[i].v && o.textContent === MAT_OPTS[i].t),
+        sel.children.map(o => o.value));
+    const n = sel.children.length;
+    buildStatMatSelect();
+    chk('  и повторный вызов её не удваивает', sel.children.length === n, sel.children.length);
+  }
+  chk('  а сама она стоит в сводке, рядом с весом',
+      HTML.indexOf('id="stat-mat"') > HTML.indexOf('<div class="stats-box">') &&
+      HTML.indexOf('id="stat-mat"') < HTML.indexOf('id="stat-weight-k"'));
+  /* И ЧТО ОБРАБОТЧИК ПРАВДА ЗОВЁТ СИНХРОНИЗАЦИЮ. Саму функцию батарея проверяет прямо (ниже), а вот
+     вызов из обработчика панели увидеть не может: тот живёт на событии DOM, которого в заглушке нет.
+     Мутация «вызов убран» на этом и ВЫЖИЛА — замерено, а не предположено. Поэтому проверяется
+     исходник: ветка `select.param-select` обязана звать `syncParamTwins`. Проверка слабее
+     поведенческой, и слабость названа: она поймает удаление вызова и не поймает подмену его смысла. */
+  const branch = HTML.slice(HTML.indexOf("t.matches('select.param-select')"),
+                            HTML.indexOf("t.matches('[type=checkbox]')"));
+  chk('обработчик панели зовёт синхронизацию близнецов',
+      branch.length > 0 && branch.indexOf('syncParamTwins(t)') > 0, branch.length);
+}
+
+console.log('\n=== одна ручка — два элемента, и они не расходятся ===');
+{
+  /* ЗАМЕРЕНО В HEADLESS, А НЕ ПРИДУМАНО: без синхронизации выбор PETG в сводке пересчитывал вес и
+     подпись, а панель продолжала показывать PLA — два разных ответа на один вопрос на одном экране.
+     Обработчик правит только тот элемент, по которому кликнули, поэтому близнецов сводит он же.
+     Заглушка DOM в батарее не умеет querySelectorAll, поэтому здесь она подменяется на время
+     проверки: проверяется САМА функция, а не браузер. */
+  const mk = v => ({dataset:{shape:'box', key:'printMat'}, value:v});
+  const a = mk('pla'), b = mk('pla'), other = {dataset:{shape:'lid', key:'printMat'}, value:'pla'};
+  const was = document.querySelectorAll;
+  document.querySelectorAll = sel => (String(sel).indexOf('printMat') >= 0 ? [a, b, other] : []);
+  a.value = 'petg'; syncParamTwins(a);
+  chk('близнец получил то же значение', b.value === 'petg', b.value);
+  chk('  и сам элемент не тронут', a.value === 'petg');
+  chk('  а ручка ДРУГОЙ формы — нет', other.value === 'pla', other.value);
+  let fell = false;
+  try { syncParamTwins({dataset:{shape:'box'}, value:'x'}); } catch(e){ fell = true; }
+  chk('элемент без ключа синхронизацию не роняет', !fell);
+  document.querySelectorAll = was;
+}
+
 console.log('\n=== TOTAL:',pass,'passed,',fail,'failed ===');
 process.exit(fail?1:0);
